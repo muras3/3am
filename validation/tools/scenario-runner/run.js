@@ -131,7 +131,7 @@ function mergePlatformLogs(logFiles, events) {
   return JSON.stringify(entries.map((entry) => entry.record), null, 2) + "\n";
 }
 
-function buildProbeScenario(scenarioId, scenario, groundTruth) {
+function buildProbeScenario(scenarioId, scenario, groundTruth, inputs) {
   const probeGroundTruth = {
     primary_root_cause: groundTruth.primary_root_cause,
     contributing_root_causes: groundTruth.contributing_root_causes || [],
@@ -145,14 +145,24 @@ function buildProbeScenario(scenarioId, scenario, groundTruth) {
     description: scenario.description,
     source_references: [],
     ground_truth: probeGroundTruth,
-    inputs: [
-      { type: "otel_traces", paths: ["otel_traces.json"] },
-      { type: "otel_logs", paths: ["otel_logs.json"] },
-      { type: "otel_metrics", paths: ["otel_metrics.json"] },
-      { type: "platform_logs", paths: ["platform_logs.json"] }
-    ],
+    inputs,
     tags: ["validation", "docker-compose", "rate-limiting", "retry-storm", "504", "worker-pool"]
   };
+}
+
+function collectProbeInputs(runDir) {
+  const definitions = [
+    { type: "otel_traces", path: "otel_traces.json" },
+    { type: "otel_logs", path: "otel_logs.json" },
+    { type: "otel_metrics", path: "otel_metrics.json" },
+    { type: "platform_logs", path: "platform_logs.json" }
+  ];
+  return definitions
+    .filter((entry) => {
+      const fullPath = path.join(runDir, entry.path);
+      return fs.existsSync(fullPath) && fs.statSync(fullPath).size > 0;
+    })
+    .map((entry) => ({ type: entry.type, paths: [entry.path] }));
 }
 
 function buildSummary(metricsBody, loadgenBody, stripeBody, events) {
@@ -297,9 +307,10 @@ async function main() {
 
   const groundTruth = JSON.parse(fs.readFileSync(groundTruthPath, "utf8"));
   fs.writeFileSync(path.join(runDir, "ground_truth.json"), JSON.stringify(groundTruth, null, 2) + "\n");
+  const probeInputs = collectProbeInputs(runDir);
   fs.writeFileSync(
     path.join(runDir, "scenario.probe.json"),
-    JSON.stringify(buildProbeScenario(scenarioId, scenario, groundTruth), null, 2) + "\n"
+    JSON.stringify(buildProbeScenario(scenarioId, scenario, groundTruth, probeInputs), null, 2) + "\n"
   );
 
   process.stdout.write(`scenario completed: ${runDir}\n`);
