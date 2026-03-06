@@ -392,7 +392,7 @@ async function main() {
   const loadgenState = await requestJson("GET", `${loadgenControlUrl}/__admin/state`);
   const dependencyState = isMigrationScenario
     ? await requestJson("GET", `${migrationRunnerUrl}/__admin/state`)
-    : process.env.NOTIFICATION_SVC_ADMIN_URL
+    : isNotificationScenario
       ? await requestJson("GET", `${notificationSvcAdminUrl}/__admin/state`)
       : await requestJson("GET", `${stripeAdminUrl}/state`);
 
