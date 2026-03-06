@@ -173,33 +173,28 @@ function collectProbeInputs(runDir) {
     .map((entry) => ({ type: entry.type, paths: [entry.path] }));
 }
 
-function buildSummary(metricsBody, loadgenBody, stripeBody, events) {
+function buildSummary(scenario, metricsBody, loadgenBody, dependencyState, events) {
   const stats = metricsBody.stats || {};
   const config = metricsBody.config || {};
+  const expected = scenario.expected_observations || {};
   const successRate = loadgenBody.sent ? loadgenBody.succeeded / loadgenBody.sent : 0;
   const failureRate = loadgenBody.sent ? loadgenBody.failed / loadgenBody.sent : 0;
-  const impactedRoutes = ["/checkout"];
-  if ((stats.orderFailures || 0) > 0) {
-    impactedRoutes.push("/orders/:id");
-  }
+  const impactedRoutes = expected.impacted_routes || [];
   return {
     incident_window: {
       started_at: events[0].ts,
       ended_at: events[events.length - 1].ts
     },
-    top_errors: [
-      "payment dependency rate limited",
-      "checkout failed after retries"
-    ],
+    top_errors: expected.top_errors || [],
     impacted_routes: impactedRoutes,
-    suspicious_dependencies: ["mock-stripe"],
+    suspicious_dependencies: expected.suspicious_dependencies || [],
     observed_pattern: {
       trigger_phase: "flash_sale",
-      dependency_failure_mode: stripeBody.mode,
-      shared_resource: "checkout worker pool",
+      dependency_failure_mode: dependencyState.mode || dependencyState.phase || "unknown",
+      shared_resource: scenarioIdSharedResource(scenario),
       blast_radius: impactedRoutes.length > 1
-        ? "checkout and order requests timing out behind the shared worker pool"
-        : stats.route504s > 0 ? "checkout requests timing out" : "no timeout observed"
+        ? `${impactedRoutes.join(" and ")} degraded during the incident window`
+        : stats.route504s > 0 ? "requests timing out" : "no timeout observed"
     },
     derived_signals: {
       worker_pool_saturated: metricsBody.activeWorkers === config.checkoutConcurrency,
@@ -212,9 +207,16 @@ function buildSummary(metricsBody, loadgenBody, stripeBody, events) {
     raw: {
       web_metrics: metricsBody,
       loadgen: loadgenBody,
-      dependency_state: stripeBody
+      dependency_state: dependencyState
     }
   };
+}
+
+function scenarioIdSharedResource(scenario) {
+  if (scenario.scenario_id === "db_migration_lock_contention") {
+    return "postgres lock queue and shared worker pool";
+  }
+  return "checkout worker pool";
 }
 
 function copyIfExists(src, dest, fallback) {
@@ -276,6 +278,19 @@ async function main() {
   });
 
   events.push({ ts: new Date().toISOString(), type: "scenario_started", scenario_id: scenarioId });
+
+  if (scenario.traffic && scenario.traffic.baseline) {
+    await requestJson("POST", `${loadgenControlUrl}/__admin/profile`, {
+      profile: "baseline",
+      config: scenario.traffic.baseline
+    });
+  }
+  if (scenario.traffic && scenario.traffic.flash_sale) {
+    await requestJson("POST", `${loadgenControlUrl}/__admin/profile`, {
+      profile: "flash_sale",
+      config: scenario.traffic.flash_sale
+    });
+  }
 
   await requestJson("POST", `${loadgenControlUrl}/__admin/profile`, { profile: "baseline" });
   events.push({ ts: new Date().toISOString(), type: "load_profile_changed", profile: "baseline" });
@@ -349,7 +364,9 @@ async function main() {
 
   const metrics = await requestJson("GET", `${webBaseUrl}/metrics`);
   const loadgenState = await requestJson("GET", `${loadgenControlUrl}/__admin/state`);
-  const stripeState = await requestJson("GET", `${stripeAdminUrl}/state`);
+  const dependencyState = scenario.fault_injection && scenario.fault_injection.target === "migration-runner"
+    ? await requestJson("GET", `${migrationRunnerUrl}/__admin/state`)
+    : await requestJson("GET", `${stripeAdminUrl}/state`);
 
   fs.writeFileSync(path.join(runDir, "events.json"), JSON.stringify(events, null, 2) + "\n");
   fs.writeFileSync(
@@ -357,7 +374,7 @@ async function main() {
     JSON.stringify(
       {
         scenario_id: scenarioId,
-        ...buildSummary(metrics.body, loadgenState.body, stripeState.body, events)
+        ...buildSummary(scenario, metrics.body, loadgenState.body, dependencyState.body, events)
       },
       null,
       2

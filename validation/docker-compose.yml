@@ -94,7 +94,7 @@ services:
     environment:
       PORT: "8080"
       TARGET_BASE_URL: http://web:3000
-      LOADGEN_PROFILE: baseline
+      LOADGEN_PROFILE: stop
       LOADGEN_SEED: "42"
       APP_LOG_FILE: /workspace/out/service-logs/loadgen.jsonl
     depends_on:
