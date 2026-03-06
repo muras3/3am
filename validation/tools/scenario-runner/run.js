@@ -160,6 +160,10 @@ function buildSummary(metricsBody, loadgenBody, stripeBody, events) {
   const config = metricsBody.config || {};
   const successRate = loadgenBody.sent ? loadgenBody.succeeded / loadgenBody.sent : 0;
   const failureRate = loadgenBody.sent ? loadgenBody.failed / loadgenBody.sent : 0;
+  const impactedRoutes = ["/checkout"];
+  if ((stats.orderFailures || 0) > 0) {
+    impactedRoutes.push("/orders/:id");
+  }
   return {
     incident_window: {
       started_at: events[0].ts,
@@ -169,13 +173,15 @@ function buildSummary(metricsBody, loadgenBody, stripeBody, events) {
       "payment dependency rate limited",
       "checkout failed after retries"
     ],
-    impacted_routes: ["/checkout"],
+    impacted_routes: impactedRoutes,
     suspicious_dependencies: ["mock-stripe"],
     observed_pattern: {
       trigger_phase: "flash_sale",
       dependency_failure_mode: stripeBody.mode,
       shared_resource: "checkout worker pool",
-      blast_radius: stats.route504s > 0 ? "checkout requests timing out" : "no timeout observed"
+      blast_radius: impactedRoutes.length > 1
+        ? "checkout and order requests timing out behind the shared worker pool"
+        : stats.route504s > 0 ? "checkout requests timing out" : "no timeout observed"
     },
     derived_signals: {
       worker_pool_saturated: metricsBody.activeWorkers === config.checkoutConcurrency,
@@ -221,6 +227,15 @@ async function main() {
   await waitForHealth(`${webBaseUrl}/health`, "web");
   await waitForHealth(`${loadgenControlUrl}/health`, "loadgen");
   await waitForHealth(`${stripeAdminUrl}/state`, "mock-stripe");
+
+  await requestJson("POST", `${webBaseUrl}/__admin/reset`);
+  await requestJson("POST", `${loadgenControlUrl}/__admin/reset`);
+  await requestJson("POST", `${stripeAdminUrl}/reset`);
+  events.push({
+    ts: new Date().toISOString(),
+    type: "run_state_reset",
+    services: ["web", "loadgen", "mock-stripe"]
+  });
 
   events.push({ ts: new Date().toISOString(), type: "scenario_started", scenario_id: scenarioId });
 

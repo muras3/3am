@@ -13,6 +13,8 @@ services:
       APP_LOG_FILE: /workspace/out/service-logs/web.jsonl
       CHECKOUT_CONCURRENCY: "16"
       CHECKOUT_TIMEOUT_MS: "30000"
+      ORDER_TIMEOUT_MS: "50"
+      ORDER_QUEUE_FAIL_THRESHOLD: "25"
       RETRY_MAX_ATTEMPTS: "5"
       RETRY_INTERVAL_MS: "100"
       RETRY_BACKOFF_MODE: fixed

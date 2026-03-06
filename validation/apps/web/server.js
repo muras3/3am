@@ -16,6 +16,8 @@ const otlpEndpoint = process.env.OTEL_EXPORTER_OTLP_ENDPOINT || "http://otel-col
 const appLogFile = process.env.APP_LOG_FILE || "";
 const checkoutConcurrency = Number(process.env.CHECKOUT_CONCURRENCY || 16);
 const checkoutTimeoutMs = Number(process.env.CHECKOUT_TIMEOUT_MS || 30000);
+const orderTimeoutMs = Number(process.env.ORDER_TIMEOUT_MS || 50);
+const orderQueueFailThreshold = Number(process.env.ORDER_QUEUE_FAIL_THRESHOLD || 25);
 const retryMaxAttempts = Number(process.env.RETRY_MAX_ATTEMPTS || 5);
 const retryIntervalMs = Number(process.env.RETRY_INTERVAL_MS || 100);
 const retryBackoffMode = process.env.RETRY_BACKOFF_MODE || "fixed";
@@ -29,6 +31,8 @@ const stats = {
   checkoutRequests: 0,
   checkoutSuccesses: 0,
   checkoutFailures: 0,
+  orderRequests: 0,
+  orderFailures: 0,
   payment429s: 0,
   paymentRequests: 0,
   route504s: 0,
@@ -39,11 +43,14 @@ let tracer;
 let meter;
 let checkoutRequestCounter;
 let checkoutFailureCounter;
+let orderRequestCounter;
+let orderFailureCounter;
 let payment429Counter;
 let retryCounter;
 let route504Counter;
 let checkoutDuration;
 let paymentDuration;
+let orderDuration;
 
 function ensureLogDir(logFile) {
   if (!logFile) {
@@ -98,14 +105,14 @@ function observeDbConnection() {
 
 setInterval(observeDbConnection, 2000);
 
-function enqueueCheckout(task) {
+function enqueueWork(task, timeoutMs) {
   return new Promise((resolve, reject) => {
     const enqueuedAt = Date.now();
     const wrapped = async () => {
       const queueWaitMs = Date.now() - enqueuedAt;
       const timer = setTimeout(() => {
-        reject(Object.assign(new Error("checkout timed out"), { statusCode: 504 }));
-      }, checkoutTimeoutMs);
+        reject(Object.assign(new Error("worker pool queue timed out"), { statusCode: 504 }));
+      }, timeoutMs);
       try {
         const result = await task(queueWaitMs);
         clearTimeout(timer);
@@ -230,7 +237,7 @@ async function handleCheckout(req, res, body) {
       "app.order_id": orderId
     });
     try {
-      const result = await enqueueCheckout(async (queueWaitMs) => {
+      const result = await enqueueWork(async (queueWaitMs) => {
         span.setAttribute("queue.wait_ms", queueWaitMs);
         const payment = await callPayment(orderId);
         const order = {
@@ -269,7 +276,7 @@ async function handleCheckout(req, res, body) {
             paymentAttempts: payment.attempt
           }
         };
-      });
+      }, checkoutTimeoutMs);
       checkoutDuration.record(Date.now() - startedAt, { route: "/checkout" });
       sendJson(res, result.statusCode, {
         ...result.payload,
@@ -294,12 +301,57 @@ async function handleCheckout(req, res, body) {
 }
 
 function handleOrder(res, orderId) {
-  const order = orders.get(orderId);
-  if (!order) {
-    sendJson(res, 404, { error: "order not found", orderId });
-    return;
-  }
-  sendJson(res, 200, order);
+  stats.orderRequests += 1;
+  orderRequestCounter.add(1, { route: "/orders/:id" });
+  const startedAt = Date.now();
+  return tracer.startActiveSpan("orders.request", async (span) => {
+    span.setAttributes({
+      "app.route": "/orders/:id",
+      "app.order_id": orderId
+    });
+    try {
+      if (activeWorkers >= checkoutConcurrency && queue.length >= orderQueueFailThreshold) {
+        stats.orderFailures += 1;
+        stats.route504s += 1;
+        orderFailureCounter.add(1, { route: "/orders/:id" });
+        route504Counter.add(1, { route: "/orders/:id" });
+        span.setStatus({ code: SpanStatusCode.ERROR, message: "shared worker pool saturated" });
+        sendJson(res, 504, {
+          error: "shared worker pool saturated",
+          orderId,
+          queueDepth: queue.length
+        });
+        return;
+      }
+      const result = await enqueueWork(async (queueWaitMs) => {
+        span.setAttribute("queue.wait_ms", queueWaitMs);
+        await sleep(15);
+        const order = orders.get(orderId);
+        if (!order) {
+          span.setAttributes({ "http.status_code": 404 });
+          return { statusCode: 404, payload: { error: "order not found", orderId } };
+        }
+        span.setAttributes({ "http.status_code": 200 });
+        return { statusCode: 200, payload: order };
+      }, orderTimeoutMs);
+      orderDuration.record(Date.now() - startedAt, { route: "/orders/:id" });
+      sendJson(res, result.statusCode, result.payload);
+    } catch (error) {
+      stats.orderFailures += 1;
+      stats.route504s += 1;
+      orderFailureCounter.add(1, { route: "/orders/:id" });
+      route504Counter.add(1, { route: "/orders/:id" });
+      span.recordException(error);
+      span.setStatus({ code: SpanStatusCode.ERROR, message: error.message });
+      sendJson(res, error.statusCode || 500, {
+        error: error.message,
+        orderId,
+        durationMs: Date.now() - startedAt
+      });
+    } finally {
+      span.end();
+    }
+  });
 }
 
 function handleMetrics(res) {
@@ -311,11 +363,30 @@ function handleMetrics(res) {
     config: {
       checkoutConcurrency,
       checkoutTimeoutMs,
+      orderTimeoutMs,
+      orderQueueFailThreshold,
       retryMaxAttempts,
       retryIntervalMs,
       retryBackoffMode
     }
   });
+}
+
+function resetState() {
+  orders.clear();
+  activeWorkers = 0;
+  queue.length = 0;
+  nextOrderId = 1;
+  stats.checkoutRequests = 0;
+  stats.checkoutSuccesses = 0;
+  stats.checkoutFailures = 0;
+  stats.orderRequests = 0;
+  stats.orderFailures = 0;
+  stats.payment429s = 0;
+  stats.paymentRequests = 0;
+  stats.route504s = 0;
+  stats.dbConnectionCount = 0;
+  stats.retries = 0;
 }
 
 async function main() {
@@ -333,11 +404,14 @@ async function main() {
   meter = metrics.getMeter("validation-web");
   checkoutRequestCounter = meter.createCounter("checkout_requests_total");
   checkoutFailureCounter = meter.createCounter("checkout_failures_total");
+  orderRequestCounter = meter.createCounter("order_requests_total");
+  orderFailureCounter = meter.createCounter("order_failures_total");
   payment429Counter = meter.createCounter("payment_429_total");
   retryCounter = meter.createCounter("retry_attempts_total");
   route504Counter = meter.createCounter("route_504_total");
   checkoutDuration = meter.createHistogram("checkout_duration_ms");
   paymentDuration = meter.createHistogram("payment_duration_ms");
+  orderDuration = meter.createHistogram("order_duration_ms");
   meter.createObservableGauge("worker_pool_in_use", {
     description: "Current number of active checkout workers"
   }).addCallback((result) => result.observe(activeWorkers));
@@ -356,6 +430,11 @@ async function main() {
   }
   if (req.method === "GET" && url.pathname === "/metrics") {
     handleMetrics(res);
+    return;
+  }
+  if (req.method === "POST" && url.pathname === "/__admin/reset") {
+    resetState();
+    sendJson(res, 200, { ok: true });
     return;
   }
   if (req.method === "GET" && url.pathname.startsWith("/orders/")) {

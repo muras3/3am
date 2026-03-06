@@ -89,9 +89,16 @@ function request(method, path, body) {
 async function fireOne() {
   state.sent += 1;
   const pick = state.sent % 10;
-  const route = pick < 8 ? { method: "POST", path: "/checkout", body: { sku: "flash-sale-item" } }
-    : pick === 8 ? { method: "GET", path: "/orders/ord_000001" }
-    : { method: "GET", path: "/health" };
+  let route;
+  if (state.profile === "flash_sale") {
+    route = pick < 5 ? { method: "POST", path: "/checkout", body: { sku: "flash-sale-item" } }
+      : pick < 9 ? { method: "GET", path: "/orders/ord_000001" }
+      : { method: "GET", path: "/health" };
+  } else {
+    route = pick < 7 ? { method: "POST", path: "/checkout", body: { sku: "flash-sale-item" } }
+      : pick < 9 ? { method: "GET", path: "/orders/ord_000001" }
+      : { method: "GET", path: "/health" };
+  }
   try {
     const statusCode = await request(route.method, route.path, route.body);
     if (statusCode >= 200 && statusCode < 400) {
@@ -132,6 +139,17 @@ const server = http.createServer(async (req, res) => {
     } catch (error) {
       sendJson(res, 400, { error: "invalid json body" });
     }
+    return;
+  }
+  if (req.method === "POST" && url.pathname === "/__admin/reset") {
+    state.profile = "stop";
+    state.currentRps = 0;
+    state.startedAt = new Date().toISOString();
+    state.sent = 0;
+    state.succeeded = 0;
+    state.failed = 0;
+    log("loadgen reset", {});
+    sendJson(res, 200, state);
     return;
   }
   if (req.method === "GET" && url.pathname === "/health") {

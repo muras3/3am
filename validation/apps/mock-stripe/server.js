@@ -77,6 +77,15 @@ const server = http.createServer(async (req, res) => {
     }
     return;
   }
+  if (req.method === "POST" && url.pathname === "/__admin/reset") {
+    state.mode = process.env.DEFAULT_MODE || "normal";
+    state.latencyMs = Number(process.env.DEFAULT_LATENCY_MS || 120);
+    state.rateLimitStatus = Number(process.env.RATE_LIMIT_STATUS || 429);
+    state.rateLimitLatencyMs = Number(process.env.RATE_LIMIT_LATENCY_MS || 250);
+    log("mock-stripe reset", { mode: state.mode });
+    sendJson(res, 200, state);
+    return;
+  }
   if (req.method === "POST" && url.pathname === "/charge") {
     if (state.mode === "rate_limited") {
       await sleep(state.rateLimitLatencyMs);
