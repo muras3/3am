@@ -32,6 +32,16 @@ function log(message, fields = {}) {
   }
 }
 
+function attachClientErrorHandler(client, label) {
+  client.on("error", (err) => {
+    if (err && (err.code === "57P01" || err.message === "Connection terminated unexpectedly")) {
+      log("client terminated during reset", { label, code: err.code || "unknown" });
+      return;
+    }
+    log("client error", { label, error: err.message, code: err.code || "unknown" });
+  });
+}
+
 function sendJson(res, statusCode, payload) {
   const body = JSON.stringify(payload);
   res.writeHead(statusCode, {
@@ -98,6 +108,7 @@ async function startMigration(holdSec) {
 
   // Connection A: long-running SELECT that holds AccessShareLock
   state.clientA = new Client({ connectionString: databaseUrl });
+  attachClientErrorHandler(state.clientA, "clientA");
   await state.clientA.connect();
   const pidResultA = await state.clientA.query("SELECT pg_backend_pid() AS pid");
   state.connectionA_pid = pidResultA.rows[0].pid;
@@ -122,6 +133,7 @@ async function startMigration(holdSec) {
 
       // Connection B: ALTER TABLE — will block waiting for AccessExclusiveLock
       state.clientB = new Client({ connectionString: databaseUrl });
+      attachClientErrorHandler(state.clientB, "clientB");
       await state.clientB.connect();
       const pidResultB = await state.clientB.query("SELECT pg_backend_pid() AS pid");
       state.connectionB_pid = pidResultB.rows[0].pid;
@@ -130,7 +142,7 @@ async function startMigration(holdSec) {
 
       await state.clientB.query("BEGIN");
 
-      // Release connection A after 500ms so ALTER can proceed
+      // Keep the blocking reader open long enough for later SELECTs to queue behind the waiting ALTER TABLE.
       setTimeout(async () => {
         try {
           await state.clientA.query("COMMIT");
@@ -143,7 +155,7 @@ async function startMigration(holdSec) {
           lockHoldSpan.setStatus({ code: SpanStatusCode.ERROR, message: err.message });
           lockHoldSpan.end();
         }
-      }, 500);
+      }, effectiveHoldSec * 1000);
 
       // ALTER TABLE blocks until connection A releases the lock
       await state.clientB.query("ALTER TABLE orders ADD COLUMN IF NOT EXISTS priority INTEGER DEFAULT 0");
@@ -205,6 +217,8 @@ async function resetState() {
   } finally {
     await cancelClient.end();
   }
+
+  await ensureOrdersTable();
 
   state.phase = "idle";
   state.connectionA_pid = null;
