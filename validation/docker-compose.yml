@@ -1,0 +1,95 @@
+services:
+  web:
+    build:
+      context: ./apps/web
+    environment:
+      PORT: "3000"
+      NODE_ENV: development
+      PAYMENT_BASE_URL: http://mock-stripe:4000
+      DATABASE_HOST: postgres
+      DATABASE_PORT: "5432"
+      CHECKOUT_CONCURRENCY: "16"
+      CHECKOUT_TIMEOUT_MS: "30000"
+      RETRY_MAX_ATTEMPTS: "5"
+      RETRY_INTERVAL_MS: "100"
+      RETRY_BACKOFF_MODE: fixed
+    ports:
+      - "3000:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mock-stripe:
+        condition: service_started
+      otel-collector:
+        condition: service_started
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: validation
+      POSTGRES_PASSWORD: validation
+      POSTGRES_DB: validation
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U validation"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  mock-stripe:
+    build:
+      context: ./apps/mock-stripe
+    environment:
+      PORT: "4000"
+      DEFAULT_MODE: normal
+      DEFAULT_LATENCY_MS: "120"
+      RATE_LIMIT_STATUS: "429"
+      RATE_LIMIT_LATENCY_MS: "250"
+    ports:
+      - "4000:4000"
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.101.0
+    command: ["--config=/etc/otelcol/config.yaml"]
+    volumes:
+      - ./otel/collector-config.yaml:/etc/otelcol/config.yaml:ro
+      - ./out/collector:/var/lib/otel
+    ports:
+      - "4317:4317"
+      - "4318:4318"
+
+  loadgen:
+    build:
+      context: ./tools/loadgen
+    environment:
+      PORT: "8080"
+      TARGET_BASE_URL: http://web:3000
+      LOADGEN_PROFILE: baseline
+      LOADGEN_SEED: "42"
+    depends_on:
+      - web
+    ports:
+      - "8080:8080"
+
+  scenario-runner:
+    build:
+      context: ./tools/scenario-runner
+    environment:
+      SCENARIO_FILE: /workspace/scenarios/third_party_api_rate_limit_cascade/scenario.yaml
+      GROUND_TRUTH_FILE: /workspace/scenarios/third_party_api_rate_limit_cascade/ground_truth.template.json
+      OUTPUT_DIR: /workspace/out/runs
+      WEB_BASE_URL: http://web:3000
+      STRIPE_ADMIN_URL: http://mock-stripe:4000/__admin
+      LOADGEN_CONTROL_URL: http://loadgen:8080
+      OTEL_COLLECTOR_DIR: /workspace/out/collector
+    volumes:
+      - ./scenarios:/workspace/scenarios:ro
+      - ./out:/workspace/out
+    depends_on:
+      - web
+      - mock-stripe
+      - loadgen
+      - otel-collector
+    command: ["node", "/app/run.js", "third_party_api_rate_limit_cascade"]
+
