@@ -177,9 +177,10 @@ const server = http.createServer(async (req, res) => {
         return;
       }
       if (body.config) {
+        const previous = profiles[body.profile] || defaultProfiles[body.profile] || { rps: 0, routes: [] };
         profiles[body.profile] = {
-          rps: Number(body.config.rps || 0),
-          routes: Array.isArray(body.config.routes) ? body.config.routes : []
+          rps: Number(body.config.rps ?? previous.rps ?? 0),
+          routes: Array.isArray(body.config.routes) ? body.config.routes : previous.routes
         };
       }
       if (!profiles[body.profile]) {
