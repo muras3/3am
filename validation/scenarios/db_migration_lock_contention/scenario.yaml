@@ -1,0 +1,45 @@
+scenario_id: db_migration_lock_contention
+description: >
+  Long-running analytics query blocks ALTER TABLE migration causing lock queue
+  starvation and cascading connection pool exhaustion.
+
+runtime:
+  warmup_sec: 30
+  steady_state_sec: 20
+  incident_sec: 60
+  cooldown_sec: 10
+
+fast_mode:
+  enabled: true
+  warmup_sec: 5
+  steady_state_sec: 5
+  incident_sec: 45
+  cooldown_sec: 3
+
+fault_injection:
+  target: migration-runner
+  action:
+    endpoint: "/__admin/start"
+    method: POST
+    config:
+      lock_hold_sec: 10
+
+traffic:
+  baseline:
+    rps: 8
+    routes:
+      - { method: GET, path: /db/recent-orders, weight: 7 }
+      - { method: POST, path: /checkout, weight: 2 }
+      - { method: GET, path: /health, weight: 1 }
+  flash_sale:
+    rps: 40
+    routes:
+      - { method: GET, path: /db/recent-orders, weight: 7 }
+      - { method: POST, path: /checkout, weight: 2 }
+      - { method: GET, path: /health, weight: 1 }
+
+expected_observations:
+  tags: [validation, docker-compose, db-migration, lock-contention, connection-pool]
+  top_errors: ["query wait timeout", "connection pool exhausted"]
+  suspicious_dependencies: [postgres]
+  impacted_routes: [/db/recent-orders, /checkout]

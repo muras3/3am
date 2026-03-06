@@ -11,6 +11,7 @@ const collectorDir = process.env.OTEL_COLLECTOR_DIR || "/workspace/out/collector
 const webBaseUrl = process.env.WEB_BASE_URL || "http://web:3000";
 const stripeAdminUrl = process.env.STRIPE_ADMIN_URL || "http://mock-stripe:4000/__admin";
 const loadgenControlUrl = process.env.LOADGEN_CONTROL_URL || "http://loadgen:8080";
+const migrationRunnerUrl = process.env.MIGRATION_RUNNER_URL || "http://migration-runner:5001";
 
 function requestJson(method, urlString, body) {
   const url = new URL(urlString);
@@ -235,6 +236,7 @@ async function main() {
   const webLogPath = path.join(path.dirname(outputDir), "service-logs", "web.jsonl");
   const stripeLogPath = path.join(path.dirname(outputDir), "service-logs", "mock-stripe.jsonl");
   const loadgenLogPath = path.join(path.dirname(outputDir), "service-logs", "loadgen.jsonl");
+  const migrationLogPath = path.join(path.dirname(outputDir), "service-logs", "migration-runner.jsonl");
 
   ensureDir(runDir);
   ensureDir(collectorDir);
@@ -242,10 +244,16 @@ async function main() {
   resetFile(webLogPath);
   resetFile(stripeLogPath);
   resetFile(loadgenLogPath);
+  if (scenario.fault_injection && scenario.fault_injection.target === "migration-runner") {
+    resetFile(migrationLogPath);
+  }
 
   await waitForHealth(`${webBaseUrl}/health`, "web");
   await waitForHealth(`${loadgenControlUrl}/health`, "loadgen");
   await waitForHealth(`${stripeAdminUrl}/state`, "mock-stripe");
+  if (scenario.fault_injection && scenario.fault_injection.target === "migration-runner") {
+    await waitForHealth(`${migrationRunnerUrl}/__admin/health`, "migration-runner");
+  }
 
   const webReset = await requestJson("POST", `${webBaseUrl}/__admin/reset`, { runId });
   if (webReset.statusCode !== 200) {
@@ -253,11 +261,18 @@ async function main() {
   }
   await requestJson("POST", `${loadgenControlUrl}/__admin/reset`);
   await requestJson("POST", `${stripeAdminUrl}/reset`);
+  if (scenario.fault_injection && scenario.fault_injection.target === "migration-runner") {
+    await requestJson("POST", `${migrationRunnerUrl}/__admin/reset`);
+  }
+  const resetServices = ["web", "loadgen", "mock-stripe"];
+  if (scenario.fault_injection && scenario.fault_injection.target === "migration-runner") {
+    resetServices.push("migration-runner");
+  }
   events.push({
     ts: new Date().toISOString(),
     type: "run_state_reset",
     run_id: runId,
-    services: ["web", "loadgen", "mock-stripe"]
+    services: resetServices
   });
 
   events.push({ ts: new Date().toISOString(), type: "scenario_started", scenario_id: scenarioId });
@@ -272,17 +287,30 @@ async function main() {
   const steadyStateSec = fastMode && scenario.fast_mode ? scenario.fast_mode.steady_state_sec : scenario.runtime.steady_state_sec;
   await sleep(Math.min((steadyStateSec || 10) * 1000, 5000));
 
-  await requestJson("POST", `${stripeAdminUrl}/mode`, {
-    mode: scenario.fault_injection.mode || "rate_limited",
-    config: scenario.fault_injection.config
-  });
-  const firstSymptomOracle = new Date().toISOString();
-  events.push({
-    ts: firstSymptomOracle,
-    type: "dependency_mode_changed",
-    service: "mock-stripe",
-    mode: scenario.fault_injection.mode || "rate_limited"
-  });
+  let firstSymptomOracle;
+  if (scenario.fault_injection.target === "migration-runner") {
+    const action = scenario.fault_injection.action || {};
+    await requestJson("POST", `${migrationRunnerUrl}${action.endpoint || "/__admin/start"}`, action.config || {});
+    firstSymptomOracle = new Date().toISOString();
+    events.push({
+      ts: firstSymptomOracle,
+      type: "fault_injected",
+      target: "migration-runner",
+      action: action.endpoint || "/__admin/start"
+    });
+  } else {
+    await requestJson("POST", `${stripeAdminUrl}/mode`, {
+      mode: scenario.fault_injection.mode || "rate_limited",
+      config: scenario.fault_injection.config
+    });
+    firstSymptomOracle = new Date().toISOString();
+    events.push({
+      ts: firstSymptomOracle,
+      type: "dependency_mode_changed",
+      service: "mock-stripe",
+      mode: scenario.fault_injection.mode || "rate_limited"
+    });
+  }
 
   const incidentSec = fastMode && scenario.fast_mode ? scenario.fast_mode.incident_sec : scenario.runtime.incident_sec;
   await sleep(fastMode ? (incidentSec || 10) * 1000 : Math.min((incidentSec || 10) * 1000, 7000));
@@ -294,7 +322,8 @@ async function main() {
     const adminUrlMap = {
       web: webBaseUrl,
       loadgen: loadgenControlUrl,
-      stripe: stripeAdminUrl
+      stripe: stripeAdminUrl,
+      "migration-runner": migrationRunnerUrl
     };
     const recoveryAdminUrl = adminUrlMap[recovery.target];
     if (recoveryAdminUrl) {
@@ -335,7 +364,11 @@ async function main() {
     ) + "\n"
   );
 
-  const mergedServiceLogs = mergeLogFiles([webLogPath, stripeLogPath, loadgenLogPath]);
+  const serviceLogFiles = [webLogPath, stripeLogPath, loadgenLogPath];
+  if (scenario.fault_injection && scenario.fault_injection.target === "migration-runner") {
+    serviceLogFiles.push(migrationLogPath);
+  }
+  const mergedServiceLogs = mergeLogFiles(serviceLogFiles);
   copyIfExists(path.join(collectorDir, "traces.json"), path.join(runDir, "traces.json"), "[]\n");
   copyIfExists(path.join(collectorDir, "traces.json"), path.join(runDir, "otel_traces.json"), "[]\n");
   copyIfExists(path.join(collectorDir, "logs.jsonl"), path.join(runDir, "otel_logs.json"), "[]\n");
@@ -344,7 +377,7 @@ async function main() {
   fs.writeFileSync(path.join(runDir, "logs.jsonl"), mergedServiceLogs);
   fs.writeFileSync(
     path.join(runDir, "platform_logs.json"),
-    mergePlatformLogs([webLogPath, stripeLogPath, loadgenLogPath], events)
+    mergePlatformLogs(serviceLogFiles, events)
   );
 
   const groundTruthTemplate = JSON.parse(fs.readFileSync(groundTruthPath, "utf8"));
