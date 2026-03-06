@@ -113,6 +113,8 @@ services:
     depends_on:
       - web
       - otel-collector
+    volumes:
+      - ./out:/workspace/out
     profiles:
       - cdn-cache
 

@@ -375,34 +375,40 @@ async function main() {
     });
   }
 
-  const incidentSec = fastMode && scenario.fast_mode ? scenario.fast_mode.incident_sec : scenario.runtime.incident_sec;
-  await sleep(fastMode ? (incidentSec || 10) * 1000 : Math.min((incidentSec || 10) * 1000, 7000));
+  const incidentMs = fastMode && scenario.fast_mode
+    ? (scenario.fast_mode.incident_sec || 10) * 1000
+    : Math.min((scenario.runtime.incident_sec || 10) * 1000, 7000);
 
-  if (scenario.fault_injection && scenario.fault_injection.recovery) {
-    const recovery = scenario.fault_injection.recovery;
-    await sleep((recovery.at_offset_sec || 0) * 1000);
-    const adminUrlMap = {
-      web: webBaseUrl,
-      loadgen: loadgenControlUrl,
-      stripe: stripeAdminUrl,
-      "migration-runner": migrationRunnerUrl,
-      "mock-notification-svc": notificationSvcAdminUrl,
-      cdn: cdnBaseUrl
-    };
-    const recoveryAdminUrl = adminUrlMap[recovery.target];
-    if (recoveryAdminUrl) {
-      await requestJson("POST", `${recoveryAdminUrl}/__admin/mode`, {
-        mode: recovery.mode,
-        config: recovery.config || {}
-      });
-    }
-    events.push({
-      ts: new Date().toISOString(),
-      type: "dependency_recovery",
-      target: recovery.target,
-      mode: recovery.mode
-    });
-  }
+  const incidentPromise = sleep(incidentMs);
+  const recoveryPromise = (scenario.fault_injection && scenario.fault_injection.recovery)
+    ? (async () => {
+        const recovery = scenario.fault_injection.recovery;
+        await sleep((recovery.at_offset_sec || 0) * 1000);
+        const adminUrlMap = {
+          web: webBaseUrl,
+          loadgen: loadgenControlUrl,
+          stripe: stripeAdminUrl,
+          "migration-runner": migrationRunnerUrl,
+          "mock-notification-svc": notificationSvcAdminUrl,
+          cdn: cdnBaseUrl
+        };
+        const recoveryAdminUrl = adminUrlMap[recovery.target];
+        if (recoveryAdminUrl) {
+          await requestJson("POST", `${recoveryAdminUrl}/__admin/mode`, {
+            mode: recovery.mode,
+            config: recovery.config || {}
+          });
+        }
+        events.push({
+          ts: new Date().toISOString(),
+          type: "dependency_recovery",
+          target: recovery.target,
+          mode: recovery.mode
+        });
+       })()
+     : Promise.resolve();
+
+  await Promise.all([incidentPromise, recoveryPromise]);
 
   await requestJson("POST", `${loadgenControlUrl}/__admin/profile`, { profile: "stop" });
   events.push({ ts: new Date().toISOString(), type: "load_profile_changed", profile: "stop" });

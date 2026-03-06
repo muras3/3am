@@ -1,4 +1,5 @@
 const http = require("http");
+const fs = require("fs");
 const { URL } = require("url");
 const { trace, metrics, SpanStatusCode } = require("@opentelemetry/api");
 const { NodeSDK } = require("@opentelemetry/sdk-node");
@@ -10,16 +11,26 @@ const port = Number(process.env.PORT || 3001);
 const webOriginUrl = process.env.WEB_ORIGIN_URL || "http://web:3000";
 const cdnCacheTtlSec = process.env.CDN_CACHE_TTL_SEC ? Number(process.env.CDN_CACHE_TTL_SEC) : null;
 const otlpEndpoint = process.env.OTEL_EXPORTER_OTLP_ENDPOINT || "http://otel-collector:4318";
+const appLogFile = process.env.APP_LOG_FILE || "";
 
 const cache = new Map();
 const stats = { hitCount: 0, missCount: 0, cachedErrorsTotal: 0 };
 
 let tracer;
 let cachedErrorsCounter;
+let logStream = null;
+
+if (appLogFile) {
+  fs.mkdirSync(require("path").dirname(appLogFile), { recursive: true });
+  logStream = fs.createWriteStream(appLogFile, { flags: "a" });
+}
 
 function log(message, fields = {}) {
   const payload = { ts: new Date().toISOString(), message, ...fields };
   process.stdout.write(JSON.stringify(payload) + "\n");
+  if (logStream) {
+    logStream.write(JSON.stringify(payload) + "\n");
+  }
 }
 
 function sendJson(res, statusCode, payload, extraHeaders = {}) {
@@ -219,6 +230,9 @@ async function main() {
   });
 
   process.on("SIGTERM", async () => {
+    if (logStream) {
+      logStream.end();
+    }
     await sdk.shutdown();
     process.exit(0);
   });
