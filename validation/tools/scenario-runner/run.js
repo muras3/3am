@@ -189,7 +189,8 @@ function buildSummary(scenario, metricsBody, loadgenBody, dependencyState, event
     dependencyFailureMode = dependencyState.mode || (dependencyState.cachedErrorsTotal > 0 ? "cached_error" : "unknown");
   }
   if (scenario.scenario_id === "secrets_rotation_partial_propagation") {
-    dependencyFailureMode = dependencyState.revokedKeys && dependencyState.revokedKeys.length > 0
+    const revokedKeys = dependencyState.revokedKeys || dependencyState.revoked_keys || [];
+    dependencyFailureMode = revokedKeys.length > 0
       ? "revoked_key"
       : dependencyFailureMode;
   }
