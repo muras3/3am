@@ -1,0 +1,26 @@
+{
+  "primary_root_cause": "Long-running analytics query holding AccessShareLock blocked ALTER TABLE migration requiring AccessExclusiveLock, causing lock queue starvation and cascading connection pool exhaustion",
+  "contributing_root_causes": [
+    "No lock_timeout set on migration session",
+    "Analytics query not using READ COMMITTED with short transaction"
+  ],
+  "detail": {
+    "component": "postgresql/lock_queue",
+    "trigger_signal": "Long-running SELECT holding AccessShareLock blocks ALTER TABLE's AccessExclusiveLock, queueing all subsequent table access behind the blocked migration",
+    "failure_mode": "Lock queue starvation causing cascading query timeouts and connection pool exhaustion"
+  },
+  "recommended_actions": [
+    "Set lock_timeout on migration sessions (SET lock_timeout = '2s')",
+    "Run migrations during low-traffic windows",
+    "Use pg_cancel_backend() to terminate blocking queries",
+    "Use short-lived read transactions for analytics queries"
+  ],
+  "t_first_symptom_oracle": "{{T_FIRST_SYMPTOM_ORACLE}}",
+  "validation_extensions": {
+    "first_symptom_signal": "First /db/recent-orders request timing out after ALTER TABLE blocks",
+    "key_discriminator": "pg_stat_activity shows ALTER TABLE waiting on AccessExclusiveLock while SELECT holds AccessShareLock",
+    "red_herrings": [
+      "High checkout 504s look like payment issue but are caused by shared connection pool exhaustion"
+    ]
+  }
+}

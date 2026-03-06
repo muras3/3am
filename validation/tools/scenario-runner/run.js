@@ -10,7 +10,12 @@ const outputDir = process.env.OUTPUT_DIR || "/workspace/out/runs";
 const collectorDir = process.env.OTEL_COLLECTOR_DIR || "/workspace/out/collector";
 const webBaseUrl = process.env.WEB_BASE_URL || "http://web:3000";
 const stripeAdminUrl = process.env.STRIPE_ADMIN_URL || "http://mock-stripe:4000/__admin";
+const notificationSvcAdminUrl = process.env.NOTIFICATION_SVC_ADMIN_URL || "http://mock-notification-svc:7001";
 const loadgenControlUrl = process.env.LOADGEN_CONTROL_URL || "http://loadgen:8080";
+const migrationRunnerUrl = process.env.MIGRATION_RUNNER_URL || "http://migration-runner:5001";
+const cdnBaseUrl = process.env.CDN_BASE_URL || "http://mock-cdn:3001";
+const sendgridAdminUrl = process.env.SENDGRID_ADMIN_URL || "http://mock-sendgrid:6001";
+const webV2BaseUrl = process.env.WEB_V2_BASE_URL || "http://web-v2:3000";
 
 function requestJson(method, urlString, body) {
   const url = new URL(urlString);
@@ -172,33 +177,38 @@ function collectProbeInputs(runDir) {
     .map((entry) => ({ type: entry.type, paths: [entry.path] }));
 }
 
-function buildSummary(metricsBody, loadgenBody, stripeBody, events) {
+function buildSummary(scenario, metricsBody, loadgenBody, dependencyState, events) {
   const stats = metricsBody.stats || {};
   const config = metricsBody.config || {};
+  const expected = scenario.expected_observations || {};
   const successRate = loadgenBody.sent ? loadgenBody.succeeded / loadgenBody.sent : 0;
   const failureRate = loadgenBody.sent ? loadgenBody.failed / loadgenBody.sent : 0;
-  const impactedRoutes = ["/checkout"];
-  if ((stats.orderFailures || 0) > 0) {
-    impactedRoutes.push("/orders/:id");
+  const impactedRoutes = expected.impacted_routes || [];
+  let dependencyFailureMode = dependencyState.mode || dependencyState.phase || "unknown";
+  if (scenario.scenario_id === "upstream_cdn_stale_cache_poison") {
+    dependencyFailureMode = dependencyState.mode || (dependencyState.cachedErrorsTotal > 0 ? "cached_error" : "unknown");
+  }
+  if (scenario.scenario_id === "secrets_rotation_partial_propagation") {
+    const revokedKeys = dependencyState.revokedKeys || dependencyState.revoked_keys || [];
+    dependencyFailureMode = revokedKeys.length > 0
+      ? "revoked_key"
+      : dependencyFailureMode;
   }
   return {
     incident_window: {
       started_at: events[0].ts,
       ended_at: events[events.length - 1].ts
     },
-    top_errors: [
-      "payment dependency rate limited",
-      "checkout failed after retries"
-    ],
+    top_errors: expected.top_errors || [],
     impacted_routes: impactedRoutes,
-    suspicious_dependencies: ["mock-stripe"],
+    suspicious_dependencies: expected.suspicious_dependencies || [],
     observed_pattern: {
       trigger_phase: "flash_sale",
-      dependency_failure_mode: stripeBody.mode,
-      shared_resource: "checkout worker pool",
+      dependency_failure_mode: dependencyFailureMode,
+      shared_resource: scenarioIdSharedResource(scenario),
       blast_radius: impactedRoutes.length > 1
-        ? "checkout and order requests timing out behind the shared worker pool"
-        : stats.route504s > 0 ? "checkout requests timing out" : "no timeout observed"
+        ? `${impactedRoutes.join(" and ")} degraded during the incident window`
+        : stats.route504s > 0 ? "requests timing out" : "no timeout observed"
     },
     derived_signals: {
       worker_pool_saturated: metricsBody.activeWorkers === config.checkoutConcurrency,
@@ -211,9 +221,25 @@ function buildSummary(metricsBody, loadgenBody, stripeBody, events) {
     raw: {
       web_metrics: metricsBody,
       loadgen: loadgenBody,
-      dependency_state: stripeBody
+      dependency_state: dependencyState
     }
   };
+}
+
+function scenarioIdSharedResource(scenario) {
+  if (scenario.scenario_id === "db_migration_lock_contention") {
+    return "postgres lock queue and shared worker pool";
+  }
+  if (scenario.scenario_id === "cascading_timeout_downstream_dependency") {
+    return "shared worker pool";
+  }
+  if (scenario.scenario_id === "upstream_cdn_stale_cache_poison") {
+    return "mock-cdn cache state and shared request path";
+  }
+  if (scenario.scenario_id === "secrets_rotation_partial_propagation") {
+    return "deployment-specific configuration and secret propagation";
+  }
+  return "checkout worker pool";
 }
 
 function copyIfExists(src, dest, fallback) {
@@ -247,6 +273,7 @@ function normalizeCollectorJson(src, dest, emptyFallback) {
 }
 
 async function main() {
+  const fastMode = process.env.FAST_MODE === "1";
   const scenarioId = process.argv[2] || "third_party_api_rate_limit_cascade";
   const scenario = parseScenarioYaml(fs.readFileSync(scenarioPath, "utf8"));
   const startedAt = new Date();
@@ -256,6 +283,16 @@ async function main() {
   const webLogPath = path.join(path.dirname(outputDir), "service-logs", "web.jsonl");
   const stripeLogPath = path.join(path.dirname(outputDir), "service-logs", "mock-stripe.jsonl");
   const loadgenLogPath = path.join(path.dirname(outputDir), "service-logs", "loadgen.jsonl");
+  const migrationLogPath = path.join(path.dirname(outputDir), "service-logs", "migration-runner.jsonl");
+  const notificationLogPath = path.join(path.dirname(outputDir), "service-logs", "mock-notification-svc.jsonl");
+  const cdnLogPath = path.join(path.dirname(outputDir), "service-logs", "mock-cdn.jsonl");
+  const sendgridLogPath = path.join(path.dirname(outputDir), "service-logs", "mock-sendgrid.jsonl");
+  const webV2LogPath = path.join(path.dirname(outputDir), "service-logs", "web-v2.jsonl");
+  const faultTarget = scenario.fault_injection ? scenario.fault_injection.target : "payment_dependency";
+  const isMigrationScenario = faultTarget === "migration-runner";
+  const isNotificationScenario = faultTarget === "mock-notification-svc";
+  const isCdnScenario = scenario.scenario_id === "upstream_cdn_stale_cache_poison" || !!(scenario.loadgen && scenario.loadgen.target_url);
+  const isSendgridScenario = faultTarget === "mock-sendgrid";
 
   ensureDir(runDir);
   ensureDir(collectorDir);
@@ -263,10 +300,38 @@ async function main() {
   resetFile(webLogPath);
   resetFile(stripeLogPath);
   resetFile(loadgenLogPath);
+  if (isMigrationScenario) {
+    resetFile(migrationLogPath);
+  }
+  if (isNotificationScenario) {
+    resetFile(notificationLogPath);
+  }
+  if (isCdnScenario) {
+    resetFile(cdnLogPath);
+  }
+  if (isSendgridScenario) {
+    resetFile(sendgridLogPath);
+    resetFile(webV2LogPath);
+  }
 
   await waitForHealth(`${webBaseUrl}/health`, "web");
   await waitForHealth(`${loadgenControlUrl}/health`, "loadgen");
   await waitForHealth(`${stripeAdminUrl}/state`, "mock-stripe");
+  if (isMigrationScenario) {
+    await waitForHealth(`${migrationRunnerUrl}/__admin/health`, "migration-runner");
+  }
+  if (isNotificationScenario) {
+    await waitForHealth(`${notificationSvcAdminUrl}/__admin/health`, "mock-notification-svc");
+    await requestJson("POST", `${notificationSvcAdminUrl}/__admin/reset`);
+  }
+  if (isCdnScenario) {
+    await waitForHealth(`${cdnBaseUrl}/__admin/health`, "mock-cdn");
+    await requestJson("POST", `${cdnBaseUrl}/__admin/reset`);
+  }
+  if (isSendgridScenario) {
+    await waitForHealth(`${sendgridAdminUrl}/__admin/health`, "mock-sendgrid");
+    await waitForHealth(`${webV2BaseUrl}/health`, "web-v2");
+  }
 
   const webReset = await requestJson("POST", `${webBaseUrl}/__admin/reset`, { runId });
   if (webReset.statusCode !== 200) {
@@ -274,46 +339,168 @@ async function main() {
   }
   await requestJson("POST", `${loadgenControlUrl}/__admin/reset`);
   await requestJson("POST", `${stripeAdminUrl}/reset`);
+  if (isMigrationScenario) {
+    await requestJson("POST", `${migrationRunnerUrl}/__admin/reset`);
+  }
+  if (isSendgridScenario) {
+    await requestJson("POST", `${sendgridAdminUrl}/__admin/reset`);
+    await requestJson("POST", `${webV2BaseUrl}/__admin/reset`, { runId });
+  }
+  const resetServices = ["web", "loadgen", "mock-stripe"];
+  if (isMigrationScenario) {
+    resetServices.push("migration-runner");
+  }
+  if (isNotificationScenario) {
+    resetServices.push("mock-notification-svc");
+  }
+  if (isCdnScenario) {
+    resetServices.push("mock-cdn");
+  }
+  if (isSendgridScenario) {
+    resetServices.push("mock-sendgrid", "web-v2");
+  }
   events.push({
     ts: new Date().toISOString(),
     type: "run_state_reset",
     run_id: runId,
-    services: ["web", "loadgen", "mock-stripe"]
+    services: resetServices
   });
 
   events.push({ ts: new Date().toISOString(), type: "scenario_started", scenario_id: scenarioId });
 
+  if (scenario.loadgen && scenario.loadgen.target_url) {
+    await requestJson("POST", `${loadgenControlUrl}/__admin/target`, { url: scenario.loadgen.target_url });
+    events.push({ ts: new Date().toISOString(), type: "loadgen_target_set", url: scenario.loadgen.target_url });
+  }
+  if (scenario.traffic && scenario.traffic.baseline) {
+    await requestJson("POST", `${loadgenControlUrl}/__admin/profile`, {
+      profile: "baseline",
+      config: scenario.traffic.baseline
+    });
+  }
+  if (scenario.traffic && scenario.traffic.flash_sale) {
+    await requestJson("POST", `${loadgenControlUrl}/__admin/profile`, {
+      profile: "flash_sale",
+      config: scenario.traffic.flash_sale
+    });
+  }
+
   await requestJson("POST", `${loadgenControlUrl}/__admin/profile`, { profile: "baseline" });
   events.push({ ts: new Date().toISOString(), type: "load_profile_changed", profile: "baseline" });
-  await sleep(Math.min((scenario.runtime.warmup_sec || 10) * 1000, 5000));
+  const warmupSec = fastMode && scenario.fast_mode ? scenario.fast_mode.warmup_sec : scenario.runtime.warmup_sec;
+  await sleep(Math.min((warmupSec || 10) * 1000, 5000));
 
   await requestJson("POST", `${loadgenControlUrl}/__admin/profile`, { profile: "flash_sale" });
   events.push({ ts: new Date().toISOString(), type: "load_profile_changed", profile: "flash_sale" });
-  await sleep(Math.min((scenario.runtime.steady_state_sec || 10) * 1000, 5000));
+  const steadyStateSec = fastMode && scenario.fast_mode ? scenario.fast_mode.steady_state_sec : scenario.runtime.steady_state_sec;
+  await sleep(Math.min((steadyStateSec || 10) * 1000, 5000));
 
-  await requestJson("POST", `${stripeAdminUrl}/mode`, {
-    mode: scenario.fault_injection.mode || "rate_limited",
-    config: scenario.fault_injection.config
-  });
-  const firstSymptomOracle = new Date().toISOString();
-  events.push({
-    ts: firstSymptomOracle,
-    type: "dependency_mode_changed",
-    service: "mock-stripe",
-    mode: scenario.fault_injection.mode || "rate_limited"
-  });
+  let firstSymptomOracle;
+  if (isMigrationScenario) {
+    const action = scenario.fault_injection.action || {};
+    await requestJson("POST", `${migrationRunnerUrl}${action.endpoint || "/__admin/start"}`, action.config || {});
+    firstSymptomOracle = new Date().toISOString();
+    events.push({
+      ts: firstSymptomOracle,
+      type: "fault_injected",
+      target: "migration-runner",
+      action: action.endpoint || "/__admin/start"
+    });
+  } else if (isSendgridScenario) {
+    const action = scenario.fault_injection.action || {};
+    const endpoint = action.endpoint || "/__admin/revoke";
+    const method = action.method || "POST";
+    const body = action.body || {};
+    await requestJson(method, `${sendgridAdminUrl}${endpoint}`, body);
+    firstSymptomOracle = new Date().toISOString();
+    events.push({
+      ts: firstSymptomOracle,
+      type: "fault_injected",
+      target: "mock-sendgrid",
+      action: endpoint,
+      body
+    });
+  } else {
+    const faultAction = scenario.fault_injection.action || {};
+    const faultMode = faultAction.mode || scenario.fault_injection.mode || "rate_limited";
+    const faultConfig = faultAction.config || scenario.fault_injection.config || {};
+    const faultModeUrlMap = {
+      web: `${webBaseUrl}/__admin/mode`,
+      payment_dependency: `${stripeAdminUrl}/mode`,
+      "mock-stripe": `${stripeAdminUrl}/mode`,
+      "mock-notification-svc": `${notificationSvcAdminUrl}/__admin/mode`
+    };
+    await requestJson("POST", faultModeUrlMap[faultTarget] || `${stripeAdminUrl}/mode`, {
+      mode: faultMode,
+      config: faultConfig
+    });
+    firstSymptomOracle = new Date().toISOString();
+    events.push({
+      ts: firstSymptomOracle,
+      type: faultTarget === "web" ? "fault_injected" : "dependency_mode_changed",
+      target: faultTarget,
+      service: faultTarget,
+      mode: faultMode
+    });
+  }
 
-  await sleep(Math.min((scenario.runtime.incident_sec || 10) * 1000, 7000));
+  const incidentMs = fastMode && scenario.fast_mode
+    ? (scenario.fast_mode.incident_sec || 10) * 1000
+    : Math.min((scenario.runtime.incident_sec || 10) * 1000, 7000);
+
+  const incidentPromise = sleep(incidentMs);
+  const recoveryPromise = (scenario.fault_injection && scenario.fault_injection.recovery)
+    ? (async () => {
+        const recovery = scenario.fault_injection.recovery;
+        await sleep((recovery.at_offset_sec || 0) * 1000);
+        const adminUrlMap = {
+          web: webBaseUrl,
+          loadgen: loadgenControlUrl,
+          stripe: stripeAdminUrl,
+          "migration-runner": migrationRunnerUrl,
+          "mock-notification-svc": notificationSvcAdminUrl,
+          "mock-sendgrid": sendgridAdminUrl,
+          cdn: cdnBaseUrl
+        };
+        const recoveryAdminUrl = adminUrlMap[recovery.target];
+        if (recoveryAdminUrl) {
+          await requestJson("POST", `${recoveryAdminUrl}/__admin/mode`, {
+            mode: recovery.mode,
+            config: recovery.config || {}
+          });
+        }
+        events.push({
+          ts: new Date().toISOString(),
+          type: "dependency_recovery",
+          target: recovery.target,
+          mode: recovery.mode
+        });
+      })()
+    : Promise.resolve();
+
+  await Promise.all([incidentPromise, recoveryPromise]);
 
   await requestJson("POST", `${loadgenControlUrl}/__admin/profile`, { profile: "stop" });
   events.push({ ts: new Date().toISOString(), type: "load_profile_changed", profile: "stop" });
-  await sleep(Math.min((scenario.runtime.cooldown_sec || 5) * 1000, 3000));
+  const cooldownSec = fastMode && scenario.fast_mode ? scenario.fast_mode.cooldown_sec : scenario.runtime.cooldown_sec;
+  await sleep(Math.min((cooldownSec || 5) * 1000, 3000));
 
   events.push({ ts: new Date().toISOString(), type: "scenario_completed", scenario_id: scenarioId });
 
   const metrics = await requestJson("GET", `${webBaseUrl}/metrics`);
   const loadgenState = await requestJson("GET", `${loadgenControlUrl}/__admin/state`);
-  const stripeState = await requestJson("GET", `${stripeAdminUrl}/state`);
+  const dependencyState = isMigrationScenario
+    ? await requestJson("GET", `${migrationRunnerUrl}/__admin/state`)
+    : isNotificationScenario
+      ? await requestJson("GET", `${notificationSvcAdminUrl}/__admin/state`)
+      : isCdnScenario
+        ? await requestJson("GET", `${cdnBaseUrl}/__admin/state`)
+        : isSendgridScenario
+          ? await requestJson("GET", `${sendgridAdminUrl}/__admin/state`)
+          : await requestJson("GET", `${stripeAdminUrl}/state`);
+  if (isCdnScenario) {
+    events.push({ ts: new Date().toISOString(), type: "cdn_final_state", state: dependencyState.body });
+  }
 
   fs.writeFileSync(path.join(runDir, "events.json"), JSON.stringify(events, null, 2) + "\n");
   fs.writeFileSync(
@@ -321,14 +508,27 @@ async function main() {
     JSON.stringify(
       {
         scenario_id: scenarioId,
-        ...buildSummary(metrics.body, loadgenState.body, stripeState.body, events)
+        ...buildSummary(scenario, metrics.body, loadgenState.body, dependencyState.body, events)
       },
       null,
       2
     ) + "\n"
   );
 
-  const mergedServiceLogs = mergeLogFiles([webLogPath, stripeLogPath, loadgenLogPath]);
+  const serviceLogFiles = [webLogPath, stripeLogPath, loadgenLogPath];
+  if (isMigrationScenario) {
+    serviceLogFiles.push(migrationLogPath);
+  }
+  if (isNotificationScenario) {
+    serviceLogFiles.push(notificationLogPath);
+  }
+  if (isCdnScenario) {
+    serviceLogFiles.push(cdnLogPath);
+  }
+  if (isSendgridScenario) {
+    serviceLogFiles.push(sendgridLogPath, webV2LogPath);
+  }
+  const mergedServiceLogs = mergeLogFiles(serviceLogFiles);
   normalizeCollectorJson(path.join(collectorDir, "traces.json"), path.join(runDir, "traces.json"), "[]\n");
   normalizeCollectorJson(path.join(collectorDir, "traces.json"), path.join(runDir, "otel_traces.json"), "[]\n");
   normalizeCollectorJson(path.join(collectorDir, "logs.jsonl"), path.join(runDir, "otel_logs.json"), "[]\n");
@@ -337,7 +537,7 @@ async function main() {
   fs.writeFileSync(path.join(runDir, "logs.jsonl"), mergedServiceLogs);
   fs.writeFileSync(
     path.join(runDir, "platform_logs.json"),
-    mergePlatformLogs([webLogPath, stripeLogPath, loadgenLogPath], events)
+    mergePlatformLogs(serviceLogFiles, events)
   );
 
   const groundTruthTemplate = JSON.parse(fs.readFileSync(groundTruthPath, "utf8"));

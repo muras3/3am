@@ -1,0 +1,10 @@
+{
+  "name": "mock-notification-svc",
+  "private": true,
+  "version": "0.1.0",
+  "dependencies": {
+    "@opentelemetry/api": "^1.9.0",
+    "@opentelemetry/exporter-trace-otlp-http": "^0.205.0",
+    "@opentelemetry/sdk-node": "^0.205.0"
+  }
+}

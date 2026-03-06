@@ -6,8 +6,13 @@ services:
       PORT: "3000"
       NODE_ENV: development
       PAYMENT_BASE_URL: http://mock-stripe:4000
+      NOTIFICATION_SVC_URL: http://mock-notification-svc:7001
+      DEPLOYMENT_ID: dpl_old
+      SENDGRID_API_KEY: key_v1
+      SENDGRID_BASE_URL: http://mock-sendgrid:6001
       DATABASE_HOST: postgres
       DATABASE_PORT: "5432"
+      DATABASE_URL: postgres://validation:validation@postgres:5432/validation
       OTEL_SERVICE_NAME: validation-web
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
       APP_LOG_FILE: /workspace/out/service-logs/web.jsonl
@@ -29,6 +34,24 @@ services:
         condition: service_started
     volumes:
       - ./out:/workspace/out
+
+  migration-runner:
+    build: ./apps/migration-runner
+    ports:
+      - "5001:5001"
+    environment:
+      DATABASE_URL: postgres://validation:validation@postgres:5432/validation
+      PORT: "5001"
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+      APP_LOG_FILE: /workspace/out/service-logs/migration-runner.jsonl
+    volumes:
+      - ./out:/workspace/out
+    depends_on:
+      postgres:
+        condition: service_healthy
+      otel-collector:
+        condition: service_started
+    profiles: [db-migration]
 
   postgres:
     image: postgres:16-alpine
@@ -59,6 +82,96 @@ services:
     volumes:
       - ./out:/workspace/out
 
+  mock-notification-svc:
+    build:
+      context: ./apps/mock-notification-svc
+    ports:
+      - "7001:7001"
+    environment:
+      PORT: "7001"
+      SLOW_LATENCY_MS: "8000"
+      DEFAULT_LATENCY_MS: "100"
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+      APP_LOG_FILE: /workspace/out/service-logs/mock-notification-svc.jsonl
+    volumes:
+      - ./out:/workspace/out
+    depends_on:
+      - otel-collector
+    profiles: [cascading-timeout]
+
+  mock-cdn:
+    build:
+      context: ./apps/mock-cdn
+    ports:
+      - "3001:3001"
+    environment:
+      PORT: "3001"
+      WEB_ORIGIN_URL: http://web:3000
+      CDN_CACHE_TTL_SEC: "30"
+      OTEL_SERVICE_NAME: mock-cdn
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+      APP_LOG_FILE: /workspace/out/service-logs/mock-cdn.jsonl
+    volumes:
+      - ./out:/workspace/out
+    depends_on:
+      - web
+      - otel-collector
+    profiles:
+      - cdn-cache
+
+  mock-sendgrid:
+    build:
+      context: ./apps/mock-sendgrid
+    ports:
+      - "6001:6001"
+    environment:
+      PORT: "6001"
+      KEY_V1: key_v1
+      KEY_V2: key_v2
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+      APP_LOG_FILE: /workspace/out/service-logs/mock-sendgrid.jsonl
+    volumes:
+      - ./out:/workspace/out
+    depends_on:
+      - otel-collector
+    profiles: [secrets-rotation]
+
+  web-v2:
+    build:
+      context: ./apps/web
+    ports:
+      - "3002:3000"
+    environment:
+      PORT: "3000"
+      NODE_ENV: development
+      DEPLOYMENT_ID: dpl_new
+      SENDGRID_API_KEY: key_v2
+      SENDGRID_BASE_URL: http://mock-sendgrid:6001
+      PAYMENT_BASE_URL: http://mock-stripe:4000
+      DATABASE_HOST: postgres
+      DATABASE_PORT: "5432"
+      DATABASE_URL: postgres://validation:validation@postgres:5432/validation
+      OTEL_SERVICE_NAME: validation-web-v2
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+      APP_LOG_FILE: /workspace/out/service-logs/web-v2.jsonl
+      CHECKOUT_CONCURRENCY: "16"
+      CHECKOUT_TIMEOUT_MS: "30000"
+      ORDER_TIMEOUT_MS: "50"
+      ORDER_QUEUE_FAIL_THRESHOLD: "25"
+      RETRY_MAX_ATTEMPTS: "5"
+      RETRY_INTERVAL_MS: "100"
+      RETRY_BACKOFF_MODE: fixed
+    volumes:
+      - ./out:/workspace/out
+    depends_on:
+      postgres:
+        condition: service_healthy
+      otel-collector:
+        condition: service_started
+      mock-sendgrid:
+        condition: service_started
+    profiles: [secrets-rotation]
+
   otel-collector:
     image: otel/opentelemetry-collector-contrib:0.101.0
     command: ["--config=/etc/otelcol/config.yaml"]
@@ -75,7 +188,7 @@ services:
     environment:
       PORT: "8080"
       TARGET_BASE_URL: http://web:3000
-      LOADGEN_PROFILE: baseline
+      LOADGEN_PROFILE: stop
       LOADGEN_SEED: "42"
       APP_LOG_FILE: /workspace/out/service-logs/loadgen.jsonl
     depends_on:
@@ -94,7 +207,12 @@ services:
       OUTPUT_DIR: /workspace/out/runs
       WEB_BASE_URL: http://web:3000
       STRIPE_ADMIN_URL: http://mock-stripe:4000/__admin
+      NOTIFICATION_SVC_ADMIN_URL: http://mock-notification-svc:7001
       LOADGEN_CONTROL_URL: http://loadgen:8080
+      MIGRATION_RUNNER_URL: http://migration-runner:5001
+      CDN_BASE_URL: http://mock-cdn:3001
+      SENDGRID_ADMIN_URL: http://mock-sendgrid:6001
+      WEB_V2_BASE_URL: http://web-v2:3000
       OTEL_COLLECTOR_DIR: /workspace/out/collector
     volumes:
       - ./scenarios:/workspace/scenarios:ro

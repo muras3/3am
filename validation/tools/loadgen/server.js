@@ -1,11 +1,36 @@
 const http = require("http");
 const fs = require("fs");
+const path = require("path");
 const { URL } = require("url");
 
 const port = Number(process.env.PORT || 8080);
-const targetBaseUrl = process.env.TARGET_BASE_URL || "http://web:3000";
+const defaultTargetBaseUrl = process.env.TARGET_BASE_URL || "http://web:3000";
 const appLogFile = process.env.APP_LOG_FILE || "";
+let targetBaseUrl = defaultTargetBaseUrl;
 let logStream = null;
+
+const defaultProfiles = {
+  stop: { rps: 0, routes: [] },
+  baseline: {
+    rps: 8,
+    routes: [
+      { method: "POST", path: "/checkout", weight: 7, body: { sku: "flash-sale-item" } },
+      { method: "GET", path: "/orders/ord_000001", weight: 2 },
+      { method: "GET", path: "/health", weight: 1 }
+    ]
+  },
+  flash_sale: {
+    rps: 80,
+    routes: [
+      { method: "POST", path: "/checkout", weight: 5, body: { sku: "flash-sale-item" } },
+      { method: "GET", path: "/orders/ord_000001", weight: 4 },
+      { method: "GET", path: "/health", weight: 1 }
+    ]
+  }
+};
+
+let profiles = JSON.parse(JSON.stringify(defaultProfiles));
+
 const state = {
   profile: process.env.LOADGEN_PROFILE || "baseline",
   currentRps: 0,
@@ -24,15 +49,9 @@ function log(message, fields = {}) {
 }
 
 if (appLogFile) {
-  fs.mkdirSync(require("path").dirname(appLogFile), { recursive: true });
+  fs.mkdirSync(path.dirname(appLogFile), { recursive: true });
   logStream = fs.createWriteStream(appLogFile, { flags: "a" });
 }
-
-const profiles = {
-  stop: { rps: 0 },
-  baseline: { rps: 8 },
-  flash_sale: { rps: 80 }
-};
 
 function sendJson(res, statusCode, payload) {
   const body = JSON.stringify(payload);
@@ -58,19 +77,21 @@ function readJson(req) {
   });
 }
 
-function request(method, path, body) {
-  const url = new URL(path, targetBaseUrl);
-  const payload = body ? JSON.stringify(body) : "";
+function request(route) {
+  const baseUrl = route.target_url || targetBaseUrl;
+  const url = new URL(route.path, baseUrl);
+  const payload = route.body ? JSON.stringify(route.body) : "";
   return new Promise((resolve, reject) => {
     const req = http.request(
       {
-        method,
+        method: route.method,
         hostname: url.hostname,
         port: url.port,
         path: url.pathname + url.search,
         headers: {
           "content-type": "application/json",
-          "content-length": Buffer.byteLength(payload)
+          "content-length": Buffer.byteLength(payload),
+          ...(route.headers || {})
         }
       },
       (res) => {
@@ -86,21 +107,27 @@ function request(method, path, body) {
   });
 }
 
-async function fireOne() {
-  state.sent += 1;
-  const pick = state.sent % 10;
-  let route;
-  if (state.profile === "flash_sale") {
-    route = pick < 5 ? { method: "POST", path: "/checkout", body: { sku: "flash-sale-item" } }
-      : pick < 9 ? { method: "GET", path: "/orders/ord_000001" }
-      : { method: "GET", path: "/health" };
-  } else {
-    route = pick < 7 ? { method: "POST", path: "/checkout", body: { sku: "flash-sale-item" } }
-      : pick < 9 ? { method: "GET", path: "/orders/ord_000001" }
-      : { method: "GET", path: "/health" };
+function pickRoute(profile) {
+  const routes = profile.routes || [];
+  if (routes.length === 0) {
+    return { method: "GET", path: "/health" };
   }
+  const totalWeight = routes.reduce((sum, route) => sum + (route.weight || 1), 0);
+  let needle = Math.random() * totalWeight;
+  for (const route of routes) {
+    needle -= route.weight || 1;
+    if (needle <= 0) {
+      return route;
+    }
+  }
+  return routes[routes.length - 1];
+}
+
+async function fireOne(profile) {
+  state.sent += 1;
+  const route = pickRoute(profile);
   try {
-    const statusCode = await request(route.method, route.path, route.body);
+    const statusCode = await request(route);
     if (statusCode >= 200 && statusCode < 400) {
       state.succeeded += 1;
     } else {
@@ -115,7 +142,9 @@ setInterval(() => {
   const profile = profiles[state.profile] || profiles.baseline;
   state.currentRps = profile.rps;
   for (let i = 0; i < profile.rps; i += 1) {
-    setTimeout(fireOne, Math.floor((1000 / Math.max(profile.rps, 1)) * i));
+    setTimeout(() => {
+      fireOne(profile);
+    }, Math.floor((1000 / Math.max(profile.rps, 1)) * i));
   }
 }, 1000);
 
@@ -125,16 +154,42 @@ const server = http.createServer(async (req, res) => {
     sendJson(res, 200, state);
     return;
   }
+  if (req.method === "POST" && url.pathname === "/__admin/target") {
+    try {
+      const body = await readJson(req);
+      if (!body.url) {
+        sendJson(res, 400, { error: "url required" });
+        return;
+      }
+      targetBaseUrl = body.url;
+      log("loadgen target changed", { targetBaseUrl });
+      sendJson(res, 200, { targetBaseUrl });
+    } catch (error) {
+      sendJson(res, 400, { error: "invalid json body" });
+    }
+    return;
+  }
   if (req.method === "POST" && url.pathname === "/__admin/profile") {
     try {
       const body = await readJson(req);
+      if (!body.profile) {
+        sendJson(res, 400, { error: "profile required" });
+        return;
+      }
+      if (body.config) {
+        const previous = profiles[body.profile] || defaultProfiles[body.profile] || { rps: 0, routes: [] };
+        profiles[body.profile] = {
+          rps: Number(body.config.rps ?? previous.rps ?? 0),
+          routes: Array.isArray(body.config.routes) ? body.config.routes : previous.routes
+        };
+      }
       if (!profiles[body.profile]) {
         sendJson(res, 400, { error: "invalid profile" });
         return;
       }
       state.profile = body.profile;
       state.startedAt = new Date().toISOString();
-      log("load profile changed", { profile: state.profile });
+      log("load profile changed", { profile: state.profile, rps: profiles[body.profile].rps });
       sendJson(res, 200, state);
     } catch (error) {
       sendJson(res, 400, { error: "invalid json body" });
@@ -142,6 +197,8 @@ const server = http.createServer(async (req, res) => {
     return;
   }
   if (req.method === "POST" && url.pathname === "/__admin/reset") {
+    profiles = JSON.parse(JSON.stringify(defaultProfiles));
+    targetBaseUrl = defaultTargetBaseUrl;
     state.profile = "stop";
     state.currentRps = 0;
     state.startedAt = new Date().toISOString();
