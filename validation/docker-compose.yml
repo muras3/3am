@@ -6,6 +6,7 @@ services:
       PORT: "3000"
       NODE_ENV: development
       PAYMENT_BASE_URL: http://mock-stripe:4000
+      NOTIFICATION_SVC_URL: http://mock-notification-svc:7001
       DATABASE_HOST: postgres
       DATABASE_PORT: "5432"
       DATABASE_URL: postgres://validation:validation@postgres:5432/validation
@@ -78,6 +79,23 @@ services:
     volumes:
       - ./out:/workspace/out
 
+  mock-notification-svc:
+    build:
+      context: ./apps/mock-notification-svc
+    ports:
+      - "7001:7001"
+    environment:
+      PORT: "7001"
+      SLOW_LATENCY_MS: "8000"
+      DEFAULT_LATENCY_MS: "100"
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+      APP_LOG_FILE: /workspace/out/service-logs/mock-notification-svc.jsonl
+    volumes:
+      - ./out:/workspace/out
+    depends_on:
+      - otel-collector
+    profiles: [cascading-timeout]
+
   otel-collector:
     image: otel/opentelemetry-collector-contrib:0.101.0
     command: ["--config=/etc/otelcol/config.yaml"]
@@ -113,6 +131,7 @@ services:
       OUTPUT_DIR: /workspace/out/runs
       WEB_BASE_URL: http://web:3000
       STRIPE_ADMIN_URL: http://mock-stripe:4000/__admin
+      NOTIFICATION_SVC_ADMIN_URL: http://mock-notification-svc:7001
       LOADGEN_CONTROL_URL: http://loadgen:8080
       MIGRATION_RUNNER_URL: http://migration-runner:5001
       OTEL_COLLECTOR_DIR: /workspace/out/collector

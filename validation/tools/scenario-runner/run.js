@@ -10,6 +10,7 @@ const outputDir = process.env.OUTPUT_DIR || "/workspace/out/runs";
 const collectorDir = process.env.OTEL_COLLECTOR_DIR || "/workspace/out/collector";
 const webBaseUrl = process.env.WEB_BASE_URL || "http://web:3000";
 const stripeAdminUrl = process.env.STRIPE_ADMIN_URL || "http://mock-stripe:4000/__admin";
+const notificationSvcAdminUrl = process.env.NOTIFICATION_SVC_ADMIN_URL || "http://mock-notification-svc:7001";
 const loadgenControlUrl = process.env.LOADGEN_CONTROL_URL || "http://loadgen:8080";
 const migrationRunnerUrl = process.env.MIGRATION_RUNNER_URL || "http://migration-runner:5001";
 
@@ -216,6 +217,9 @@ function scenarioIdSharedResource(scenario) {
   if (scenario.scenario_id === "db_migration_lock_contention") {
     return "postgres lock queue and shared worker pool";
   }
+  if (scenario.scenario_id === "cascading_timeout_downstream_dependency") {
+    return "shared worker pool";
+  }
   return "checkout worker pool";
 }
 
@@ -239,6 +243,9 @@ async function main() {
   const stripeLogPath = path.join(path.dirname(outputDir), "service-logs", "mock-stripe.jsonl");
   const loadgenLogPath = path.join(path.dirname(outputDir), "service-logs", "loadgen.jsonl");
   const migrationLogPath = path.join(path.dirname(outputDir), "service-logs", "migration-runner.jsonl");
+  const notificationLogPath = path.join(path.dirname(outputDir), "service-logs", "mock-notification-svc.jsonl");
+  const isMigrationScenario = scenario.fault_injection && scenario.fault_injection.target === "migration-runner";
+  const isNotificationScenario = scenario.fault_injection && scenario.fault_injection.target === "mock-notification-svc";
 
   ensureDir(runDir);
   ensureDir(collectorDir);
@@ -246,15 +253,22 @@ async function main() {
   resetFile(webLogPath);
   resetFile(stripeLogPath);
   resetFile(loadgenLogPath);
-  if (scenario.fault_injection && scenario.fault_injection.target === "migration-runner") {
+  if (isMigrationScenario) {
     resetFile(migrationLogPath);
+  }
+  if (isNotificationScenario || process.env.NOTIFICATION_SVC_ADMIN_URL) {
+    resetFile(notificationLogPath);
   }
 
   await waitForHealth(`${webBaseUrl}/health`, "web");
   await waitForHealth(`${loadgenControlUrl}/health`, "loadgen");
   await waitForHealth(`${stripeAdminUrl}/state`, "mock-stripe");
-  if (scenario.fault_injection && scenario.fault_injection.target === "migration-runner") {
+  if (isMigrationScenario) {
     await waitForHealth(`${migrationRunnerUrl}/__admin/health`, "migration-runner");
+  }
+  if (process.env.NOTIFICATION_SVC_ADMIN_URL) {
+    await waitForHealth(`${notificationSvcAdminUrl}/__admin/health`, "mock-notification-svc");
+    await requestJson("POST", `${notificationSvcAdminUrl}/__admin/reset`);
   }
 
   const webReset = await requestJson("POST", `${webBaseUrl}/__admin/reset`, { runId });
@@ -263,12 +277,15 @@ async function main() {
   }
   await requestJson("POST", `${loadgenControlUrl}/__admin/reset`);
   await requestJson("POST", `${stripeAdminUrl}/reset`);
-  if (scenario.fault_injection && scenario.fault_injection.target === "migration-runner") {
+  if (isMigrationScenario) {
     await requestJson("POST", `${migrationRunnerUrl}/__admin/reset`);
   }
   const resetServices = ["web", "loadgen", "mock-stripe"];
-  if (scenario.fault_injection && scenario.fault_injection.target === "migration-runner") {
+  if (isMigrationScenario) {
     resetServices.push("migration-runner");
+  }
+  if (process.env.NOTIFICATION_SVC_ADMIN_URL) {
+    resetServices.push("mock-notification-svc");
   }
   events.push({
     ts: new Date().toISOString(),
@@ -303,7 +320,7 @@ async function main() {
   await sleep(Math.min((steadyStateSec || 10) * 1000, 5000));
 
   let firstSymptomOracle;
-  if (scenario.fault_injection.target === "migration-runner") {
+  if (isMigrationScenario) {
     const action = scenario.fault_injection.action || {};
     await requestJson("POST", `${migrationRunnerUrl}${action.endpoint || "/__admin/start"}`, action.config || {});
     firstSymptomOracle = new Date().toISOString();
@@ -314,23 +331,31 @@ async function main() {
       action: action.endpoint || "/__admin/start"
     });
   } else {
-    await requestJson("POST", `${stripeAdminUrl}/mode`, {
-      mode: scenario.fault_injection.mode || "rate_limited",
-      config: scenario.fault_injection.config
+    const faultTarget = scenario.fault_injection.target || "payment_dependency";
+    const faultAction = scenario.fault_injection.action || {};
+    const faultMode = faultAction.mode || scenario.fault_injection.mode || "rate_limited";
+    const faultConfig = faultAction.config || scenario.fault_injection.config || {};
+    const faultModeUrlMap = {
+      payment_dependency: `${stripeAdminUrl}/mode`,
+      "mock-stripe": `${stripeAdminUrl}/mode`,
+      "mock-notification-svc": `${notificationSvcAdminUrl}/__admin/mode`
+    };
+    await requestJson("POST", faultModeUrlMap[faultTarget] || `${stripeAdminUrl}/mode`, {
+      mode: faultMode,
+      config: faultConfig
     });
     firstSymptomOracle = new Date().toISOString();
     events.push({
       ts: firstSymptomOracle,
       type: "dependency_mode_changed",
-      service: "mock-stripe",
-      mode: scenario.fault_injection.mode || "rate_limited"
+      service: faultTarget,
+      mode: faultMode
     });
   }
 
   const incidentSec = fastMode && scenario.fast_mode ? scenario.fast_mode.incident_sec : scenario.runtime.incident_sec;
   await sleep(fastMode ? (incidentSec || 10) * 1000 : Math.min((incidentSec || 10) * 1000, 7000));
 
-  // Recovery step (optional)
   if (scenario.fault_injection && scenario.fault_injection.recovery) {
     const recovery = scenario.fault_injection.recovery;
     await sleep((recovery.at_offset_sec || 0) * 1000);
@@ -338,7 +363,8 @@ async function main() {
       web: webBaseUrl,
       loadgen: loadgenControlUrl,
       stripe: stripeAdminUrl,
-      "migration-runner": migrationRunnerUrl
+      "migration-runner": migrationRunnerUrl,
+      "mock-notification-svc": notificationSvcAdminUrl
     };
     const recoveryAdminUrl = adminUrlMap[recovery.target];
     if (recoveryAdminUrl) {
@@ -364,9 +390,11 @@ async function main() {
 
   const metrics = await requestJson("GET", `${webBaseUrl}/metrics`);
   const loadgenState = await requestJson("GET", `${loadgenControlUrl}/__admin/state`);
-  const dependencyState = scenario.fault_injection && scenario.fault_injection.target === "migration-runner"
+  const dependencyState = isMigrationScenario
     ? await requestJson("GET", `${migrationRunnerUrl}/__admin/state`)
-    : await requestJson("GET", `${stripeAdminUrl}/state`);
+    : process.env.NOTIFICATION_SVC_ADMIN_URL
+      ? await requestJson("GET", `${notificationSvcAdminUrl}/__admin/state`)
+      : await requestJson("GET", `${stripeAdminUrl}/state`);
 
   fs.writeFileSync(path.join(runDir, "events.json"), JSON.stringify(events, null, 2) + "\n");
   fs.writeFileSync(
@@ -382,8 +410,11 @@ async function main() {
   );
 
   const serviceLogFiles = [webLogPath, stripeLogPath, loadgenLogPath];
-  if (scenario.fault_injection && scenario.fault_injection.target === "migration-runner") {
+  if (isMigrationScenario) {
     serviceLogFiles.push(migrationLogPath);
+  }
+  if (process.env.NOTIFICATION_SVC_ADMIN_URL) {
+    serviceLogFiles.push(notificationLogPath);
   }
   const mergedServiceLogs = mergeLogFiles(serviceLogFiles);
   copyIfExists(path.join(collectorDir, "traces.json"), path.join(runDir, "traces.json"), "[]\n");

@@ -1,0 +1,27 @@
+{
+  "primary_root_cause": "notification-svc p99 latency spiked from 100ms to 8s, causing POST /api/orders requests to hold all 16 worker slots for 8s each. Shared worker pool saturated, cascading 504 timeouts to POST /checkout (which has no dependency on notification-svc).",
+  "contributing_root_causes": [
+    "notification-svc calls are synchronous inside shared worker pool",
+    "No separate worker pool for notification-dependent routes",
+    "No timeout on individual notification calls"
+  ],
+  "detail": {
+    "component": "web/worker_pool",
+    "trigger_signal": "notification-svc latency spike (100ms → 8s) causes worker slots to be held 80x longer than normal",
+    "failure_mode": "All 16 worker slots occupied by slow /api/orders requests, subsequent /checkout requests queue and time out (504)"
+  },
+  "recommended_actions": [
+    "Separate worker pools for different route categories",
+    "Add timeout on notification service calls (not just pool queue timeout)",
+    "Make notification calls asynchronous (fire-and-forget with retry queue)",
+    "Add circuit breaker on notification-svc dependency"
+  ],
+  "t_first_symptom_oracle": "{{T_FIRST_SYMPTOM_ORACLE}}",
+  "validation_extensions": {
+    "first_symptom_signal": "First /api/orders request returning slowly after notification-svc enters slow mode",
+    "key_discriminator": "GET /health returns 200 throughout (pool bypass) while /checkout gets 504 — proves pool exhaustion not service crash",
+    "red_herrings": [
+      "High /checkout 504 rate looks like payment issue but checkout spans have NO notification child span — pool timed out before reaching payment call"
+    ]
+  }
+}
