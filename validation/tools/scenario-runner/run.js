@@ -74,6 +74,14 @@ async function waitForHealth(urlString, label) {
   throw new Error(`timed out waiting for ${label}`);
 }
 
+async function postJsonOrThrow(urlString, body, label) {
+  const response = await requestJson("POST", urlString, body);
+  if (response.statusCode !== 200) {
+    throw new Error(`failed to ${label}: ${response.body.error || response.statusCode}`);
+  }
+  return response;
+}
+
 function parseScenarioYaml(raw) {
   return yaml.load(raw);
 }
@@ -250,15 +258,15 @@ function copyIfExists(src, dest, fallback) {
   fs.writeFileSync(dest, fallback);
 }
 
-function normalizeCollectorJson(src, dest, emptyFallback) {
+function tryNormalizeCollectorJson(src) {
   if (!fs.existsSync(src) || fs.statSync(src).size === 0) {
-    fs.writeFileSync(dest, emptyFallback);
-    return;
+    return [];
   }
-  const raw = fs.readFileSync(src, "utf8").trim();
+  const rawBuffer = fs.readFileSync(src);
+  const sanitizedBuffer = Buffer.from(rawBuffer.filter((byte) => byte !== 0));
+  const raw = sanitizedBuffer.toString("utf8").trim();
   if (!raw) {
-    fs.writeFileSync(dest, emptyFallback);
-    return;
+    return [];
   }
 
   const records = [];
@@ -269,7 +277,26 @@ function normalizeCollectorJson(src, dest, emptyFallback) {
     }
     records.push(JSON.parse(trimmed));
   }
-  fs.writeFileSync(dest, JSON.stringify(records, null, 2) + "\n");
+  return records;
+}
+
+async function normalizeCollectorJson(src, dest, emptyFallback) {
+  let lastError;
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    try {
+      const records = tryNormalizeCollectorJson(src);
+      fs.writeFileSync(dest, JSON.stringify(records, null, 2) + "\n");
+      return;
+    } catch (error) {
+      lastError = error;
+      await sleep(1000);
+    }
+  }
+  if (!fs.existsSync(src) || fs.statSync(src).size === 0) {
+    fs.writeFileSync(dest, emptyFallback);
+    return;
+  }
+  throw lastError;
 }
 
 async function main() {
@@ -322,29 +349,26 @@ async function main() {
   }
   if (isNotificationScenario) {
     await waitForHealth(`${notificationSvcAdminUrl}/__admin/health`, "mock-notification-svc");
-    await requestJson("POST", `${notificationSvcAdminUrl}/__admin/reset`);
+    await postJsonOrThrow(`${notificationSvcAdminUrl}/__admin/reset`, undefined, "reset mock-notification-svc");
   }
   if (isCdnScenario) {
     await waitForHealth(`${cdnBaseUrl}/__admin/health`, "mock-cdn");
-    await requestJson("POST", `${cdnBaseUrl}/__admin/reset`);
+    await postJsonOrThrow(`${cdnBaseUrl}/__admin/reset`, undefined, "reset mock-cdn");
   }
   if (isSendgridScenario) {
     await waitForHealth(`${sendgridAdminUrl}/__admin/health`, "mock-sendgrid");
     await waitForHealth(`${webV2BaseUrl}/health`, "web-v2");
   }
 
-  const webReset = await requestJson("POST", `${webBaseUrl}/__admin/reset`, { runId });
-  if (webReset.statusCode !== 200) {
-    throw new Error(`failed to reset web state: ${webReset.body.error || webReset.statusCode}`);
-  }
-  await requestJson("POST", `${loadgenControlUrl}/__admin/reset`);
-  await requestJson("POST", `${stripeAdminUrl}/reset`);
+  await postJsonOrThrow(`${webBaseUrl}/__admin/reset`, { runId }, "reset web state");
+  await postJsonOrThrow(`${loadgenControlUrl}/__admin/reset`, undefined, "reset loadgen");
+  await postJsonOrThrow(`${stripeAdminUrl}/reset`, undefined, "reset mock-stripe");
   if (isMigrationScenario) {
-    await requestJson("POST", `${migrationRunnerUrl}/__admin/reset`);
+    await postJsonOrThrow(`${migrationRunnerUrl}/__admin/reset`, undefined, "reset migration-runner");
   }
   if (isSendgridScenario) {
-    await requestJson("POST", `${sendgridAdminUrl}/__admin/reset`);
-    await requestJson("POST", `${webV2BaseUrl}/__admin/reset`, { runId });
+    await postJsonOrThrow(`${sendgridAdminUrl}/__admin/reset`, undefined, "reset mock-sendgrid");
+    await postJsonOrThrow(`${webV2BaseUrl}/__admin/reset`, { runId }, "reset web-v2");
   }
   const resetServices = ["web", "loadgen", "mock-stripe"];
   if (isMigrationScenario) {
@@ -515,6 +539,8 @@ async function main() {
     ) + "\n"
   );
 
+  await sleep(3000);
+
   const serviceLogFiles = [webLogPath, stripeLogPath, loadgenLogPath];
   if (isMigrationScenario) {
     serviceLogFiles.push(migrationLogPath);
@@ -529,11 +555,11 @@ async function main() {
     serviceLogFiles.push(sendgridLogPath, webV2LogPath);
   }
   const mergedServiceLogs = mergeLogFiles(serviceLogFiles);
-  normalizeCollectorJson(path.join(collectorDir, "traces.json"), path.join(runDir, "traces.json"), "[]\n");
-  normalizeCollectorJson(path.join(collectorDir, "traces.json"), path.join(runDir, "otel_traces.json"), "[]\n");
-  normalizeCollectorJson(path.join(collectorDir, "logs.jsonl"), path.join(runDir, "otel_logs.json"), "[]\n");
-  normalizeCollectorJson(path.join(collectorDir, "metrics.json"), path.join(runDir, "metrics.json"), "[]\n");
-  normalizeCollectorJson(path.join(collectorDir, "metrics.json"), path.join(runDir, "otel_metrics.json"), "[]\n");
+  await normalizeCollectorJson(path.join(collectorDir, "traces.json"), path.join(runDir, "traces.json"), "[]\n");
+  await normalizeCollectorJson(path.join(collectorDir, "traces.json"), path.join(runDir, "otel_traces.json"), "[]\n");
+  await normalizeCollectorJson(path.join(collectorDir, "logs.jsonl"), path.join(runDir, "otel_logs.json"), "[]\n");
+  await normalizeCollectorJson(path.join(collectorDir, "metrics.json"), path.join(runDir, "metrics.json"), "[]\n");
+  await normalizeCollectorJson(path.join(collectorDir, "metrics.json"), path.join(runDir, "otel_metrics.json"), "[]\n");
   fs.writeFileSync(path.join(runDir, "logs.jsonl"), mergedServiceLogs);
   fs.writeFileSync(
     path.join(runDir, "platform_logs.json"),
