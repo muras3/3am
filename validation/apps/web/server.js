@@ -127,23 +127,38 @@ setInterval(observeDbConnection, 2000);
 function enqueueWork(task, timeoutMs) {
   return new Promise((resolve, reject) => {
     const enqueuedAt = Date.now();
+    let settled = false;
     const wrapped = async () => {
       const queueWaitMs = Date.now() - enqueuedAt;
-      const timer = setTimeout(() => {
-        reject(Object.assign(new Error("worker pool queue timed out"), { statusCode: 504 }));
-      }, timeoutMs);
       try {
         const result = await task(queueWaitMs);
-        clearTimeout(timer);
-        resolve(result);
+        if (!settled) {
+          settled = true;
+          clearTimeout(timer);
+          resolve(result);
+        }
       } catch (error) {
-        clearTimeout(timer);
-        reject(error);
+        if (!settled) {
+          settled = true;
+          clearTimeout(timer);
+          reject(error);
+        }
       } finally {
         state.activeWorkers -= 1;
         drainQueue();
       }
     };
+    const timer = setTimeout(() => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      const queuedIndex = state.queue.indexOf(wrapped);
+      if (queuedIndex !== -1) {
+        state.queue.splice(queuedIndex, 1);
+      }
+      reject(Object.assign(new Error("worker pool queue timed out"), { statusCode: 504 }));
+    }, timeoutMs);
     state.queue.push(wrapped);
     drainQueue();
   });

@@ -8,6 +8,7 @@ services:
       PAYMENT_BASE_URL: http://mock-stripe:4000
       DATABASE_HOST: postgres
       DATABASE_PORT: "5432"
+      DATABASE_URL: postgres://validation:validation@postgres:5432/validation
       OTEL_SERVICE_NAME: validation-web
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
       APP_LOG_FILE: /workspace/out/service-logs/web.jsonl
@@ -29,6 +30,24 @@ services:
         condition: service_started
     volumes:
       - ./out:/workspace/out
+
+  migration-runner:
+    build: ./apps/migration-runner
+    ports:
+      - "5001:5001"
+    environment:
+      DATABASE_URL: postgres://validation:validation@postgres:5432/validation
+      PORT: "5001"
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+      APP_LOG_FILE: /workspace/out/service-logs/migration-runner.jsonl
+    volumes:
+      - ./out:/workspace/out
+    depends_on:
+      postgres:
+        condition: service_healthy
+      otel-collector:
+        condition: service_started
+    profiles: [db-migration]
 
   postgres:
     image: postgres:16-alpine
@@ -75,7 +94,7 @@ services:
     environment:
       PORT: "8080"
       TARGET_BASE_URL: http://web:3000
-      LOADGEN_PROFILE: baseline
+      LOADGEN_PROFILE: stop
       LOADGEN_SEED: "42"
       APP_LOG_FILE: /workspace/out/service-logs/loadgen.jsonl
     depends_on:
@@ -95,6 +114,7 @@ services:
       WEB_BASE_URL: http://web:3000
       STRIPE_ADMIN_URL: http://mock-stripe:4000/__admin
       LOADGEN_CONTROL_URL: http://loadgen:8080
+      MIGRATION_RUNNER_URL: http://migration-runner:5001
       OTEL_COLLECTOR_DIR: /workspace/out/collector
     volumes:
       - ./scenarios:/workspace/scenarios:ro
