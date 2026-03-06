@@ -92,7 +92,16 @@ function handleNotificationsSend(req, res, ctx) {
         span.end();
       }
     });
-  }, ctx.config.checkoutTimeoutMs || 30000);
+  }, ctx.config.checkoutTimeoutMs || 30000).catch((error) => {
+    if (error && error.statusCode === 504) {
+      ctx.sendJson(res, 504, {
+        error: "worker pool queue timed out",
+        deployment_id: deploymentId
+      });
+      return;
+    }
+    ctx.sendJson(res, 502, { error: error.message, deployment_id: deploymentId });
+  });
 }
 
 module.exports = { handleNotificationsSend };
