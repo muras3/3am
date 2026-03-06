@@ -2,6 +2,7 @@ const fs = require("fs");
 const path = require("path");
 const http = require("http");
 const { URL } = require("url");
+const yaml = require("js-yaml");
 
 const scenarioPath = process.env.SCENARIO_FILE;
 const groundTruthPath = process.env.GROUND_TRUTH_FILE;
@@ -69,29 +70,127 @@ async function waitForHealth(urlString, label) {
 }
 
 function parseScenarioYaml(raw) {
-  const data = {
-    runtime: {},
-    fault_injection: { config: {} },
-    ground_truth: {}
-  };
-  for (const line of raw.split("\n")) {
-    const trimmed = line.trim();
-    if (trimmed.startsWith("warmup_sec:")) data.runtime.warmup_sec = Number(trimmed.split(":")[1].trim());
-    if (trimmed.startsWith("steady_state_sec:")) data.runtime.steady_state_sec = Number(trimmed.split(":")[1].trim());
-    if (trimmed.startsWith("incident_sec:")) data.runtime.incident_sec = Number(trimmed.split(":")[1].trim());
-    if (trimmed.startsWith("cooldown_sec:")) data.runtime.cooldown_sec = Number(trimmed.split(":")[1].trim());
-    if (trimmed.startsWith("at_sec:")) data.fault_injection.at_sec = Number(trimmed.split(":")[1].trim());
-    if (trimmed.startsWith("mode:")) data.fault_injection.mode = trimmed.split(":")[1].trim();
-    if (trimmed.startsWith("status_code:")) data.fault_injection.config.status_code = Number(trimmed.split(":")[1].trim());
-    if (trimmed.startsWith("response_latency_ms:")) data.fault_injection.config.response_latency_ms = Number(trimmed.split(":")[1].trim());
-    if (trimmed.startsWith("trigger:")) data.ground_truth.trigger = trimmed.split(":").slice(1).join(":").trim();
-    if (trimmed.startsWith("root_cause:")) data.ground_truth.root_cause = trimmed.split(":").slice(1).join(":").trim();
-  }
-  return data;
+  return yaml.load(raw);
 }
 
 function ensureDir(dir) {
   fs.mkdirSync(dir, { recursive: true });
+}
+
+function resetFile(filePath) {
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  fs.writeFileSync(filePath, "");
+}
+
+function resetCollectorArtifacts(baseDir) {
+  resetFile(path.join(baseDir, "traces.json"));
+  resetFile(path.join(baseDir, "logs.jsonl"));
+  resetFile(path.join(baseDir, "metrics.json"));
+}
+
+function mergeLogFiles(logFiles) {
+  const entries = [];
+  for (const filePath of logFiles) {
+    if (!fs.existsSync(filePath)) {
+      continue;
+    }
+    const raw = fs.readFileSync(filePath, "utf8");
+    for (const line of raw.split("\n")) {
+      if (!line.trim()) {
+        continue;
+      }
+      try {
+        const parsed = JSON.parse(line);
+        entries.push({ ts: parsed.ts || "", line: JSON.stringify(parsed) });
+      } catch (error) {
+        entries.push({ ts: "", line });
+      }
+    }
+  }
+  entries.sort((a, b) => a.ts.localeCompare(b.ts));
+  return entries.map((entry) => entry.line).join("\n") + (entries.length ? "\n" : "");
+}
+
+function mergePlatformLogs(logFiles, events) {
+  const entries = [];
+  for (const line of mergeLogFiles(logFiles).split("\n")) {
+    if (!line.trim()) {
+      continue;
+    }
+    try {
+      const parsed = JSON.parse(line);
+      entries.push({ ts: parsed.ts || "", record: parsed });
+    } catch (error) {
+      entries.push({ ts: "", record: { raw: line } });
+    }
+  }
+  for (const event of events) {
+    entries.push({ ts: event.ts || "", record: { ...event, source: "scenario-runner" } });
+  }
+  entries.sort((a, b) => a.ts.localeCompare(b.ts));
+  return JSON.stringify(entries.map((entry) => entry.record), null, 2) + "\n";
+}
+
+function buildProbeScenario(scenarioId, scenario, groundTruth) {
+  const probeGroundTruth = {
+    primary_root_cause: groundTruth.primary_root_cause,
+    contributing_root_causes: groundTruth.contributing_root_causes || [],
+    detail: groundTruth.detail,
+    recommended_actions: groundTruth.recommended_actions,
+    t_first_symptom_oracle: groundTruth.t_first_symptom_oracle
+  };
+  return {
+    schema_version: "0.1",
+    id: scenarioId,
+    description: scenario.description,
+    source_references: [],
+    ground_truth: probeGroundTruth,
+    inputs: [
+      { type: "otel_traces", paths: ["otel_traces.json"] },
+      { type: "otel_logs", paths: ["otel_logs.json"] },
+      { type: "otel_metrics", paths: ["otel_metrics.json"] },
+      { type: "platform_logs", paths: ["platform_logs.json"] }
+    ],
+    tags: ["validation", "docker-compose", "rate-limiting", "retry-storm", "504", "worker-pool"]
+  };
+}
+
+function buildSummary(metricsBody, loadgenBody, stripeBody, events) {
+  const stats = metricsBody.stats || {};
+  const config = metricsBody.config || {};
+  const successRate = loadgenBody.sent ? loadgenBody.succeeded / loadgenBody.sent : 0;
+  const failureRate = loadgenBody.sent ? loadgenBody.failed / loadgenBody.sent : 0;
+  return {
+    incident_window: {
+      started_at: events[0].ts,
+      ended_at: events[events.length - 1].ts
+    },
+    top_errors: [
+      "payment dependency rate limited",
+      "checkout failed after retries"
+    ],
+    impacted_routes: ["/checkout"],
+    suspicious_dependencies: ["mock-stripe"],
+    observed_pattern: {
+      trigger_phase: "flash_sale",
+      dependency_failure_mode: stripeBody.mode,
+      shared_resource: "checkout worker pool",
+      blast_radius: stats.route504s > 0 ? "checkout requests timing out" : "no timeout observed"
+    },
+    derived_signals: {
+      worker_pool_saturated: metricsBody.activeWorkers === config.checkoutConcurrency,
+      queue_backlog_present: (metricsBody.queueDepth || 0) > 0,
+      retry_storm_present: (stats.retries || 0) > Math.max(10, (stats.checkoutRequests || 0) * 0.25),
+      payment_429_ratio: stats.paymentRequests ? stats.payment429s / stats.paymentRequests : 0,
+      request_failure_rate: failureRate,
+      request_success_rate: successRate
+    },
+    raw: {
+      web_metrics: metricsBody,
+      loadgen: loadgenBody,
+      dependency_state: stripeBody
+    }
+  };
 }
 
 function copyIfExists(src, dest, fallback) {
@@ -108,9 +207,16 @@ async function main() {
   const startedAt = new Date();
   const runDir = path.join(outputDir, `${startedAt.toISOString().replace(/[:.]/g, "-")}-${scenarioId}`);
   const events = [];
+  const webLogPath = path.join(path.dirname(outputDir), "service-logs", "web.jsonl");
+  const stripeLogPath = path.join(path.dirname(outputDir), "service-logs", "mock-stripe.jsonl");
+  const loadgenLogPath = path.join(path.dirname(outputDir), "service-logs", "loadgen.jsonl");
 
   ensureDir(runDir);
   ensureDir(collectorDir);
+  resetCollectorArtifacts(collectorDir);
+  resetFile(webLogPath);
+  resetFile(stripeLogPath);
+  resetFile(loadgenLogPath);
 
   await waitForHealth(`${webBaseUrl}/health`, "web");
   await waitForHealth(`${loadgenControlUrl}/health`, "loadgen");
@@ -155,43 +261,31 @@ async function main() {
     JSON.stringify(
       {
         scenario_id: scenarioId,
-        incident_window: {
-          started_at: events[0].ts,
-          ended_at: events[events.length - 1].ts
-        },
-        top_errors: [
-          "payment dependency rate limited",
-          "checkout failed after retries"
-        ],
-        impacted_routes: ["/checkout"],
-        suspicious_dependencies: ["mock-stripe"],
-        web_metrics: metrics.body,
-        loadgen: loadgenState.body,
-        dependency_state: stripeState.body
+        ...buildSummary(metrics.body, loadgenState.body, stripeState.body, events)
       },
       null,
       2
     ) + "\n"
   );
 
-  copyIfExists(
-    path.join(collectorDir, "traces.json"),
-    path.join(runDir, "traces.json"),
-    "[]\n"
-  );
-  copyIfExists(
-    path.join(collectorDir, "logs.jsonl"),
-    path.join(runDir, "logs.jsonl"),
-    ""
-  );
-  copyIfExists(
-    path.join(collectorDir, "metrics.json"),
-    path.join(runDir, "metrics.json"),
-    "{}\n"
+  const mergedServiceLogs = mergeLogFiles([webLogPath, stripeLogPath, loadgenLogPath]);
+  copyIfExists(path.join(collectorDir, "traces.json"), path.join(runDir, "traces.json"), "[]\n");
+  copyIfExists(path.join(collectorDir, "traces.json"), path.join(runDir, "otel_traces.json"), "[]\n");
+  copyIfExists(path.join(collectorDir, "logs.jsonl"), path.join(runDir, "otel_logs.json"), "[]\n");
+  copyIfExists(path.join(collectorDir, "metrics.json"), path.join(runDir, "metrics.json"), "{}\n");
+  copyIfExists(path.join(collectorDir, "metrics.json"), path.join(runDir, "otel_metrics.json"), "{}\n");
+  fs.writeFileSync(path.join(runDir, "logs.jsonl"), mergedServiceLogs);
+  fs.writeFileSync(
+    path.join(runDir, "platform_logs.json"),
+    mergePlatformLogs([webLogPath, stripeLogPath, loadgenLogPath], events)
   );
 
   const groundTruth = JSON.parse(fs.readFileSync(groundTruthPath, "utf8"));
   fs.writeFileSync(path.join(runDir, "ground_truth.json"), JSON.stringify(groundTruth, null, 2) + "\n");
+  fs.writeFileSync(
+    path.join(runDir, "scenario.probe.json"),
+    JSON.stringify(buildProbeScenario(scenarioId, scenario, groundTruth), null, 2) + "\n"
+  );
 
   process.stdout.write(`scenario completed: ${runDir}\n`);
 }

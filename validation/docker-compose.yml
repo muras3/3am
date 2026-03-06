@@ -8,6 +8,9 @@ services:
       PAYMENT_BASE_URL: http://mock-stripe:4000
       DATABASE_HOST: postgres
       DATABASE_PORT: "5432"
+      OTEL_SERVICE_NAME: validation-web
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+      APP_LOG_FILE: /workspace/out/service-logs/web.jsonl
       CHECKOUT_CONCURRENCY: "16"
       CHECKOUT_TIMEOUT_MS: "30000"
       RETRY_MAX_ATTEMPTS: "5"
@@ -22,6 +25,8 @@ services:
         condition: service_started
       otel-collector:
         condition: service_started
+    volumes:
+      - ./out:/workspace/out
 
   postgres:
     image: postgres:16-alpine
@@ -46,8 +51,11 @@ services:
       DEFAULT_LATENCY_MS: "120"
       RATE_LIMIT_STATUS: "429"
       RATE_LIMIT_LATENCY_MS: "250"
+      APP_LOG_FILE: /workspace/out/service-logs/mock-stripe.jsonl
     ports:
       - "4000:4000"
+    volumes:
+      - ./out:/workspace/out
 
   otel-collector:
     image: otel/opentelemetry-collector-contrib:0.101.0
@@ -67,10 +75,13 @@ services:
       TARGET_BASE_URL: http://web:3000
       LOADGEN_PROFILE: baseline
       LOADGEN_SEED: "42"
+      APP_LOG_FILE: /workspace/out/service-logs/loadgen.jsonl
     depends_on:
       - web
     ports:
       - "8080:8080"
+    volumes:
+      - ./out:/workspace/out
 
   scenario-runner:
     build:
@@ -92,4 +103,3 @@ services:
       - loadgen
       - otel-collector
     command: ["node", "/app/run.js", "third_party_api_rate_limit_cascade"]
-

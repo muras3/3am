@@ -1,8 +1,11 @@
 const http = require("http");
+const fs = require("fs");
 const { URL } = require("url");
 
 const port = Number(process.env.PORT || 8080);
 const targetBaseUrl = process.env.TARGET_BASE_URL || "http://web:3000";
+const appLogFile = process.env.APP_LOG_FILE || "";
+let logStream = null;
 const state = {
   profile: process.env.LOADGEN_PROFILE || "baseline",
   currentRps: 0,
@@ -11,6 +14,19 @@ const state = {
   succeeded: 0,
   failed: 0
 };
+
+function log(message, fields = {}) {
+  const payload = { ts: new Date().toISOString(), message, ...fields };
+  process.stdout.write(JSON.stringify(payload) + "\n");
+  if (logStream) {
+    logStream.write(JSON.stringify(payload) + "\n");
+  }
+}
+
+if (appLogFile) {
+  fs.mkdirSync(require("path").dirname(appLogFile), { recursive: true });
+  logStream = fs.createWriteStream(appLogFile, { flags: "a" });
+}
 
 const profiles = {
   stop: { rps: 0 },
@@ -78,7 +94,7 @@ async function fireOne() {
     : { method: "GET", path: "/health" };
   try {
     const statusCode = await request(route.method, route.path, route.body);
-    if (statusCode >= 200 && statusCode < 500) {
+    if (statusCode >= 200 && statusCode < 400) {
       state.succeeded += 1;
     } else {
       state.failed += 1;
@@ -111,6 +127,7 @@ const server = http.createServer(async (req, res) => {
       }
       state.profile = body.profile;
       state.startedAt = new Date().toISOString();
+      log("load profile changed", { profile: state.profile });
       sendJson(res, 200, state);
     } catch (error) {
       sendJson(res, 400, { error: "invalid json body" });
@@ -125,6 +142,12 @@ const server = http.createServer(async (req, res) => {
 });
 
 server.listen(port, () => {
-  process.stdout.write(JSON.stringify({ ts: new Date().toISOString(), msg: "loadgen started", port }) + "\n");
+  log("loadgen started", { port });
 });
 
+process.on("SIGTERM", () => {
+  if (logStream) {
+    logStream.end();
+  }
+  process.exit(0);
+});
