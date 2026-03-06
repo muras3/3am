@@ -150,6 +150,13 @@ function buildProbeScenario(scenarioId, scenario, groundTruth, inputs) {
   };
 }
 
+function withOracleTimestamp(groundTruth, oracleTimestamp) {
+  return {
+    ...groundTruth,
+    t_first_symptom_oracle: oracleTimestamp
+  };
+}
+
 function collectProbeInputs(runDir) {
   const definitions = [
     { type: "otel_traces", path: "otel_traces.json" },
@@ -221,6 +228,7 @@ async function main() {
   const scenarioId = process.argv[2] || "third_party_api_rate_limit_cascade";
   const scenario = parseScenarioYaml(fs.readFileSync(scenarioPath, "utf8"));
   const startedAt = new Date();
+  const runId = `${scenarioId}-${startedAt.toISOString().replace(/[:.]/g, "-")}`;
   const runDir = path.join(outputDir, `${startedAt.toISOString().replace(/[:.]/g, "-")}-${scenarioId}`);
   const events = [];
   const webLogPath = path.join(path.dirname(outputDir), "service-logs", "web.jsonl");
@@ -238,12 +246,16 @@ async function main() {
   await waitForHealth(`${loadgenControlUrl}/health`, "loadgen");
   await waitForHealth(`${stripeAdminUrl}/state`, "mock-stripe");
 
-  await requestJson("POST", `${webBaseUrl}/__admin/reset`);
+  const webReset = await requestJson("POST", `${webBaseUrl}/__admin/reset`, { runId });
+  if (webReset.statusCode !== 200) {
+    throw new Error(`failed to reset web state: ${webReset.body.error || webReset.statusCode}`);
+  }
   await requestJson("POST", `${loadgenControlUrl}/__admin/reset`);
   await requestJson("POST", `${stripeAdminUrl}/reset`);
   events.push({
     ts: new Date().toISOString(),
     type: "run_state_reset",
+    run_id: runId,
     services: ["web", "loadgen", "mock-stripe"]
   });
 
@@ -261,8 +273,9 @@ async function main() {
     mode: scenario.fault_injection.mode || "rate_limited",
     config: scenario.fault_injection.config
   });
+  const firstSymptomOracle = new Date().toISOString();
   events.push({
-    ts: new Date().toISOString(),
+    ts: firstSymptomOracle,
     type: "dependency_mode_changed",
     service: "mock-stripe",
     mode: scenario.fault_injection.mode || "rate_limited"
@@ -305,7 +318,8 @@ async function main() {
     mergePlatformLogs([webLogPath, stripeLogPath, loadgenLogPath], events)
   );
 
-  const groundTruth = JSON.parse(fs.readFileSync(groundTruthPath, "utf8"));
+  const groundTruthTemplate = JSON.parse(fs.readFileSync(groundTruthPath, "utf8"));
+  const groundTruth = withOracleTimestamp(groundTruthTemplate, firstSymptomOracle);
   fs.writeFileSync(path.join(runDir, "ground_truth.json"), JSON.stringify(groundTruth, null, 2) + "\n");
   const probeInputs = collectProbeInputs(runDir);
   fs.writeFileSync(
