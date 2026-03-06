@@ -14,6 +14,7 @@ const { handleHealth, handleMetrics } = require("./routes/health");
 const { handleDbRecentOrders } = require("./routes/db");
 const { handleNotificationsSend } = require("./routes/notifications");
 const { handleApiOrders } = require("./routes/api-orders");
+const { handleDashboard, handleProducts } = require("./routes/content");
 
 const port = Number(process.env.PORT || 3000);
 const paymentBaseUrl = process.env.PAYMENT_BASE_URL || "http://mock-stripe:4000";
@@ -30,6 +31,7 @@ const retryIntervalMs = Number(process.env.RETRY_INTERVAL_MS || 100);
 const retryBackoffMode = process.env.RETRY_BACKOFF_MODE || "fixed";
 
 const state = {
+  mode: "normal",
   orders: new Map(),
   activeWorkers: 0,
   queue: [],
@@ -266,6 +268,7 @@ function resetState(runId) {
     error.statusCode = 409;
     throw error;
   }
+  state.mode = "normal";
   state.orders.clear();
   state.nextOrderId = 1;
   state.currentRunId = runId || `run-${Date.now()}`;
@@ -377,6 +380,31 @@ async function main() {
         sendJson(res, error.statusCode || 500, { error: error.message });
       }
     });
+    return;
+  }
+  if (req.method === "POST" && url.pathname === "/__admin/mode") {
+    const chunks = [];
+    req.on("data", (chunk) => chunks.push(chunk));
+    req.on("end", () => {
+      let body = {};
+      try {
+        body = chunks.length ? JSON.parse(Buffer.concat(chunks).toString("utf8")) : {};
+      } catch (error) {
+        sendJson(res, 400, { error: "invalid json body" });
+        return;
+      }
+      state.mode = body.mode || state.mode;
+      log("info", "web mode updated", { mode: state.mode });
+      sendJson(res, 200, { mode: state.mode });
+    });
+    return;
+  }
+  if (req.method === "GET" && url.pathname === "/dashboard") {
+    handleDashboard(req, res, ctx);
+    return;
+  }
+  if (req.method === "GET" && url.pathname === "/products") {
+    handleProducts(req, res, ctx);
     return;
   }
   if (req.method === "GET" && url.pathname === "/db/recent-orders") {
