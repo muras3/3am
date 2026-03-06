@@ -37,14 +37,14 @@
 必要な構成:
 
 - `web` API
-  - `GET /products`
   - `POST /checkout`
-  - `POST /notify`
+  - `GET /orders/:id`
   - `GET /health`
+  - 将来シナリオ用: `POST /notify`, `GET /products`
 - `dependency` 群
-  - 外部APIモック
-  - DB または DB 風ストア
-  - キャッシュ層
+  - 外部APIモック（Stripe風）
+  - PostgreSQL（red herring生成 + 将来の db_migration シナリオ用）
+  - キャッシュ層（将来用、最初は不要）
 - OTel 計装
   - traces
   - logs
@@ -188,14 +188,33 @@
 - `events.json`
 - `ground_truth.json`
 
-`ground_truth.json` には少なくとも以下を持たせる。
+`ground_truth.json` は probe-investigate の `scenario.schema.json` の `ground_truth` フィールドと互換にする。
 
-- `root_cause`
-- `trigger`
-- `causal_chain`
-- `expected_immediate_action`
-- `expected_do_not`
-- `red_herrings`
+注意: probe-investigate スキーマは `additionalProperties: false` なので、拡張フィールドを同一オブジェクトに混ぜると検証に落ちる。そのため検証固有フィールドは `validation_extensions` オブジェクトに隔離する。
+
+前提タスク: probe-investigate 側の `scenario.schema.json` の `ground_truth` に `validation_extensions` を optional フィールドとして追加する。これが完了するまでは検証 fixture は probe-investigate の検証パイプラインに通せない。
+
+正本の定義: ground truth の正本は `ground_truth.template.json` とする。`scenario.yaml` 内の `ground_truth` は参照用サマリのみ置き、詳細は template を参照する。
+
+probe-investigate 互換（必須）:
+
+- `primary_root_cause`
+- `contributing_root_causes`
+- `detail` (`component`, `trigger_signal`, `failure_mode`)
+- `recommended_actions`
+- `t_first_symptom_oracle`
+
+`validation_extensions` に格納（検証固有）:
+
+- `trigger` — 外部トリガー（インシデントを引き起こした外部要因。例: flash sale traffic spike）
+- `causal_chain` — 因果連鎖のステップ列
+- `expected_immediate_action` — 初動で取るべきアクション
+- `expected_do_not` — やってはいけないアクション
+- `red_herrings` — 意図的に混入した誤誘導
+
+用語の区別:
+- `trigger`: インシデントの外部きっかけ（例: "flash sale traffic spike"）
+- `detail.trigger_signal`: 最初に観測可能な兆候（例: "Stripe API returning 429 status codes"）
 
 ## 7. OTel 以外に保存すべきデータ
 
@@ -213,6 +232,8 @@ OTel だけでは足りない。診断では「運用イベント」も重要な
 ## 8. 採点基準
 
 診断品質の評価は `root cause を言い当てたか` だけでは弱い。MVP向けには次の4軸で採点する。
+
+注: probe-investigate では LLM-as-judge による 10点満点を使用した。ここでは軸ごとの分解能を確保するため 4軸×0-2 の 8点満点に変更する。probe-investigate スコアとの大まかな対応: 7-8 ≈ 8-10, 5-6 ≈ 5-7, 0-4 ≈ 0-4。将来的には 10点スケールに統一し、LLM-as-judge と人間評価の両方で採点する方針。
 
 ### 1. 初動有効性
 
@@ -268,7 +289,17 @@ trigger と internal design flaw を区別して説明できているか。
 - 最初から 5 本同時に作るとデータ品質の失敗原因を切り分けにくい
 - rate limit cascade は signals が豊富で、3amoncall の初動提案価値も出やすい
 
-## 10. この検証MVPで答えるべき問い
+## 10. 検証時のモデル選択
+
+probe-investigate の知見として「モデルの選択はプロンプト以上に診断品質に影響する」ことが判明している（同一 v5 プロンプトで Sonnet 4 avg 7.8 → Sonnet 4.6 avg 9.7）。
+
+検証実行時は以下を守る:
+
+- 複数モデルで同一シナリオを評価する（最低 2 モデル）
+- モデル名とバージョンを結果に記録する
+- プロンプト改善とモデル変更の効果を分離できるようにする
+
+## 11. この検証MVPで答えるべき問い
 
 この基盤で最初に答えるべき問いは限定する。
 
@@ -277,14 +308,14 @@ trigger と internal design flaw を区別して説明できているか。
 - 初動提案は再現性ある形で採点できるか
 - どの signal が足りないと診断品質が大きく落ちるか
 
-逆に、この段階ではまだ答えなくてよい問いもある。
+逆に、この段階ではまだ答えなくてよい問いもある（probe-investigate Phase 0 の残課題を含む）。
 
 - 汎用異常検知の精度
 - 多言語SDK対応
 - 本番クラウドへのデプロイ完成度
 - 大規模RAGや長期学習
 
-## 11. 結論
+## 12. 結論
 
 実データがないなら、次に作るべきものは「テスト用アプリ」ではある。  
 ただし本質はアプリそのものではなく、approved fixture 設計を実測 OTel に変換する障害再現ハーネスである。

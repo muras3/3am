@@ -1,8 +1,11 @@
 const http = require("http");
+const fs = require("fs");
 const { URL } = require("url");
 
 const port = Number(process.env.PORT || 8080);
 const targetBaseUrl = process.env.TARGET_BASE_URL || "http://web:3000";
+const appLogFile = process.env.APP_LOG_FILE || "";
+let logStream = null;
 const state = {
   profile: process.env.LOADGEN_PROFILE || "baseline",
   currentRps: 0,
@@ -11,6 +14,19 @@ const state = {
   succeeded: 0,
   failed: 0
 };
+
+function log(message, fields = {}) {
+  const payload = { ts: new Date().toISOString(), message, ...fields };
+  process.stdout.write(JSON.stringify(payload) + "\n");
+  if (logStream) {
+    logStream.write(JSON.stringify(payload) + "\n");
+  }
+}
+
+if (appLogFile) {
+  fs.mkdirSync(require("path").dirname(appLogFile), { recursive: true });
+  logStream = fs.createWriteStream(appLogFile, { flags: "a" });
+}
 
 const profiles = {
   stop: { rps: 0 },
@@ -73,12 +89,19 @@ function request(method, path, body) {
 async function fireOne() {
   state.sent += 1;
   const pick = state.sent % 10;
-  const route = pick < 8 ? { method: "POST", path: "/checkout", body: { sku: "flash-sale-item" } }
-    : pick === 8 ? { method: "GET", path: "/orders/ord_000001" }
-    : { method: "GET", path: "/health" };
+  let route;
+  if (state.profile === "flash_sale") {
+    route = pick < 5 ? { method: "POST", path: "/checkout", body: { sku: "flash-sale-item" } }
+      : pick < 9 ? { method: "GET", path: "/orders/ord_000001" }
+      : { method: "GET", path: "/health" };
+  } else {
+    route = pick < 7 ? { method: "POST", path: "/checkout", body: { sku: "flash-sale-item" } }
+      : pick < 9 ? { method: "GET", path: "/orders/ord_000001" }
+      : { method: "GET", path: "/health" };
+  }
   try {
     const statusCode = await request(route.method, route.path, route.body);
-    if (statusCode >= 200 && statusCode < 500) {
+    if (statusCode >= 200 && statusCode < 400) {
       state.succeeded += 1;
     } else {
       state.failed += 1;
@@ -111,10 +134,22 @@ const server = http.createServer(async (req, res) => {
       }
       state.profile = body.profile;
       state.startedAt = new Date().toISOString();
+      log("load profile changed", { profile: state.profile });
       sendJson(res, 200, state);
     } catch (error) {
       sendJson(res, 400, { error: "invalid json body" });
     }
+    return;
+  }
+  if (req.method === "POST" && url.pathname === "/__admin/reset") {
+    state.profile = "stop";
+    state.currentRps = 0;
+    state.startedAt = new Date().toISOString();
+    state.sent = 0;
+    state.succeeded = 0;
+    state.failed = 0;
+    log("loadgen reset", {});
+    sendJson(res, 200, state);
     return;
   }
   if (req.method === "GET" && url.pathname === "/health") {
@@ -125,6 +160,12 @@ const server = http.createServer(async (req, res) => {
 });
 
 server.listen(port, () => {
-  process.stdout.write(JSON.stringify({ ts: new Date().toISOString(), msg: "loadgen started", port }) + "\n");
+  log("loadgen started", { port });
 });
 
+process.on("SIGTERM", () => {
+  if (logStream) {
+    logStream.end();
+  }
+  process.exit(0);
+});

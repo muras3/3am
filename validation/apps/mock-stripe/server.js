@@ -1,13 +1,29 @@
 const http = require("http");
+const fs = require("fs");
 const { URL } = require("url");
 
 const port = Number(process.env.PORT || 4000);
+const appLogFile = process.env.APP_LOG_FILE || "";
+let logStream = null;
 const state = {
   mode: process.env.DEFAULT_MODE || "normal",
   latencyMs: Number(process.env.DEFAULT_LATENCY_MS || 120),
   rateLimitStatus: Number(process.env.RATE_LIMIT_STATUS || 429),
   rateLimitLatencyMs: Number(process.env.RATE_LIMIT_LATENCY_MS || 250)
 };
+
+function log(message, fields = {}) {
+  const payload = { ts: new Date().toISOString(), message, ...fields };
+  process.stdout.write(JSON.stringify(payload) + "\n");
+  if (logStream) {
+    logStream.write(JSON.stringify(payload) + "\n");
+  }
+}
+
+if (appLogFile) {
+  fs.mkdirSync(require("path").dirname(appLogFile), { recursive: true });
+  logStream = fs.createWriteStream(appLogFile, { flags: "a" });
+}
 
 function sendJson(res, statusCode, payload, headers = {}) {
   const body = JSON.stringify(payload);
@@ -54,15 +70,26 @@ const server = http.createServer(async (req, res) => {
       if (body.config && typeof body.config.status_code === "number") {
         state.rateLimitStatus = body.config.status_code;
       }
+      log("mock-stripe mode updated", { mode: state.mode, rateLimitStatus: state.rateLimitStatus });
       sendJson(res, 200, state);
     } catch (error) {
       sendJson(res, 400, { error: "invalid json body" });
     }
     return;
   }
+  if (req.method === "POST" && url.pathname === "/__admin/reset") {
+    state.mode = process.env.DEFAULT_MODE || "normal";
+    state.latencyMs = Number(process.env.DEFAULT_LATENCY_MS || 120);
+    state.rateLimitStatus = Number(process.env.RATE_LIMIT_STATUS || 429);
+    state.rateLimitLatencyMs = Number(process.env.RATE_LIMIT_LATENCY_MS || 250);
+    log("mock-stripe reset", { mode: state.mode });
+    sendJson(res, 200, state);
+    return;
+  }
   if (req.method === "POST" && url.pathname === "/charge") {
     if (state.mode === "rate_limited") {
       await sleep(state.rateLimitLatencyMs);
+      log("mock-stripe returning rate limit", { statusCode: state.rateLimitStatus });
       sendJson(
         res,
         state.rateLimitStatus,
@@ -83,6 +110,12 @@ const server = http.createServer(async (req, res) => {
 });
 
 server.listen(port, () => {
-  process.stdout.write(JSON.stringify({ ts: new Date().toISOString(), msg: "mock-stripe started", port }) + "\n");
+  log("mock-stripe started", { port });
 });
 
+process.on("SIGTERM", () => {
+  if (logStream) {
+    logStream.end();
+  }
+  process.exit(0);
+});

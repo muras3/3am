@@ -1,0 +1,8 @@
+{
+  "name": "validation-scenario-runner",
+  "private": true,
+  "version": "0.1.0",
+  "dependencies": {
+    "js-yaml": "^4.1.0"
+  }
+}

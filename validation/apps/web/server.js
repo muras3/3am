@@ -1,13 +1,23 @@
 const http = require("http");
 const net = require("net");
+const fs = require("fs");
 const { URL } = require("url");
+const { trace, metrics, SpanStatusCode } = require("@opentelemetry/api");
+const { NodeSDK } = require("@opentelemetry/sdk-node");
+const { OTLPTraceExporter } = require("@opentelemetry/exporter-trace-otlp-http");
+const { OTLPMetricExporter } = require("@opentelemetry/exporter-metrics-otlp-http");
+const { PeriodicExportingMetricReader } = require("@opentelemetry/sdk-metrics");
 
 const port = Number(process.env.PORT || 3000);
 const paymentBaseUrl = process.env.PAYMENT_BASE_URL || "http://mock-stripe:4000";
 const dbHost = process.env.DATABASE_HOST || "postgres";
 const dbPort = Number(process.env.DATABASE_PORT || 5432);
+const otlpEndpoint = process.env.OTEL_EXPORTER_OTLP_ENDPOINT || "http://otel-collector:4318";
+const appLogFile = process.env.APP_LOG_FILE || "";
 const checkoutConcurrency = Number(process.env.CHECKOUT_CONCURRENCY || 16);
 const checkoutTimeoutMs = Number(process.env.CHECKOUT_TIMEOUT_MS || 30000);
+const orderTimeoutMs = Number(process.env.ORDER_TIMEOUT_MS || 50);
+const orderQueueFailThreshold = Number(process.env.ORDER_QUEUE_FAIL_THRESHOLD || 25);
 const retryMaxAttempts = Number(process.env.RETRY_MAX_ATTEMPTS || 5);
 const retryIntervalMs = Number(process.env.RETRY_INTERVAL_MS || 100);
 const retryBackoffMode = process.env.RETRY_BACKOFF_MODE || "fixed";
@@ -16,16 +26,54 @@ const orders = new Map();
 let activeWorkers = 0;
 const queue = [];
 let nextOrderId = 1;
+let logStream = null;
+let currentRunId = "boot";
 const stats = {
   checkoutRequests: 0,
   checkoutSuccesses: 0,
   checkoutFailures: 0,
+  orderRequests: 0,
+  orderFailures: 0,
   payment429s: 0,
   paymentRequests: 0,
   route504s: 0,
   dbConnectionCount: 0,
   retries: 0
 };
+let tracer;
+let meter;
+let checkoutRequestCounter;
+let checkoutFailureCounter;
+let orderRequestCounter;
+let orderFailureCounter;
+let payment429Counter;
+let retryCounter;
+let route504Counter;
+let checkoutDuration;
+let paymentDuration;
+let orderDuration;
+
+function runAttrs(attrs = {}) {
+  return {
+    ...attrs,
+    "validation.run_id": currentRunId
+  };
+}
+
+function ensureLogDir(logFile) {
+  if (!logFile) {
+    return;
+  }
+  fs.mkdirSync(require("path").dirname(logFile), { recursive: true });
+}
+
+function initLogStream(logFile) {
+  if (!logFile) {
+    return null;
+  }
+  ensureLogDir(logFile);
+  return fs.createWriteStream(logFile, { flags: "a" });
+}
 
 function sendJson(res, statusCode, payload, extraHeaders = {}) {
   const body = JSON.stringify(payload);
@@ -46,9 +94,13 @@ function log(level, message, fields = {}) {
     ts: new Date().toISOString(),
     level,
     message,
+    runId: currentRunId,
     ...fields
   };
   process.stdout.write(JSON.stringify(payload) + "\n");
+  if (logStream) {
+    logStream.write(JSON.stringify(payload) + "\n");
+  }
 }
 
 function observeDbConnection() {
@@ -62,14 +114,14 @@ function observeDbConnection() {
 
 setInterval(observeDbConnection, 2000);
 
-function enqueueCheckout(task) {
+function enqueueWork(task, timeoutMs) {
   return new Promise((resolve, reject) => {
     const enqueuedAt = Date.now();
     const wrapped = async () => {
       const queueWaitMs = Date.now() - enqueuedAt;
       const timer = setTimeout(() => {
-        reject(Object.assign(new Error("checkout timed out"), { statusCode: 504 }));
-      }, checkoutTimeoutMs);
+        reject(Object.assign(new Error("worker pool queue timed out"), { statusCode: 504 }));
+      }, timeoutMs);
       try {
         const result = await task(queueWaitMs);
         clearTimeout(timer);
@@ -140,91 +192,191 @@ function requestJson(method, urlString, body) {
 }
 
 async function callPayment(orderId) {
-  let attempt = 0;
-  for (;;) {
-    attempt += 1;
-    stats.paymentRequests += 1;
-    const response = await requestJson("POST", `${paymentBaseUrl}/charge`, { orderId, amount: 1999 });
-    if (response.statusCode !== 429) {
-      return { attempt, response };
+  return tracer.startActiveSpan("payment.charge", async (span) => {
+    let attempt = 0;
+    try {
+      for (;;) {
+        attempt += 1;
+        stats.paymentRequests += 1;
+        const startedAt = Date.now();
+        const response = await requestJson("POST", `${paymentBaseUrl}/charge`, { orderId, amount: 1999 });
+        paymentDuration.record(Date.now() - startedAt, runAttrs({ dependency: "mock-stripe" }));
+        span.addEvent("payment_attempt", runAttrs({ attempt, status_code: response.statusCode }));
+        if (response.statusCode !== 429) {
+          span.setAttributes({
+            "payment.attempts": attempt,
+            "http.status_code": response.statusCode
+          });
+          return { attempt, response };
+        }
+        stats.payment429s += 1;
+        stats.retries += 1;
+        payment429Counter.add(1, runAttrs({ dependency: "mock-stripe" }));
+        retryCounter.add(1, runAttrs({ dependency: "mock-stripe" }));
+        log("warn", "payment dependency rate limited", { orderId, attempt, statusCode: 429 });
+        if (attempt >= retryMaxAttempts) {
+          span.setAttributes({
+            "payment.attempts": attempt,
+            "http.status_code": response.statusCode,
+            "retry.exhausted": true
+          });
+          return { attempt, response };
+        }
+        const delay = retryBackoffMode === "fixed" ? retryIntervalMs : retryIntervalMs * attempt;
+        await sleep(delay);
+      }
+    } catch (error) {
+      span.recordException(error);
+      span.setStatus({ code: SpanStatusCode.ERROR, message: error.message });
+      throw error;
+    } finally {
+      span.end();
     }
-    stats.payment429s += 1;
-    stats.retries += 1;
-    log("warn", "payment dependency rate limited", { orderId, attempt, statusCode: 429 });
-    if (attempt >= retryMaxAttempts) {
-      return { attempt, response };
-    }
-    const delay = retryBackoffMode === "fixed" ? retryIntervalMs : retryIntervalMs * attempt;
-    await sleep(delay);
-  }
+  });
 }
 
 async function handleCheckout(req, res, body) {
   stats.checkoutRequests += 1;
+  checkoutRequestCounter.add(1, runAttrs({ route: "/checkout" }));
   const orderId = `ord_${String(nextOrderId++).padStart(6, "0")}`;
   const startedAt = Date.now();
-  try {
-    const result = await enqueueCheckout(async (queueWaitMs) => {
-      const payment = await callPayment(orderId);
-      const order = {
-        id: orderId,
-        sku: body.sku || "demo-sku",
-        status: payment.response.statusCode === 200 ? "paid" : "pending",
-        queueWaitMs,
-        paymentAttempts: payment.attempt
-      };
-      orders.set(orderId, order);
-      if (payment.response.statusCode === 200) {
-        stats.checkoutSuccesses += 1;
-        log("info", "checkout completed", { orderId, queueWaitMs, paymentAttempts: payment.attempt });
-        return { statusCode: 200, payload: order };
-      }
-      stats.checkoutFailures += 1;
-      stats.route504s += 1;
-      log("error", "checkout failed after retries", { orderId, queueWaitMs, paymentAttempts: payment.attempt });
-      return {
-        statusCode: 504,
-        payload: {
-          error: "upstream payment retries exhausted shared worker pool",
-          orderId,
+  return tracer.startActiveSpan("checkout.request", async (span) => {
+    span.setAttributes({
+      "app.route": "/checkout",
+      "app.order_id": orderId,
+      "validation.run_id": currentRunId
+    });
+    try {
+      const result = await enqueueWork(async (queueWaitMs) => {
+        span.setAttribute("queue.wait_ms", queueWaitMs);
+        const payment = await callPayment(orderId);
+        const order = {
+          id: orderId,
+          sku: body.sku || "demo-sku",
+          status: payment.response.statusCode === 200 ? "paid" : "pending",
           queueWaitMs,
           paymentAttempts: payment.attempt
+        };
+        orders.set(orderId, order);
+        if (payment.response.statusCode === 200) {
+          stats.checkoutSuccesses += 1;
+          log("info", "checkout completed", { orderId, queueWaitMs, paymentAttempts: payment.attempt });
+          span.setAttributes({
+            "payment.attempts": payment.attempt,
+            "http.status_code": 200
+          });
+          return { statusCode: 200, payload: order };
         }
-      };
-    });
-    sendJson(res, result.statusCode, {
-      ...result.payload,
-      durationMs: Date.now() - startedAt
-    });
-  } catch (error) {
-    stats.checkoutFailures += 1;
-    stats.route504s += 1;
-    sendJson(res, error.statusCode || 500, {
-      error: error.message,
-      orderId,
-      durationMs: Date.now() - startedAt
-    });
-  }
+        stats.checkoutFailures += 1;
+        stats.route504s += 1;
+        checkoutFailureCounter.add(1, runAttrs({ route: "/checkout" }));
+        route504Counter.add(1, runAttrs({ route: "/checkout" }));
+        log("error", "checkout failed after retries", { orderId, queueWaitMs, paymentAttempts: payment.attempt });
+        span.setAttributes({
+          "payment.attempts": payment.attempt,
+          "http.status_code": 504
+        });
+        span.setStatus({ code: SpanStatusCode.ERROR, message: "payment retries exhausted" });
+        return {
+          statusCode: 504,
+          payload: {
+            error: "upstream payment retries exhausted shared worker pool",
+            orderId,
+            queueWaitMs,
+            paymentAttempts: payment.attempt
+          }
+        };
+      }, checkoutTimeoutMs);
+      checkoutDuration.record(Date.now() - startedAt, runAttrs({ route: "/checkout" }));
+      sendJson(res, result.statusCode, {
+        ...result.payload,
+        durationMs: Date.now() - startedAt
+      });
+    } catch (error) {
+      stats.checkoutFailures += 1;
+      stats.route504s += 1;
+      checkoutFailureCounter.add(1, runAttrs({ route: "/checkout" }));
+      route504Counter.add(1, runAttrs({ route: "/checkout" }));
+      span.recordException(error);
+      span.setStatus({ code: SpanStatusCode.ERROR, message: error.message });
+      sendJson(res, error.statusCode || 500, {
+        error: error.message,
+        orderId,
+        durationMs: Date.now() - startedAt
+      });
+    } finally {
+      span.end();
+    }
+  });
 }
 
 function handleOrder(res, orderId) {
-  const order = orders.get(orderId);
-  if (!order) {
-    sendJson(res, 404, { error: "order not found", orderId });
-    return;
-  }
-  sendJson(res, 200, order);
+  stats.orderRequests += 1;
+  orderRequestCounter.add(1, runAttrs({ route: "/orders/:id" }));
+  const startedAt = Date.now();
+  return tracer.startActiveSpan("orders.request", async (span) => {
+    span.setAttributes({
+      "app.route": "/orders/:id",
+      "app.order_id": orderId,
+      "validation.run_id": currentRunId
+    });
+    try {
+      if (activeWorkers >= checkoutConcurrency && queue.length >= orderQueueFailThreshold) {
+        stats.orderFailures += 1;
+        stats.route504s += 1;
+        orderFailureCounter.add(1, runAttrs({ route: "/orders/:id" }));
+        route504Counter.add(1, runAttrs({ route: "/orders/:id" }));
+        span.setStatus({ code: SpanStatusCode.ERROR, message: "shared worker pool saturated" });
+        sendJson(res, 504, {
+          error: "shared worker pool saturated",
+          orderId,
+          queueDepth: queue.length
+        });
+        return;
+      }
+      const result = await enqueueWork(async (queueWaitMs) => {
+        span.setAttribute("queue.wait_ms", queueWaitMs);
+        await sleep(15);
+        const order = orders.get(orderId);
+        if (!order) {
+          span.setAttributes({ "http.status_code": 404 });
+          return { statusCode: 404, payload: { error: "order not found", orderId } };
+        }
+        span.setAttributes({ "http.status_code": 200 });
+        return { statusCode: 200, payload: order };
+      }, orderTimeoutMs);
+      orderDuration.record(Date.now() - startedAt, runAttrs({ route: "/orders/:id" }));
+      sendJson(res, result.statusCode, result.payload);
+    } catch (error) {
+      stats.orderFailures += 1;
+      stats.route504s += 1;
+      orderFailureCounter.add(1, runAttrs({ route: "/orders/:id" }));
+      route504Counter.add(1, runAttrs({ route: "/orders/:id" }));
+      span.recordException(error);
+      span.setStatus({ code: SpanStatusCode.ERROR, message: error.message });
+      sendJson(res, error.statusCode || 500, {
+        error: error.message,
+        orderId,
+        durationMs: Date.now() - startedAt
+      });
+    } finally {
+      span.end();
+    }
+  });
 }
 
 function handleMetrics(res) {
   sendJson(res, 200, {
     service: "validation-web",
+    runId: currentRunId,
     activeWorkers,
     queueDepth: queue.length,
     stats,
     config: {
       checkoutConcurrency,
       checkoutTimeoutMs,
+      orderTimeoutMs,
+      orderQueueFailThreshold,
       retryMaxAttempts,
       retryIntervalMs,
       retryBackoffMode
@@ -232,7 +384,62 @@ function handleMetrics(res) {
   });
 }
 
-const server = http.createServer((req, res) => {
+function resetState(runId) {
+  if (activeWorkers !== 0 || queue.length !== 0) {
+    const error = new Error("cannot reset while worker pool is active");
+    error.statusCode = 409;
+    throw error;
+  }
+  orders.clear();
+  nextOrderId = 1;
+  currentRunId = runId || `run-${Date.now()}`;
+  stats.checkoutRequests = 0;
+  stats.checkoutSuccesses = 0;
+  stats.checkoutFailures = 0;
+  stats.orderRequests = 0;
+  stats.orderFailures = 0;
+  stats.payment429s = 0;
+  stats.paymentRequests = 0;
+  stats.route504s = 0;
+  stats.dbConnectionCount = 0;
+  stats.retries = 0;
+  log("info", "validation web state reset", { runId: currentRunId });
+}
+
+async function main() {
+  logStream = initLogStream(appLogFile);
+  const sdk = new NodeSDK({
+    traceExporter: new OTLPTraceExporter({ url: `${otlpEndpoint}/v1/traces` }),
+    metricReader: new PeriodicExportingMetricReader({
+      exporter: new OTLPMetricExporter({ url: `${otlpEndpoint}/v1/metrics` }),
+      exportIntervalMillis: 2000
+    })
+  });
+  await sdk.start();
+
+  tracer = trace.getTracer("validation-web");
+  meter = metrics.getMeter("validation-web");
+  checkoutRequestCounter = meter.createCounter("checkout_requests_total");
+  checkoutFailureCounter = meter.createCounter("checkout_failures_total");
+  orderRequestCounter = meter.createCounter("order_requests_total");
+  orderFailureCounter = meter.createCounter("order_failures_total");
+  payment429Counter = meter.createCounter("payment_429_total");
+  retryCounter = meter.createCounter("retry_attempts_total");
+  route504Counter = meter.createCounter("route_504_total");
+  checkoutDuration = meter.createHistogram("checkout_duration_ms");
+  paymentDuration = meter.createHistogram("payment_duration_ms");
+  orderDuration = meter.createHistogram("order_duration_ms");
+  meter.createObservableGauge("worker_pool_in_use", {
+    description: "Current number of active checkout workers"
+  }).addCallback((result) => result.observe(activeWorkers, runAttrs()));
+  meter.createObservableGauge("queue_depth", {
+    description: "Current size of the checkout queue"
+  }).addCallback((result) => result.observe(queue.length, runAttrs()));
+  meter.createObservableGauge("db_connection_count", {
+    description: "Observed database socket connections"
+  }).addCallback((result) => result.observe(stats.dbConnectionCount, runAttrs()));
+
+  const server = http.createServer((req, res) => {
   const url = new URL(req.url, `http://${req.headers.host}`);
   if (req.method === "GET" && url.pathname === "/health") {
     sendJson(res, 200, { status: "ok", activeWorkers, queueDepth: queue.length });
@@ -240,6 +447,26 @@ const server = http.createServer((req, res) => {
   }
   if (req.method === "GET" && url.pathname === "/metrics") {
     handleMetrics(res);
+    return;
+  }
+  if (req.method === "POST" && url.pathname === "/__admin/reset") {
+    const chunks = [];
+    req.on("data", (chunk) => chunks.push(chunk));
+    req.on("end", () => {
+      let body = {};
+      try {
+        body = chunks.length ? JSON.parse(Buffer.concat(chunks).toString("utf8")) : {};
+      } catch (error) {
+        sendJson(res, 400, { error: "invalid json body" });
+        return;
+      }
+      try {
+        resetState(body.runId);
+        sendJson(res, 200, { ok: true, runId: currentRunId });
+      } catch (error) {
+        sendJson(res, error.statusCode || 500, { error: error.message });
+      }
+    });
     return;
   }
   if (req.method === "GET" && url.pathname.startsWith("/orders/")) {
@@ -262,9 +489,22 @@ const server = http.createServer((req, res) => {
     return;
   }
   sendJson(res, 404, { error: "not found" });
-});
+  });
 
-server.listen(port, () => {
-  log("info", "validation web started", { port, checkoutConcurrency, retryMaxAttempts });
-});
+  server.listen(port, () => {
+    log("info", "validation web started", { port, checkoutConcurrency, retryMaxAttempts });
+  });
 
+  process.on("SIGTERM", async () => {
+    if (logStream) {
+      logStream.end();
+    }
+    await sdk.shutdown();
+    process.exit(0);
+  });
+}
+
+main().catch((error) => {
+  process.stderr.write(`${error.stack}\n`);
+  process.exit(1);
+});
