@@ -6,3 +6,5 @@
 - [0002-local-container-first.md](/Users/murase/project/3amoncall/docs/adr/0002-local-container-first.md)
 - [0003-first-scenario-rate-limit-cascade.md](/Users/murase/project/3amoncall/docs/adr/0003-first-scenario-rate-limit-cascade.md)
 - [0004-ground-truth-schema-compatibility.md](/Users/murase/project/3amoncall/docs/adr/0004-ground-truth-schema-compatibility.md)
+- [0005-raw-evaluation-inputs.md](/Users/murase/project/3amoncall/docs/adr/0005-raw-evaluation-inputs.md)
+- [0006-pr-only-integration-workflow.md](/Users/murase/project/3amoncall/docs/adr/0006-pr-only-integration-workflow.md)
