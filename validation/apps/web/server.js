@@ -3,7 +3,10 @@ const net = require("net");
 const fs = require("fs");
 const { URL } = require("url");
 const { trace, metrics, SpanStatusCode } = require("@opentelemetry/api");
+const { logs } = require("@opentelemetry/api-logs");
+const { OTLPLogExporter } = require("@opentelemetry/exporter-logs-otlp-http");
 const { NodeSDK } = require("@opentelemetry/sdk-node");
+const { LoggerProvider, BatchLogRecordProcessor } = require("@opentelemetry/sdk-logs");
 const { OTLPTraceExporter } = require("@opentelemetry/exporter-trace-otlp-http");
 const { OTLPMetricExporter } = require("@opentelemetry/exporter-metrics-otlp-http");
 const { PeriodicExportingMetricReader } = require("@opentelemetry/sdk-metrics");
@@ -42,6 +45,7 @@ const stats = {
 };
 let tracer;
 let meter;
+let otelLogger;
 let checkoutRequestCounter;
 let checkoutFailureCounter;
 let orderRequestCounter;
@@ -100,6 +104,13 @@ function log(level, message, fields = {}) {
   process.stdout.write(JSON.stringify(payload) + "\n");
   if (logStream) {
     logStream.write(JSON.stringify(payload) + "\n");
+  }
+  if (otelLogger) {
+    otelLogger.emit({
+      severityText: level.toUpperCase(),
+      body: message,
+      attributes: runAttrs(fields)
+    });
   }
 }
 
@@ -408,6 +419,10 @@ function resetState(runId) {
 
 async function main() {
   logStream = initLogStream(appLogFile);
+  const loggerProvider = new LoggerProvider({
+    processors: [new BatchLogRecordProcessor(new OTLPLogExporter({ url: `${otlpEndpoint}/v1/logs` }))]
+  });
+  logs.setGlobalLoggerProvider(loggerProvider);
   const sdk = new NodeSDK({
     traceExporter: new OTLPTraceExporter({ url: `${otlpEndpoint}/v1/traces` }),
     metricReader: new PeriodicExportingMetricReader({
@@ -419,6 +434,7 @@ async function main() {
 
   tracer = trace.getTracer("validation-web");
   meter = metrics.getMeter("validation-web");
+  otelLogger = logs.getLogger("validation-web");
   checkoutRequestCounter = meter.createCounter("checkout_requests_total");
   checkoutFailureCounter = meter.createCounter("checkout_failures_total");
   orderRequestCounter = meter.createCounter("order_requests_total");
@@ -499,6 +515,7 @@ async function main() {
     if (logStream) {
       logStream.end();
     }
+    await loggerProvider.shutdown();
     await sdk.shutdown();
     process.exit(0);
   });
