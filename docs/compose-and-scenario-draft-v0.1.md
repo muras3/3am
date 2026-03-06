@@ -7,13 +7,13 @@
 これは実装前のドラフトであり、最初から production-ready を狙わない。  
 重要なのは、最小の労力で 1 シナリオを deterministic に再現し、OTel fixture を吐けること。
 
+前提: Docker Compose V2（`docker compose` コマンド）を使用する。`version` フィールドは Compose V2 では不要なため省略。`depends_on.condition` は Compose V2 機能。
+
 ## 2. `docker-compose.yml` 草案
 
 以下の構成を最初のベースラインとする。
 
 ```yaml
-version: "3.9"
-
 services:
   web:
     build:
@@ -22,6 +22,7 @@ services:
       PORT: "3000"
       NODE_ENV: development
       PAYMENT_BASE_URL: http://mock-stripe:4000
+      DATABASE_URL: postgres://validation:validation@postgres:5432/validation
       OTEL_SERVICE_NAME: validation-web
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
       CHECKOUT_CONCURRENCY: "16"
@@ -32,8 +33,26 @@ services:
     ports:
       - "3000:3000"
     depends_on:
-      - mock-stripe
-      - otel-collector
+      postgres:
+        condition: service_healthy
+      mock-stripe:
+        condition: service_started
+      otel-collector:
+        condition: service_started
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: validation
+      POSTGRES_PASSWORD: validation
+      POSTGRES_DB: validation
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U validation"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
 
   mock-stripe:
     build:
@@ -86,17 +105,9 @@ services:
       - loadgen
       - otel-collector
 
-  artifact-writer:
-    build:
-      context: ./tools/artifact-writer
-    environment:
-      INPUT_COLLECTOR_DIR: /workspace/out/collector
-      OUTPUT_RUNS_DIR: /workspace/out/runs
-    volumes:
-      - ./out:/workspace/out
-    profiles:
-      - manual
 ```
+
+注: `artifact-writer` は `scenario-runner` コンテナ内のスクリプトとして実行する。別コンテナにはしない。
 
 ## 3. Compose 設計メモ
 
@@ -247,23 +258,12 @@ red_herrings:
   - payment provider status page remains operational
 
 ground_truth:
+  _note: >
+    scenario.yaml の ground_truth は参照用サマリ。
+    正本は ground_truth.template.json（probe-investigate 互換形式）。
   trigger: flash sale traffic spike
   root_cause: fixed-interval retry policy against a rate-limited payment dependency exhausted the shared checkout worker pool
-  causal_chain:
-    - flash sale traffic increases checkout demand
-    - payment dependency begins returning 429
-    - app retries immediately with fixed intervals
-    - shared worker pool saturates
-    - queue depth grows and request wait time rises
-    - all orchestrated routes begin timing out with 504
-  expected_immediate_action:
-    - disable or sharply reduce retries to the payment dependency
-    - apply exponential backoff or a circuit breaker
-    - shed non-critical checkout-side work to free worker slots
-  expected_do_not:
-    - restart the database
-    - roll back unrelated deploys
-    - scale the database before confirming the bottleneck
+  immediate_action: disable or reduce retries, apply backoff or circuit breaker
 ```
 
 ## 6. `loadgen` 制御 API の最小仕様
@@ -333,12 +333,10 @@ GET /__admin/state
 
 最初の版では、以下を許容してよい。
 
-- `orders` はメモリ内保存
-- DB は実コンテナなし
 - `recent deploy event` は `events.json` に人工的に混ぜる
-- DB connections の red herring も補助メトリクスとして人工生成する
-
-ここは割り切りでよい。最初の目的は `retry storm -> shared pool collapse` を診断できるかの確認だから。
+- PostgreSQL は入れるが、最初のシナリオでは `web` が orders 保存と読み取りに使うだけ
+- `db_connection_count` の red herring は `web` の connection pool メトリクス（`db.client.connections.usage` 等）から収集。PostgreSQL exporter は不要で、app 側の OTel instrumentation で十分
+- キャッシュ層は最初は不要
 
 ## 10. 次のアクション
 
@@ -348,8 +346,9 @@ GET /__admin/state
 2. `validation/otel/collector-config.yaml`
 3. `validation/scenarios/third_party_api_rate_limit_cascade/scenario.yaml`
 4. `validation/scenarios/third_party_api_rate_limit_cascade/ground_truth.template.json`
-5. `validation/tools/scenario-runner` の stub
-6. `validation/apps/mock-stripe` の stub
-7. `validation/apps/web` の stub
+5. `validation/tools/scenario-runner` の stub（artifact-writer スクリプトを含む）
+6. `validation/tools/loadgen` の stub（HTTP サーバー + 制御 API）
+7. `validation/apps/mock-stripe` の stub
+8. `validation/apps/web` の stub
 
 ここまで作れば、実装に入れる。
