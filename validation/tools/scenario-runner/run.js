@@ -225,6 +225,7 @@ function copyIfExists(src, dest, fallback) {
 }
 
 async function main() {
+  const fastMode = process.env.FAST_MODE === "1";
   const scenarioId = process.argv[2] || "third_party_api_rate_limit_cascade";
   const scenario = parseScenarioYaml(fs.readFileSync(scenarioPath, "utf8"));
   const startedAt = new Date();
@@ -263,11 +264,13 @@ async function main() {
 
   await requestJson("POST", `${loadgenControlUrl}/__admin/profile`, { profile: "baseline" });
   events.push({ ts: new Date().toISOString(), type: "load_profile_changed", profile: "baseline" });
-  await sleep(Math.min((scenario.runtime.warmup_sec || 10) * 1000, 5000));
+  const warmupSec = fastMode && scenario.fast_mode ? scenario.fast_mode.warmup_sec : scenario.runtime.warmup_sec;
+  await sleep(Math.min((warmupSec || 10) * 1000, 5000));
 
   await requestJson("POST", `${loadgenControlUrl}/__admin/profile`, { profile: "flash_sale" });
   events.push({ ts: new Date().toISOString(), type: "load_profile_changed", profile: "flash_sale" });
-  await sleep(Math.min((scenario.runtime.steady_state_sec || 10) * 1000, 5000));
+  const steadyStateSec = fastMode && scenario.fast_mode ? scenario.fast_mode.steady_state_sec : scenario.runtime.steady_state_sec;
+  await sleep(Math.min((steadyStateSec || 10) * 1000, 5000));
 
   await requestJson("POST", `${stripeAdminUrl}/mode`, {
     mode: scenario.fault_injection.mode || "rate_limited",
@@ -281,11 +284,37 @@ async function main() {
     mode: scenario.fault_injection.mode || "rate_limited"
   });
 
-  await sleep(Math.min((scenario.runtime.incident_sec || 10) * 1000, 7000));
+  const incidentSec = fastMode && scenario.fast_mode ? scenario.fast_mode.incident_sec : scenario.runtime.incident_sec;
+  await sleep(fastMode ? (incidentSec || 10) * 1000 : Math.min((incidentSec || 10) * 1000, 7000));
+
+  // Recovery step (optional)
+  if (scenario.fault_injection && scenario.fault_injection.recovery) {
+    const recovery = scenario.fault_injection.recovery;
+    await sleep((recovery.at_offset_sec || 0) * 1000);
+    const adminUrlMap = {
+      web: webBaseUrl,
+      loadgen: loadgenControlUrl,
+      stripe: stripeAdminUrl
+    };
+    const recoveryAdminUrl = adminUrlMap[recovery.target];
+    if (recoveryAdminUrl) {
+      await requestJson("POST", `${recoveryAdminUrl}/__admin/mode`, {
+        mode: recovery.mode,
+        config: recovery.config || {}
+      });
+    }
+    events.push({
+      ts: new Date().toISOString(),
+      type: "dependency_recovery",
+      target: recovery.target,
+      mode: recovery.mode
+    });
+  }
 
   await requestJson("POST", `${loadgenControlUrl}/__admin/profile`, { profile: "stop" });
   events.push({ ts: new Date().toISOString(), type: "load_profile_changed", profile: "stop" });
-  await sleep(Math.min((scenario.runtime.cooldown_sec || 5) * 1000, 3000));
+  const cooldownSec = fastMode && scenario.fast_mode ? scenario.fast_mode.cooldown_sec : scenario.runtime.cooldown_sec;
+  await sleep(Math.min((cooldownSec || 5) * 1000, 3000));
 
   events.push({ ts: new Date().toISOString(), type: "scenario_completed", scenario_id: scenarioId });
 
