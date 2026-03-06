@@ -13,6 +13,7 @@ const stripeAdminUrl = process.env.STRIPE_ADMIN_URL || "http://mock-stripe:4000/
 const notificationSvcAdminUrl = process.env.NOTIFICATION_SVC_ADMIN_URL || "http://mock-notification-svc:7001";
 const loadgenControlUrl = process.env.LOADGEN_CONTROL_URL || "http://loadgen:8080";
 const migrationRunnerUrl = process.env.MIGRATION_RUNNER_URL || "http://migration-runner:5001";
+const cdnBaseUrl = process.env.CDN_BASE_URL || "http://mock-cdn:3001";
 
 function requestJson(method, urlString, body) {
   const url = new URL(urlString);
@@ -181,6 +182,9 @@ function buildSummary(scenario, metricsBody, loadgenBody, dependencyState, event
   const successRate = loadgenBody.sent ? loadgenBody.succeeded / loadgenBody.sent : 0;
   const failureRate = loadgenBody.sent ? loadgenBody.failed / loadgenBody.sent : 0;
   const impactedRoutes = expected.impacted_routes || [];
+  const dependencyFailureMode = scenario.scenario_id === "upstream_cdn_stale_cache_poison"
+    ? (dependencyState.mode || (dependencyState.cachedErrorsTotal > 0 ? "cached_error" : "unknown"))
+    : (dependencyState.mode || dependencyState.phase || "unknown");
   return {
     incident_window: {
       started_at: events[0].ts,
@@ -191,7 +195,7 @@ function buildSummary(scenario, metricsBody, loadgenBody, dependencyState, event
     suspicious_dependencies: expected.suspicious_dependencies || [],
     observed_pattern: {
       trigger_phase: "flash_sale",
-      dependency_failure_mode: dependencyState.mode || dependencyState.phase || "unknown",
+      dependency_failure_mode: dependencyFailureMode,
       shared_resource: scenarioIdSharedResource(scenario),
       blast_radius: impactedRoutes.length > 1
         ? `${impactedRoutes.join(" and ")} degraded during the incident window`
@@ -220,6 +224,9 @@ function scenarioIdSharedResource(scenario) {
   if (scenario.scenario_id === "cascading_timeout_downstream_dependency") {
     return "shared worker pool";
   }
+  if (scenario.scenario_id === "upstream_cdn_stale_cache_poison") {
+    return "mock-cdn cache state and shared request path";
+  }
   return "checkout worker pool";
 }
 
@@ -244,8 +251,11 @@ async function main() {
   const loadgenLogPath = path.join(path.dirname(outputDir), "service-logs", "loadgen.jsonl");
   const migrationLogPath = path.join(path.dirname(outputDir), "service-logs", "migration-runner.jsonl");
   const notificationLogPath = path.join(path.dirname(outputDir), "service-logs", "mock-notification-svc.jsonl");
-  const isMigrationScenario = scenario.fault_injection && scenario.fault_injection.target === "migration-runner";
-  const isNotificationScenario = scenario.fault_injection && scenario.fault_injection.target === "mock-notification-svc";
+  const cdnLogPath = path.join(path.dirname(outputDir), "service-logs", "mock-cdn.jsonl");
+  const faultTarget = scenario.fault_injection ? scenario.fault_injection.target : "payment_dependency";
+  const isMigrationScenario = faultTarget === "migration-runner";
+  const isNotificationScenario = faultTarget === "mock-notification-svc";
+  const isCdnScenario = scenario.scenario_id === "upstream_cdn_stale_cache_poison" || !!(scenario.loadgen && scenario.loadgen.target_url);
 
   ensureDir(runDir);
   ensureDir(collectorDir);
@@ -256,8 +266,11 @@ async function main() {
   if (isMigrationScenario) {
     resetFile(migrationLogPath);
   }
-  if (isNotificationScenario || process.env.NOTIFICATION_SVC_ADMIN_URL) {
+  if (isNotificationScenario) {
     resetFile(notificationLogPath);
+  }
+  if (isCdnScenario) {
+    resetFile(cdnLogPath);
   }
 
   await waitForHealth(`${webBaseUrl}/health`, "web");
@@ -266,9 +279,13 @@ async function main() {
   if (isMigrationScenario) {
     await waitForHealth(`${migrationRunnerUrl}/__admin/health`, "migration-runner");
   }
-  if (process.env.NOTIFICATION_SVC_ADMIN_URL) {
+  if (isNotificationScenario) {
     await waitForHealth(`${notificationSvcAdminUrl}/__admin/health`, "mock-notification-svc");
     await requestJson("POST", `${notificationSvcAdminUrl}/__admin/reset`);
+  }
+  if (isCdnScenario) {
+    await waitForHealth(`${cdnBaseUrl}/__admin/health`, "mock-cdn");
+    await requestJson("POST", `${cdnBaseUrl}/__admin/reset`);
   }
 
   const webReset = await requestJson("POST", `${webBaseUrl}/__admin/reset`, { runId });
@@ -284,8 +301,11 @@ async function main() {
   if (isMigrationScenario) {
     resetServices.push("migration-runner");
   }
-  if (process.env.NOTIFICATION_SVC_ADMIN_URL) {
+  if (isNotificationScenario) {
     resetServices.push("mock-notification-svc");
+  }
+  if (isCdnScenario) {
+    resetServices.push("mock-cdn");
   }
   events.push({
     ts: new Date().toISOString(),
@@ -296,6 +316,10 @@ async function main() {
 
   events.push({ ts: new Date().toISOString(), type: "scenario_started", scenario_id: scenarioId });
 
+  if (scenario.loadgen && scenario.loadgen.target_url) {
+    await requestJson("POST", `${loadgenControlUrl}/__admin/target`, { url: scenario.loadgen.target_url });
+    events.push({ ts: new Date().toISOString(), type: "loadgen_target_set", url: scenario.loadgen.target_url });
+  }
   if (scenario.traffic && scenario.traffic.baseline) {
     await requestJson("POST", `${loadgenControlUrl}/__admin/profile`, {
       profile: "baseline",
@@ -331,11 +355,11 @@ async function main() {
       action: action.endpoint || "/__admin/start"
     });
   } else {
-    const faultTarget = scenario.fault_injection.target || "payment_dependency";
     const faultAction = scenario.fault_injection.action || {};
     const faultMode = faultAction.mode || scenario.fault_injection.mode || "rate_limited";
     const faultConfig = faultAction.config || scenario.fault_injection.config || {};
     const faultModeUrlMap = {
+      web: `${webBaseUrl}/__admin/mode`,
       payment_dependency: `${stripeAdminUrl}/mode`,
       "mock-stripe": `${stripeAdminUrl}/mode`,
       "mock-notification-svc": `${notificationSvcAdminUrl}/__admin/mode`
@@ -347,39 +371,47 @@ async function main() {
     firstSymptomOracle = new Date().toISOString();
     events.push({
       ts: firstSymptomOracle,
-      type: "dependency_mode_changed",
+      type: faultTarget === "web" ? "fault_injected" : "dependency_mode_changed",
+      target: faultTarget,
       service: faultTarget,
       mode: faultMode
     });
   }
 
-  const incidentSec = fastMode && scenario.fast_mode ? scenario.fast_mode.incident_sec : scenario.runtime.incident_sec;
-  await sleep(fastMode ? (incidentSec || 10) * 1000 : Math.min((incidentSec || 10) * 1000, 7000));
+  const incidentMs = fastMode && scenario.fast_mode
+    ? (scenario.fast_mode.incident_sec || 10) * 1000
+    : Math.min((scenario.runtime.incident_sec || 10) * 1000, 7000);
 
-  if (scenario.fault_injection && scenario.fault_injection.recovery) {
-    const recovery = scenario.fault_injection.recovery;
-    await sleep((recovery.at_offset_sec || 0) * 1000);
-    const adminUrlMap = {
-      web: webBaseUrl,
-      loadgen: loadgenControlUrl,
-      stripe: stripeAdminUrl,
-      "migration-runner": migrationRunnerUrl,
-      "mock-notification-svc": notificationSvcAdminUrl
-    };
-    const recoveryAdminUrl = adminUrlMap[recovery.target];
-    if (recoveryAdminUrl) {
-      await requestJson("POST", `${recoveryAdminUrl}/__admin/mode`, {
-        mode: recovery.mode,
-        config: recovery.config || {}
-      });
-    }
-    events.push({
-      ts: new Date().toISOString(),
-      type: "dependency_recovery",
-      target: recovery.target,
-      mode: recovery.mode
-    });
-  }
+  const incidentPromise = sleep(incidentMs);
+  const recoveryPromise = (scenario.fault_injection && scenario.fault_injection.recovery)
+    ? (async () => {
+        const recovery = scenario.fault_injection.recovery;
+        await sleep((recovery.at_offset_sec || 0) * 1000);
+        const adminUrlMap = {
+          web: webBaseUrl,
+          loadgen: loadgenControlUrl,
+          stripe: stripeAdminUrl,
+          "migration-runner": migrationRunnerUrl,
+          "mock-notification-svc": notificationSvcAdminUrl,
+          cdn: cdnBaseUrl
+        };
+        const recoveryAdminUrl = adminUrlMap[recovery.target];
+        if (recoveryAdminUrl) {
+          await requestJson("POST", `${recoveryAdminUrl}/__admin/mode`, {
+            mode: recovery.mode,
+            config: recovery.config || {}
+          });
+        }
+        events.push({
+          ts: new Date().toISOString(),
+          type: "dependency_recovery",
+          target: recovery.target,
+          mode: recovery.mode
+        });
+       })()
+     : Promise.resolve();
+
+  await Promise.all([incidentPromise, recoveryPromise]);
 
   await requestJson("POST", `${loadgenControlUrl}/__admin/profile`, { profile: "stop" });
   events.push({ ts: new Date().toISOString(), type: "load_profile_changed", profile: "stop" });
@@ -394,7 +426,12 @@ async function main() {
     ? await requestJson("GET", `${migrationRunnerUrl}/__admin/state`)
     : isNotificationScenario
       ? await requestJson("GET", `${notificationSvcAdminUrl}/__admin/state`)
-      : await requestJson("GET", `${stripeAdminUrl}/state`);
+      : isCdnScenario
+        ? await requestJson("GET", `${cdnBaseUrl}/__admin/state`)
+        : await requestJson("GET", `${stripeAdminUrl}/state`);
+  if (isCdnScenario) {
+    events.push({ ts: new Date().toISOString(), type: "cdn_final_state", state: dependencyState.body });
+  }
 
   fs.writeFileSync(path.join(runDir, "events.json"), JSON.stringify(events, null, 2) + "\n");
   fs.writeFileSync(
@@ -413,8 +450,11 @@ async function main() {
   if (isMigrationScenario) {
     serviceLogFiles.push(migrationLogPath);
   }
-  if (process.env.NOTIFICATION_SVC_ADMIN_URL) {
+  if (isNotificationScenario) {
     serviceLogFiles.push(notificationLogPath);
+  }
+  if (isCdnScenario) {
+    serviceLogFiles.push(cdnLogPath);
   }
   const mergedServiceLogs = mergeLogFiles(serviceLogFiles);
   copyIfExists(path.join(collectorDir, "traces.json"), path.join(runDir, "traces.json"), "[]\n");

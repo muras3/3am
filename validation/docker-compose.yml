@@ -96,6 +96,28 @@ services:
       - otel-collector
     profiles: [cascading-timeout]
 
+  mock-cdn:
+    build:
+      context: ./apps/mock-cdn
+    ports:
+      - "3001:3001"
+    environment:
+      PORT: "3001"
+      WEB_ORIGIN_URL: http://web:3000
+      CDN_CACHE_TTL_SEC: "30"
+      OTEL_SERVICE_NAME: mock-cdn
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+      APP_LOG_FILE: /workspace/out/service-logs/mock-cdn.jsonl
+    volumes:
+      - ./out:/workspace/out
+    depends_on:
+      - web
+      - otel-collector
+    volumes:
+      - ./out:/workspace/out
+    profiles:
+      - cdn-cache
+
   otel-collector:
     image: otel/opentelemetry-collector-contrib:0.101.0
     command: ["--config=/etc/otelcol/config.yaml"]
@@ -134,6 +156,7 @@ services:
       NOTIFICATION_SVC_ADMIN_URL: http://mock-notification-svc:7001
       LOADGEN_CONTROL_URL: http://loadgen:8080
       MIGRATION_RUNNER_URL: http://migration-runner:5001
+      CDN_BASE_URL: http://mock-cdn:3001
       OTEL_COLLECTOR_DIR: /workspace/out/collector
     volumes:
       - ./scenarios:/workspace/scenarios:ro

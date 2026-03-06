@@ -1,0 +1,65 @@
+scenario_id: upstream_cdn_stale_cache_poison
+description: >
+  Origin briefly returns 503 with Cache-Control: public, s-maxage=30. CDN caches
+  the error. After origin recovers, CDN continues serving stale 503 until TTL expires.
+
+runtime:
+  warmup_sec: 30
+  steady_state_sec: 20
+  incident_sec: 60
+  cooldown_sec: 15
+
+fast_mode:
+  enabled: true
+  warmup_sec: 5
+  steady_state_sec: 5
+  incident_sec: 45
+  cooldown_sec: 5
+
+services:
+  web:
+    base_url: http://web:3000
+    healthcheck: /health
+  cdn:
+    admin_url: http://mock-cdn:3001/__admin
+    state_url: http://mock-cdn:3001/__admin/state
+  loadgen:
+    control_url: http://loadgen:8080
+
+traffic:
+  baseline:
+    rps: 8
+    routes:
+      - { method: GET, path: /dashboard, weight: 6 }
+      - { method: GET, path: /products, weight: 2 }
+      - { method: POST, path: /checkout, weight: 1 }
+      - { method: GET, path: /health, weight: 1 }
+  flash_sale:
+    rps: 30
+    routes:
+      - { method: GET, path: /dashboard, weight: 6 }
+      - { method: GET, path: /products, weight: 2 }
+      - { method: POST, path: /checkout, weight: 1 }
+      - { method: GET, path: /health, weight: 1 }
+
+fault_injection:
+  target: web
+  action:
+    mode: degraded
+  recovery:
+    at_offset_sec: 10
+    target: web
+    mode: normal
+    config: {}
+
+expected_observations:
+  tags: [validation, docker-compose, cdn, cache-poison, stale-cache, "503"]
+  top_errors: ["503 from cached CDN response", "stale cache serving error after origin recovery"]
+  suspicious_dependencies: [mock-cdn]
+  impacted_routes: [/dashboard, /products]
+
+loadgen:
+  target_url: http://mock-cdn:3001
+
+overrides:
+  cdn_cache_ttl_sec: 30

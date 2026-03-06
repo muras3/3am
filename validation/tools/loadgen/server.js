@@ -1,5 +1,6 @@
 const http = require("http");
 const fs = require("fs");
+const path = require("path");
 const { URL } = require("url");
 
 const port = Number(process.env.PORT || 8080);
@@ -48,7 +49,7 @@ function log(message, fields = {}) {
 }
 
 if (appLogFile) {
-  fs.mkdirSync(require("path").dirname(appLogFile), { recursive: true });
+  fs.mkdirSync(path.dirname(appLogFile), { recursive: true });
   logStream = fs.createWriteStream(appLogFile, { flags: "a" });
 }
 
