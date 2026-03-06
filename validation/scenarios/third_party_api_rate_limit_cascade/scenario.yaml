@@ -12,6 +12,13 @@ runtime:
   incident_sec: 300
   cooldown_sec: 180
 
+fast_mode:
+  enabled: true
+  warmup_sec: 5
+  steady_state_sec: 5
+  incident_sec: 10
+  cooldown_sec: 3
+
 services:
   web:
     base_url: http://web:3000
