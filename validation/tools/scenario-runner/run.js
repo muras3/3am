@@ -217,11 +217,33 @@ function buildSummary(metricsBody, loadgenBody, stripeBody, events) {
 }
 
 function copyIfExists(src, dest, fallback) {
-  if (fs.existsSync(src)) {
+  if (fs.existsSync(src) && fs.statSync(src).size > 0) {
     fs.copyFileSync(src, dest);
     return;
   }
   fs.writeFileSync(dest, fallback);
+}
+
+function normalizeCollectorJson(src, dest, emptyFallback) {
+  if (!fs.existsSync(src) || fs.statSync(src).size === 0) {
+    fs.writeFileSync(dest, emptyFallback);
+    return;
+  }
+  const raw = fs.readFileSync(src, "utf8").trim();
+  if (!raw) {
+    fs.writeFileSync(dest, emptyFallback);
+    return;
+  }
+
+  const records = [];
+  for (const chunk of raw.split(/\n+/)) {
+    const trimmed = chunk.trim();
+    if (!trimmed) {
+      continue;
+    }
+    records.push(JSON.parse(trimmed));
+  }
+  fs.writeFileSync(dest, JSON.stringify(records, null, 2) + "\n");
 }
 
 async function main() {
@@ -307,11 +329,11 @@ async function main() {
   );
 
   const mergedServiceLogs = mergeLogFiles([webLogPath, stripeLogPath, loadgenLogPath]);
-  copyIfExists(path.join(collectorDir, "traces.json"), path.join(runDir, "traces.json"), "[]\n");
-  copyIfExists(path.join(collectorDir, "traces.json"), path.join(runDir, "otel_traces.json"), "[]\n");
-  copyIfExists(path.join(collectorDir, "logs.jsonl"), path.join(runDir, "otel_logs.json"), "[]\n");
-  copyIfExists(path.join(collectorDir, "metrics.json"), path.join(runDir, "metrics.json"), "{}\n");
-  copyIfExists(path.join(collectorDir, "metrics.json"), path.join(runDir, "otel_metrics.json"), "{}\n");
+  normalizeCollectorJson(path.join(collectorDir, "traces.json"), path.join(runDir, "traces.json"), "[]\n");
+  normalizeCollectorJson(path.join(collectorDir, "traces.json"), path.join(runDir, "otel_traces.json"), "[]\n");
+  normalizeCollectorJson(path.join(collectorDir, "logs.jsonl"), path.join(runDir, "otel_logs.json"), "[]\n");
+  normalizeCollectorJson(path.join(collectorDir, "metrics.json"), path.join(runDir, "metrics.json"), "[]\n");
+  normalizeCollectorJson(path.join(collectorDir, "metrics.json"), path.join(runDir, "otel_metrics.json"), "[]\n");
   fs.writeFileSync(path.join(runDir, "logs.jsonl"), mergedServiceLogs);
   fs.writeFileSync(
     path.join(runDir, "platform_logs.json"),
