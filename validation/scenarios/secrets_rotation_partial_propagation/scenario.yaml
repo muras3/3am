@@ -1,0 +1,47 @@
+scenario_id: secrets_rotation_partial_propagation
+title: API key rotated but old deployment still uses revoked key
+description: >
+  API key rotated but old deployment still uses revoked key_v1 while new
+  deployment uses key_v2. Old deployment gets 401, new deployment continues
+  successfully.
+
+runtime:
+  warmup_sec: 30
+  steady_state_sec: 20
+  incident_sec: 60
+  cooldown_sec: 10
+
+fast_mode:
+  enabled: true
+  warmup_sec: 5
+  steady_state_sec: 5
+  incident_sec: 15
+  cooldown_sec: 3
+
+fault_injection:
+  target: mock-sendgrid
+  action:
+    endpoint: "/__admin/revoke"
+    method: POST
+    body:
+      key: key_v1
+
+traffic:
+  baseline:
+    rps: 8
+    routes:
+      - { method: POST, path: /notifications/send, weight: 8, headers: { X-Deployment-ID: dpl_old } }
+      - { method: POST, path: /notifications/send, weight: 8, headers: { X-Deployment-ID: dpl_new }, target_url: "http://web-v2:3000" }
+      - { method: GET, path: /health, weight: 2 }
+  flash_sale:
+    rps: 20
+    routes:
+      - { method: POST, path: /notifications/send, weight: 8, headers: { X-Deployment-ID: dpl_old } }
+      - { method: POST, path: /notifications/send, weight: 8, headers: { X-Deployment-ID: dpl_new }, target_url: "http://web-v2:3000" }
+      - { method: GET, path: /health, weight: 2 }
+
+expected_observations:
+  tags: [validation, docker-compose, secrets-rotation, api-key, partial-propagation, deployment-skew]
+  top_errors: ["sendgrid auth failure", "authorization grant is invalid, expired, or revoked"]
+  suspicious_dependencies: [mock-sendgrid]
+  impacted_routes: [/notifications/send]
