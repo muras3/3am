@@ -182,6 +182,9 @@ function buildSummary(scenario, metricsBody, loadgenBody, dependencyState, event
   const successRate = loadgenBody.sent ? loadgenBody.succeeded / loadgenBody.sent : 0;
   const failureRate = loadgenBody.sent ? loadgenBody.failed / loadgenBody.sent : 0;
   const impactedRoutes = expected.impacted_routes || [];
+  const dependencyFailureMode = scenario.scenario_id === "upstream_cdn_stale_cache_poison"
+    ? (dependencyState.mode || (dependencyState.cachedErrorsTotal > 0 ? "cached_error" : "unknown"))
+    : (dependencyState.mode || dependencyState.phase || "unknown");
   return {
     incident_window: {
       started_at: events[0].ts,
@@ -192,7 +195,7 @@ function buildSummary(scenario, metricsBody, loadgenBody, dependencyState, event
     suspicious_dependencies: expected.suspicious_dependencies || [],
     observed_pattern: {
       trigger_phase: "flash_sale",
-      dependency_failure_mode: dependencyState.mode || dependencyState.phase || "unknown",
+      dependency_failure_mode: dependencyFailureMode,
       shared_resource: scenarioIdSharedResource(scenario),
       blast_radius: impactedRoutes.length > 1
         ? `${impactedRoutes.join(" and ")} degraded during the incident window`
