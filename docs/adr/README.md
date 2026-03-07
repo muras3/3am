@@ -8,3 +8,4 @@
 - [0004-ground-truth-schema-compatibility.md](/Users/murase/project/3amoncall/docs/adr/0004-ground-truth-schema-compatibility.md)
 - [0005-raw-evaluation-inputs.md](/Users/murase/project/3amoncall/docs/adr/0005-raw-evaluation-inputs.md)
 - [0006-pr-only-integration-workflow.md](/Users/murase/project/3amoncall/docs/adr/0006-pr-only-integration-workflow.md)
+- [0007-incident-packet-generated-in-receiver.md](/Users/murase/project/3amoncall/docs/adr/0007-incident-packet-generated-in-receiver.md)
