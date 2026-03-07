@@ -104,6 +104,28 @@ packet に含めるもの:
 
 これは LLM 不要の前処理であり、`retrieval / correlation / packaging` の層として Receiver が担う。
 
+### Problem Grouping と Packetization
+
+Receiver は複数の signal / alert をそのまま個別通知しない。  
+同じ incident に属すると判断できるものは、まず **1つの problem** に束ねてから packet を作る。
+
+LLM を使わずに行うこと:
+
+- time window の切り出し
+- service / route / deployment / dependency の scope narrowing
+- related alerts の problem grouping
+- changed metrics の抽出
+- representative traces / spans / logs の選定
+
+LLM（v5）が担当するのは、その packet を読んだ後の
+
+- trigger の解釈
+- root cause の特定
+- causal chain の説明
+- recovery action の提案
+
+である。
+
 #### 診断ランタイム（実行環境は未確定）
 
 Receiverからwebhookと `incident packet` を受け取り、v5プロンプトでLLM診断を実行する。実行環境の選択肢は以下のとおりで、v0.2時点では確定していない：
@@ -158,6 +180,8 @@ MVP では**ルールベースを第一仮説**として検証する。偽陽性
   3. **過去インシデント署名マッチ**
 
 ### 診断プロンプト（v5 — 7ステップ）
+`v5` は raw dump 全体を読むためのプロンプトではなく、problem grouping と packetization を経た `incident packet` を読むための推論レイヤーとして使う。
+
 1. **Triage**: 重要度・影響範囲の初期判定
 2. **Quantify Changes**: 各次元を0-100でスコアリング（0も有益な情報）
 3. **Map Dependencies and Shared Resources**: 内部/外部の依存関係を仮説より先にマッピング
@@ -216,6 +240,7 @@ MVP では**ルールベースを第一仮説**として検証する。偽陽性
 | **HIGH** | FAST_MODE結果の留保 | フルスケールrunでの9.0/10は未検証。信号量不足の可能性 | フルスケールrunでの再検証をPhase 1前提条件とする |
 | **MEDIUM** | LLMコスト爆発 | 1インシデントあたりのトークン消費量未見積もり。大量アラート時のコスト不明 | トークン計測をvalidation harness に追加する |
 | **MEDIUM** | incident packet 生成が弱く、LLM input が肥大化する | フルスケール run では raw data が数 MB 規模になる | packet 生成を Receiver に置き、scope narrowing と signal extraction を前段で行う |
+| **MEDIUM** | problem grouping が弱く、1障害が複数通知に分裂する | Datadog/Dynatrace のような problem 化は未実装 | related alerts を LLM なしで problem 単位に束ねる前段ロジックを実装する |
 | **MEDIUM** | 診断ランタイムの実行環境が未確定 | GitHub Actions推奨だが、全ユーザーが使うわけではない | MVP時点は選択式にしてユーザー行動を観察する |
 | **MEDIUM** | Receiver がログ基盤化して複雑化する | Incident Console を広げすぎると mini Datadog になり、検索・保持・権限管理が重くなる | OTel + platform logs 限定、incident-scoped、最大3日保持を設計原則に固定する |
 | **LOW** | 配布・採用戦略未検討 | Phase 2以降 | 未着手 |

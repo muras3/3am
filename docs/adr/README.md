@@ -9,3 +9,4 @@
 - [0005-raw-evaluation-inputs.md](/Users/murase/project/3amoncall/docs/adr/0005-raw-evaluation-inputs.md)
 - [0006-pr-only-integration-workflow.md](/Users/murase/project/3amoncall/docs/adr/0006-pr-only-integration-workflow.md)
 - [0007-incident-packet-generated-in-receiver.md](/Users/murase/project/3amoncall/docs/adr/0007-incident-packet-generated-in-receiver.md)
+- [0008-problem-grouping-and-packetization-without-llm.md](/Users/murase/project/3amoncall/docs/adr/0008-problem-grouping-and-packetization-without-llm.md)
