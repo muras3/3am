@@ -4,8 +4,11 @@ const http = require("http");
 const { URL } = require("url");
 const yaml = require("js-yaml");
 
-const scenarioPath = process.env.SCENARIO_FILE;
-const groundTruthPath = process.env.GROUND_TRUTH_FILE;
+const _scenarioId0 = process.argv[2] || "third_party_api_rate_limit_cascade";
+const _defaultScenarioDir = `/workspace/scenarios/${_scenarioId0}`;
+// argv[2] wins over env var so `docker compose run scenario-runner node /app/run.js <id>` works correctly
+const scenarioPath = process.argv[2] ? `${_defaultScenarioDir}/scenario.yaml` : (process.env.SCENARIO_FILE || `${_defaultScenarioDir}/scenario.yaml`);
+const groundTruthPath = process.argv[2] ? `${_defaultScenarioDir}/ground_truth.template.json` : (process.env.GROUND_TRUTH_FILE || `${_defaultScenarioDir}/ground_truth.template.json`);
 const outputDir = process.env.OUTPUT_DIR || "/workspace/out/runs";
 const collectorDir = process.env.OTEL_COLLECTOR_DIR || "/workspace/out/collector";
 const webBaseUrl = process.env.WEB_BASE_URL || "http://web:3000";
@@ -412,12 +415,12 @@ async function main() {
   await requestJson("POST", `${loadgenControlUrl}/__admin/profile`, { profile: "baseline" });
   events.push({ ts: new Date().toISOString(), type: "load_profile_changed", profile: "baseline" });
   const warmupSec = fastMode && scenario.fast_mode ? scenario.fast_mode.warmup_sec : scenario.runtime.warmup_sec;
-  await sleep(Math.min((warmupSec || 10) * 1000, 5000));
+  await sleep((warmupSec || 10) * 1000);
 
   await requestJson("POST", `${loadgenControlUrl}/__admin/profile`, { profile: "flash_sale" });
   events.push({ ts: new Date().toISOString(), type: "load_profile_changed", profile: "flash_sale" });
   const steadyStateSec = fastMode && scenario.fast_mode ? scenario.fast_mode.steady_state_sec : scenario.runtime.steady_state_sec;
-  await sleep(Math.min((steadyStateSec || 10) * 1000, 5000));
+  await sleep((steadyStateSec || 10) * 1000);
 
   let firstSymptomOracle;
   if (isMigrationScenario) {
@@ -470,7 +473,7 @@ async function main() {
 
   const incidentMs = fastMode && scenario.fast_mode
     ? (scenario.fast_mode.incident_sec || 10) * 1000
-    : Math.min((scenario.runtime.incident_sec || 10) * 1000, 7000);
+    : (scenario.runtime.incident_sec || 10) * 1000;
 
   const incidentPromise = sleep(incidentMs);
   const recoveryPromise = (scenario.fault_injection && scenario.fault_injection.recovery)
@@ -507,7 +510,7 @@ async function main() {
   await requestJson("POST", `${loadgenControlUrl}/__admin/profile`, { profile: "stop" });
   events.push({ ts: new Date().toISOString(), type: "load_profile_changed", profile: "stop" });
   const cooldownSec = fastMode && scenario.fast_mode ? scenario.fast_mode.cooldown_sec : scenario.runtime.cooldown_sec;
-  await sleep(Math.min((cooldownSec || 5) * 1000, 3000));
+  await sleep((cooldownSec || 5) * 1000);
 
   events.push({ ts: new Date().toISOString(), type: "scenario_completed", scenario_id: scenarioId });
 

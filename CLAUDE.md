@@ -87,6 +87,13 @@ Mapping to probe-investigate 10pt scale: 7-8 = 8-10, 5-6 = 5-7, 0-4 = 0-4
 - `probe-investigate` (`/Users/murase/project/probe-investigate/`): Validated diagnosis accuracy with synthetic fixtures (10 fixtures, avg 9.7/10, Sonnet 4.6 + v5 prompt)
 - probe-investigate's `bench/schema/scenario.schema.json` is the canonical ground_truth schema
 
+## ADR (Architecture Decision Records)
+
+- ADRs live in `docs/adr/`. Numbered sequentially (e.g. `0009-...`).
+- **Record architectural decisions proactively** — if you're making a non-obvious choice (data format, component boundary, evaluation strategy, tooling), write an ADR before or immediately after implementing it.
+- When in doubt, err on the side of writing one. ADRs are cheap; undocumented decisions are expensive.
+- Existing ADRs: 0001–0008. Check them before re-litigating settled decisions.
+
 ## Gotchas
 
 - `depends_on` alone does NOT guarantee PostgreSQL readiness. Always use healthcheck + condition
