@@ -92,7 +92,7 @@ Mapping to probe-investigate 10pt scale: 7-8 = 8-10, 5-6 = 5-7, 0-4 = 0-4
 - ADRs live in `docs/adr/`. Numbered sequentially (e.g. `0009-...`).
 - **Record architectural decisions proactively** — if you're making a non-obvious choice (data format, component boundary, evaluation strategy, tooling), write an ADR before or immediately after implementing it.
 - When in doubt, err on the side of writing one. ADRs are cheap; undocumented decisions are expensive.
-- Existing ADRs: 0001–0008. Check them before re-litigating settled decisions.
+- Existing ADRs: 0001–0009. Check them before re-litigating settled decisions.
 
 ## Gotchas
 
