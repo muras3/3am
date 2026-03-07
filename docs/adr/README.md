@@ -12,3 +12,6 @@
 - [0008-problem-grouping-and-packetization-without-llm.md](/Users/murase/project/3amoncall/docs/adr/0008-problem-grouping-and-packetization-without-llm.md)
 - [0009-diagnosis-evaluation-scoring-rubric.md](/Users/murase/project/3amoncall/docs/adr/0009-diagnosis-evaluation-scoring-rubric.md)
 - [0010-branching-strategy.md](/Users/murase/project/3amoncall/docs/adr/0010-branching-strategy.md)
+- [0011-otel-transport-security.md](/Users/murase/project/3amoncall/docs/adr/0011-otel-transport-security.md)
+- [0012-otel-wrapper-phase.md](/Users/murase/project/3amoncall/docs/adr/0012-otel-wrapper-phase.md)
+- [0013-cross-platform-storage-driver.md](/Users/murase/project/3amoncall/docs/adr/0013-cross-platform-storage-driver.md)
