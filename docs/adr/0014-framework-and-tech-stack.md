@@ -53,6 +53,22 @@ Codex (gpt-5.4) に2回相談し、いずれも同じ結論に至った。
 
 TanStack Start（メタフレームワーク）は使用しない。TanStack の恩恵は Router + Query として Console フロントエンド内で受ける。
 
+### デプロイトポロジー
+
+Receiver・Console API・Console UI・StorageDriver を **1つの Hono アプリとして一体デプロイ**する。
+
+```
+CF Workers / Vercel（1デプロイ）
+└── Hono
+    ├── POST /v1/traces      ← Receiver（OTLP）
+    ├── POST /v1/metrics
+    ├── GET  /api/incidents  ← Console API
+    └── GET  /*              ← Console UI（React SPA 静的配信）
+        └── StorageDriver（CF → D1、Vercel → Postgres）
+```
+
+Deploy Button 1回で Receiver・Console・DB が全て動く状態になる。StorageDriver はアプリ起動時にプラットフォームを検出し、適切なアダプターをバインドする。
+
 ### レイヤー構造（Receiver）
 
 ```
