@@ -89,9 +89,9 @@ Mapping to probe-investigate 10pt scale: 7-8 = 8-10, 5-6 = 5-7, 0-4 = 0-4
 
 ## Branching Strategy
 
-- `main`: リリース専用。直接コミット禁止。`devmain` からのマージのみ
-- `devmain`: 開発統合ブランチ。全フィーチャーブランチのマージ先
-- `feat/*`, `fix/*`, `docs/*` 等: `devmain` base で作成し `devmain` へ PR
+- `main`: リリース専用。直接コミット禁止。`develop` からのマージのみ
+- `develop`: 開発統合ブランチ。全フィーチャーブランチのマージ先
+- `feat/*`, `fix/*`, `docs/*` 等: `develop` base で作成し `develop` へ PR
 
 ## ADR (Architecture Decision Records)
 
