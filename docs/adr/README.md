@@ -10,3 +10,5 @@
 - [0006-pr-only-integration-workflow.md](/Users/murase/project/3amoncall/docs/adr/0006-pr-only-integration-workflow.md)
 - [0007-incident-packet-generated-in-receiver.md](/Users/murase/project/3amoncall/docs/adr/0007-incident-packet-generated-in-receiver.md)
 - [0008-problem-grouping-and-packetization-without-llm.md](/Users/murase/project/3amoncall/docs/adr/0008-problem-grouping-and-packetization-without-llm.md)
+- [0009-diagnosis-evaluation-scoring-rubric.md](/Users/murase/project/3amoncall/docs/adr/0009-diagnosis-evaluation-scoring-rubric.md)
+- [0010-branching-strategy.md](/Users/murase/project/3amoncall/docs/adr/0010-branching-strategy.md)
