@@ -22,7 +22,8 @@ fault_injection:
     endpoint: "/__admin/start"
     method: POST
     config:
-      lock_hold_sec: 10
+      reader_hold_sec: 5
+      migration_hold_sec: 35
 
 traffic:
   baseline:
