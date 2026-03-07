@@ -19,9 +19,12 @@ const state = {
   connectionB_pid: null,
   lockHoldStartedAt: null,
   alterStartedAt: null,
+  exclusiveLockStartedAt: null,
   doneAt: null,
   clientA: null,
-  clientB: null
+  clientB: null,
+  readerHoldSec: null,
+  migrationHoldSec: null
 };
 
 function log(message, fields = {}) {
@@ -94,13 +97,17 @@ async function ensureOrdersTable() {
   }
 }
 
-async function startMigration(holdSec) {
+async function startMigration(config = {}) {
   if (state.phase !== "idle") {
     throw new Error(`cannot start: current phase is ${state.phase}`);
   }
 
-  const effectiveHoldSec = holdSec || lockHoldSec;
+  const readerHoldSec = Number(config.reader_hold_sec || config.lock_hold_sec || lockHoldSec);
+  const migrationHoldSec = Number(config.migration_hold_sec || config.exclusive_lock_hold_sec || readerHoldSec);
+  const alterStartDelayMs = Number(config.alter_start_delay_ms || 1000);
   state.phase = "locking";
+  state.readerHoldSec = readerHoldSec;
+  state.migrationHoldSec = migrationHoldSec;
 
   const lockHoldSpan = tracer.startSpan("migration.lock_hold", {
     attributes: { "db.system": "postgresql", "db.operation": "select" }
@@ -113,15 +120,25 @@ async function startMigration(holdSec) {
   const pidResultA = await state.clientA.query("SELECT pg_backend_pid() AS pid");
   state.connectionA_pid = pidResultA.rows[0].pid;
   await state.clientA.query("BEGIN");
-  // Run the analytics query — this acquires AccessShareLock on orders
-  await state.clientA.query("SELECT COUNT(*), SUM(EXTRACT(epoch FROM created_at)::bigint) FROM orders");
   state.lockHoldStartedAt = new Date().toISOString();
-  log("analytics query started", { pid: state.connectionA_pid });
+  log("analytics query started", { pid: state.connectionA_pid, readerHoldSec });
 
-  // After holdSec, fire the ALTER TABLE on connection B, then release A
+  state.clientA.query("LOCK TABLE orders IN ACCESS SHARE MODE").then(async () => {
+    await state.clientA.query("SELECT pg_sleep($1)", [readerHoldSec]);
+    await state.clientA.query("COMMIT");
+    await state.clientA.end();
+    state.clientA = null;
+    lockHoldSpan.end();
+    log("analytics query committed");
+  }).catch((err) => {
+    log("analytics query error", { error: err.message });
+    lockHoldSpan.setStatus({ code: SpanStatusCode.ERROR, message: err.message });
+    lockHoldSpan.end();
+  });
+
   setTimeout(async () => {
     try {
-      state.phase = "migrating";
+      state.phase = "migration_waiting";
 
       const alterSpan = tracer.startSpan("migration.alter_table", {
         attributes: {
@@ -138,27 +155,14 @@ async function startMigration(holdSec) {
       const pidResultB = await state.clientB.query("SELECT pg_backend_pid() AS pid");
       state.connectionB_pid = pidResultB.rows[0].pid;
       state.alterStartedAt = new Date().toISOString();
-      log("migration started", { pid: state.connectionB_pid });
+      log("migration started", { pid: state.connectionB_pid, migrationHoldSec });
 
       await state.clientB.query("BEGIN");
-
-      // Keep the blocking reader open long enough for later SELECTs to queue behind the waiting ALTER TABLE.
-      setTimeout(async () => {
-        try {
-          await state.clientA.query("COMMIT");
-          await state.clientA.end();
-          state.clientA = null;
-          lockHoldSpan.end();
-          log("analytics query committed");
-        } catch (err) {
-          log("error committing connection A", { error: err.message });
-          lockHoldSpan.setStatus({ code: SpanStatusCode.ERROR, message: err.message });
-          lockHoldSpan.end();
-        }
-      }, effectiveHoldSec * 1000);
-
-      // ALTER TABLE blocks until connection A releases the lock
       await state.clientB.query("ALTER TABLE orders ADD COLUMN IF NOT EXISTS priority INTEGER DEFAULT 0");
+      state.phase = "exclusive_lock_held";
+      state.exclusiveLockStartedAt = new Date().toISOString();
+      log("migration exclusive lock acquired", { pid: state.connectionB_pid, migrationHoldSec });
+      await state.clientB.query("SELECT pg_sleep($1)", [migrationHoldSec]);
       await state.clientB.query("COMMIT");
       await state.clientB.end();
       state.clientB = null;
@@ -172,7 +176,7 @@ async function startMigration(holdSec) {
       state.phase = "done";
       state.doneAt = new Date().toISOString();
     }
-  }, effectiveHoldSec * 1000);
+  }, alterStartDelayMs);
 }
 
 async function resetState() {
@@ -225,9 +229,12 @@ async function resetState() {
   state.connectionB_pid = null;
   state.lockHoldStartedAt = null;
   state.alterStartedAt = null;
+  state.exclusiveLockStartedAt = null;
   state.doneAt = null;
   state.clientA = null;
   state.clientB = null;
+  state.readerHoldSec = null;
+  state.migrationHoldSec = null;
   log("migration-runner reset");
 }
 
@@ -263,6 +270,9 @@ async function main() {
         connectionB_pid: state.connectionB_pid,
         lockHoldStartedAt: state.lockHoldStartedAt,
         alterStartedAt: state.alterStartedAt,
+        exclusiveLockStartedAt: state.exclusiveLockStartedAt,
+        readerHoldSec: state.readerHoldSec,
+        migrationHoldSec: state.migrationHoldSec,
         doneAt: state.doneAt
       });
       return;
@@ -271,7 +281,7 @@ async function main() {
     if (req.method === "POST" && url.pathname === "/__admin/start") {
       try {
         const body = await readJson(req);
-        await startMigration(body.lock_hold_sec);
+        await startMigration(body);
         sendJson(res, 200, { ok: true, state: state.phase });
       } catch (err) {
         sendJson(res, 409, { error: err.message });
