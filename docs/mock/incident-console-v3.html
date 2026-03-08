@@ -869,7 +869,7 @@ button { font:inherit; cursor:pointer; border:none; background:none; }
       <section class="section-action">
         <div class="eyebrow">Immediate Action</div>
         <div class="action-text">Kill fixed retries. Shed checkout traffic.</div>
-        <div class="action-why">The local system is amplifying an external failure. Retry suppression is the fastest control point to reduce blast radius before the upstream rate limit recovers.</div>
+        <div class="action-why"><strong>Why:</strong> The local system is amplifying an external failure. Retry suppression is the fastest control point — see causal chain below.</div>
       </section>
 
       <!-- Causal chain -->
@@ -958,18 +958,17 @@ button { font:inherit; cursor:pointer; border:none; background:none; }
       </div>
       <div class="copilot-body">
         <div class="diagnosis-card primary">
-          <div class="d-label">Initial Read</div>
-          <div class="d-main">Dependency rate limiting amplified by local retry behavior, not a rollout-origin incident.</div>
-          <div class="d-sub">Strongest evidence: Stripe 429 starts first, retry loop occupies shared workers, queue rises, then checkout 504s become user-visible.</div>
-        </div>
-        <div class="diagnosis-card">
-          <div class="d-label">Recommended First Move</div>
-          <div class="d-main">Disable fixed retries and shed checkout traffic.</div>
-          <div class="d-sub">If correct, queue depth should flatten before the upstream 429 rate fully recovers.</div>
+          <div class="d-label">Confidence Assessment</div>
+          <div class="d-main">High confidence this is external-origin. No deploy or config change in the window rules out rollout-related causes.</div>
+          <div class="d-sub">If this were deploy-related, we'd expect errors across multiple routes — but only /checkout is affected.</div>
         </div>
         <div class="diagnosis-card">
           <div class="d-label">Uncertainty</div>
-          <div class="d-main">Traffic step-up is clear, but dependency quota behavior may still vary by bucket.</div>
+          <div class="d-main">Traffic step-up is clear, but Stripe quota bucket behavior may vary. The rate limit threshold is not visible in our telemetry.</div>
+        </div>
+        <div class="diagnosis-card">
+          <div class="d-label">What to watch after action</div>
+          <div class="d-main">Queue depth should flatten within 30s of retry kill. If it doesn't, the hypothesis is wrong — escalate.</div>
         </div>
       </div>
       <div class="copilot-footer">
