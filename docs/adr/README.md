@@ -27,4 +27,4 @@
 - [0023-instrumentation-minimum-requirements.md](/Users/murase/project/3amoncall/docs/adr/0023-instrumentation-minimum-requirements.md)
 - [0024-storage-implementation-with-drizzle.md](/Users/murase/project/3amoncall/docs/adr/0024-storage-implementation-with-drizzle.md)
 - [0025-phase1-performance-and-responsiveness-guardrails.md](/Users/murase/project/3amoncall/docs/adr/0025-phase1-performance-and-responsiveness-guardrails.md)
-- [0018-monorepo-package-structure.md](/Users/murase/project/3amoncall/docs/adr/0018-monorepo-package-structure.md) - draft
+- [0026-monorepo-package-structure.md](/Users/murase/project/3amoncall/docs/adr/0026-monorepo-package-structure.md)
