@@ -79,7 +79,7 @@ describe("IncidentPacketSchema", () => {
     expect(() => IncidentPacketSchema.parse(withBadPointers)).toThrow(ZodError);
   });
 
-  it("does NOT contain LLM output fields (ADR 0018 non-goals — camelCase)", () => {
+  it("rejects LLM output fields at parse time (ADR 0018 non-goals — camelCase, strict mode)", () => {
     const withLlmFields = {
       ...minimalValidPacket,
       immediateAction: "restart the service",
@@ -87,11 +87,7 @@ describe("IncidentPacketSchema", () => {
       confidenceAssessment: "high",
       doNot: "delete the database",
     };
-    const parsed = IncidentPacketSchema.parse(withLlmFields);
-    expect(parsed).not.toHaveProperty("immediateAction");
-    expect(parsed).not.toHaveProperty("rootCauseHypothesis");
-    expect(parsed).not.toHaveProperty("confidenceAssessment");
-    expect(parsed).not.toHaveProperty("doNot");
+    expect(() => IncidentPacketSchema.parse(withLlmFields)).toThrow(ZodError);
   });
 
   it("does NOT contain LLM output fields (ADR 0018 non-goals — snake_case)", () => {
