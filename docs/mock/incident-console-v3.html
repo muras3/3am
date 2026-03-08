@@ -872,9 +872,9 @@ button { font:inherit; cursor:pointer; border:none; background:none; }
         <div class="action-why"><strong>Why:</strong> The local system is amplifying an external failure. Retry suppression is the fastest control point — see causal chain below.</div>
       </section>
 
-      <!-- Causal chain -->
+      <!-- Why this action -->
       <section class="section-chain">
-        <div class="label">Causal Chain</div>
+        <div class="label">Why This Action</div>
         <div class="chain-flow">
           <div class="chain-step" data-type="external">
             <div class="step-tag">External</div>
@@ -928,7 +928,7 @@ button { font:inherit; cursor:pointer; border:none; background:none; }
         </div>
         <!-- Blast radius + timeline -->
         <div class="bottom-card">
-          <div class="card-title">Blast Radius &amp; Timeline</div>
+          <div class="card-title">Impact &amp; Timeline</div>
           <div class="timeline-row"><div class="tt">03:11:55</div><div class="te">traffic step-up</div></div>
           <div class="timeline-row"><div class="tt">03:12:08</div><div class="te">first Stripe 429</div></div>
           <div class="timeline-row"><div class="tt">03:12:10</div><div class="te">retry loop starts</div></div>
@@ -967,7 +967,7 @@ button { font:inherit; cursor:pointer; border:none; background:none; }
           <div class="d-main">Traffic step-up is clear, but Stripe quota bucket behavior may vary. The rate limit threshold is not visible in our telemetry.</div>
         </div>
         <div class="diagnosis-card">
-          <div class="d-label">What to watch after action</div>
+          <div class="d-label">Operator Check</div>
           <div class="d-main">Queue depth should flatten within 30s of retry kill. If it doesn't, the hypothesis is wrong — escalate.</div>
         </div>
       </div>
