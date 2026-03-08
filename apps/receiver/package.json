@@ -2,12 +2,25 @@
   "name": "@3amoncall/receiver",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
   "scripts": {
     "build": "tsc",
-    "bundle": "echo 'TODO: bundle receiver + console dist'",
+    "bundle": "echo 'TODO: bundle receiver + console dist (Phase E)'",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src",
-    "dev": "tsx watch src/index.ts"
+    "dev": "tsx watch src/server.ts"
+  },
+  "dependencies": {
+    "@3amoncall/core": "workspace:*",
+    "hono": "^4.0.0",
+    "@hono/node-server": "^1.0.0"
+  },
+  "devDependencies": {
+    "@3amoncall/config-typescript": "workspace:*",
+    "typescript": "^5.0.0",
+    "vitest": "^3.0.0",
+    "tsx": "^4.0.0",
+    "@types/node": "^22.0.0"
   }
 }
