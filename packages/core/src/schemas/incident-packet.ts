@@ -36,13 +36,19 @@ const PointersSchema = z.object({
 
 export const IncidentPacketSchema = z.object({
   schemaVersion: z.literal("incident-packet/v1alpha1"),
+  // identity layer (ADR 0018)
   packetId: z.string(),
   incidentId: z.string(),
   openedAt: z.string(),
+  status: z.enum(["open", "closed"]).optional(),
+  severity: z.string().optional(),
   window: WindowSchema,
   scope: ScopeSchema,
+  // situation layer (ADR 0018)
   triggerSignals: z.array(TriggerSignalSchema),
+  // evidence layer (ADR 0018)
   evidence: EvidenceSchema,
+  // retrieval layer (ADR 0018)
   pointers: PointersSchema,
 });
 

@@ -37,16 +37,11 @@ describe("ThinEventSchema", () => {
     expect(() => ThinEventSchema.parse(without)).toThrow(ZodError);
   });
 
-  it("does NOT contain packet body fields (ADR 0020 non-goals)", () => {
+  it("rejects packet body fields (ADR 0020 non-goals) — strict schema throws", () => {
     const withPacketBody = {
       ...minimalValid,
       triggerSignals: [{ signal: "error_rate" }],
-      evidence: { changedMetrics: [] },
-      summary: "something happened",
     };
-    const parsed = ThinEventSchema.parse(withPacketBody);
-    expect(parsed).not.toHaveProperty("triggerSignals");
-    expect(parsed).not.toHaveProperty("evidence");
-    expect(parsed).not.toHaveProperty("summary");
+    expect(() => ThinEventSchema.parse(withPacketBody)).toThrow(ZodError);
   });
 });
