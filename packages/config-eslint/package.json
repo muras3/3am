@@ -1,0 +1,15 @@
+{
+  "name": "@3amoncall/config-eslint",
+  "version": "0.1.0",
+  "private": true,
+  "main": "./eslint.config.js",
+  "exports": {
+    ".": "./eslint.config.js"
+  },
+  "files": [
+    "eslint.config.js"
+  ],
+  "peerDependencies": {
+    "eslint": "^9.x"
+  }
+}
