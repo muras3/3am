@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { bearerAuth } from "hono/bearer-auth";
-import { StorageDriver } from "./storage/interface.js";
+import type { StorageDriver } from "./storage/interface.js";
 import { MemoryAdapter } from "./storage/adapters/memory.js";
 import { createIngestRouter } from "./transport/ingest.js";
 import { createApiRouter } from "./transport/api.js";
