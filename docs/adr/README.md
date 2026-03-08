@@ -23,4 +23,8 @@
 - [0019-diagnosis-result-minimum-contract.md](/Users/murase/project/3amoncall/docs/adr/0019-diagnosis-result-minimum-contract.md)
 - [0020-thin-event-contract-for-diagnosis-trigger.md](/Users/murase/project/3amoncall/docs/adr/0020-thin-event-contract-for-diagnosis-trigger.md)
 - [0021-receiver-and-github-actions-integration.md](/Users/murase/project/3amoncall/docs/adr/0021-receiver-and-github-actions-integration.md)
+- [0022-ingest-protocol-and-platform-log-separation.md](/Users/murase/project/3amoncall/docs/adr/0022-ingest-protocol-and-platform-log-separation.md)
+- [0023-instrumentation-minimum-requirements.md](/Users/murase/project/3amoncall/docs/adr/0023-instrumentation-minimum-requirements.md)
+- [0024-storage-implementation-with-drizzle.md](/Users/murase/project/3amoncall/docs/adr/0024-storage-implementation-with-drizzle.md)
+- [0025-phase1-performance-and-responsiveness-guardrails.md](/Users/murase/project/3amoncall/docs/adr/0025-phase1-performance-and-responsiveness-guardrails.md)
 - [0018-monorepo-package-structure.md](/Users/murase/project/3amoncall/docs/adr/0018-monorepo-package-structure.md) - draft
