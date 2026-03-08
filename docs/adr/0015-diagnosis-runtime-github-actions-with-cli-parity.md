@@ -46,6 +46,7 @@ GitHub Actions と CLI は、同一の packet schema と同一の診断入力契
 ## Consequences
 
 - 本番の推奨導線は GitHub に依存する
+- GitHub を使わないユーザーは CLI を主経路として使う
 - CLI は開発補助ではなく、packet 契約を検証する正式な consumer になる
 - Runtime 実装は変えられても、packet schema の互換性維持が重要になる
 
