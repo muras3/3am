@@ -57,10 +57,10 @@
       .app {
         width: 100%;
         height: 100%;
-        padding: 10px;
+        padding: 4px;
         display: grid;
         grid-template-rows: auto 1fr;
-        gap: 8px;
+        gap: 4px;
       }
 
       .topbar,
@@ -89,12 +89,12 @@
       }
 
       .topbar {
-        padding: 8px 10px;
+        padding: 4px 6px;
         display: grid;
         grid-template-columns: 1fr auto;
-        gap: 8px;
+        gap: 4px;
         align-items: center;
-        border-radius: 14px;
+        border-radius: 10px;
       }
 
       .eyebrow {
@@ -105,8 +105,8 @@
       }
 
       .headline {
-        margin-top: 2px;
-        font-size: 18px;
+        margin-top: 0;
+        font-size: 13px;
         line-height: 1.1;
         letter-spacing: -0.04em;
         font-weight: 720;
@@ -170,7 +170,7 @@
 
       .concept-switch {
         display: flex;
-        gap: 6px;
+        gap: 4px;
         justify-content: flex-end;
         flex-wrap: wrap;
       }
@@ -178,9 +178,9 @@
       .concept-switch button {
         border: 1px solid var(--line);
         border-radius: 999px;
-        padding: 6px 9px;
+        padding: 4px 7px;
         color: var(--muted);
-        font-size: 10px;
+        font-size: 9px;
       }
 
       .viewport {
@@ -198,7 +198,7 @@
 
       .surface {
         height: 100%;
-        padding: 6px;
+        padding: 3px;
         overflow: hidden;
         background:
           linear-gradient(180deg, rgba(255,255,255,0.9), rgba(247,243,236,0.96)),
@@ -209,12 +209,13 @@
       .layout {
         height: 100%;
         display: grid;
-        gap: 8px;
+        gap: 4px;
         min-height: 0;
       }
 
       .layout.a {
-        grid-template-columns: 220px minmax(0, 1fr) 272px;
+        grid-template-columns: 190px minmax(0, 1fr) 210px;
+        align-items: stretch;
       }
 
       .layout.b {
@@ -230,18 +231,71 @@
         min-width: 0;
         min-height: 0;
         display: grid;
-        gap: 8px;
+        gap: 4px;
         align-content: start;
       }
 
+      .layout.a > .stack {
+        display: block;
+        height: 100%;
+      }
+
+      .layout.a > .stack > .panel {
+        height: 100%;
+        min-height: 100%;
+        display: flex;
+        flex-direction: column;
+      }
+
+      .rail-panel {
+        display: grid !important;
+        grid-template-rows: auto 1fr auto;
+        gap: 4px;
+      }
+
+      .rail-panel.rail-left {
+        grid-template-rows: auto minmax(0, 1.55fr) minmax(0, 0.45fr);
+      }
+
+      .rail-panel.rail-center {
+        grid-template-rows: auto minmax(0, 1.18fr) minmax(0, 0.82fr);
+      }
+
+      .rail-panel.rail-right {
+        grid-template-rows: auto minmax(0, 1.45fr) minmax(0, 0.55fr);
+      }
+
+      .rail-main {
+        min-height: 0;
+      }
+
+      .rail-footer {
+        min-height: 0;
+      }
+
+      .center-main {
+        display: grid;
+        grid-template-rows: auto auto 1fr;
+        gap: 4px;
+        min-height: 0;
+      }
+
+      .left-main,
+      .right-main {
+        display: grid;
+        align-content: start;
+        gap: 4px;
+        min-height: 0;
+      }
+
       .panel {
-        padding: 9px;
+        padding: 7px;
         background:
           linear-gradient(180deg, rgba(255, 254, 251, 0.98), rgba(244, 240, 233, 0.96)),
           linear-gradient(180deg, rgba(255,255,255,0.12), transparent);
         overflow: hidden;
         min-height: fit-content;
-        border-radius: 14px;
+        border-radius: 10px;
       }
 
       .section-title {
@@ -265,6 +319,27 @@
       .incident-list {
         display: grid;
         gap: 8px;
+      }
+
+      .selector-meta {
+        display: grid;
+        gap: 8px;
+        padding-top: 8px;
+        border-top: 1px solid rgba(71, 58, 45, 0.08);
+      }
+
+      .selector-meta-row {
+        display: flex;
+        justify-content: space-between;
+        gap: 8px;
+        font-size: 11px;
+        line-height: 1.25;
+        color: var(--muted);
+      }
+
+      .selector-meta-row strong {
+        color: var(--text);
+        font-weight: 620;
       }
 
       .incident-card {
@@ -882,6 +957,13 @@
         margin-top: 8px;
       }
 
+      .ai-footer {
+        display: grid;
+        gap: 8px;
+        padding-top: 8px;
+        border-top: 1px solid rgba(71, 58, 45, 0.08);
+      }
+
       .evidence-link {
         display: grid;
         grid-template-columns: 74px 1fr;
@@ -1477,41 +1559,50 @@
           <div class="surface">
             <div class="layout a">
               <aside class="stack">
-                <div class="panel">
+                <div class="panel rail-panel rail-left">
                   <div class="section-title tight">
                     <h2>Open Incidents</h2>
                     <div class="chip critical">1 critical</div>
                   </div>
-                  <div class="incident-list">
-                    <div class="incident-card active">
-                      <div class="incident-head">
-                        <div class="incident-name">Checkout cascade</div>
-                        <div class="critical">critical</div>
+                  <div class="rail-main left-main">
+                    <div class="incident-list">
+                      <div class="incident-card active">
+                        <div class="incident-head">
+                          <div class="incident-name">Checkout cascade</div>
+                          <div class="critical">critical</div>
+                        </div>
+                        <div class="subtle">production / web / stripe / /checkout / payments</div>
+                        <div class="summary-line">18.2% failing now</div>
                       </div>
-                      <div class="subtle">production / web / stripe / /checkout / payments</div>
-                      <div class="summary-line">18.2% failing now</div>
-                    </div>
-                    <div class="incident-card">
-                      <div class="incident-head">
-                        <div class="incident-name">Search latency burst</div>
-                        <div class="subtle">high</div>
+                      <div class="incident-card">
+                        <div class="incident-head">
+                          <div class="incident-name">Search latency burst</div>
+                          <div class="subtle">high</div>
+                        </div>
+                        <div class="subtle">search / cache / background rebuild</div>
                       </div>
-                      <div class="subtle">search / cache / background rebuild</div>
-                    </div>
-                    <div class="incident-card">
-                      <div class="incident-head">
-                        <div class="incident-name">Webhook backlog</div>
-                        <div class="subtle">medium</div>
+                      <div class="incident-card">
+                        <div class="incident-head">
+                          <div class="incident-name">Webhook backlog</div>
+                          <div class="subtle">medium</div>
+                        </div>
+                        <div class="subtle">worker / queue / outbound events</div>
                       </div>
-                      <div class="subtle">worker / queue / outbound events</div>
                     </div>
+                  </div>
+                  <div class="rail-footer selector-meta">
+                    <div class="selector-meta-row"><span>Selected</span><strong>Checkout cascade</strong></div>
+                    <div class="selector-meta-row"><span>Severity</span><strong>critical</strong></div>
+                    <div class="selector-meta-row"><span>Route</span><strong>/checkout</strong></div>
+                    <div class="selector-meta-row"><span>Owner</span><strong>payments</strong></div>
+                    <div class="selector-meta-row"><span>Open now</span><strong>3 incidents</strong></div>
                   </div>
                 </div>
 
               </aside>
 
               <div class="stack">
-                <div class="panel">
+                <div class="panel rail-panel rail-center">
                   <div class="section-title">
                     <h2>Incident Board</h2>
                     <div class="chips">
@@ -1520,83 +1611,85 @@
                       <div class="chip impact">customer-facing</div>
                     </div>
                   </div>
-                  <div class="board-statusbar">
-                    <div class="status-chip incident">
-                      <div class="label">Current</div>
-                      <div class="value">Checkout path unstable</div>
+                  <div class="rail-main center-main">
+                    <div class="board-statusbar">
+                      <div class="status-chip incident">
+                        <div class="label">Current</div>
+                        <div class="value">Checkout path unstable</div>
+                      </div>
+                      <div class="status-chip impact">
+                        <div class="label">Impact</div>
+                        <div class="value">18.2% 504s</div>
+                      </div>
+                      <div class="status-chip external">
+                        <div class="label">Trigger</div>
+                        <div class="value">Stripe 429</div>
+                      </div>
+                      <div class="status-chip action">
+                        <div class="label">Action</div>
+                        <div class="value">retry off</div>
+                      </div>
                     </div>
-                    <div class="status-chip impact">
-                      <div class="label">Impact</div>
-                      <div class="value">18.2% 504s</div>
+                    <div class="hero-board">
+                      <div class="hero-card">
+                        <strong>What happened</strong>
+                        <div class="big">Stripe 429s spilled into queue saturation and checkout 504s.</div>
+                        <div class="small">customer-facing • active</div>
+                      </div>
+                      <div class="hero-card" style="border-color: rgba(201,75,60,0.22); background: linear-gradient(180deg, rgba(255,247,244,0.98), rgba(244,233,228,0.95)); box-shadow: inset 0 0 0 1px rgba(201,75,60,0.06);">
+                        <strong style="color: var(--danger);">Immediate Action</strong>
+                        <div class="big">Kill fixed retries. Shed checkout traffic.</div>
+                        <div class="small">fastest control point</div>
+                      </div>
                     </div>
-                    <div class="status-chip external">
-                      <div class="label">Trigger</div>
-                      <div class="value">Stripe 429</div>
-                    </div>
-                    <div class="status-chip action">
-                      <div class="label">Action</div>
-                      <div class="value">retry off</div>
-                    </div>
-                  </div>
-                  <div class="hero-board">
-                    <div class="hero-card">
-                      <strong>What happened</strong>
-                      <div class="big">Stripe 429s spilled into queue saturation and checkout 504s.</div>
-                      <div class="small">customer-facing • active</div>
-                    </div>
-                    <div class="hero-card" style="border-color: rgba(201,75,60,0.22); background: linear-gradient(180deg, rgba(255,247,244,0.98), rgba(244,233,228,0.95)); box-shadow: inset 0 0 0 1px rgba(201,75,60,0.06);">
-                      <strong style="color: var(--danger);">Immediate Action</strong>
-                      <div class="big">Kill fixed retries. Shed checkout traffic.</div>
-                      <div class="small">fastest control point</div>
-                    </div>
-                  </div>
-                  <div class="decision-strip">
-                    <div class="decision-card">
-                      <strong>Why this action</strong>
-                      <div class="decision-title">The local system is amplifying an external failure.</div>
-                      <div class="signal-chain">
-                        <div class="signal-step">
-                          <div class="sig external"></div>
-                          <strong>External</strong>
-                          <div class="main">Stripe 429</div>
-                          <div class="meta">rate limit begins</div>
+                    <div class="decision-strip">
+                      <div class="decision-card">
+                        <strong>Why this action</strong>
+                        <div class="decision-title">The local system is amplifying an external failure.</div>
+                        <div class="signal-chain">
+                          <div class="signal-step">
+                            <div class="sig external"></div>
+                            <strong>External</strong>
+                            <div class="main">Stripe 429</div>
+                            <div class="meta">rate limit begins</div>
+                          </div>
+                          <div class="signal-step">
+                            <div class="sig system"></div>
+                            <strong>System</strong>
+                            <div class="main">Retry loop</div>
+                            <div class="meta">shared pool</div>
+                          </div>
+                          <div class="signal-step">
+                            <div class="sig incident"></div>
+                            <strong>Incident</strong>
+                            <div class="main">Queue climbs</div>
+                            <div class="meta">local overload</div>
+                          </div>
+                          <div class="signal-step">
+                            <div class="sig impact"></div>
+                            <strong>Impact</strong>
+                            <div class="main">Checkout 504</div>
+                            <div class="meta">user-visible</div>
+                          </div>
                         </div>
-                        <div class="signal-step">
-                          <div class="sig system"></div>
-                          <strong>System</strong>
-                          <div class="main">Retry loop</div>
-                          <div class="meta">shared pool</div>
+                      </div>
+                      <div class="cta-card">
+                        <strong>Open Evidence Studio</strong>
+                        <div class="cta-title">Inspect proof in-place.</div>
+                        <div class="cta-sub">Metrics, trace, logs, platform facts.</div>
+                        <div class="cta-actions">
+                          <button class="action-btn primary open-evidence"><span class="action-dot"></span>Open Evidence Studio</button>
+                          <button class="action-btn ghost" id="openReasoning"><span class="action-dot"></span>Diagnosis chain</button>
                         </div>
-                        <div class="signal-step">
-                          <div class="sig incident"></div>
-                          <strong>Incident</strong>
-                          <div class="main">Queue climbs</div>
-                          <div class="meta">local overload</div>
-                        </div>
-                        <div class="signal-step">
-                          <div class="sig impact"></div>
-                          <strong>Impact</strong>
-                          <div class="main">Checkout 504</div>
-                          <div class="meta">user-visible</div>
+                        <div style="margin-top:8px; display:flex; gap:6px; flex-wrap:wrap;">
+                          <div class="inline-tag">metrics: aligned</div>
+                          <div class="inline-tag">trace: checkout_71af</div>
+                          <div class="inline-tag">logs: retry exhausted</div>
                         </div>
                       </div>
                     </div>
-                    <div class="cta-card">
-                      <strong>Open Evidence Studio</strong>
-                      <div class="cta-title">Inspect proof in-place.</div>
-                      <div class="cta-sub">Metrics, trace, logs, platform facts.</div>
-                      <div class="cta-actions">
-                        <button class="action-btn primary open-evidence"><span class="action-dot"></span>Open Evidence Studio</button>
-                        <button class="action-btn ghost" id="openReasoning"><span class="action-dot"></span>Diagnosis chain</button>
-                      </div>
-                      <div style="margin-top:8px; display:flex; gap:6px; flex-wrap:wrap;">
-                        <div class="inline-tag">metrics: aligned</div>
-                        <div class="inline-tag">trace: checkout_71af</div>
-                        <div class="inline-tag">logs: retry exhausted</div>
-                      </div>
-                    </div>
                   </div>
-                  <div class="board-lower">
+                  <div class="rail-footer board-lower">
                     <div class="mini-card system">
                       <strong>Mitigation Watch</strong>
                       <div class="watch-list">
@@ -1674,46 +1767,52 @@
               </div>
 
               <aside class="stack">
-                <div class="panel">
+                <div class="panel rail-panel rail-right">
                   <div class="chat-head">
                     <h2>AI Initial Diagnosis</h2>
                     <div class="presence">grounded in selected incident</div>
                   </div>
-                  <div class="diagnosis-brief">
-                    <div class="diagnosis-card primary">
-                      <div class="diagnosis-label">Initial Read</div>
-                      <div class="diagnosis-main">This looks like dependency rate limiting amplified by local retry behavior, not a rollout-origin incident.</div>
-                      <div class="diagnosis-sub">Strongest evidence: Stripe 429 starts first, retry loop occupies shared workers, queue rises, then checkout 504s become user-visible.</div>
-                    </div>
-                    <div class="diagnosis-card">
-                      <div class="diagnosis-label">Recommended First Move</div>
-                      <div class="diagnosis-main">Disable fixed retries and shed checkout traffic.</div>
-                      <div class="diagnosis-sub">If the diagnosis is right, queue depth should flatten before the upstream 429 rate fully recovers.</div>
-                    </div>
-                    <div class="diagnosis-card">
-                      <div class="diagnosis-label">Uncertainty</div>
-                      <div class="diagnosis-main">Traffic step-up is clear, but dependency quota behavior may still vary by bucket.</div>
-                    </div>
-                  </div>
-                  <div class="evidence-links">
-                    <div class="evidence-link">
-                      <strong>Metrics</strong>
-                      <div>queue and 504 inflect together</div>
-                    </div>
-                    <div class="evidence-link">
-                      <strong>Trace</strong>
-                      <div>429 -> wait -> timeout</div>
+                  <div class="rail-main right-main">
+                    <div class="diagnosis-brief">
+                      <div class="diagnosis-card primary">
+                        <div class="diagnosis-label">Initial Read</div>
+                        <div class="diagnosis-main">This looks like dependency rate limiting amplified by local retry behavior, not a rollout-origin incident.</div>
+                        <div class="diagnosis-sub">Strongest evidence: Stripe 429 starts first, retry loop occupies shared workers, queue rises, then checkout 504s become user-visible.</div>
+                      </div>
+                      <div class="diagnosis-card">
+                        <div class="diagnosis-label">Recommended First Move</div>
+                        <div class="diagnosis-main">Disable fixed retries and shed checkout traffic.</div>
+                        <div class="diagnosis-sub">If the diagnosis is right, queue depth should flatten before the upstream 429 rate fully recovers.</div>
+                      </div>
+                      <div class="diagnosis-card">
+                        <div class="diagnosis-label">Uncertainty</div>
+                        <div class="diagnosis-main">Traffic step-up is clear, but dependency quota behavior may still vary by bucket.</div>
+                      </div>
                     </div>
                   </div>
-                  <div style="margin-top:10px;" class="diagnosis-label">Ask About</div>
-                  <div class="suggested-asks" style="margin-top:6px;">
-                    <div class="ask-chip">Could this still be deploy-related?</div>
-                    <div class="ask-chip">What tells us the action worked?</div>
-                    <div class="ask-chip">What competing hypothesis remains?</div>
-                  </div>
-                  <div class="chat-input" style="margin-top: 12px;">
-                    <div class="input">気になる点があれば聞いてください…</div>
-                    <div class="send">Send</div>
+                  <div class="rail-footer ai-footer">
+                    <div class="evidence-links" style="margin-top:0;">
+                      <div class="evidence-link">
+                        <strong>Metrics</strong>
+                        <div>queue and 504 inflect together</div>
+                      </div>
+                      <div class="evidence-link">
+                        <strong>Trace</strong>
+                        <div>429 -> wait -> timeout</div>
+                      </div>
+                    </div>
+                    <div>
+                      <div class="diagnosis-label">Ask About</div>
+                      <div class="suggested-asks" style="margin-top:6px;">
+                        <div class="ask-chip">Could this still be deploy-related?</div>
+                        <div class="ask-chip">What tells us the action worked?</div>
+                        <div class="ask-chip">What competing hypothesis remains?</div>
+                      </div>
+                    </div>
+                    <div class="chat-input">
+                      <div class="input">気になる点があれば聞いてください…</div>
+                      <div class="send">Send</div>
+                    </div>
                   </div>
                 </div>
 
