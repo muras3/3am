@@ -19,3 +19,4 @@
 - [0015-diagnosis-runtime-github-actions-with-cli-parity.md](/Users/murase/project/3amoncall/docs/adr/0015-diagnosis-runtime-github-actions-with-cli-parity.md)
 - [0016-incident-packet-v1alpha.md](/Users/murase/project/3amoncall/docs/adr/0016-incident-packet-v1alpha.md)
 - [0017-incident-formation-rules-v1.md](/Users/murase/project/3amoncall/docs/adr/0017-incident-formation-rules-v1.md)
+- [0018-monorepo-package-structure.md](/Users/murase/project/3amoncall/docs/adr/0018-monorepo-package-structure.md) - draft
