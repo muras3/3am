@@ -36,21 +36,28 @@ export function createIngestRouter(storage: StorageDriver): Hono {
 
     const isNew = !existing;
     const incidentId = existing ? existing.incidentId : "inc_" + randomUUID();
-    const openedAt = existing ? existing.openedAt : new Date().toISOString();
-
-    const packet = createPacket(incidentId, openedAt, anomalousSpans);
-    await storage.createIncident(packet);
+    // Use signal time (not server clock) so formation window is anchored to telemetry
+    const openedAt = existing
+      ? existing.openedAt
+      : new Date(firstSpan.startTimeMs).toISOString();
 
     if (isNew) {
+      // Only create the packet (and emit ThinEvent) for new incidents.
+      // Attaching to an existing incident does not overwrite the stored packet,
+      // preserving the stable packet_id that was already emitted in the ThinEvent.
+      // Phase C: accumulate evidence across signals via appendEvidence().
+      const packet = createPacket(incidentId, openedAt, anomalousSpans);
+      await storage.createIncident(packet);
       await storage.saveThinEvent({
         event_id: "evt_" + randomUUID(),
         event_type: "incident.created",
         incident_id: incidentId,
         packet_id: packet.packetId,
       });
+      return c.json({ status: "ok", incidentId, packetId: packet.packetId });
     }
 
-    return c.json({ status: "ok", incidentId, packetId: packet.packetId });
+    return c.json({ status: "ok", incidentId, packetId: existing.packet.packetId });
   });
 
   // Phase C: merge metrics/logs/platform-events into packet evidence

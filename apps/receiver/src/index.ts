@@ -8,6 +8,8 @@ export type { StorageDriver } from "./storage/interface.js";
 export type { Incident, IncidentPage } from "./storage/interface.js";
 export { MemoryAdapter } from "./storage/adapters/memory.js";
 
+// TODO (Phase E): add bearer-token auth middleware before mounting routers.
+// All ingest + API routes must be protected per ADR 0011 (HTTPS + Bearer Token).
 export function createApp(storage?: StorageDriver): Hono {
   const store = storage ?? new MemoryAdapter();
   const app = new Hono();
