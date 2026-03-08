@@ -60,16 +60,37 @@ export function createIngestRouter(storage: StorageDriver): Hono {
         incident_id: incidentId,
         packet_id: packet.packetId,
       });
+      // TODO (Phase C): dispatch thin event to GitHub Actions workflow_dispatch.
+      // See ADR 0021: Receiver pushes thin event; Actions fetches packet via GET /api/packets/:id.
+      // Dispatch: POST https://api.github.com/repos/{owner}/{repo}/actions/workflows/{id}/dispatches
       return c.json({ status: "ok", incidentId, packetId: packet.packetId });
     }
 
     return c.json({ status: "ok", incidentId, packetId: existing.packet.packetId });
   });
 
-  // Phase C: merge metrics/logs/platform-events into packet evidence
-  for (const path of ["/v1/metrics", "/v1/logs", "/v1/platform-events"] as const) {
+  // shape-aware stubs for metrics, logs, and platform events.
+  // Validates Content-Type and basic body shape; returns 501 for protobuf (ADR 0022 Phase E).
+  // Phase C: merge parsed signals into packet evidence.
+  const ingestStubs = [
+    { path: "/v1/metrics" as const, field: "resourceMetrics" },
+    { path: "/v1/logs" as const, field: "resourceLogs" },
+    { path: "/v1/platform-events" as const, field: "events" },
+  ];
+  for (const { path, field } of ingestStubs) {
     app.post(path, async (c) => {
-      await c.req.json().catch(() => null); // consume body for connection lifecycle
+      const ct = c.req.header("Content-Type") ?? "";
+      if (ct.includes("application/x-protobuf")) {
+        // TODO (Phase E): implement OTLP protobuf parsing (ADR 0022 protobuf-first)
+        return c.json({ error: "protobuf not yet supported" }, 501);
+      }
+      const body = await c.req.json().catch(() => null);
+      if (body === null || typeof body !== "object") {
+        return c.json({ error: "invalid body" }, 400);
+      }
+      if (!(field in (body as Record<string, unknown>))) {
+        return c.json({ error: `missing required field: ${field}` }, 400);
+      }
       return c.json({ status: "ok" });
     });
   }

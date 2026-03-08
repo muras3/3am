@@ -14,6 +14,8 @@ const spans: ExtractedSpan[] = [
     spanStatusCode: 2,
     durationMs: 1000,
     startTimeMs: 1700000000000,
+    exceptionCount: 0,
+    peerService: 'stripe',
   },
   {
     traceId: 'trace001',
@@ -24,6 +26,7 @@ const spans: ExtractedSpan[] = [
     spanStatusCode: 1,
     durationMs: 50,
     startTimeMs: 1700000000050,
+    exceptionCount: 0,
   },
 ]
 
@@ -63,5 +66,26 @@ describe('createPacket', () => {
     expect(packet.pointers.traceRefs).toContain('trace001')
     const unique = [...new Set(packet.pointers.traceRefs)]
     expect(unique).toHaveLength(packet.pointers.traceRefs.length)
+  })
+
+  it('scope.affectedDependencies includes peerService values (ADR 0023)', () => {
+    expect(packet.scope.affectedDependencies).toContain('stripe')
+  })
+
+  it('scope.affectedDependencies excludes spans with no peerService', () => {
+    // span002 has no peerService, so only 'stripe' from span001 should appear
+    expect(packet.scope.affectedDependencies).toHaveLength(1)
+  })
+
+  it('evidence.representativeTraces has the correct typed shape', () => {
+    const trace = packet.evidence.representativeTraces[0] as {
+      traceId: string; spanId: string; serviceName: string;
+      durationMs: number; spanStatusCode: number
+    }
+    expect(trace.traceId).toBe('trace001')
+    expect(trace.spanId).toBe('span001')
+    expect(trace.serviceName).toBe('api-service')
+    expect(typeof trace.durationMs).toBe('number')
+    expect(typeof trace.spanStatusCode).toBe('number')
   })
 })

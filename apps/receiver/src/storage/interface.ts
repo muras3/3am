@@ -26,6 +26,8 @@ export interface StorageDriver {
 
   getIncident(id: string): Promise<Incident | null>;
 
+  getIncidentByPacketId(packetId: string): Promise<Incident | null>;
+
   /** Remove closed incidents where openedAt < before */
   deleteExpiredIncidents(before: Date): Promise<void>;
 

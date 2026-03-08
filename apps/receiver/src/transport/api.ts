@@ -8,7 +8,8 @@ export function createApiRouter(storage: StorageDriver): Hono {
   app.get("/api/incidents", async (c) => {
     const limitStr = c.req.query("limit");
     const cursor = c.req.query("cursor");
-    const limit = limitStr !== undefined ? parseInt(limitStr, 10) : 20;
+    const rawLimit = limitStr !== undefined ? parseInt(limitStr, 10) : 20;
+    const limit = Number.isNaN(rawLimit) ? 20 : Math.min(Math.max(rawLimit, 1), 100);
 
     const page = await storage.listIncidents({ limit, cursor });
     return c.json(page);
@@ -25,11 +26,7 @@ export function createApiRouter(storage: StorageDriver): Hono {
 
   app.get("/api/packets/:packetId", async (c) => {
     const packetId = c.req.param("packetId");
-    // Phase C: add packetId index to StorageDriver for O(1) access
-    const page = await storage.listIncidents({ limit: 1000 });
-    const incident = page.items.find(
-      (inc) => inc.packet.packetId === packetId,
-    );
+    const incident = await storage.getIncidentByPacketId(packetId);
     if (!incident) {
       return c.json({ error: "not found" }, 404);
     }

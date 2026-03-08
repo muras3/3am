@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { bearerAuth } from "hono/bearer-auth";
 import { StorageDriver } from "./storage/interface.js";
 import { MemoryAdapter } from "./storage/adapters/memory.js";
 import { createIngestRouter } from "./transport/ingest.js";
@@ -8,11 +9,17 @@ export type { StorageDriver } from "./storage/interface.js";
 export type { Incident, IncidentPage } from "./storage/interface.js";
 export { MemoryAdapter } from "./storage/adapters/memory.js";
 
-// TODO (Phase E): add bearer-token auth middleware before mounting routers.
-// All ingest + API routes must be protected per ADR 0011 (HTTPS + Bearer Token).
 export function createApp(storage?: StorageDriver): Hono {
   const store = storage ?? new MemoryAdapter();
   const app = new Hono();
+  const authToken = process.env["RECEIVER_AUTH_TOKEN"];
+  if (!authToken) {
+    console.warn(
+      "[receiver] RECEIVER_AUTH_TOKEN not set — auth disabled (dev mode only, ADR 0011)",
+    );
+  } else {
+    app.use("*", bearerAuth({ token: authToken }));
+  }
   app.route("/", createIngestRouter(store));
   app.route("/", createApiRouter(store));
   return app;

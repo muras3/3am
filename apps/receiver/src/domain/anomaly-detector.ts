@@ -8,16 +8,34 @@ export type ExtractedSpan = {
   spanStatusCode: number // 0=unset, 1=ok, 2=error (OTLP span.status.code)
   durationMs: number
   startTimeMs: number
+  exceptionCount: number  // number of exception events in this span
+  peerService?: string    // peer.service attribute (ADR 0023 required dependency id)
 }
+
+// Spans slower than this threshold are considered anomalous (ADR 0023)
+const SLOW_SPAN_THRESHOLD_MS = 5000
 
 export function isAnomalous(span: ExtractedSpan): boolean {
   if (span.httpStatusCode !== undefined && span.httpStatusCode >= 500) {
     return true
   }
+  if (span.httpStatusCode === 429) {
+    return true
+  }
   if (span.spanStatusCode === 2) {
     return true
   }
+  if (span.durationMs > SLOW_SPAN_THRESHOLD_MS) {
+    return true
+  }
+  if (span.exceptionCount > 0) {
+    return true
+  }
   return false
+}
+
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return v !== null && typeof v === 'object'
 }
 
 type OtlpAttributeValue =
@@ -54,8 +72,8 @@ export function extractSpans(payload: unknown): ExtractedSpan[] {
   const result: ExtractedSpan[] = []
 
   for (const resourceSpan of p['resourceSpans'] as unknown[]) {
-    if (resourceSpan === null || typeof resourceSpan !== 'object') continue
-    const rs = resourceSpan as Record<string, unknown>
+    if (!isRecord(resourceSpan)) continue
+    const rs = resourceSpan
 
     const resource = rs['resource'] as Record<string, unknown> | undefined
     const resourceAttrs: OtlpAttribute[] = Array.isArray(resource?.['attributes'])
@@ -68,13 +86,13 @@ export function extractSpans(payload: unknown): ExtractedSpan[] {
     const scopeSpans = Array.isArray(rs['scopeSpans']) ? (rs['scopeSpans'] as unknown[]) : []
 
     for (const scopeSpan of scopeSpans) {
-      if (scopeSpan === null || typeof scopeSpan !== 'object') continue
-      const ss = scopeSpan as Record<string, unknown>
+      if (!isRecord(scopeSpan)) continue
+      const ss = scopeSpan
       const spans = Array.isArray(ss['spans']) ? (ss['spans'] as unknown[]) : []
 
       for (const rawSpan of spans) {
-        if (rawSpan === null || typeof rawSpan !== 'object') continue
-        const s = rawSpan as Record<string, unknown>
+        if (!isRecord(rawSpan)) continue
+        const s = rawSpan
 
         const traceId = typeof s['traceId'] === 'string' ? s['traceId'] : ''
         const spanId = typeof s['spanId'] === 'string' ? s['spanId'] : ''
@@ -95,6 +113,11 @@ export function extractSpans(payload: unknown): ExtractedSpan[] {
         const httpStatusCode =
           httpStatusCodeStr !== undefined ? Number(httpStatusCodeStr) : undefined
 
+        const peerService = getAttr(attrs, 'peer.service')
+
+        const events = Array.isArray(s['events']) ? (s['events'] as unknown[]) : []
+        const exceptionCount = events.filter((e) => isRecord(e) && e['name'] === 'exception').length
+
         result.push({
           traceId,
           spanId,
@@ -105,6 +128,8 @@ export function extractSpans(payload: unknown): ExtractedSpan[] {
           spanStatusCode,
           durationMs,
           startTimeMs,
+          exceptionCount,
+          peerService,
         })
       }
     }

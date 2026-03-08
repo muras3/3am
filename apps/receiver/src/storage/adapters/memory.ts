@@ -3,6 +3,7 @@ import type { Incident, IncidentPage, StorageDriver } from "../interface.js";
 
 export class MemoryAdapter implements StorageDriver {
   private incidents: Map<string, Incident> = new Map();
+  private packetIndex: Map<string, string> = new Map(); // packetId → incidentId
   private thinEvents: ThinEvent[] = [];
 
   async createIncident(packet: IncidentPacket): Promise<void> {
@@ -21,6 +22,7 @@ export class MemoryAdapter implements StorageDriver {
         packet,
       });
     }
+    this.packetIndex.set(packet.packetId, packet.incidentId);
   }
 
   async updateIncidentStatus(
@@ -68,6 +70,12 @@ export class MemoryAdapter implements StorageDriver {
 
   async getIncident(id: string): Promise<Incident | null> {
     return this.incidents.get(id) ?? null;
+  }
+
+  async getIncidentByPacketId(packetId: string): Promise<Incident | null> {
+    const incidentId = this.packetIndex.get(packetId);
+    if (!incidentId) return null;
+    return this.incidents.get(incidentId) ?? null;
   }
 
   async deleteExpiredIncidents(before: Date): Promise<void> {

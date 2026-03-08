@@ -2,6 +2,15 @@ import { randomUUID } from "crypto"
 import type { IncidentPacket } from "@3amoncall/core"
 import { type ExtractedSpan, isAnomalous } from "./anomaly-detector.js"
 
+type RepresentativeTrace = {
+  traceId: string
+  spanId: string
+  serviceName: string
+  durationMs: number
+  httpStatusCode?: number
+  spanStatusCode: number
+}
+
 export function createPacket(
   incidentId: string,
   openedAt: string,
@@ -38,12 +47,19 @@ export function createPacket(
       primaryService: spans[0]?.serviceName ?? "unknown",
       affectedServices: [...new Set(spans.map((s) => s.serviceName))],
       affectedRoutes: [...new Set(spans.flatMap((s) => (s.httpRoute ? [s.httpRoute] : [])))],
-      affectedDependencies: [],
+      affectedDependencies: [...new Set(spans.flatMap((s) => s.peerService ? [s.peerService] : []))],
     },
     triggerSignals,
     evidence: {
       changedMetrics: [],
-      representativeTraces: spans.slice(0, 10) as unknown[],
+      representativeTraces: spans.slice(0, 10).map((s): RepresentativeTrace => ({
+        traceId: s.traceId,
+        spanId: s.spanId,
+        serviceName: s.serviceName,
+        durationMs: s.durationMs,
+        httpStatusCode: s.httpStatusCode,
+        spanStatusCode: s.spanStatusCode,
+      })),
       relevantLogs: [],
       platformEvents: [],
     },
