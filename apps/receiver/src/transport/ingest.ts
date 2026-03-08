@@ -34,19 +34,9 @@ export function createIngestRouter(storage: StorageDriver): Hono {
       shouldAttachToIncident(formationKey, incident, signalTimeMs),
     );
 
-    let incidentId: string;
-    let openedAt: string;
-    let isNew: boolean;
-
-    if (existing) {
-      isNew = false;
-      incidentId = existing.incidentId;
-      openedAt = existing.openedAt;
-    } else {
-      isNew = true;
-      incidentId = "inc_" + randomUUID();
-      openedAt = new Date().toISOString();
-    }
+    const isNew = !existing;
+    const incidentId = existing ? existing.incidentId : "inc_" + randomUUID();
+    const openedAt = existing ? existing.openedAt : new Date().toISOString();
 
     const packet = createPacket(incidentId, openedAt, anomalousSpans);
     await storage.createIncident(packet);
@@ -63,23 +53,13 @@ export function createIngestRouter(storage: StorageDriver): Hono {
     return c.json({ status: "ok", incidentId, packetId: packet.packetId });
   });
 
-  // Phase C: merge into packet evidence
-  app.post("/v1/metrics", async (c) => {
-    await c.req.json().catch(() => null);
-    return c.json({ status: "ok" });
-  });
-
-  // Phase C: merge into packet evidence
-  app.post("/v1/logs", async (c) => {
-    await c.req.json().catch(() => null);
-    return c.json({ status: "ok" });
-  });
-
-  // Phase C: merge into packet evidence
-  app.post("/v1/platform-events", async (c) => {
-    await c.req.json().catch(() => null);
-    return c.json({ status: "ok" });
-  });
+  // Phase C: merge metrics/logs/platform-events into packet evidence
+  for (const path of ["/v1/metrics", "/v1/logs", "/v1/platform-events"] as const) {
+    app.post(path, async (c) => {
+      await c.req.json().catch(() => null); // consume body for connection lifecycle
+      return c.json({ status: "ok" });
+    });
+  }
 
   return app;
 }

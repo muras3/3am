@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { DiagnosisResultSchema } from "@3amoncall/core";
+import { DiagnosisResultSchema, type DiagnosisResult } from "@3amoncall/core";
 import type { StorageDriver } from "../storage/interface.js";
 
 export function createApiRouter(storage: StorageDriver): Hono {
@@ -39,7 +39,7 @@ export function createApiRouter(storage: StorageDriver): Hono {
   app.post("/api/diagnosis/:id", async (c) => {
     const id = c.req.param("id");
 
-    let result;
+    let result: DiagnosisResult;
     try {
       const body = await c.req.json();
       result = DiagnosisResultSchema.parse(body);
