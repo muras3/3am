@@ -28,7 +28,9 @@ export function createIngestRouter(storage: StorageDriver): Hono {
     const formationKey = buildFormationKey(firstSpan);
     const signalTimeMs = firstSpan.startTimeMs;
 
-    // Find existing open incident for this formation key within window
+    // Find existing open incident for this formation key within window.
+    // Phase C: paginate through all pages (cursor loop) so matches are not
+    // missed when there are >100 open incidents.
     const page = await storage.listIncidents({ limit: 100 });
     const existing = page.items.find((incident) =>
       shouldAttachToIncident(formationKey, incident, signalTimeMs),
@@ -46,7 +48,11 @@ export function createIngestRouter(storage: StorageDriver): Hono {
       // Attaching to an existing incident does not overwrite the stored packet,
       // preserving the stable packet_id that was already emitted in the ThinEvent.
       // Phase C: accumulate evidence across signals via appendEvidence().
-      const packet = createPacket(incidentId, openedAt, anomalousSpans);
+      // Pass all spans (not just anomalous) so the packet captures the full
+      // incident-scoped evidence bundle per ADR 0016/0018 (affectedServices,
+      // representativeTraces, traceRefs include healthy sibling spans).
+      // triggerSignals is computed inside createPacket by re-filtering isAnomalous.
+      const packet = createPacket(incidentId, openedAt, spans);
       await storage.createIncident(packet);
       await storage.saveThinEvent({
         event_id: "evt_" + randomUUID(),
