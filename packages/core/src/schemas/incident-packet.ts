@@ -1,5 +1,11 @@
 import { z } from "zod";
 
+// All sub-schemas use .strict() so that unknown keys are rejected at every
+// nesting level, not just at the top. This prevents callers from accidentally
+// embedding diagnosis-result fields (immediateAction, rootCauseHypothesis,
+// etc.) inside nested objects — a class of mistake that a top-level-only
+// .strict() would miss.
+
 const WindowSchema = z.object({
   start: z.string(),
   detect: z.string(),
@@ -20,7 +26,8 @@ const TriggerSignalSchema = z.object({
   entity: z.string(),
 }).strict();
 
-// Typed shape for representative spans captured at incident time (ADR 0018)
+// Representative spans captured at incident time (ADR 0018).
+// .strict() here ensures no span-level LLM annotations leak into the packet.
 const RepresentativeTraceSchema = z.object({
   traceId: z.string(),
   spanId: z.string(),
@@ -44,6 +51,15 @@ const PointersSchema = z.object({
   platformLogRefs: z.array(z.string()),
 }).strict();
 
+// ADR 0018 draws a hard boundary between the incident packet (raw observational
+// data: identity / situation / evidence / retrieval) and the diagnosis result
+// (LLM output: root cause, immediate action, confidence, etc.).
+//
+// .strict() enforces this boundary at runtime: any field that belongs to
+// DiagnosisResult — immediateAction, rootCauseHypothesis, confidence, doNot,
+// whyThisAction — will cause a ZodError if someone tries to embed it here.
+// This makes the contract violation detectable early (at ingest / storage time)
+// rather than silently corrupting downstream consumers.
 export const IncidentPacketSchema = z.object({
   schemaVersion: z.literal("incident-packet/v1alpha1"),
   // identity layer (ADR 0018)
