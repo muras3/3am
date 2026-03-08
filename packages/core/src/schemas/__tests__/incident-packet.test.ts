@@ -79,9 +79,7 @@ describe("IncidentPacketSchema", () => {
     expect(() => IncidentPacketSchema.parse(withBadPointers)).toThrow(ZodError);
   });
 
-  it("does NOT contain LLM output fields (ADR 0018 non-goals)", () => {
-    const schema = IncidentPacketSchema;
-    // Parse a packet with forbidden fields — they should be stripped or rejected
+  it("does NOT contain LLM output fields (ADR 0018 non-goals — camelCase)", () => {
     const withLlmFields = {
       ...minimalValidPacket,
       immediateAction: "restart the service",
@@ -89,11 +87,24 @@ describe("IncidentPacketSchema", () => {
       confidenceAssessment: "high",
       doNot: "delete the database",
     };
-    const parsed = schema.parse(withLlmFields);
+    const parsed = IncidentPacketSchema.parse(withLlmFields);
     expect(parsed).not.toHaveProperty("immediateAction");
     expect(parsed).not.toHaveProperty("rootCauseHypothesis");
     expect(parsed).not.toHaveProperty("confidenceAssessment");
     expect(parsed).not.toHaveProperty("doNot");
+  });
+
+  it("does NOT contain LLM output fields (ADR 0018 non-goals — snake_case)", () => {
+    const forbidden = [
+      "immediate_action",
+      "do_not",
+      "root_cause_hypothesis",
+      "confidence_assessment",
+      "why_this_action",
+    ];
+    for (const field of forbidden) {
+      expect(field in IncidentPacketSchema.shape).toBe(false);
+    }
   });
 
   it("rejects invalid data with ZodError", () => {

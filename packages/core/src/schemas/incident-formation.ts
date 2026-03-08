@@ -18,6 +18,7 @@ export type IncidentFormationKey = z.infer<typeof IncidentFormationKeySchema>;
 
 export const IncidentFormationContextSchema = z.object({
   deploymentId: z.string().optional(),
+  releaseVersion: z.string().optional(),
   configChange: z.string().optional(),
   route: z.string().optional(),
   platformEvent: z.string().optional(),

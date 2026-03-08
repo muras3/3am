@@ -101,14 +101,21 @@ describe("DiagnosisResultSchema", () => {
     ).toThrow(ZodError);
   });
 
-  it("does NOT contain raw traces, raw logs, or packet body fields (ADR 0019 non-goals)", () => {
+  it("does NOT contain raw traces, raw logs, raw metrics, or packet body fields (ADR 0019 non-goals)", () => {
     const withRaw = {
       ...minimalValid,
       raw_traces: [{ traceId: "abc" }],
       raw_logs: ["log line"],
+      raw_metrics: [{ name: "error_rate" }],
     };
     const parsed = DiagnosisResultSchema.parse(withRaw);
     expect(parsed).not.toHaveProperty("raw_traces");
     expect(parsed).not.toHaveProperty("raw_logs");
+    expect(parsed).not.toHaveProperty("raw_metrics");
+    // Packet body fields must not bleed into diagnosis result
+    const packetFields = ["triggerSignals", "pointers", "evidence"];
+    for (const field of packetFields) {
+      expect(field in DiagnosisResultSchema.shape).toBe(false);
+    }
   });
 });
