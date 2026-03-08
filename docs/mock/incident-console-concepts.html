@@ -1,0 +1,2185 @@
+<!DOCTYPE html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>3amoncall Incident Console Concepts</title>
+    <style>
+      :root {
+        --bg: #f4f1eb;
+        --bg-soft: #faf8f4;
+        --panel: #fffdf9;
+        --panel-2: #f5f1ea;
+        --panel-3: #ece5da;
+        --line: rgba(71, 58, 45, 0.11);
+        --line-strong: rgba(71, 58, 45, 0.18);
+        --text: #191512;
+        --muted: #6b6158;
+        --muted-cool: #5e6d76;
+        --accent: #9f6723;
+        --accent-soft: rgba(159, 103, 35, 0.10);
+        --cyan: #1f7b87;
+        --cyan-soft: rgba(31, 123, 135, 0.10);
+        --danger: #c94b3c;
+        --danger-soft: rgba(201, 75, 60, 0.10);
+        --good: #347456;
+        --signal-incident: #6b635b;
+        --signal-external: #9f6723;
+        --signal-system: #1f7b87;
+        --signal-impact: #c94b3c;
+        --signal-action: #161310;
+        --signal-action-text: #fffaf5;
+        --ink-soft: rgba(25, 21, 18, 0.06);
+        --shadow: 0 18px 46px rgba(38, 28, 20, 0.08);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html, body {
+        margin: 0;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        color: var(--text);
+        background:
+          radial-gradient(circle at top right, rgba(159, 103, 35, 0.06), transparent 20%),
+          radial-gradient(circle at bottom left, rgba(31, 123, 135, 0.05), transparent 18%),
+          linear-gradient(180deg, #f8f5ef 0%, #f1ede6 100%);
+        font-family: "SF Pro Text", "SF Pro Display", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+      }
+
+      button {
+        font: inherit;
+      }
+
+      .app {
+        width: 100%;
+        height: 100%;
+        padding: 10px;
+        display: grid;
+        grid-template-rows: auto 1fr;
+        gap: 8px;
+      }
+
+      .topbar,
+      .surface,
+      .panel,
+      .incident-card,
+      .chip,
+      .tab,
+      .metric-card,
+      .log-row,
+      .pf-row,
+      .trace-card,
+      .chat-bubble,
+      .evidence-modal,
+      .mini-card {
+        border: 1px solid var(--line);
+        border-radius: 24px;
+      }
+
+      .topbar,
+      .surface,
+      .evidence-modal {
+        background: rgba(255, 252, 247, 0.92);
+        box-shadow: var(--shadow);
+        backdrop-filter: blur(16px);
+      }
+
+      .topbar {
+        padding: 8px 10px;
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 8px;
+        align-items: center;
+        border-radius: 14px;
+      }
+
+      .eyebrow {
+        font-size: 10px;
+        text-transform: uppercase;
+        letter-spacing: 0.14em;
+        color: var(--muted);
+      }
+
+      .headline {
+        margin-top: 2px;
+        font-size: 18px;
+        line-height: 1.1;
+        letter-spacing: -0.04em;
+        font-weight: 720;
+      }
+
+      .lede {
+        display: none;
+      }
+
+      .controls,
+      .chips,
+      .tabs,
+      .actions {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+      }
+
+      .chip,
+      .tab {
+        padding: 8px 11px;
+        background: var(--bg-soft);
+        color: var(--muted);
+        font-size: 11px;
+      }
+
+      .chip.critical {
+        color: var(--danger);
+        background: var(--danger-soft);
+      }
+
+      .chip.external {
+        color: var(--signal-external);
+        background: rgba(159, 103, 35, 0.08);
+      }
+
+      .chip.system {
+        color: var(--signal-system);
+        background: rgba(31, 123, 135, 0.08);
+      }
+
+      .chip.impact {
+        color: var(--signal-impact);
+        background: rgba(201, 75, 60, 0.09);
+      }
+
+      .tab,
+      .actions button,
+      .concept-switch button {
+        cursor: pointer;
+        background: transparent;
+      }
+
+      .tab.active,
+      .concept-switch button.active,
+      .actions .primary {
+        border-color: rgba(182, 106, 23, 0.30);
+        background: var(--accent-soft);
+        color: var(--text);
+      }
+
+      .concept-switch {
+        display: flex;
+        gap: 6px;
+        justify-content: flex-end;
+        flex-wrap: wrap;
+      }
+
+      .concept-switch button {
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        padding: 6px 9px;
+        color: var(--muted);
+        font-size: 10px;
+      }
+
+      .viewport {
+        min-height: 0;
+      }
+
+      .concept {
+        display: none;
+        height: 100%;
+      }
+
+      .concept.active {
+        display: block;
+      }
+
+      .surface {
+        height: 100%;
+        padding: 6px;
+        overflow: hidden;
+        background:
+          linear-gradient(180deg, rgba(255,255,255,0.9), rgba(247,243,236,0.96)),
+          linear-gradient(180deg, rgba(159,103,35,0.015), transparent);
+        border-radius: 18px;
+      }
+
+      .layout {
+        height: 100%;
+        display: grid;
+        gap: 8px;
+        min-height: 0;
+      }
+
+      .layout.a {
+        grid-template-columns: 220px minmax(0, 1fr) 272px;
+      }
+
+      .layout.b {
+        grid-template-columns: 1.1fr 0.9fr;
+      }
+
+      .layout.c {
+        grid-template-columns: 260px 1fr 380px;
+      }
+
+      .col,
+      .stack {
+        min-width: 0;
+        min-height: 0;
+        display: grid;
+        gap: 8px;
+        align-content: start;
+      }
+
+      .panel {
+        padding: 9px;
+        background:
+          linear-gradient(180deg, rgba(255, 254, 251, 0.98), rgba(244, 240, 233, 0.96)),
+          linear-gradient(180deg, rgba(255,255,255,0.12), transparent);
+        overflow: hidden;
+        min-height: fit-content;
+        border-radius: 14px;
+      }
+
+      .section-title {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        align-items: center;
+        margin-bottom: 8px;
+      }
+
+      .section-title.tight {
+        margin-bottom: 6px;
+      }
+
+      h2, h3 {
+        margin: 0;
+        font-size: 16px;
+        letter-spacing: -0.01em;
+      }
+
+      .incident-list {
+        display: grid;
+        gap: 8px;
+      }
+
+      .incident-card {
+        padding: 9px;
+        background: linear-gradient(180deg, rgba(255,255,255,0.84), rgba(247, 243, 236, 0.88));
+        border-radius: 14px;
+      }
+
+      .incident-card.active {
+        border-color: rgba(159, 103, 35, 0.24);
+        box-shadow: inset 3px 0 0 rgba(159, 103, 35, 0.82);
+      }
+
+      .incident-head {
+        display: flex;
+        justify-content: space-between;
+        gap: 10px;
+        align-items: baseline;
+      }
+
+      .incident-name {
+        font-size: 17px;
+        font-weight: 670;
+        line-height: 1.2;
+      }
+
+      .subtle {
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.5;
+      }
+
+      .priority-action {
+        padding: 14px 16px;
+        border-radius: 20px;
+        border: 1px solid rgba(216, 76, 63, 0.20);
+        background:
+          linear-gradient(180deg, rgba(216, 76, 63, 0.08), rgba(216, 76, 63, 0.04)),
+          linear-gradient(180deg, rgba(255,255,255,0.62), rgba(255,255,255,0.42));
+      }
+
+      .priority-action .kicker {
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.16em;
+        color: var(--danger);
+        margin-bottom: 8px;
+      }
+
+      .priority-action .action-text {
+        font-size: 19px;
+        line-height: 1.18;
+        letter-spacing: -0.03em;
+        font-weight: 700;
+      }
+
+      .priority-action .action-sub {
+        margin-top: 6px;
+        font-size: 12px;
+        line-height: 1.45;
+        color: var(--muted);
+      }
+
+      .summary-line {
+        margin-top: 6px;
+        font-size: 13px;
+        line-height: 1.35;
+      }
+
+      .board-grid {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 8px;
+      }
+
+      .board-lower {
+        display: grid;
+        grid-template-columns: 0.92fr 1.18fr 0.9fr;
+        gap: 6px;
+      }
+
+      .board-statusbar {
+        display: grid;
+        grid-template-columns: 1.4fr 0.8fr 0.7fr 0.9fr;
+        gap: 8px;
+        margin-bottom: 8px;
+      }
+
+      .status-chip {
+        padding: 10px 12px;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        background: linear-gradient(180deg, rgba(255,255,255,0.9), rgba(244,239,232,0.94));
+        position: relative;
+        overflow: hidden;
+      }
+
+      .status-chip::before {
+        content: "";
+        position: absolute;
+        left: 0;
+        top: 0;
+        bottom: 0;
+        width: 3px;
+        background: rgba(71, 58, 45, 0.16);
+      }
+
+      .status-chip.incident::before { background: var(--signal-incident); }
+      .status-chip.external::before { background: var(--signal-external); }
+      .status-chip.system::before { background: var(--signal-system); }
+      .status-chip.impact::before { background: var(--signal-impact); }
+      .status-chip.action::before { background: #1d1814; }
+
+      .status-chip .label {
+        font-size: 10px;
+        text-transform: uppercase;
+        letter-spacing: 0.14em;
+        color: var(--muted);
+      }
+
+      .status-chip .value {
+        margin-top: 4px;
+        font-size: 14px;
+        line-height: 1.3;
+        font-weight: 660;
+        letter-spacing: -0.02em;
+      }
+
+      .mini-card {
+        padding: 11px;
+        background: linear-gradient(180deg, rgba(250,246,240,0.96), rgba(240,234,226,0.92));
+        border-radius: 12px;
+        position: relative;
+        overflow: hidden;
+      }
+
+      .mini-card::before {
+        content: "";
+        position: absolute;
+        left: 0;
+        top: 0;
+        right: 0;
+        height: 2px;
+        background: rgba(71, 58, 45, 0.08);
+      }
+
+      .mini-card.impact::before { background: var(--signal-impact); }
+      .mini-card.system::before { background: var(--signal-system); }
+      .mini-card.external::before { background: var(--signal-external); }
+      .mini-card.neutral::before { background: var(--signal-incident); }
+
+      .mini-card strong {
+        display: block;
+        margin-bottom: 8px;
+        font-size: 12px;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: var(--muted);
+      }
+
+      .mini-card p {
+        margin: 0;
+        font-size: 13px;
+        line-height: 1.45;
+      }
+
+      .watch-list,
+      .radius-list,
+      .preview-list {
+        display: grid;
+        gap: 6px;
+      }
+
+      .watch-row,
+      .radius-row,
+      .preview-row {
+        display: grid;
+        gap: 8px;
+        align-items: center;
+        padding: 8px 0;
+        border-top: 1px solid rgba(71, 58, 45, 0.06);
+      }
+
+      .watch-row {
+        grid-template-columns: 74px 1fr 56px;
+      }
+
+      .radius-row {
+        grid-template-columns: 88px 1fr;
+      }
+
+      .preview-row {
+        grid-template-columns: 66px 1fr;
+      }
+
+      .watch-row:first-child,
+      .radius-row:first-child,
+      .preview-row:first-child {
+        border-top: 0;
+        padding-top: 0;
+      }
+
+      .watch-label,
+      .radius-label,
+      .preview-label {
+        font-size: 10px;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: var(--muted);
+      }
+
+      .watch-value,
+      .radius-value,
+      .preview-value {
+        font-size: 12px;
+        line-height: 1.25;
+      }
+
+      .watch-state {
+        justify-self: end;
+        font-size: 10px;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: var(--muted-cool);
+      }
+
+      .timeline-strip {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 6px;
+        margin-top: 10px;
+      }
+
+      .timeline-node {
+        padding: 8px;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: rgba(255,255,255,0.7);
+      }
+
+      .timeline-node .time {
+        font-size: 10px;
+        color: var(--muted);
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+      }
+
+      .timeline-node .event {
+        margin-top: 4px;
+        font-size: 12px;
+        line-height: 1.25;
+      }
+
+      .timeline {
+        display: grid;
+        gap: 10px;
+      }
+
+      .timeline-item {
+        padding: 12px 14px;
+        border-left: 3px solid rgba(43, 138, 146, 0.30);
+        background: rgba(43, 138, 146, 0.06);
+        border-radius: 16px;
+        font-size: 13px;
+        line-height: 1.55;
+      }
+
+      .insight {
+        padding: 14px;
+        border-radius: 18px;
+        font-size: 14px;
+        line-height: 1.6;
+        background: var(--accent-soft);
+      }
+
+      .insight.red {
+        background: var(--danger-soft);
+      }
+
+      .insight.blue {
+        background: var(--cyan-soft);
+      }
+
+      .actions button {
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        padding: 10px 14px;
+        color: var(--muted);
+      }
+
+      .decision-strip {
+        display: grid;
+        grid-template-columns: 1.16fr 0.84fr;
+        gap: 6px;
+        margin-bottom: 6px;
+      }
+
+      .decision-card,
+      .cta-card {
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        padding: 12px 14px;
+      }
+
+      .decision-card {
+        background:
+          linear-gradient(180deg, rgba(255,254,251,0.98), rgba(243,239,232,0.96)),
+          linear-gradient(90deg, rgba(94,109,118,0.04), transparent 30%);
+      }
+
+      .cta-card {
+        background:
+          linear-gradient(180deg, rgba(255,249,246,0.98), rgba(244,235,229,0.97)),
+          linear-gradient(180deg, rgba(201,75,60,0.04), transparent);
+        border-color: rgba(201, 75, 60, 0.16);
+      }
+
+      .decision-card strong,
+      .cta-card strong {
+        display: block;
+        margin-bottom: 8px;
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.12em;
+        color: var(--muted);
+      }
+
+      .decision-title,
+      .cta-title {
+        font-size: 16px;
+        line-height: 1.2;
+        letter-spacing: -0.03em;
+        font-weight: 690;
+      }
+
+      .decision-meta,
+      .cta-sub {
+        margin-top: 8px;
+        font-size: 12px;
+        line-height: 1.55;
+        color: var(--muted);
+      }
+
+      .decision-points {
+        margin-top: 10px;
+        display: grid;
+        gap: 8px;
+      }
+
+      .decision-points div {
+        padding-left: 12px;
+        position: relative;
+        font-size: 12px;
+        line-height: 1.5;
+      }
+
+      .decision-points div::before {
+        content: "";
+        position: absolute;
+        left: 0;
+        top: 7px;
+        width: 5px;
+        height: 5px;
+        border-radius: 999px;
+        background: var(--accent);
+      }
+
+      .signal-chain {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 6px;
+        margin-top: 8px;
+      }
+
+      .signal-step {
+        min-height: 84px;
+        padding: 9px;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        background:
+          linear-gradient(180deg, rgba(255,255,255,0.84), rgba(246,242,236,0.88));
+      }
+
+      .signal-step .sig {
+        width: 10px;
+        height: 10px;
+        border-radius: 999px;
+        margin-bottom: 10px;
+      }
+
+      .signal-step .sig.accent { background: var(--accent); }
+      .signal-step .sig.cyan { background: var(--cyan); }
+      .signal-step .sig.danger { background: var(--danger); }
+      .signal-step .sig.text { background: #64564a; }
+      .signal-step .sig.incident { background: var(--signal-incident); }
+      .signal-step .sig.external { background: var(--signal-external); }
+      .signal-step .sig.system { background: var(--signal-system); }
+      .signal-step .sig.impact { background: var(--signal-impact); }
+
+      .signal-step strong {
+        display: block;
+        margin-bottom: 6px;
+        font-size: 11px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--muted);
+      }
+
+      .signal-step .main {
+        font-size: 13px;
+        line-height: 1.18;
+        font-weight: 680;
+        letter-spacing: -0.02em;
+      }
+
+      .signal-step .meta {
+        margin-top: 4px;
+        font-size: 11px;
+        line-height: 1.2;
+        color: var(--muted);
+      }
+
+      .cta-actions {
+        display: flex;
+        gap: 8px;
+        margin-top: 10px;
+      }
+
+      .action-btn {
+        height: 36px;
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 0 12px;
+        border-radius: 999px;
+        border: 1px solid var(--line-strong);
+        background: rgba(255,255,255,0.92);
+        color: var(--text);
+        font-size: 12px;
+        font-weight: 620;
+        letter-spacing: -0.01em;
+        box-shadow: inset 0 1px 0 rgba(255,255,255,0.7);
+      }
+
+      .action-btn.primary {
+        border-color: rgba(22, 19, 16, 0.14);
+        background: linear-gradient(180deg, #26211d, #171311);
+        color: var(--signal-action-text);
+      }
+
+      .action-btn.ghost {
+        background: linear-gradient(180deg, rgba(255,255,255,0.94), rgba(244,239,232,0.94));
+        color: var(--text);
+      }
+
+      .action-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 999px;
+        background: currentColor;
+        opacity: 0.8;
+      }
+
+      .inline-tag {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 5px 8px;
+        border-radius: 999px;
+        background: rgba(255,255,255,0.74);
+        border: 1px solid rgba(216, 76, 63, 0.10);
+        font-size: 10px;
+        color: var(--muted);
+      }
+
+      .metrics-strip {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 10px;
+      }
+
+      .metric-card {
+        padding: 12px;
+        background: linear-gradient(180deg, rgba(255,255,255,0.88), rgba(243,238,230,0.92));
+        border-radius: 12px;
+      }
+
+      .metric-label {
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: var(--muted);
+      }
+
+      .metric-value {
+        margin-top: 4px;
+        font-size: 24px;
+        font-weight: 650;
+        letter-spacing: -0.04em;
+      }
+
+      .metric-value.danger {
+        color: var(--danger);
+      }
+
+      .metric-value.accent {
+        color: var(--accent);
+      }
+
+      .metric-value.cyan {
+        color: var(--cyan);
+      }
+
+      .chart {
+        margin-top: 8px;
+        height: 60px;
+        border-radius: 16px;
+        background: linear-gradient(180deg, #fffaf3, #f1e6d6);
+        overflow: hidden;
+      }
+
+      .chart svg {
+        width: 100%;
+        height: 100%;
+      }
+
+      .chat {
+        display: grid;
+        gap: 8px;
+      }
+
+      .diagnosis-brief {
+        display: grid;
+        gap: 6px;
+      }
+
+      .diagnosis-card {
+        padding: 9px 10px;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        background: linear-gradient(180deg, rgba(255,255,255,0.9), rgba(244,239,232,0.94));
+      }
+
+      .diagnosis-card.primary {
+        border-color: rgba(31, 123, 135, 0.16);
+        background:
+          linear-gradient(180deg, rgba(248,252,252,0.98), rgba(238,245,244,0.96)),
+          linear-gradient(90deg, rgba(31,123,135,0.05), transparent 35%);
+      }
+
+      .diagnosis-label {
+        font-size: 10px;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: var(--muted);
+      }
+
+      .diagnosis-main {
+        margin-top: 5px;
+        font-size: 13px;
+        line-height: 1.3;
+        font-weight: 620;
+      }
+
+      .diagnosis-sub {
+        margin-top: 6px;
+        font-size: 11px;
+        line-height: 1.35;
+        color: var(--muted);
+      }
+
+      .suggested-asks {
+        display: grid;
+        gap: 6px;
+      }
+
+      .ask-chip {
+        padding: 8px 10px;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        background: rgba(255,255,255,0.82);
+        font-size: 11px;
+        line-height: 1.25;
+        color: var(--text);
+      }
+
+      .chat-head {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 6px;
+      }
+
+      .chat-head .presence {
+        font-size: 12px;
+        color: var(--good);
+      }
+
+      .chat-bubble {
+        padding: 9px 11px;
+        background: linear-gradient(180deg, rgba(255,255,255,0.88), rgba(244,239,232,0.92));
+        font-size: 11px;
+        line-height: 1.4;
+        border-radius: 12px;
+      }
+
+      .chat-bubble.user {
+        background: rgba(43, 138, 146, 0.08);
+      }
+
+      .evidence-links {
+        display: grid;
+        gap: 6px;
+        margin-top: 8px;
+      }
+
+      .evidence-link {
+        display: grid;
+        grid-template-columns: 74px 1fr;
+        gap: 10px;
+        padding: 9px 11px;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        background: rgba(255,255,255,0.76);
+        font-size: 11px;
+        line-height: 1.35;
+      }
+
+      .evidence-link strong {
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: var(--muted);
+      }
+
+      .chat-input {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 6px;
+      }
+
+      .input {
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        padding: 11px 12px;
+        background: var(--bg-soft);
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .send {
+        border: 1px solid rgba(182, 106, 23, 0.28);
+        border-radius: 12px;
+        padding: 0 14px;
+        display: inline-flex;
+        align-items: center;
+        background: var(--accent-soft);
+        font-size: 13px;
+      }
+
+      .compact-list {
+        display: grid;
+        gap: 2px;
+      }
+
+      .compact-row {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 7px 0;
+        border-bottom: 1px solid rgba(91, 62, 32, 0.06);
+        font-size: 12px;
+      }
+
+      .trace-preview {
+        display: grid;
+        gap: 10px;
+      }
+
+      .trace-card {
+        padding: 14px;
+        background: rgba(255,255,255,0.58);
+      }
+
+      .trace-waterfall {
+        margin-top: 10px;
+        display: grid;
+        gap: 8px;
+      }
+
+      .bar {
+        height: 16px;
+        border-radius: 999px;
+        background: linear-gradient(90deg, rgba(43, 138, 146, 0.18), rgba(43, 138, 146, 0.92));
+      }
+
+      .bar.warn {
+        background: linear-gradient(90deg, rgba(182, 106, 23, 0.18), rgba(182, 106, 23, 0.92));
+      }
+
+      .bar.err {
+        background: linear-gradient(90deg, rgba(216, 76, 63, 0.18), rgba(216, 76, 63, 0.92));
+      }
+
+      .overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(78, 58, 38, 0.16);
+        display: none;
+        align-items: center;
+        justify-content: center;
+        padding: 22px;
+      }
+
+      .overlay.show {
+        display: flex;
+      }
+
+      .reasoning-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(78, 58, 38, 0.16);
+        display: none;
+        align-items: center;
+        justify-content: center;
+        padding: 22px;
+      }
+
+      .reasoning-overlay.show {
+        display: flex;
+      }
+
+      .reasoning-modal {
+        width: min(760px, calc(100vw - 44px));
+        border: 1px solid var(--line);
+        border-radius: 28px;
+        background:
+          linear-gradient(180deg, rgba(255,255,255,0.96), rgba(245,238,229,0.98)),
+          linear-gradient(180deg, rgba(182,106,23,0.03), transparent);
+        box-shadow: var(--shadow);
+        padding: 18px;
+      }
+
+      .reasoning-header {
+        display: flex;
+        justify-content: space-between;
+        gap: 18px;
+        align-items: start;
+        margin-bottom: 14px;
+      }
+
+      .reasoning-heading {
+        font-size: 24px;
+        line-height: 1.14;
+        letter-spacing: -0.03em;
+        font-weight: 710;
+      }
+
+      .reasoning-sub {
+        margin-top: 6px;
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.55;
+      }
+
+      .evidence-modal {
+        width: min(1380px, calc(100vw - 44px));
+        height: min(760px, calc(100vh - 44px));
+        padding: 14px;
+        display: grid;
+        grid-template-rows: auto auto 1fr auto;
+        gap: 14px;
+        background:
+          linear-gradient(180deg, rgba(255,255,255,0.95), rgba(245,239,232,0.97)),
+          linear-gradient(180deg, rgba(94,109,118,0.025), transparent);
+        border-radius: 18px;
+      }
+
+      .modal-header {
+        display: flex;
+        justify-content: space-between;
+        gap: 18px;
+        align-items: start;
+      }
+
+      .modal-title {
+        font-size: 28px;
+        letter-spacing: -0.04em;
+        font-weight: 700;
+      }
+
+      .close {
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        padding: 10px 14px;
+        background: transparent;
+        color: var(--muted);
+        cursor: pointer;
+      }
+
+      .evidence-grid {
+        min-height: 0;
+        display: grid;
+        grid-template-columns: 1.1fr 0.95fr;
+        gap: 14px;
+      }
+
+      .evidence-panel {
+        min-height: 0;
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        padding: 12px;
+        background: linear-gradient(180deg, rgba(255, 254, 251, 0.98), rgba(243, 238, 230, 0.97));
+        overflow: hidden;
+      }
+
+      .hero-board {
+        display: grid;
+        grid-template-columns: 1.05fr 0.95fr;
+        gap: 6px;
+        margin-bottom: 6px;
+      }
+
+      .hero-card {
+        padding: 11px;
+        border-radius: 14px;
+        border: 1px solid var(--line);
+        background: linear-gradient(180deg, rgba(255,255,255,0.9), rgba(244,239,231,0.94));
+      }
+
+      .hero-card strong {
+        display: block;
+        margin-bottom: 8px;
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.12em;
+        color: var(--muted);
+      }
+
+      .hero-card .big {
+        font-size: 18px;
+        line-height: 1.18;
+        letter-spacing: -0.03em;
+        font-weight: 710;
+      }
+
+      .hero-card .small {
+        margin-top: 6px;
+        font-size: 11px;
+        line-height: 1.35;
+        color: var(--muted);
+      }
+
+      .reasoning-steps {
+        display: grid;
+        gap: 10px;
+      }
+
+      .reasoning-step {
+        display: grid;
+        grid-template-columns: 34px 1fr;
+        gap: 10px;
+        align-items: start;
+      }
+
+      .reasoning-step .num {
+        width: 34px;
+        height: 34px;
+        border-radius: 999px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        background: rgba(182,106,23,0.12);
+        color: var(--accent);
+        font-size: 12px;
+        font-weight: 700;
+      }
+
+      .reasoning-step .body {
+        font-size: 13px;
+        line-height: 1.55;
+      }
+
+      .evidence-view {
+        display: none;
+        height: 100%;
+      }
+
+      .evidence-view.active {
+        display: block;
+      }
+
+      .explorer-topbar {
+        display: flex;
+        justify-content: space-between;
+        gap: 10px;
+        align-items: center;
+        margin-bottom: 12px;
+      }
+
+      .querybar {
+        flex: 1;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        padding: 9px 11px;
+        background: rgba(255,255,255,0.88);
+        color: var(--muted-cool);
+        font-size: 11px;
+      }
+
+      .facets {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        margin-bottom: 10px;
+      }
+
+      .facet {
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        padding: 6px 9px;
+        font-size: 11px;
+        color: var(--muted-cool);
+        background: rgba(255,255,255,0.72);
+      }
+
+      .log-stream,
+      .pf-stream {
+        display: grid;
+        gap: 10px;
+        height: 100%;
+      }
+
+      .log-row,
+      .pf-row {
+        padding: 14px;
+        background: rgba(255,255,255,0.62);
+      }
+
+      .row-head {
+        display: flex;
+        justify-content: space-between;
+        gap: 10px;
+        margin-bottom: 8px;
+        font-size: 12px;
+        color: var(--muted);
+      }
+
+      .row-msg {
+        font-size: 14px;
+        line-height: 1.55;
+      }
+
+      .trace-view,
+      .metrics-view {
+        display: grid;
+        gap: 12px;
+      }
+
+      .metrics-layout {
+        display: grid;
+        grid-template-columns: 1.25fr 0.75fr;
+        gap: 12px;
+      }
+
+      .big-chart {
+        height: 236px;
+        border-radius: 12px;
+        border: 1px solid rgba(71, 58, 45, 0.08);
+        background:
+          linear-gradient(180deg, rgba(255,255,255,0.96), rgba(240,235,227,0.95)),
+          repeating-linear-gradient(
+            180deg,
+            rgba(71, 58, 45, 0.05) 0,
+            rgba(71, 58, 45, 0.05) 1px,
+            transparent 1px,
+            transparent 46px
+          ),
+          repeating-linear-gradient(
+            90deg,
+            rgba(71, 58, 45, 0.035) 0,
+            rgba(71, 58, 45, 0.035) 1px,
+            transparent 1px,
+            transparent 88px
+          );
+        overflow: hidden;
+      }
+
+      .big-chart svg {
+        width: 100%;
+        height: 100%;
+      }
+
+      .metrics-legend {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .legend-dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 999px;
+        display: inline-block;
+      }
+
+      .side-notes {
+        display: grid;
+        gap: 10px;
+      }
+
+      .trace-layout {
+        display: grid;
+        grid-template-columns: 1.18fr 0.82fr;
+        gap: 12px;
+      }
+
+      .trace-ruler {
+        display: grid;
+        grid-template-columns: 160px repeat(6, 1fr);
+        gap: 8px;
+        margin-bottom: 10px;
+        color: var(--muted);
+        font-size: 11px;
+      }
+
+      .trace-table {
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        overflow: hidden;
+        background: rgba(255,255,255,0.82);
+      }
+
+      .trace-table-head,
+      .trace-table-row {
+        display: grid;
+        grid-template-columns: 1.1fr 0.7fr 1.2fr;
+        gap: 10px;
+        padding: 11px 12px;
+        font-size: 12px;
+      }
+
+      .trace-table-head {
+        color: var(--muted-cool);
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        background: rgba(237, 233, 226, 0.92);
+      }
+
+      .trace-table-row {
+        border-top: 1px solid rgba(91, 62, 32, 0.08);
+      }
+
+      .waterfall-canvas {
+        padding: 12px;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        background:
+          linear-gradient(180deg, rgba(255,255,255,0.92), rgba(244,239,232,0.94));
+      }
+
+      .wf-row {
+        display: grid;
+        grid-template-columns: 146px 1fr 68px;
+        gap: 10px;
+        align-items: center;
+        margin-bottom: 10px;
+        font-size: 12px;
+      }
+
+      .wf-track {
+        height: 18px;
+        position: relative;
+        border-radius: 999px;
+        background: rgba(71, 58, 45, 0.06);
+        overflow: hidden;
+      }
+
+      .wf-segment {
+        position: absolute;
+        top: 0;
+        height: 18px;
+        border-radius: 999px;
+      }
+
+      .wf-segment.root {
+        background: linear-gradient(90deg, rgba(58,79,102,0.24), rgba(58,79,102,0.88));
+      }
+
+      .wf-segment.wait {
+        background: linear-gradient(90deg, rgba(182,106,23,0.22), rgba(182,106,23,0.94));
+      }
+
+      .wf-segment.err {
+        background: linear-gradient(90deg, rgba(216,76,63,0.24), rgba(216,76,63,0.96));
+      }
+
+      .wf-segment.io {
+        background: linear-gradient(90deg, rgba(43,138,146,0.22), rgba(43,138,146,0.94));
+      }
+
+      .note-card {
+        padding: 12px;
+        border-radius: 12px;
+        background: rgba(255,255,255,0.82);
+        border: 1px solid var(--line);
+        font-size: 12px;
+        line-height: 1.45;
+      }
+
+      .stream-list-header {
+        display: grid;
+        grid-template-columns: 102px 104px 1fr 88px;
+        gap: 10px;
+        padding: 9px 11px;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: rgba(237, 233, 226, 0.94);
+        color: var(--muted-cool);
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+      }
+
+      .stream-grid {
+        display: grid;
+        gap: 8px;
+      }
+
+      .stream-grid.dense {
+        gap: 6px;
+      }
+
+      .log-grid-row,
+      .pf-grid-row {
+        display: grid;
+        grid-template-columns: 102px 104px 1fr 88px;
+        gap: 10px;
+        align-items: start;
+        padding: 10px 11px;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: rgba(255,255,255,0.84);
+        font-size: 12px;
+      }
+
+      .pf-grid-row {
+        background: linear-gradient(180deg, rgba(248,246,241,0.98), rgba(238,234,227,0.99));
+      }
+
+      .pill {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 54px;
+        padding: 4px 8px;
+        border-radius: 999px;
+        font-size: 10px;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        border: 1px solid rgba(91, 62, 32, 0.10);
+        background: rgba(255,255,255,0.72);
+      }
+
+      .pill.critical {
+        color: var(--danger);
+        background: rgba(216,76,63,0.10);
+        border-color: rgba(216,76,63,0.18);
+      }
+
+      @media (max-width: 1360px) {
+        .layout.a,
+        .layout.b,
+        .layout.c,
+        .evidence-grid,
+        .board-grid,
+        .metrics-strip,
+        .metrics-layout,
+        .trace-layout {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="app">
+      <header class="topbar">
+        <div>
+          <div class="eyebrow">3amoncall Concepts</div>
+          <div class="headline">Current incident, immediate action, and proof.</div>
+          <div class="lede">
+            Less reading. Faster triage. Evidence stays one click away.
+          </div>
+        </div>
+        <div>
+          <div class="eyebrow" style="margin-bottom: 10px;">Concept Switch</div>
+          <div class="concept-switch">
+            <button class="active" data-concept="a">A. Board + Studio</button>
+            <button data-concept="b">B. Board Dense Alt</button>
+            <button data-concept="c">C. Ops Rail Alt</button>
+          </div>
+        </div>
+      </header>
+
+      <main class="viewport">
+        <section class="concept active" data-screen="a">
+          <div class="surface">
+            <div class="layout a">
+              <aside class="stack">
+                <div class="panel">
+                  <div class="section-title tight">
+                    <h2>Open Incidents</h2>
+                    <div class="chip critical">1 critical</div>
+                  </div>
+                  <div class="incident-list">
+                    <div class="incident-card active">
+                      <div class="incident-head">
+                        <div class="incident-name">Checkout cascade</div>
+                        <div class="critical">critical</div>
+                      </div>
+                      <div class="subtle">production / web / stripe / /checkout / payments</div>
+                      <div class="summary-line">18.2% failing now</div>
+                    </div>
+                    <div class="incident-card">
+                      <div class="incident-head">
+                        <div class="incident-name">Search latency burst</div>
+                        <div class="subtle">high</div>
+                      </div>
+                      <div class="subtle">search / cache / background rebuild</div>
+                    </div>
+                    <div class="incident-card">
+                      <div class="incident-head">
+                        <div class="incident-name">Webhook backlog</div>
+                        <div class="subtle">medium</div>
+                      </div>
+                      <div class="subtle">worker / queue / outbound events</div>
+                    </div>
+                  </div>
+                </div>
+
+              </aside>
+
+              <div class="stack">
+                <div class="panel">
+                  <div class="section-title">
+                    <h2>Incident Board</h2>
+                    <div class="chips">
+                      <div class="chip system">confidence: high</div>
+                      <div class="chip external">no deploy in window</div>
+                      <div class="chip impact">customer-facing</div>
+                    </div>
+                  </div>
+                  <div class="board-statusbar">
+                    <div class="status-chip incident">
+                      <div class="label">Current</div>
+                      <div class="value">Checkout path unstable</div>
+                    </div>
+                    <div class="status-chip impact">
+                      <div class="label">Impact</div>
+                      <div class="value">18.2% 504s</div>
+                    </div>
+                    <div class="status-chip external">
+                      <div class="label">Trigger</div>
+                      <div class="value">Stripe 429</div>
+                    </div>
+                    <div class="status-chip action">
+                      <div class="label">Action</div>
+                      <div class="value">retry off</div>
+                    </div>
+                  </div>
+                  <div class="hero-board">
+                    <div class="hero-card">
+                      <strong>What happened</strong>
+                      <div class="big">Stripe 429s spilled into queue saturation and checkout 504s.</div>
+                      <div class="small">customer-facing • active</div>
+                    </div>
+                    <div class="hero-card" style="border-color: rgba(201,75,60,0.22); background: linear-gradient(180deg, rgba(255,247,244,0.98), rgba(244,233,228,0.95)); box-shadow: inset 0 0 0 1px rgba(201,75,60,0.06);">
+                      <strong style="color: var(--danger);">Immediate Action</strong>
+                      <div class="big">Kill fixed retries. Shed checkout traffic.</div>
+                      <div class="small">fastest control point</div>
+                    </div>
+                  </div>
+                  <div class="decision-strip">
+                    <div class="decision-card">
+                      <strong>Why this action</strong>
+                      <div class="decision-title">The local system is amplifying an external failure.</div>
+                      <div class="signal-chain">
+                        <div class="signal-step">
+                          <div class="sig external"></div>
+                          <strong>External</strong>
+                          <div class="main">Stripe 429</div>
+                          <div class="meta">rate limit begins</div>
+                        </div>
+                        <div class="signal-step">
+                          <div class="sig system"></div>
+                          <strong>System</strong>
+                          <div class="main">Retry loop</div>
+                          <div class="meta">shared pool</div>
+                        </div>
+                        <div class="signal-step">
+                          <div class="sig incident"></div>
+                          <strong>Incident</strong>
+                          <div class="main">Queue climbs</div>
+                          <div class="meta">local overload</div>
+                        </div>
+                        <div class="signal-step">
+                          <div class="sig impact"></div>
+                          <strong>Impact</strong>
+                          <div class="main">Checkout 504</div>
+                          <div class="meta">user-visible</div>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="cta-card">
+                      <strong>Open Evidence Studio</strong>
+                      <div class="cta-title">Inspect proof in-place.</div>
+                      <div class="cta-sub">Metrics, trace, logs, platform facts.</div>
+                      <div class="cta-actions">
+                        <button class="action-btn primary open-evidence"><span class="action-dot"></span>Open Evidence Studio</button>
+                        <button class="action-btn ghost" id="openReasoning"><span class="action-dot"></span>Diagnosis chain</button>
+                      </div>
+                      <div style="margin-top:8px; display:flex; gap:6px; flex-wrap:wrap;">
+                        <div class="inline-tag">metrics: aligned</div>
+                        <div class="inline-tag">trace: checkout_71af</div>
+                        <div class="inline-tag">logs: retry exhausted</div>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="board-lower">
+                    <div class="mini-card system">
+                      <strong>Mitigation Watch</strong>
+                      <div class="watch-list">
+                        <div class="watch-row">
+                          <div class="watch-label">Queue</div>
+                          <div class="watch-value">must flatten first</div>
+                          <div class="watch-state">watch</div>
+                        </div>
+                        <div class="watch-row">
+                          <div class="watch-label">504 rate</div>
+                          <div class="watch-value">should stop rising</div>
+                          <div class="watch-state">next</div>
+                        </div>
+                        <div class="watch-row">
+                          <div class="watch-label">429 rate</div>
+                          <div class="watch-value">may remain noisy briefly</div>
+                          <div class="watch-state">lagging</div>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="mini-card neutral">
+                      <strong>Blast Radius And Timeline</strong>
+                      <div class="radius-list">
+                        <div class="radius-row">
+                          <div class="radius-label">Surface</div>
+                          <div class="radius-value">checkout revenue path, web, stripe dependency</div>
+                        </div>
+                        <div class="radius-row">
+                          <div class="radius-label">Operator</div>
+                          <div class="radius-value">payments on-call owns action, platform verifies no rollout confounder</div>
+                        </div>
+                      </div>
+                      <div class="timeline-strip">
+                        <div class="timeline-node">
+                          <div class="time">03:11:55</div>
+                          <div class="event">traffic step-up</div>
+                        </div>
+                        <div class="timeline-node">
+                          <div class="time">03:12:08</div>
+                          <div class="event">first 429</div>
+                        </div>
+                        <div class="timeline-node">
+                          <div class="time">03:12:10</div>
+                          <div class="event">retry loop starts</div>
+                        </div>
+                        <div class="timeline-node">
+                          <div class="time">03:12:14</div>
+                          <div class="event">504 visible</div>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="mini-card external">
+                      <strong>Evidence Preview</strong>
+                      <div class="preview-list">
+                        <div class="preview-row">
+                          <div class="preview-label">Metrics</div>
+                          <div class="preview-value">queue and 504 curves bend together</div>
+                        </div>
+                        <div class="preview-row">
+                          <div class="preview-label">Trace</div>
+                          <div class="preview-value">429 -> retry -> wait -> timeout</div>
+                        </div>
+                        <div class="preview-row">
+                          <div class="preview-label">Logs</div>
+                          <div class="preview-value">retry exhausted, worker saturation</div>
+                        </div>
+                        <div class="preview-row">
+                          <div class="preview-label">Platform</div>
+                          <div class="preview-value">no deploy or config shift in window</div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <aside class="stack">
+                <div class="panel">
+                  <div class="chat-head">
+                    <h2>AI Initial Diagnosis</h2>
+                    <div class="presence">grounded in selected incident</div>
+                  </div>
+                  <div class="diagnosis-brief">
+                    <div class="diagnosis-card primary">
+                      <div class="diagnosis-label">Initial Read</div>
+                      <div class="diagnosis-main">This looks like dependency rate limiting amplified by local retry behavior, not a rollout-origin incident.</div>
+                      <div class="diagnosis-sub">Strongest evidence: Stripe 429 starts first, retry loop occupies shared workers, queue rises, then checkout 504s become user-visible.</div>
+                    </div>
+                    <div class="diagnosis-card">
+                      <div class="diagnosis-label">Recommended First Move</div>
+                      <div class="diagnosis-main">Disable fixed retries and shed checkout traffic.</div>
+                      <div class="diagnosis-sub">If the diagnosis is right, queue depth should flatten before the upstream 429 rate fully recovers.</div>
+                    </div>
+                    <div class="diagnosis-card">
+                      <div class="diagnosis-label">Uncertainty</div>
+                      <div class="diagnosis-main">Traffic step-up is clear, but dependency quota behavior may still vary by bucket.</div>
+                    </div>
+                  </div>
+                  <div class="evidence-links">
+                    <div class="evidence-link">
+                      <strong>Metrics</strong>
+                      <div>queue and 504 inflect together</div>
+                    </div>
+                    <div class="evidence-link">
+                      <strong>Trace</strong>
+                      <div>429 -> wait -> timeout</div>
+                    </div>
+                  </div>
+                  <div style="margin-top:10px;" class="diagnosis-label">Ask About</div>
+                  <div class="suggested-asks" style="margin-top:6px;">
+                    <div class="ask-chip">Could this still be deploy-related?</div>
+                    <div class="ask-chip">What tells us the action worked?</div>
+                    <div class="ask-chip">What competing hypothesis remains?</div>
+                  </div>
+                  <div class="chat-input" style="margin-top: 12px;">
+                    <div class="input">気になる点があれば聞いてください…</div>
+                    <div class="send">Send</div>
+                  </div>
+                </div>
+
+              </aside>
+            </div>
+          </div>
+        </section>
+
+        <section class="concept" data-screen="b">
+          <div class="surface">
+            <div class="layout b">
+              <div class="stack">
+                <div class="panel">
+                  <div class="section-title">
+                    <h2>Executive Incident Grid</h2>
+                    <button class="primary open-evidence" style="border:1px solid var(--line);border-radius:999px;padding:10px 14px;background:var(--accent-soft);">Open Evidence</button>
+                  </div>
+                  <div class="board-grid">
+                    <div class="mini-card">
+                      <strong>Current incident</strong>
+                      <p>Checkout cascade from upstream rate limiting.</p>
+                    </div>
+                    <div class="mini-card">
+                      <strong>Severity</strong>
+                      <p>Critical. Customer checkout path degraded now.</p>
+                    </div>
+                    <div class="mini-card">
+                      <strong>Likely trigger</strong>
+                      <p>Stripe 429 burst under flash-sale demand.</p>
+                    </div>
+                    <div class="mini-card">
+                      <strong>Control point</strong>
+                      <p>Retry policy and traffic shedding.</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="panel">
+                  <h2>Signal Overview</h2>
+                  <div class="metrics-strip">
+                    <div class="metric-card"><div class="metric-label">504 rate</div><div class="metric-value danger">18.2%</div><div class="chart"><svg viewBox="0 0 220 74"><polyline fill="none" stroke="#d84c3f" stroke-width="3.5" points="0,60 44,58 88,52 132,40 176,20 220,12"/></svg></div></div>
+                    <div class="metric-card"><div class="metric-label">429 count</div><div class="metric-value accent">241</div><div class="chart"><svg viewBox="0 0 220 74"><polyline fill="none" stroke="#b66a17" stroke-width="3.5" points="0,62 44,60 88,56 132,38 176,22 220,20"/></svg></div></div>
+                    <div class="metric-card"><div class="metric-label">Latency</div><div class="metric-value">12.4s</div><div class="chart"><svg viewBox="0 0 220 74"><polyline fill="none" stroke="#23180f" stroke-width="3.5" points="0,64 44,63 88,60 132,48 176,30 220,20"/></svg></div></div>
+                    <div class="metric-card"><div class="metric-label">Queue</div><div class="metric-value cyan">+382</div><div class="chart"><svg viewBox="0 0 220 74"><polyline fill="none" stroke="#2b8a92" stroke-width="3.5" points="0,60 44,54 88,48 132,34 176,20 220,10"/></svg></div></div>
+                  </div>
+                </div>
+
+                <div class="panel">
+                  <h2>Investigation Timeline</h2>
+                  <div class="timeline">
+                    <div class="timeline-item"><strong>03:11:55</strong> flash-sale traffic enabled</div>
+                    <div class="timeline-item"><strong>03:12:08</strong> first Stripe 429</div>
+                    <div class="timeline-item"><strong>03:12:09</strong> queue growth begins</div>
+                    <div class="timeline-item"><strong>03:12:14</strong> 504s appear</div>
+                  </div>
+                </div>
+              </div>
+
+              <aside class="stack">
+                <div class="panel">
+                  <h2>AI Conversation</h2>
+                  <div class="chat">
+                    <div class="chat-bubble">I think the best immediate control is retry suppression, not instance restart.</div>
+                    <div class="chat-bubble user">Show me only the evidence supporting that.</div>
+                    <div class="chat-bubble">Retry exhaustion logs, queue growth, and the trace waterfall all indicate local amplification after the first 429 burst.</div>
+                  </div>
+                </div>
+
+                <div class="panel">
+                  <h2>Tradeoff</h2>
+                  <div class="summary-line">Most concise and board-like. Strong for executives and tired operators. Slightly less Datadog-native than A.</div>
+                </div>
+              </aside>
+            </div>
+          </div>
+        </section>
+
+        <section class="concept" data-screen="c">
+          <div class="surface">
+            <div class="layout c">
+              <aside class="stack">
+                <div class="panel">
+                  <h2>Ops Rail</h2>
+                  <div class="compact-list">
+                    <div class="compact-row"><span>Started</span><strong>03:12:08</strong></div>
+                    <div class="compact-row"><span>Primary service</span><strong>web</strong></div>
+                    <div class="compact-row"><span>Dependency</span><strong>stripe</strong></div>
+                    <div class="compact-row"><span>Route</span><strong>/checkout</strong></div>
+                    <div class="compact-row"><span>Impact</span><strong>customer-visible</strong></div>
+                  </div>
+                </div>
+                <div class="panel">
+                  <button class="primary open-evidence" style="width:100%;border:1px solid var(--line);border-radius:999px;padding:12px 14px;background:var(--accent-soft);">Open Evidence</button>
+                </div>
+              </aside>
+
+              <div class="stack">
+                <div class="panel">
+                  <h2>Current Story</h2>
+                  <div class="insight">Checkout is failing because upstream rate limiting triggered internal retry amplification.</div>
+                  <div class="insight blue" style="margin-top:10px;">The strongest aligned signals are Stripe 429 burst, queue growth, and checkout waterfall timeout.</div>
+                  <div class="insight red" style="margin-top:10px;">Blind restart is likely to worsen in-flight congestion rather than remove the trigger.</div>
+                </div>
+
+                <div class="panel">
+                  <h2>Trace-led Evidence</h2>
+                  <div class="trace-preview">
+                    <div class="trace-card">
+                      <div class="subtle">POST /checkout · trace_71af</div>
+                      <div class="summary-line">APM-style transaction view anchors the incident.</div>
+                      <div class="trace-waterfall">
+                        <div class="bar" style="width: 24%;"></div>
+                        <div class="bar warn" style="width: 52%;"></div>
+                        <div class="bar err" style="width: 88%;"></div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="panel">
+                  <h2>Signal Compact</h2>
+                  <div class="metrics-strip">
+                    <div class="metric-card"><div class="metric-label">504</div><div class="metric-value danger">18.2%</div></div>
+                    <div class="metric-card"><div class="metric-label">429</div><div class="metric-value accent">241</div></div>
+                    <div class="metric-card"><div class="metric-label">Queue</div><div class="metric-value cyan">+382</div></div>
+                    <div class="metric-card"><div class="metric-label">P95</div><div class="metric-value">12.4s</div></div>
+                  </div>
+                </div>
+              </div>
+
+              <aside class="stack">
+                <div class="panel">
+                  <h2>Copilot</h2>
+                  <div class="chat">
+                    <div class="chat-bubble user">If Stripe recovered now, what would still remain?</div>
+                    <div class="chat-bubble">Blast radius would stop growing, but the queue would still need to drain. That is why traffic shedding is still recommended.</div>
+                  </div>
+                </div>
+                <div class="panel">
+                  <h2>Tradeoff</h2>
+                  <div class="summary-line">Most operational and compact. Strong for experienced users. Slightly less obvious for first-time users.</div>
+                </div>
+              </aside>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <div class="overlay" id="overlay">
+      <div class="evidence-modal">
+        <div class="modal-header">
+          <div>
+            <div class="eyebrow">Evidence Studio</div>
+            <div class="modal-title">Checkout cascade evidence</div>
+            <div class="lede" style="margin-top:6px; max-width:none;">
+              This is where the declarative board yields to direct inspection. Metrics are truly charted, traces preserve transaction shape, logs remain readable, and platform facts stay separate.
+            </div>
+          </div>
+          <button class="close" id="closeOverlay">Close</button>
+        </div>
+
+        <div class="tabs">
+          <button class="tab active" data-evidence="metrics">Metrics</button>
+          <button class="tab" data-evidence="spans">Trace</button>
+          <button class="tab" data-evidence="logs">Logs</button>
+          <button class="tab" data-evidence="pflogs">Platform Logs</button>
+        </div>
+
+        <div class="evidence-grid">
+          <div class="evidence-panel">
+            <div class="evidence-view active" data-view="metrics">
+              <div class="metrics-view">
+                <div class="explorer-topbar">
+                  <div class="querybar">avg:http.request.errors{route:/checkout,env:prod} · avg:stripe.429.count · max:worker.queue.depth</div>
+                  <div class="chip">last 15m</div>
+                </div>
+                <div class="facets">
+                  <div class="facet">service:web</div>
+                  <div class="facet">route:/checkout</div>
+                  <div class="facet">dependency:stripe</div>
+                  <div class="facet">env:production</div>
+                </div>
+                <div class="metrics-layout">
+                  <div>
+                    <div class="metrics-legend">
+                      <span><span class="legend-dot" style="background:#d84c3f;"></span> 504 rate</span>
+                      <span><span class="legend-dot" style="background:#b66a17;"></span> Stripe 429</span>
+                      <span><span class="legend-dot" style="background:#2b8a92;"></span> Queue depth</span>
+                    </div>
+                    <div class="big-chart">
+                      <svg viewBox="0 0 780 190">
+                        <line x1="238" y1="0" x2="238" y2="190" stroke="rgba(182,106,23,0.25)" stroke-width="2" stroke-dasharray="8 6"/>
+                        <line x1="452" y1="0" x2="452" y2="190" stroke="rgba(216,76,63,0.18)" stroke-width="2" stroke-dasharray="8 6"/>
+                        <polyline fill="none" stroke="#d84c3f" stroke-width="4" points="0,162 72,162 144,160 216,154 288,146 360,130 432,104 504,70 576,38 648,24 720,20 780,20"/>
+                        <polyline fill="none" stroke="#b66a17" stroke-width="4" points="0,164 72,164 144,162 216,156 288,142 360,118 432,88 504,58 576,34 648,30 720,34 780,44"/>
+                        <polyline fill="none" stroke="#2b8a92" stroke-width="4" points="0,160 72,158 144,154 216,144 288,126 360,102 432,74 504,46 576,20 648,12 720,12 780,18"/>
+                        <circle cx="238" cy="156" r="6" fill="#b66a17"/>
+                        <circle cx="452" cy="104" r="6" fill="#d84c3f"/>
+                      </svg>
+                    </div>
+                  </div>
+                  <div class="side-notes">
+                    <div class="note-card"><strong>03:12:08 trigger</strong><br />First Stripe 429 appears. The chart marker is aligned to the first external symptom.</div>
+                    <div class="note-card"><strong>03:13:41 amplification</strong><br />Queue depth steepens first, then 504 rate follows. That shape is why local retry suppression is the first move.</div>
+                    <div class="note-card"><strong>What success looks like</strong><br />Queue depth should flatten before 429s fully recover. If it does not, the hypothesis is weak.</div>
+                  </div>
+                </div>
+                <div class="metrics-strip">
+                  <div class="metric-card"><div class="metric-label">504 rate</div><div class="metric-value danger">18.2%</div></div>
+                  <div class="metric-card"><div class="metric-label">429 count</div><div class="metric-value accent">241</div></div>
+                  <div class="metric-card"><div class="metric-label">Queue depth</div><div class="metric-value cyan">+382</div></div>
+                  <div class="metric-card"><div class="metric-label">P95 latency</div><div class="metric-value">12.4s</div></div>
+                </div>
+              </div>
+            </div>
+
+            <div class="evidence-view" data-view="spans">
+              <div class="trace-view">
+                <div class="explorer-topbar">
+                  <div class="querybar">service:web resource_name:"POST /checkout" status:error @dependency:stripe</div>
+                  <div class="chip">trace view</div>
+                </div>
+                <div class="trace-layout">
+                  <div class="waterfall-canvas">
+                    <div class="row-head"><span>POST /checkout · trace_71af2c</span><span class="critical">504 · 12.1s</span></div>
+                    <div class="trace-ruler">
+                      <span>Span</span><span>0ms</span><span>2s</span><span>4s</span><span>6s</span><span>8s</span><span>12s</span>
+                    </div>
+                    <div class="wf-row">
+                      <span>web.request</span>
+                      <div class="wf-track"><div class="wf-segment root" style="left:0; width:92%;"></div></div>
+                      <span>12.1s</span>
+                    </div>
+                    <div class="wf-row">
+                      <span>router.dispatch</span>
+                      <div class="wf-track"><div class="wf-segment io" style="left:4%; width:20%;"></div></div>
+                      <span>2.4s</span>
+                    </div>
+                    <div class="wf-row">
+                      <span>stripe.charge</span>
+                      <div class="wf-track"><div class="wf-segment err" style="left:18%; width:44%;"></div></div>
+                      <span>5.6s</span>
+                    </div>
+                    <div class="wf-row">
+                      <span>retry.loop</span>
+                      <div class="wf-track"><div class="wf-segment wait" style="left:28%; width:36%;"></div></div>
+                      <span>4.3s</span>
+                    </div>
+                    <div class="wf-row">
+                      <span>queue.wait</span>
+                      <div class="wf-track"><div class="wf-segment wait" style="left:42%; width:31%;"></div></div>
+                      <span>3.7s</span>
+                    </div>
+                    <div class="wf-row">
+                      <span>edge.timeout</span>
+                      <div class="wf-track"><div class="wf-segment err" style="left:80%; width:12%;"></div></div>
+                      <span>1.3s</span>
+                    </div>
+                  </div>
+                  <div class="trace-table">
+                    <div class="trace-table-head"><div>Span</div><div>Service</div><div>Attributes</div></div>
+                    <div class="trace-table-row"><div>stripe.charge</div><div>stripe</div><div>http.status=429, quota.bucket=checkout, attempt=1</div></div>
+                    <div class="trace-table-row"><div>retry.loop</div><div>web</div><div>retry.policy=fixed, attempts=4, backoff=none</div></div>
+                    <div class="trace-table-row"><div>queue.wait</div><div>worker</div><div>worker.pool=shared, wait.ms=3700, saturation=0.96</div></div>
+                    <div class="trace-table-row"><div>edge.timeout</div><div>edge</div><div>http.status=504, duration.ms=12100</div></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="evidence-view" data-view="logs">
+              <div class="log-stream">
+                <div class="explorer-topbar">
+                  <div class="querybar">service:web @route:/checkout status:(error OR warn) @trace_id:71af2c*</div>
+                  <div class="chip">logs explorer</div>
+                </div>
+                <div class="facets">
+                  <div class="facet">env:prod</div>
+                  <div class="facet">service:web</div>
+                  <div class="facet">status:error</div>
+                  <div class="facet">route:/checkout</div>
+                </div>
+                <div class="stream-list-header"><div>Time</div><div>Source</div><div>Message</div><div>Meaning</div></div>
+                <div class="stream-grid dense">
+                  <div class="log-grid-row">
+                    <div>03:12:08</div><div><span class="pill critical">error</span></div><div>stripe.charge returned 429 and retry loop began for checkout payment attempt</div><div class="critical">trigger</div>
+                  </div>
+                  <div class="log-grid-row">
+                    <div>03:12:10</div><div><span class="pill">worker</span></div><div>retry attempt queued behind shared worker pool while active checkout backlog continued to rise</div><div class="subtle">amplifier</div>
+                  </div>
+                  <div class="log-grid-row">
+                    <div>03:12:14</div><div><span class="pill critical">error</span></div><div>POST /checkout responded 504 after 12.1s timeout budget exceeded</div><div class="critical">impact</div>
+                  </div>
+                  <div class="log-grid-row">
+                    <div>03:12:29</div><div><span class="pill">warn</span></div><div>shared checkout worker pool saturation crossed 96% and queue depth continued to rise</div><div class="subtle">capacity</div>
+                  </div>
+                  <div class="log-grid-row">
+                    <div>03:13:02</div><div><span class="pill">analysis</span></div><div>incident agent grouped timeout, retry, and saturation signatures into checkout-cascade</div><div class="subtle">summary</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="evidence-view" data-view="pflogs">
+              <div class="pf-stream">
+                <div class="explorer-topbar">
+                  <div class="querybar">platform:(traffic OR deploy OR config) incident:checkout-cascade</div>
+                  <div class="chip">platform facts</div>
+                </div>
+                <div class="stream-list-header"><div>Time</div><div>Plane</div><div>Details</div><div>Role</div></div>
+                <div class="stream-grid dense">
+                  <div class="pf-grid-row">
+                    <div>03:11:55</div><div><span class="pill">traffic</span></div><div>flash-sale traffic profile enabled and request volume shifted upward before the first dependency error</div><div style="color:var(--good);">context</div>
+                  </div>
+                  <div class="pf-grid-row">
+                    <div>03:12:41</div><div><span class="pill">deploy</span></div><div>no deploy, rollback, or config drift detected in the last 30 minutes across checkout services</div><div class="subtle">rule-out</div>
+                  </div>
+                  <div class="pf-grid-row">
+                    <div>03:13:18</div><div><span class="pill">routing</span></div><div>edge traffic mode remained stable; no canary split or regional rebalance was introduced in the window</div><div class="subtle">guardrail</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="evidence-panel">
+            <div class="side-notes">
+              <div class="note-card">
+                <strong>Current hypothesis</strong><br />
+                Stripe rate limiting is the external trigger. Retry policy is the internal amplifier.
+              </div>
+              <div class="note-card">
+                <strong>Ask incident copilot</strong><br />
+                "If Stripe recovered now, what remains?"<br />
+                "What evidence rules out deploy?"<br />
+                "What action reduces blast radius fastest?"
+              </div>
+              <div class="note-card">
+                <strong>Reading order</strong><br />
+                Metrics show the incident shape. Trace shows the mechanism. Logs expose the local failure mode. Platform logs constrain false narratives.
+              </div>
+              <div class="chat">
+                <div class="chat-bubble user">Is there any evidence that the problem started before the first Stripe 429?</div>
+                <div class="chat-bubble">No strong evidence. The flash-sale traffic step-up appears first, but the incident accelerates only after the 429 burst begins.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="subtle">All evidence views stay within the same viewport. The page itself never scrolls.</div>
+      </div>
+    </div>
+
+    <div class="reasoning-overlay" id="reasoningOverlay">
+      <div class="reasoning-modal">
+        <div class="reasoning-header">
+          <div>
+            <div class="eyebrow">Diagnosis Flow</div>
+            <div class="reasoning-heading">Why this action was recommended</div>
+            <div class="reasoning-sub">Short causal explanation for the operator. Evidence Studio is where you verify each step with raw data.</div>
+          </div>
+          <button class="close" id="closeReasoning">Close</button>
+        </div>
+
+        <div class="reasoning-steps">
+          <div class="reasoning-step">
+            <div class="num">1</div>
+            <div class="body"><strong>Traffic stepped up first.</strong> Flash-sale profile raised checkout demand before the failure wave appeared.</div>
+          </div>
+          <div class="reasoning-step">
+            <div class="num">2</div>
+            <div class="body"><strong>Stripe 429s appeared next.</strong> The first strong trigger signal is external rate limiting from the payment dependency.</div>
+          </div>
+          <div class="reasoning-step">
+            <div class="num">3</div>
+            <div class="body"><strong>Retries amplified the damage.</strong> Queue depth and timeout growth show internal retry behavior turned a dependency failure into a broader incident.</div>
+          </div>
+          <div class="reasoning-step">
+            <div class="num">4</div>
+            <div class="body"><strong>Therefore the fastest control point is retry suppression.</strong> That reduces blast radius sooner than restart or deeper debugging.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script src="https://mcp.figma.com/mcp/html-to-design/capture.js" async></script>
+    <script>
+      const conceptButtons = document.querySelectorAll("[data-concept]");
+      const concepts = document.querySelectorAll("[data-screen]");
+      const overlay = document.getElementById("overlay");
+      const openButtons = document.querySelectorAll(".open-evidence");
+      const closeOverlay = document.getElementById("closeOverlay");
+      const evidenceTabs = document.querySelectorAll("[data-evidence]");
+      const evidenceViews = document.querySelectorAll("[data-view]");
+      const reasoningOverlay = document.getElementById("reasoningOverlay");
+      const openReasoning = document.getElementById("openReasoning");
+      const closeReasoning = document.getElementById("closeReasoning");
+      const hashParams = new URLSearchParams(window.location.hash.slice(1));
+
+      conceptButtons.forEach((button) => {
+        button.addEventListener("click", () => {
+          conceptButtons.forEach((b) => b.classList.remove("active"));
+          button.classList.add("active");
+          concepts.forEach((concept) => {
+            concept.classList.toggle("active", concept.dataset.screen === button.dataset.concept);
+          });
+        });
+      });
+
+      openButtons.forEach((button) => {
+        button.addEventListener("click", () => {
+          overlay.classList.add("show");
+        });
+      });
+
+      closeOverlay.addEventListener("click", () => {
+        overlay.classList.remove("show");
+      });
+
+      overlay.addEventListener("click", (event) => {
+        if (event.target === overlay) {
+          overlay.classList.remove("show");
+        }
+      });
+
+      evidenceTabs.forEach((tab) => {
+        tab.addEventListener("click", () => {
+          evidenceTabs.forEach((t) => t.classList.remove("active"));
+          evidenceViews.forEach((view) => view.classList.remove("active"));
+          tab.classList.add("active");
+          document.querySelector(`[data-view="${tab.dataset.evidence}"]`).classList.add("active");
+        });
+      });
+
+      if (openReasoning && reasoningOverlay && closeReasoning) {
+        openReasoning.addEventListener("click", () => {
+          reasoningOverlay.classList.add("show");
+        });
+
+      closeReasoning.addEventListener("click", () => {
+        reasoningOverlay.classList.remove("show");
+      });
+
+      const initialConcept = hashParams.get("screen");
+      if (initialConcept) {
+        const activeButton = document.querySelector(`[data-concept="${initialConcept}"]`);
+        if (activeButton) {
+          activeButton.click();
+        }
+      }
+
+      if (hashParams.get("evidence") === "1") {
+        overlay.classList.add("show");
+      }
+
+      if (hashParams.get("reasoning") === "1") {
+        reasoningOverlay.classList.add("show");
+      }
+
+        reasoningOverlay.addEventListener("click", (event) => {
+          if (event.target === reasoningOverlay) {
+            reasoningOverlay.classList.remove("show");
+          }
+        });
+      }
+    </script>
+  </body>
+</html>
