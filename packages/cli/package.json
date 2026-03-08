@@ -2,6 +2,9 @@
   "name": "@3amoncall/cli",
   "version": "0.1.0",
   "private": false,
+  "scripts": {
+    "build": "echo 'TODO: implement @3amoncall/cli (Phase C)'"
+  },
   "dependencies": {
     "@3amoncall/diagnosis": "workspace:*"
   }
