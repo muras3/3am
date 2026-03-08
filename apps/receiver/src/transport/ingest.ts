@@ -1,5 +1,6 @@
 import { randomUUID } from "crypto";
 import { Hono } from "hono";
+import { bodyLimit } from "hono/body-limit";
 import type { StorageDriver } from "../storage/interface.js";
 import {
   extractSpans,
@@ -11,8 +12,18 @@ import {
 } from "../domain/formation.js";
 import { createPacket } from "../domain/packetizer.js";
 
+const INGEST_BODY_LIMIT = 1 * 1024 * 1024; // 1MB per ADR 0022 (resource exhaustion protection)
+
 export function createIngestRouter(storage: StorageDriver): Hono {
   const app = new Hono();
+
+  app.use(
+    "*",
+    bodyLimit({
+      maxSize: INGEST_BODY_LIMIT,
+      onError: (c) => c.json({ error: "payload too large" }, 413),
+    }),
+  );
 
   app.post("/v1/traces", async (c) => {
     const body = await c.req.json();

@@ -14,9 +14,14 @@ export function createApp(storage?: StorageDriver): Hono {
   const app = new Hono();
   const authToken = process.env["RECEIVER_AUTH_TOKEN"];
   if (!authToken) {
-    console.warn(
-      "[receiver] RECEIVER_AUTH_TOKEN not set — auth disabled (dev mode only, ADR 0011)",
-    );
+    const allowInsecure = process.env["ALLOW_INSECURE_DEV_MODE"] === "true";
+    if (!allowInsecure) {
+      throw new Error(
+        "[receiver] RECEIVER_AUTH_TOKEN must be set. " +
+          "For local dev only, set ALLOW_INSECURE_DEV_MODE=true (ADR 0011)",
+      );
+    }
+    console.warn("[receiver] auth disabled — ALLOW_INSECURE_DEV_MODE=true (dev only, ADR 0011)");
   } else {
     app.use("*", bearerAuth({ token: authToken }));
   }

@@ -20,18 +20,28 @@ const TriggerSignalSchema = z.object({
   entity: z.string(),
 });
 
+// Typed shape for representative spans captured at incident time (ADR 0018)
+const RepresentativeTraceSchema = z.object({
+  traceId: z.string(),
+  spanId: z.string(),
+  serviceName: z.string(),
+  durationMs: z.number(),
+  httpStatusCode: z.number().optional(),
+  spanStatusCode: z.number(),
+});
+
 const EvidenceSchema = z.object({
-  changedMetrics: z.array(z.unknown()),
-  representativeTraces: z.array(z.unknown()),
-  relevantLogs: z.array(z.unknown()),
-  platformEvents: z.array(z.unknown()),
+  changedMetrics: z.array(z.unknown()),   // Phase C: typed when metric ingest is implemented
+  representativeTraces: z.array(RepresentativeTraceSchema),
+  relevantLogs: z.array(z.unknown()),     // Phase C: typed when log ingest is implemented
+  platformEvents: z.array(z.unknown()),   // Phase C: typed when platform-events is implemented
 });
 
 const PointersSchema = z.object({
-  traceRefs: z.array(z.unknown()),
-  logRefs: z.array(z.unknown()),
-  metricRefs: z.array(z.unknown()),
-  platformLogRefs: z.array(z.unknown()),
+  traceRefs: z.array(z.string()),
+  logRefs: z.array(z.string()),
+  metricRefs: z.array(z.string()),
+  platformLogRefs: z.array(z.string()),
 });
 
 export const IncidentPacketSchema = z.object({

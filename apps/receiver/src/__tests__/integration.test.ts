@@ -146,6 +146,7 @@ describe("Bearer Token auth (ADR 0011)", () => {
     } else {
       process.env["RECEIVER_AUTH_TOKEN"] = savedToken;
     }
+    delete process.env["ALLOW_INSECURE_DEV_MODE"];
   });
 
   it("returns 401 when token is set and Authorization header is missing", async () => {
@@ -173,11 +174,18 @@ describe("Bearer Token auth (ADR 0011)", () => {
     expect(res.status).toBe(200);
   });
 
-  it("allows all requests when RECEIVER_AUTH_TOKEN is not set (dev mode)", async () => {
+  it("allows all requests when ALLOW_INSECURE_DEV_MODE=true and no token (dev mode)", async () => {
     delete process.env["RECEIVER_AUTH_TOKEN"];
+    process.env["ALLOW_INSECURE_DEV_MODE"] = "true";
     app = createApp(storage);
     const res = await app.request("/api/incidents");
     expect(res.status).toBe(200);
+  });
+
+  it("throws on startup when no token and ALLOW_INSECURE_DEV_MODE is not set (F-201 fail-closed)", () => {
+    delete process.env["RECEIVER_AUTH_TOKEN"];
+    delete process.env["ALLOW_INSECURE_DEV_MODE"];
+    expect(() => createApp(storage)).toThrow("RECEIVER_AUTH_TOKEN must be set");
   });
 });
 
@@ -187,8 +195,13 @@ describe("Receiver integration tests", () => {
 
   beforeEach(() => {
     delete process.env["RECEIVER_AUTH_TOKEN"];
+    process.env["ALLOW_INSECURE_DEV_MODE"] = "true";
     storage = new MemoryAdapter();
     app = createApp(storage);
+  });
+
+  afterEach(() => {
+    delete process.env["ALLOW_INSECURE_DEV_MODE"];
   });
 
   // Test 1: POST /v1/traces with error span → 200, response has incidentId and packetId
@@ -405,6 +418,18 @@ describe("Receiver integration tests", () => {
       body: JSON.stringify({ events: [] }),
     });
     expect(res.status).toBe(200);
+  });
+
+  // Body size limit (F-203): >1MB payload → 413
+  it("POST /v1/traces with payload >1MB returns 413", async () => {
+    // 1MB + 1 byte of padding inside a JSON string field
+    const oversize = JSON.stringify({ resourceSpans: "x".repeat(1024 * 1024 + 1) });
+    const res = await app.request("/v1/traces", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: oversize,
+    });
+    expect(res.status).toBe(413);
   });
 
   // Test 9: Two POST /v1/traces within 5min for same service/env → only 1 ThinEvent
