@@ -16,5 +16,13 @@
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src"
+  },
+  "dependencies": {
+    "zod": "^3.x"
+  },
+  "devDependencies": {
+    "@3amoncall/config-typescript": "workspace:*",
+    "typescript": "^5.x",
+    "vitest": "^3.x"
   }
 }
