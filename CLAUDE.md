@@ -11,7 +11,30 @@ docker compose exec scenario-runner node run.js third_party_api_rate_limit_casca
 ls validation/out/runs/
 ```
 
-## Architecture
+## Product Architecture (Monorepo)
+
+```
+apps/
+  receiver/     # Hono backend — OTLP ingest / anomaly detection / packetizer / console API
+  console/      # React + Vite SPA
+packages/
+  core/         # @3amoncall/core — incident packet Zod schema, formation types
+  diagnosis/    # @3amoncall/diagnosis — LLM diagnosis engine (Anthropic SDK)
+  cli/          # @3amoncall/cli — thin wrapper around diagnosis
+  config-typescript/ config-eslint/  # shared config (private)
+```
+
+## Commands
+
+```bash
+pnpm build       # build all packages (Turborepo)
+pnpm test        # run all tests
+pnpm lint        # lint all packages
+pnpm typecheck   # typecheck all packages
+pnpm dev         # start dev servers
+```
+
+## Validation Stack
 
 ```
 validation/
@@ -37,7 +60,15 @@ docs/
   compose-and-scenario-draft-v0.1.md
 ```
 
-## Tech Stack
+## Tech Stack (Product)
+
+- **Package manager**: pnpm@10.31.0 + Turborepo
+- **Receiver / Console API**: Hono
+- **Console UI**: React 19 + Vite 7 (SPA), TanStack Router + Query
+- **Storage**: Drizzle ORM (CF D1 / Vercel Postgres / Memory)
+- **Diagnosis**: Anthropic SDK, GitHub Actions runtime
+
+## Tech Stack (Validation)
 
 - **Runtime**: Node.js + TypeScript (ESM)
 - **Web**: Express
@@ -98,7 +129,71 @@ Mapping to probe-investigate 10pt scale: 7-8 = 8-10, 5-6 = 5-7, 0-4 = 0-4
 - ADRs live in `docs/adr/`. Numbered sequentially (e.g. `0011-...`).
 - **Record architectural decisions proactively** — if you're making a non-obvious choice (data format, component boundary, evaluation strategy, tooling), write an ADR before or immediately after implementing it.
 - When in doubt, err on the side of writing one. ADRs are cheap; undocumented decisions are expensive.
-- Existing ADRs: 0001–0010. Check them before re-litigating settled decisions.
+- Existing ADRs: 0001–0026. Check them before re-litigating settled decisions.
+
+## Completion Discipline
+
+実装完了とフェーズ完了を混同しないこと。
+
+- 自分が実装したコードについて、自分で `Phase A/B/C complete` と判断しない
+- `tests passed` は完了の根拠として不十分
+- 追加したテストが narrow で、本質的な欠陥を見逃している可能性を必ず考える
+- コードが増えたことと、フェーズが完了したことは別
+
+### Required Self-Check Before Claiming Progress
+
+実装後は、必ず以下を列挙すること。
+
+1. ADR 準拠で未達の点
+2. security 上の未解決事項
+3. contract がまだ緩い箇所
+4. local では通るが platform では未検証の箇所
+5. まだ存在しないテスト
+6. なぜこの変更だけでは `Phase X complete` と言えないか
+
+### Phase Completion Rule
+
+フェーズ完了は、実装者が宣言してはいけない。
+フェーズ完了は、以下を満たしたときにのみ、人間または別レビュー担当が判定する。
+
+- ADR 準拠
+- contract tests green
+- required integration tests green
+- security review で blocker なし
+- non-functional requirements に重大未達なし
+
+### Testing Discipline
+
+- unit test が通っても安心しない
+- memory adapter だけで通っても安心しない
+- `200 OK` を返すだけの stub で green でも安心しない
+- local happy path だけでなく、failure path と boundary path があるか確認する
+- auth, payload size, strict validation, persistence, callback を必ず疑う
+
+### Anti-Pattern To Avoid
+
+以下の状態で `done` と言わないこと。
+
+- TODO が残っている
+- auth が未実装
+- platform-specific behavior が未検証
+- unknown fields を silently strip している
+- strict validation がない
+- thin event / packet / diagnosis result の責務が曖昧
+- required tests が存在しない
+- review 観点が narrow すぎる
+
+### Required Final Output Style
+
+実装後の報告では、必ず以下の順で書くこと。
+
+1. 実装したこと
+2. 実行したテスト
+3. 未解決のリスク
+4. 未達の ADR / contract / security 項目
+5. 次に進んでよいかどうかの保留条件
+
+`done`, `complete`, `Phase X finished` という表現は、人間が明示的に確認するまで使わないこと。
 
 ## Gotchas
 

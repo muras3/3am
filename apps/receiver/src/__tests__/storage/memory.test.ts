@@ -124,6 +124,19 @@ describe("MemoryAdapter", () => {
     expect(result).toBeNull();
   });
 
+  it("getIncidentByPacketId → returns incident for known packetId", async () => {
+    const packet = makePacket("pkt_001", "inc_001");
+    await adapter.createIncident(packet);
+    const incident = await adapter.getIncidentByPacketId("pkt_001");
+    expect(incident).not.toBeNull();
+    expect(incident!.incidentId).toBe("inc_001");
+  });
+
+  it("getIncidentByPacketId → null for unknown packetId", async () => {
+    const result = await adapter.getIncidentByPacketId("pkt_unknown");
+    expect(result).toBeNull();
+  });
+
   it("updateIncidentStatus('inc_001', 'closed') → status becomes 'closed'", async () => {
     const packet = makePacket("pkt_001", "inc_001");
     await adapter.createIncident(packet);

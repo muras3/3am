@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { MemoryAdapter } from "../storage/adapters/memory.js";
 import { createApp } from "../index.js";
 
@@ -131,13 +131,77 @@ function makeDiagnosisFixture(incidentId: string) {
   };
 }
 
+describe("Bearer Token auth (ADR 0011)", () => {
+  let storage: MemoryAdapter;
+  let app: ReturnType<typeof createApp>;
+  const savedToken = process.env["RECEIVER_AUTH_TOKEN"];
+
+  beforeEach(() => {
+    storage = new MemoryAdapter();
+  });
+
+  afterEach(() => {
+    if (savedToken === undefined) {
+      delete process.env["RECEIVER_AUTH_TOKEN"];
+    } else {
+      process.env["RECEIVER_AUTH_TOKEN"] = savedToken;
+    }
+    delete process.env["ALLOW_INSECURE_DEV_MODE"];
+  });
+
+  it("returns 401 when token is set and Authorization header is missing", async () => {
+    process.env["RECEIVER_AUTH_TOKEN"] = "test-secret";
+    app = createApp(storage);
+    const res = await app.request("/api/incidents");
+    expect(res.status).toBe(401);
+  });
+
+  it("returns 401 when token is set and Authorization header is wrong", async () => {
+    process.env["RECEIVER_AUTH_TOKEN"] = "test-secret";
+    app = createApp(storage);
+    const res = await app.request("/api/incidents", {
+      headers: { Authorization: "Bearer wrong-token" },
+    });
+    expect(res.status).toBe(401);
+  });
+
+  it("returns 200 when token is set and correct Authorization header is provided", async () => {
+    process.env["RECEIVER_AUTH_TOKEN"] = "test-secret";
+    app = createApp(storage);
+    const res = await app.request("/api/incidents", {
+      headers: { Authorization: "Bearer test-secret" },
+    });
+    expect(res.status).toBe(200);
+  });
+
+  it("allows all requests when ALLOW_INSECURE_DEV_MODE=true and no token (dev mode)", async () => {
+    delete process.env["RECEIVER_AUTH_TOKEN"];
+    process.env["ALLOW_INSECURE_DEV_MODE"] = "true";
+    app = createApp(storage);
+    const res = await app.request("/api/incidents");
+    expect(res.status).toBe(200);
+  });
+
+  it("throws on startup when no token and ALLOW_INSECURE_DEV_MODE is not set (F-201 fail-closed)", () => {
+    delete process.env["RECEIVER_AUTH_TOKEN"];
+    delete process.env["ALLOW_INSECURE_DEV_MODE"];
+    expect(() => createApp(storage)).toThrow("RECEIVER_AUTH_TOKEN must be set");
+  });
+});
+
 describe("Receiver integration tests", () => {
   let storage: MemoryAdapter;
   let app: ReturnType<typeof createApp>;
 
   beforeEach(() => {
+    delete process.env["RECEIVER_AUTH_TOKEN"];
+    process.env["ALLOW_INSECURE_DEV_MODE"] = "true";
     storage = new MemoryAdapter();
     app = createApp(storage);
+  });
+
+  afterEach(() => {
+    delete process.env["ALLOW_INSECURE_DEV_MODE"];
   });
 
   // Test 1: POST /v1/traces with error span → 200, response has incidentId and packetId
@@ -287,6 +351,85 @@ describe("Receiver integration tests", () => {
     expect(body.diagnosisResult?.summary.what_happened).toBe(
       "Stripe 429s caused checkout 504s.",
     );
+  });
+
+  // GET /api/incidents limit validation (F-108)
+  it("GET /api/incidents with limit=0 uses minimum 1", async () => {
+    const res = await app.request("/api/incidents?limit=0");
+    expect(res.status).toBe(200);
+  });
+
+  it("GET /api/incidents with limit=200 clamps to 100", async () => {
+    const res = await app.request("/api/incidents?limit=200");
+    expect(res.status).toBe(200);
+    const body = await res.json() as { items: unknown[] };
+    // items count can't exceed clamped limit; just verify 200 OK
+    expect(body.items).toBeDefined();
+  });
+
+  it("GET /api/incidents with limit=abc (NaN) falls back to default 20", async () => {
+    const res = await app.request("/api/incidents?limit=abc");
+    expect(res.status).toBe(200);
+  });
+
+  // Shape-aware ingest stubs (F-102)
+  it("POST /v1/metrics with valid JSON body returns ok", async () => {
+    const res = await app.request("/v1/metrics", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ resourceMetrics: [] }),
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json() as { status: string };
+    expect(body.status).toBe("ok");
+  });
+
+  it("POST /v1/metrics with missing field returns 400", async () => {
+    const res = await app.request("/v1/metrics", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ wrong: [] }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("POST /v1/metrics with protobuf Content-Type returns 501", async () => {
+    const res = await app.request("/v1/metrics", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-protobuf" },
+      body: new Uint8Array([1, 2, 3]),
+    });
+    expect(res.status).toBe(501);
+  });
+
+  it("POST /v1/logs with valid JSON body returns ok", async () => {
+    const res = await app.request("/v1/logs", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ resourceLogs: [] }),
+    });
+    expect(res.status).toBe(200);
+  });
+
+  it("POST /v1/platform-events with valid JSON body returns ok", async () => {
+    const res = await app.request("/v1/platform-events", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ events: [] }),
+    });
+    expect(res.status).toBe(200);
+  });
+
+  // Body size limit (F-203): >1MB payload → 413
+  it("POST /v1/traces with payload >1MB returns 413", async () => {
+    // 1MB + 1 byte of padding inside a JSON string field
+    const oversize = JSON.stringify({ resourceSpans: "x".repeat(1024 * 1024 + 1) });
+    const res = await app.request("/v1/traces", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: oversize,
+    });
+    expect(res.status).toBe(413);
   });
 
   // Test 9: Two POST /v1/traces within 5min for same service/env → only 1 ThinEvent

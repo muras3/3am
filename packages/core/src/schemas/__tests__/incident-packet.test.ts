@@ -79,7 +79,7 @@ describe("IncidentPacketSchema", () => {
     expect(() => IncidentPacketSchema.parse(withBadPointers)).toThrow(ZodError);
   });
 
-  it("does NOT contain LLM output fields (ADR 0018 non-goals — camelCase)", () => {
+  it("rejects LLM output fields at parse time (ADR 0018 non-goals — camelCase, strict mode)", () => {
     const withLlmFields = {
       ...minimalValidPacket,
       immediateAction: "restart the service",
@@ -87,11 +87,7 @@ describe("IncidentPacketSchema", () => {
       confidenceAssessment: "high",
       doNot: "delete the database",
     };
-    const parsed = IncidentPacketSchema.parse(withLlmFields);
-    expect(parsed).not.toHaveProperty("immediateAction");
-    expect(parsed).not.toHaveProperty("rootCauseHypothesis");
-    expect(parsed).not.toHaveProperty("confidenceAssessment");
-    expect(parsed).not.toHaveProperty("doNot");
+    expect(() => IncidentPacketSchema.parse(withLlmFields)).toThrow(ZodError);
   });
 
   it("does NOT contain LLM output fields (ADR 0018 non-goals — snake_case)", () => {
@@ -110,5 +106,46 @@ describe("IncidentPacketSchema", () => {
   it("rejects invalid data with ZodError", () => {
     expect(() => IncidentPacketSchema.parse(null)).toThrow(ZodError);
     expect(() => IncidentPacketSchema.parse({ schemaVersion: "incident-packet/v1alpha1" })).toThrow(ZodError);
+  });
+
+  // F-204: PointersSchema refs must be z.string()
+  it("rejects non-string values in traceRefs (F-204)", () => {
+    const withNumericRef = {
+      ...minimalValidPacket,
+      pointers: { ...minimalValidPacket.pointers, traceRefs: [12345] },
+    };
+    expect(() => IncidentPacketSchema.parse(withNumericRef)).toThrow(ZodError);
+  });
+
+  // F-204: RepresentativeTraceSchema shape validation
+  it("rejects representativeTraces with wrong shape (F-204)", () => {
+    const withBadTrace = {
+      ...minimalValidPacket,
+      evidence: {
+        ...minimalValidPacket.evidence,
+        representativeTraces: [{ traceId: "abc", spanId: "def" }], // missing required fields
+      },
+    };
+    expect(() => IncidentPacketSchema.parse(withBadTrace)).toThrow(ZodError);
+  });
+
+  it("accepts representativeTraces with valid RepresentativeTraceSchema shape (F-204)", () => {
+    const withValidTrace = {
+      ...minimalValidPacket,
+      evidence: {
+        ...minimalValidPacket.evidence,
+        representativeTraces: [
+          {
+            traceId: "trace123",
+            spanId: "span456",
+            serviceName: "web",
+            durationMs: 350,
+            spanStatusCode: 2,
+          },
+        ],
+      },
+    };
+    const result = IncidentPacketSchema.parse(withValidTrace);
+    expect(result.evidence.representativeTraces).toHaveLength(1);
   });
 });

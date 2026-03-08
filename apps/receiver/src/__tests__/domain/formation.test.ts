@@ -62,6 +62,7 @@ const BASE_SPAN: ExtractedSpan = {
   spanStatusCode: 2,
   durationMs: 100,
   startTimeMs: 1700000000000,
+  exceptionCount: 0,
 }
 
 describe('buildFormationKey', () => {
