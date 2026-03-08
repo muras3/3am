@@ -1,0 +1,13 @@
+{
+  "name": "@3amoncall/receiver",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "build": "tsc",
+    "bundle": "echo 'TODO: bundle receiver + console dist'",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src",
+    "dev": "tsx watch src/index.ts"
+  }
+}

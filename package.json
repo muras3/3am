@@ -1,0 +1,15 @@
+{
+  "name": "3amoncall",
+  "private": true,
+  "packageManager": "pnpm@10.31.0",
+  "scripts": {
+    "build": "turbo build",
+    "test": "turbo test",
+    "lint": "turbo lint",
+    "typecheck": "turbo typecheck",
+    "dev": "turbo dev"
+  },
+  "devDependencies": {
+    "turbo": "^2.x"
+  }
+}

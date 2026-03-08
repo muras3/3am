@@ -1,0 +1,12 @@
+{
+  "name": "@3amoncall/console",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "build": "vite build",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src",
+    "dev": "vite"
+  }
+}

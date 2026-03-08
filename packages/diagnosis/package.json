@@ -1,0 +1,11 @@
+{
+  "name": "@3amoncall/diagnosis",
+  "version": "0.1.0",
+  "private": false,
+  "scripts": {
+    "build": "echo 'TODO: implement @3amoncall/diagnosis (Phase C)'"
+  },
+  "dependencies": {
+    "@3amoncall/core": "workspace:*"
+  }
+}

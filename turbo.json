@@ -1,0 +1,24 @@
+{
+  "$schema": "https://turbo.build/schema.json",
+  "tasks": {
+    "build": {
+      "dependsOn": ["^build"],
+      "outputs": ["dist/**"]
+    },
+    "test": {
+      "dependsOn": ["^build"]
+    },
+    "typecheck": {
+      "dependsOn": ["^build"]
+    },
+    "lint": {},
+    "dev": {
+      "cache": false,
+      "persistent": true
+    },
+    "@3amoncall/receiver#bundle": {
+      "dependsOn": ["@3amoncall/receiver#build", "@3amoncall/console#build"],
+      "outputs": ["bundle/**"]
+    }
+  }
+}
