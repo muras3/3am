@@ -1,6 +1,6 @@
-# ADR 0018: Monorepo Package Structure
+# ADR 0026: Monorepo Package Structure
 
-- Status: Draft
+- Status: Accepted
 - Date: 2026-03-08
 
 ## Context
