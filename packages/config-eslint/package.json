@@ -2,6 +2,7 @@
   "name": "@3amoncall/config-eslint",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
   "main": "./eslint.config.js",
   "exports": {
     ".": "./eslint.config.js"
