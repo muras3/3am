@@ -1,2 +1,7 @@
 .mcp.json
 .worktrees/
+node_modules/
+dist/
+bundle/
+.turbo/
+*.tsbuildinfo
