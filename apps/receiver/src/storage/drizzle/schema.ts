@@ -1,0 +1,34 @@
+/**
+ * Drizzle schema — shared between SQLiteAdapter and PostgresAdapter.
+ *
+ * Both adapters store IncidentPacket and DiagnosisResult as JSON strings / JSONB.
+ * The schema uses text columns so the same definition compiles for both drivers.
+ * Postgres-specific jsonb is handled at the adapter level via Drizzle's column helpers.
+ */
+import { sql } from "drizzle-orm";
+import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+
+// ── SQLite schema (used by SQLiteAdapter and for shared migration baseline) ─
+
+export const incidents = sqliteTable("incidents", {
+  incidentId: text("incident_id").primaryKey(),
+  status: text("status", { enum: ["open", "closed"] }).notNull().default("open"),
+  openedAt: text("opened_at").notNull(),
+  closedAt: text("closed_at"),
+  packet: text("packet").notNull(),           // JSON string of IncidentPacket
+  diagnosisResult: text("diagnosis_result"),  // JSON string of DiagnosisResult | null
+  createdAt: text("created_at").notNull().default(sql`(strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))`),
+  updatedAt: text("updated_at").notNull().default(sql`(strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))`),
+});
+
+export const thinEvents = sqliteTable("thin_events", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  eventId: text("event_id").notNull().unique(),
+  eventType: text("event_type").notNull(),
+  incidentId: text("incident_id").notNull(),
+  packetId: text("packet_id").notNull(),
+  createdAt: text("created_at").notNull().default(sql`(strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))`),
+});
+
+export type IncidentsTable = typeof incidents;
+export type ThinEventsTable = typeof thinEvents;
