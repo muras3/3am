@@ -1,14 +1,11 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-
-// We need to mock import.meta.env before importing the module.
-// Vitest supports this via vi.stubEnv / direct import.meta.env patching.
+import type { apiFetch as ApiFetchType, ApiError as ApiErrorType } from "../api/client.js";
 
 describe("apiFetch", () => {
-  let apiFetch: typeof import("../api/client.js").apiFetch;
-  let ApiError: typeof import("../api/client.js").ApiError;
+  let apiFetch: typeof ApiFetchType;
+  let ApiError: typeof ApiErrorType;
 
   beforeEach(async () => {
-    vi.stubGlobal("fetch", vi.fn());
     // Re-import to pick up fresh module state
     const mod = await import("../api/client.js");
     apiFetch = mod.apiFetch;

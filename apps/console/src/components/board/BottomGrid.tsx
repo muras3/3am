@@ -1,5 +1,4 @@
-import type { Incident } from "../../api/types.js";
-import type { DiagnosisResult } from "../../api/types.js";
+import type { Incident, DiagnosisResult } from "../../api/types.js";
 import { MitigationWatch } from "./MitigationWatch.js";
 import { ImpactTimeline } from "./ImpactTimeline.js";
 import { EvidencePreview } from "./EvidencePreview.js";
