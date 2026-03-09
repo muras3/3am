@@ -102,20 +102,32 @@ describe("DiagnosisResultSchema", () => {
   });
 
   it("does NOT contain raw traces, raw logs, raw metrics, or packet body fields (ADR 0019 non-goals)", () => {
+    // With .strict(), embedding unknown top-level fields throws — which is the
+    // correct behaviour: raw OTel data must never enter DiagnosisResult.
     const withRaw = {
       ...minimalValid,
       raw_traces: [{ traceId: "abc" }],
       raw_logs: ["log line"],
       raw_metrics: [{ name: "error_rate" }],
     };
-    const parsed = DiagnosisResultSchema.parse(withRaw);
-    expect(parsed).not.toHaveProperty("raw_traces");
-    expect(parsed).not.toHaveProperty("raw_logs");
-    expect(parsed).not.toHaveProperty("raw_metrics");
-    // Packet body fields must not bleed into diagnosis result
+    expect(() => DiagnosisResultSchema.parse(withRaw)).toThrow(ZodError);
+    // Packet body fields must not be defined in the schema shape at all
     const packetFields = ["triggerSignals", "pointers", "evidence"];
     for (const field of packetFields) {
       expect(field in DiagnosisResultSchema.shape).toBe(false);
     }
+  });
+
+  it("rejects unknown fields at top level (strict mode)", () => {
+    const withExtra = { ...minimalValid, unexpectedField: "oops" };
+    expect(() => DiagnosisResultSchema.parse(withExtra)).toThrow(ZodError);
+  });
+
+  it("rejects unknown fields in summary (strict mode)", () => {
+    const withExtra = {
+      ...minimalValid,
+      summary: { ...minimalValid.summary, extra: "bad" },
+    };
+    expect(() => DiagnosisResultSchema.parse(withExtra)).toThrow(ZodError);
   });
 });

@@ -11,6 +11,7 @@ import {
   shouldAttachToIncident,
 } from "../domain/formation.js";
 import { createPacket } from "../domain/packetizer.js";
+import { dispatchThinEvent } from "../runtime/github-dispatch.js";
 
 const INGEST_BODY_LIMIT = 1 * 1024 * 1024; // 1MB per ADR 0022 (resource exhaustion protection)
 
@@ -65,15 +66,16 @@ export function createIngestRouter(storage: StorageDriver): Hono {
       // triggerSignals is computed inside createPacket by re-filtering isAnomalous.
       const packet = createPacket(incidentId, openedAt, spans);
       await storage.createIncident(packet);
-      await storage.saveThinEvent({
+      const thinEvent = {
         event_id: "evt_" + randomUUID(),
-        event_type: "incident.created",
+        event_type: "incident.created" as const,
         incident_id: incidentId,
         packet_id: packet.packetId,
-      });
-      // TODO (Phase C): dispatch thin event to GitHub Actions workflow_dispatch.
-      // See ADR 0021: Receiver pushes thin event; Actions fetches packet via GET /api/packets/:id.
-      // Dispatch: POST https://api.github.com/repos/{owner}/{repo}/actions/workflows/{id}/dispatches
+      };
+      await storage.saveThinEvent(thinEvent);
+      // ADR 0021: dispatch the same thin event to GitHub Actions workflow_dispatch.
+      // Failure is logged but does not fail the response — thin event is already persisted.
+      await dispatchThinEvent(thinEvent);
       return c.json({ status: "ok", incidentId, packetId: packet.packetId });
     }
 

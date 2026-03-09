@@ -2,10 +2,36 @@
   "name": "@3amoncall/cli",
   "version": "0.1.0",
   "private": false,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "bin": {
+    "3amoncall-cli": "./dist/index.js"
+  },
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
   "scripts": {
-    "build": "echo 'TODO: implement @3amoncall/cli (Phase C)'"
+    "build": "tsc",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src"
   },
   "dependencies": {
+    "@3amoncall/core": "workspace:*",
     "@3amoncall/diagnosis": "workspace:*"
+  },
+  "devDependencies": {
+    "@3amoncall/config-eslint": "workspace:*",
+    "@3amoncall/config-typescript": "workspace:*",
+    "@eslint/js": "^9.0.0",
+    "@types/node": "^22.0.0",
+    "eslint": "^9.0.0",
+    "typescript": "^5.0.0",
+    "typescript-eslint": "^8.0.0",
+    "vitest": "^3.0.0"
   }
 }

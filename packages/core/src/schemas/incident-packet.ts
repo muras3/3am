@@ -28,7 +28,7 @@ const TriggerSignalSchema = z.object({
 
 // Representative spans captured at incident time (ADR 0018).
 // .strict() here ensures no span-level LLM annotations leak into the packet.
-const RepresentativeTraceSchema = z.object({
+export const RepresentativeTraceSchema = z.object({
   traceId: z.string(),
   spanId: z.string(),
   serviceName: z.string(),
@@ -36,6 +36,8 @@ const RepresentativeTraceSchema = z.object({
   httpStatusCode: z.number().optional(),
   spanStatusCode: z.number(),
 }).strict();
+
+export type RepresentativeTrace = z.infer<typeof RepresentativeTraceSchema>;
 
 const EvidenceSchema = z.object({
   changedMetrics: z.array(z.unknown()),   // Phase C: typed when metric ingest is implemented
