@@ -57,19 +57,21 @@ async function postDiagnosis(incidentId: string, result: DiagnosisResult): Promi
   }
 }
 
-async function runDiagnoses(diagnosisCount: number): Promise<number> {
+async function runDiagnoses(
+  diagnosisCount: number,
+): Promise<{ count: number; hadPending: boolean }> {
   const incidents = await listIncidents();
   const pending = incidents.filter((i) => !i.diagnosisResult);
 
   if (pending.length === 0) {
     console.log("[local-diagnose] no pending incidents");
-    return diagnosisCount;
+    return { count: diagnosisCount, hadPending: false };
   }
 
   for (const incident of pending) {
     if (diagnosisCount >= MAX_DIAGNOSES) {
       console.warn(`[local-diagnose] reached MAX_DIAGNOSES=${MAX_DIAGNOSES}, stopping`);
-      return diagnosisCount;
+      return { count: diagnosisCount, hadPending: true };
     }
     console.log(
       `[local-diagnose] diagnosing ${incident.incidentId} (call ${diagnosisCount + 1}/${MAX_DIAGNOSES})`,
@@ -85,7 +87,7 @@ async function runDiagnoses(diagnosisCount: number): Promise<number> {
       console.error(`[local-diagnose] ✗ ${incident.incidentId}:`, err);
     }
   }
-  return diagnosisCount;
+  return { count: diagnosisCount, hadPending: true };
 }
 
 async function main() {
@@ -98,14 +100,24 @@ async function main() {
   );
 
   let diagnosisCount = 0;
+  let sawPending = false;
   for (let round = 0; round < POLL_ROUNDS; round++) {
-    diagnosisCount = await runDiagnoses(diagnosisCount);
+    const result = await runDiagnoses(diagnosisCount);
+    diagnosisCount = result.count;
+    if (result.hadPending) sawPending = true;
     if (diagnosisCount >= MAX_DIAGNOSES) break;
     if (round < POLL_ROUNDS - 1) {
       await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
     }
   }
   console.log(`[local-diagnose] done — total diagnoses run: ${diagnosisCount}`);
+
+  // Fail non-zero when pending incidents existed but no diagnosis was posted.
+  // This lets run.sh distinguish a broken diagnosis step from a clean no-op.
+  if (sawPending && diagnosisCount === 0) {
+    console.error("[local-diagnose] pending incidents found but no diagnosis succeeded");
+    process.exit(1);
+  }
 }
 
 main().catch((err) => {

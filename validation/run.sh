@@ -77,9 +77,26 @@ else
 fi
 
 # ── 3. Docker Compose (validation stack) ─────────────────────────────────────
-log "Starting validation stack..."
+# Map scenario → Docker Compose profile for scenario-specific services:
+#   db_migration_lock_contention           → db-migration (migration-runner)
+#   cascading_timeout_downstream_dependency → cascading-timeout (mock-notification-svc)
+#   upstream_cdn_stale_cache_poison         → cdn-cache (mock-cdn)
+#   secrets_rotation_partial_propagation    → secrets-rotation (mock-sendgrid, web-v2)
+COMPOSE_PROFILE=""
+case "$SCENARIO" in
+  db_migration_lock_contention)            COMPOSE_PROFILE="db-migration" ;;
+  cascading_timeout_downstream_dependency) COMPOSE_PROFILE="cascading-timeout" ;;
+  upstream_cdn_stale_cache_poison)         COMPOSE_PROFILE="cdn-cache" ;;
+  secrets_rotation_partial_propagation)    COMPOSE_PROFILE="secrets-rotation" ;;
+esac
+
+log "Starting validation stack${COMPOSE_PROFILE:+ (profile: $COMPOSE_PROFILE)}..."
 cd "$SCRIPT_DIR"
-docker compose up -d --wait otel-collector postgres mock-stripe web loadgen
+if [[ -n "$COMPOSE_PROFILE" ]]; then
+  docker compose --profile "$COMPOSE_PROFILE" up -d --wait
+else
+  docker compose up -d --wait otel-collector postgres mock-stripe web loadgen
+fi
 
 # ── 4. Run scenario ───────────────────────────────────────────────────────────
 log "Running scenario: $SCENARIO (FAST_MODE=$FAST_MODE)"
