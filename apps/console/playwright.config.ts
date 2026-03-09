@@ -14,7 +14,7 @@ export default defineConfig({
   globalTeardown: path.resolve(__dirname, "./e2e/global-teardown.ts"),
 
   use: {
-    baseURL: "http://localhost:5173",
+    baseURL: "http://localhost:5174",
     trace: "on-first-retry",
   },
 
@@ -27,9 +27,9 @@ export default defineConfig({
 
   webServer: {
     command:
-      "VITE_RECEIVER_BASE_URL=http://localhost:4319 VITE_RECEIVER_AUTH_TOKEN=e2e-test-token pnpm dev",
-    url: "http://localhost:5173",
-    reuseExistingServer: !process.env["CI"],
+      "VITE_RECEIVER_BASE_URL=http://localhost:4319 VITE_RECEIVER_AUTH_TOKEN=e2e-test-token pnpm dev --port 5174",
+    url: "http://localhost:5174",
+    reuseExistingServer: false,
     timeout: 30_000,
   },
 });
