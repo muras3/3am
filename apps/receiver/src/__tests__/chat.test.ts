@@ -128,13 +128,14 @@ describe("POST /api/chat/:incidentId", () => {
     });
   });
 
-  it("returns 401 without auth", async () => {
-    const res = await app.request("/api/chat/inc_any", {
+  it("returns 404 without Bearer (Console same-origin route — no Bearer required, ADR 0028)", async () => {
+    const res = await app.request("/api/chat/inc_unknown", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ message: "Hello", history: [] }),
     });
-    expect(res.status).toBe(401);
+    // Not 401 — /api/chat/* is a Console route, auth is same-origin (ADR 0028)
+    expect(res.status).toBe(404);
   });
 
   it("returns 404 for unknown incidentId", async () => {

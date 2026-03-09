@@ -53,11 +53,7 @@ describe("apiFetch", () => {
     }
   });
 
-  it("sets Authorization header when VITE_RECEIVER_AUTH_TOKEN is set", async () => {
-    // Since import.meta.env is baked in at module load time, we test by
-    // verifying the fetch call includes the Content-Type header at minimum.
-    // The token injection is tested indirectly — if AUTH_TOKEN is falsy,
-    // Authorization should not appear in headers.
+  it("does not set Authorization header — auth is same-origin server-side only (ADR 0028)", async () => {
     const mockFetch = vi.fn().mockResolvedValue({
       ok: true,
       json: () => Promise.resolve({}),
@@ -68,9 +64,6 @@ describe("apiFetch", () => {
 
     const calledHeaders = mockFetch.mock.calls[0]![1]?.headers as Record<string, string>;
     expect(calledHeaders["Content-Type"]).toBe("application/json");
-    // Without VITE_RECEIVER_AUTH_TOKEN env var, Authorization should be absent
-    if (!import.meta.env["VITE_RECEIVER_AUTH_TOKEN"]) {
-      expect(calledHeaders["Authorization"]).toBeUndefined();
-    }
+    expect(calledHeaders["Authorization"]).toBeUndefined();
   });
 });
