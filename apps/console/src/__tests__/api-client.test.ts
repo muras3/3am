@@ -42,12 +42,14 @@ describe("apiFetch", () => {
     });
     vi.stubGlobal("fetch", mockFetch);
 
-    await expect(apiFetch("/api/incidents/unknown")).rejects.toThrow("Not Found");
+    // message is the user-friendly string; rawBody holds the original response
+    await expect(apiFetch("/api/incidents/unknown")).rejects.toThrow("Not found.");
     try {
       await apiFetch("/api/incidents/unknown");
     } catch (err) {
       expect(err).toBeInstanceOf(ApiError);
       expect((err as InstanceType<typeof ApiError>).status).toBe(404);
+      expect((err as InstanceType<typeof ApiError>).rawBody).toBe("Not Found");
     }
   });
 
