@@ -101,6 +101,8 @@ export default async function globalSetup(): Promise<void> {
   );
   await new Promise<void>((resolve, reject) => {
     const seedProc = spawn("npx", ["tsx", seedPath, `--url=${RECEIVER_URL}`], {
+      // cwd must be the receiver root so `npx tsx` resolves from receiver's node_modules
+      cwd: receiverRoot,
       env: { ...process.env, RECEIVER_AUTH_TOKEN: TOKEN },
       stdio: "pipe",
     });

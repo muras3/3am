@@ -143,7 +143,12 @@ export function createApiRouter(storage: StorageDriver): Hono {
       { role: "user", content: sandboxedMessage },
     ];
 
-    const client = new Anthropic();
+    // Explicit config so tests can override via ANTHROPIC_BASE_URL / ANTHROPIC_API_KEY env vars
+    // without relying on implicit SDK env scanning.
+    const client = new Anthropic({
+      baseURL: process.env["ANTHROPIC_BASE_URL"],
+      apiKey: process.env["ANTHROPIC_API_KEY"] ?? "no-key",
+    });
     const response = await client.messages.create({
       model: CHAT_MODEL,
       max_tokens: CHAT_MAX_TOKENS,
