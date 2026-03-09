@@ -17,9 +17,11 @@ export async function callModel(
     messages: [{ role: "user", content: prompt }],
   });
 
-  const block = response.content[0];
-  if (block.type !== "text") {
-    throw new Error(`Unexpected content block type: ${block.type}`);
+  const texts = response.content
+    .filter((block): block is Anthropic.TextBlock => block.type === "text")
+    .map((block) => block.text);
+  if (texts.length === 0) {
+    throw new Error("No text content in model response");
   }
-  return block.text;
+  return texts.join("");
 }

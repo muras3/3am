@@ -36,6 +36,21 @@ export function buildPrompt(packet: IncidentPacket): string {
       ? pointers.traceRefs.join(", ")
       : "(none)";
 
+  const metricsSection =
+    evidence.changedMetrics.length > 0
+      ? `\n### Changed Metrics\n${evidence.changedMetrics.map((m, i) => `  [${i + 1}] ${JSON.stringify(m)}`).join("\n")}`
+      : "";
+
+  const logsSection =
+    evidence.relevantLogs.length > 0
+      ? `\n### Relevant Logs\n${evidence.relevantLogs.map((l, i) => `  [${i + 1}] ${JSON.stringify(l)}`).join("\n")}`
+      : "";
+
+  const eventsSection =
+    evidence.platformEvents.length > 0
+      ? `\n### Platform Events\n${evidence.platformEvents.map((e, i) => `  [${i + 1}] ${JSON.stringify(e)}`).join("\n")}`
+      : "";
+
   return `You are an expert SRE performing on-call incident diagnosis.
 
 ## Incident Data
@@ -50,7 +65,7 @@ ${scopeSection}
 ${signalsSection}
 
 ### Representative Traces
-${tracesSection}
+${tracesSection}${metricsSection}${logsSection}${eventsSection}
 
 ### Trace References
   ${traceRefsSection}
