@@ -1,0 +1,70 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - develop
+      - main
+  pull_request:
+    branches:
+      - develop
+      - main
+  merge_group:
+
+jobs:
+  test:
+    name: Test, Typecheck & Lint
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install
+
+      # core
+      - name: Build core
+        run: pnpm --filter @3amoncall/core build
+      - name: Test core
+        run: pnpm --filter @3amoncall/core test
+      - name: Typecheck core
+        run: pnpm --filter @3amoncall/core typecheck
+      - name: Lint core
+        run: pnpm --filter @3amoncall/core lint
+
+      # diagnosis (no real API calls — all mocked in tests)
+      - name: Build diagnosis
+        run: pnpm --filter @3amoncall/diagnosis build
+      - name: Test diagnosis
+        run: pnpm --filter @3amoncall/diagnosis test
+      - name: Typecheck diagnosis
+        run: pnpm --filter @3amoncall/diagnosis typecheck
+      - name: Lint diagnosis
+        run: pnpm --filter @3amoncall/diagnosis lint
+
+      # cli (no real API calls — all mocked in tests)
+      - name: Build cli
+        run: pnpm --filter @3amoncall/cli build
+      - name: Test cli
+        run: pnpm --filter @3amoncall/cli test
+      - name: Typecheck cli
+        run: pnpm --filter @3amoncall/cli typecheck
+      - name: Lint cli
+        run: pnpm --filter @3amoncall/cli lint
+
+      # receiver
+      - name: Test receiver
+        run: pnpm --filter @3amoncall/receiver test
+      - name: Typecheck receiver
+        run: pnpm --filter @3amoncall/receiver typecheck
+      - name: Lint receiver
+        run: pnpm --filter @3amoncall/receiver lint
