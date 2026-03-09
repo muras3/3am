@@ -66,3 +66,13 @@ jobs:
         run: pnpm --filter @3amoncall/receiver typecheck
       - name: Lint receiver
         run: pnpm --filter @3amoncall/receiver lint
+
+      # console
+      - name: Build console
+        run: pnpm --filter @3amoncall/console build
+      - name: Test console
+        run: pnpm --filter @3amoncall/console test
+      - name: Typecheck console
+        run: pnpm --filter @3amoncall/console typecheck
+      - name: Lint console
+        run: pnpm --filter @3amoncall/console lint

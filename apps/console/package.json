@@ -2,11 +2,37 @@
   "name": "@3amoncall/console",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
   "scripts": {
-    "build": "vite build",
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "lint": "eslint src",
-    "dev": "vite"
+    "lint": "eslint src"
+  },
+  "dependencies": {
+    "@3amoncall/core": "workspace:*",
+    "@tanstack/react-query": "^5.74.4",
+    "@tanstack/react-router": "^1.114.22",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0"
+  },
+  "devDependencies": {
+    "@3amoncall/config-eslint": "workspace:*",
+    "@3amoncall/config-typescript": "workspace:*",
+    "@eslint/js": "^9.23.0",
+    "@testing-library/jest-dom": "^6.6.3",
+    "@testing-library/react": "^16.3.0",
+    "@testing-library/user-event": "^14.5.2",
+    "@types/react": "^19.1.1",
+    "@types/react-dom": "^19.1.2",
+    "@vitejs/plugin-react": "^4.3.4",
+    "eslint": "^9.23.0",
+    "jsdom": "^26.1.0",
+    "typescript": "^5.8.2",
+    "typescript-eslint": "^8.29.0",
+    "vite": "^6.3.1",
+    "vitest": "^3.1.1"
   }
 }
