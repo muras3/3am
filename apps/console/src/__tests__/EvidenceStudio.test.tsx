@@ -34,12 +34,14 @@ describe("EvidenceStudio", () => {
     expect(rows.length).toBeGreaterThan(0);
   });
 
-  it("shows EmptyView for metrics tab", async () => {
+  it("shows MetricsView for metrics tab", async () => {
     const user = userEvent.setup();
     render(<EvidenceStudio incident={testIncident} onClose={vi.fn()} />);
     await user.click(screen.getByText("Metrics"));
     expect(
-      screen.getByText("No metrics data available for this incident."),
+      screen.getByText(
+        "No metrics data — will appear when /v1/metrics ingest is active",
+      ),
     ).toBeInTheDocument();
   });
 });

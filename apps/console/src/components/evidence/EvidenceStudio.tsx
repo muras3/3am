@@ -2,7 +2,9 @@ import { useEffect, useState } from "react";
 import type { Incident } from "../../api/types.js";
 import { EvidenceTabs } from "./EvidenceTabs.js";
 import { TracesView } from "./TracesView.js";
-import { EmptyView } from "./EmptyView.js";
+import { MetricsView } from "./MetricsView.js";
+import { LogsView } from "./LogsView.js";
+import { PlatformLogsView } from "./PlatformLogsView.js";
 
 interface Props {
   incident: Incident;
@@ -43,10 +45,10 @@ export function EvidenceStudio({ incident, onClose }: Props) {
         <div className="evidence-content">
           <div className="evidence-main">
             {activeTab === "traces" && <TracesView incident={incident} />}
-            {activeTab === "metrics" && <EmptyView label="metrics" />}
-            {activeTab === "logs" && <EmptyView label="log" />}
+            {activeTab === "metrics" && <MetricsView incident={incident} />}
+            {activeTab === "logs" && <LogsView incident={incident} />}
             {activeTab === "platform-logs" && (
-              <EmptyView label="platform log" />
+              <PlatformLogsView incident={incident} />
             )}
           </div>
           <div className="evidence-side">
