@@ -21,6 +21,8 @@ export function WhatHappened({ incident }: Props) {
     <section className="section-what">
       <div className="headline">{dr.summary.what_happened}</div>
       <div className="impact-chips">
+        {/* Phase D simplification: all incidents diagnosed by this system affect the customer-facing path.
+            Phase E: derive this from packet.scope or diagnosisResult metadata. */}
         <Chip label="customer-facing" variant="critical" />
         {hasDeps && <Chip label="external dependency" variant="external" />}
         <Chip label={`confidence: ${confLevel}`} variant="system" />

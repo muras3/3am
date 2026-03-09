@@ -4,11 +4,14 @@ import { LeftRail } from "./LeftRail.js";
 import { RightRail } from "./RightRail.js";
 import { useRouterState } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
+
 import { incidentQueries } from "../../api/queries.js";
 
 export function AppShell({ children }: { children: ReactNode }) {
-  const routerState = useRouterState();
-  const currentIncidentId = (routerState.matches.at(-1)?.params as Record<string, string> | undefined)?.["incidentId"];
+  // Extract incidentId from the URL path — more stable than reading routerState.matches.at(-1)
+  // which would break if a nested route is added between the root and incidents/$incidentId.
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const currentIncidentId = pathname.match(/^\/incidents\/([^/]+)/)?.[1];
 
   const { data: page } = useQuery({ ...incidentQueries.list(), throwOnError: false });
   const incidents = page?.items ?? [];

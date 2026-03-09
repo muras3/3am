@@ -5,7 +5,8 @@ import { incidentRoute } from "./routes/incidents/$incidentId.js";
 
 const routeTree = rootRoute.addChildren([indexRoute, incidentRoute]);
 
-export const router = createRouter({ routeTree });
+// context is provided at runtime by <RouterProvider context={{ queryClient }} /> in main.tsx
+export const router = createRouter({ routeTree, context: { queryClient: undefined! } });
 
 declare module "@tanstack/react-router" {
   interface Register {

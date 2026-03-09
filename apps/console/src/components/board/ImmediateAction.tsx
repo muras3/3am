@@ -13,17 +13,15 @@ export function ImmediateAction({ diagnosisResult }: Props) {
       <div className="action-why">
         <strong>Why:</strong> {recommendation.action_rationale_short}
       </div>
-      {recommendation.do_not && (
-        <div
-          style={{
-            marginTop: "8px",
-            fontSize: "var(--fs-xs)",
-            color: "var(--accent-text)",
-          }}
-        >
-          <strong>Do not:</strong> {recommendation.do_not}
-        </div>
-      )}
+      <div
+        style={{
+          marginTop: "8px",
+          fontSize: "var(--fs-xs)",
+          color: "var(--accent-text)",
+        }}
+      >
+        <strong>Do not:</strong> {recommendation.do_not}
+      </div>
     </section>
   );
 }
