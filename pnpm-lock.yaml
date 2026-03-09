@@ -87,6 +87,9 @@ importers:
       '@3amoncall/core':
         specifier: workspace:*
         version: link:../../packages/core
+      '@anthropic-ai/sdk':
+        specifier: ^0.39.0
+        version: 0.39.0
       '@hono/node-server':
         specifier: ^1.0.0
         version: 1.19.11(hono@4.12.5)

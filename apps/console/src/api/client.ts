@@ -14,6 +14,24 @@ function userMessage(status: number): string {
   return `Request failed (${status}).`;
 }
 
+export async function apiFetchPost<T>(path: string, body: unknown): Promise<T> {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+  };
+  if (AUTH_TOKEN) {
+    headers["Authorization"] = `Bearer ${AUTH_TOKEN}`;
+  }
+  const res = await fetch(path, { method: "POST", headers, body: JSON.stringify(body) });
+  if (!res.ok) {
+    const rawBody = await res.text();
+    if (import.meta.env.DEV) {
+      console.error(`[apiFetch] POST ${res.status} ${path}:`, rawBody);
+    }
+    throw new ApiError(res.status, rawBody);
+  }
+  return res.json() as Promise<T>;
+}
+
 export async function apiFetch<T>(path: string): Promise<T> {
   const headers: Record<string, string> = {
     "Content-Type": "application/json",

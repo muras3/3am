@@ -1,3 +1,5 @@
+import { createServer } from "http";
+import type { Server } from "http";
 import { spawn } from "child_process";
 import { writeFileSync } from "fs";
 import { tmpdir } from "os";
@@ -7,6 +9,8 @@ import { fileURLToPath } from "url";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const RECEIVER_URL = "http://localhost:4319";
 const TOKEN = "e2e-test-token";
+const MOCK_ANTHROPIC_PORT = 4320;
+const MOCK_ANTHROPIC_REPLY = "Disable the Stripe retry loop immediately to stop the cascade.";
 
 async function waitForReady(url: string, maxMs = 15_000): Promise<void> {
   const deadline = Date.now() + maxMs;
@@ -22,7 +26,40 @@ async function waitForReady(url: string, maxMs = 15_000): Promise<void> {
   throw new Error(`Receiver did not start within ${maxMs}ms at ${url}`);
 }
 
+function startMockAnthropicServer(): Promise<Server> {
+  const server = createServer((req, res) => {
+    // Drain request body before responding to avoid ECONNRESET
+    const chunks: Buffer[] = [];
+    req.on("data", (c: Buffer) => chunks.push(c));
+    req.on("end", () => {
+      if (req.method === "POST" && req.url === "/v1/messages") {
+        const body = JSON.stringify({
+          id: "msg_e2e_mock",
+          type: "message",
+          role: "assistant",
+          content: [{ type: "text", text: MOCK_ANTHROPIC_REPLY }],
+          model: "claude-haiku-4-5-20251001",
+          stop_reason: "end_turn",
+          stop_sequence: null,
+          usage: { input_tokens: 50, output_tokens: 15 },
+        });
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(body);
+      } else {
+        res.writeHead(404);
+        res.end();
+      }
+    });
+  });
+  return new Promise((resolve) => server.listen(MOCK_ANTHROPIC_PORT, () => resolve(server)));
+}
+
 export default async function globalSetup(): Promise<void> {
+  // Start mock Anthropic server so the receiver's chat endpoint doesn't hit the real API
+  const mockServer = await startMockAnthropicServer();
+  // Store on globalThis — setup and teardown run in the same Playwright process
+  (globalThis as Record<string, unknown>)["__mockAnthropicServer"] = mockServer;
+
   // Start receiver on port 4319 to avoid conflicts with default port 4318
   const receiverRoot = path.resolve(__dirname, "../../../apps/receiver");
   const receiverProcess = spawn("npx", ["tsx", "src/server.ts"], {
@@ -31,6 +68,8 @@ export default async function globalSetup(): Promise<void> {
       ...process.env,
       PORT: "4319",
       RECEIVER_AUTH_TOKEN: TOKEN,
+      ANTHROPIC_BASE_URL: `http://localhost:${MOCK_ANTHROPIC_PORT}`,
+      ANTHROPIC_API_KEY: "e2e-mock-key",
     },
     stdio: "pipe",
   });

@@ -33,7 +33,10 @@ export function AppShell({ children }: { children: ReactNode }) {
       <div className="main-grid">
         <LeftRail incidents={incidents} currentIncidentId={currentIncidentId} />
         <main className="center-board">{children}</main>
-        <RightRail diagnosisResult={currentIncident?.diagnosisResult} />
+        <RightRail
+          incidentId={currentIncidentId ?? ""}
+          diagnosisResult={currentIncident?.diagnosisResult}
+        />
       </div>
     </div>
   );
