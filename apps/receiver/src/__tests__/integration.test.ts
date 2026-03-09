@@ -149,23 +149,41 @@ describe("Bearer Token auth (ADR 0011)", () => {
     delete process.env["ALLOW_INSECURE_DEV_MODE"];
   });
 
-  it("returns 401 when token is set and Authorization header is missing", async () => {
+  // /v1/* (OTel ingest) requires Bearer (ADR 0028)
+  it("returns 401 on /v1/* when token is set and Authorization header is missing", async () => {
     process.env["RECEIVER_AUTH_TOKEN"] = "test-secret";
     app = createApp(storage);
-    const res = await app.request("/api/incidents");
+    const res = await app.request("/v1/traces", { method: "POST" });
     expect(res.status).toBe(401);
   });
 
-  it("returns 401 when token is set and Authorization header is wrong", async () => {
+  it("returns 401 on /v1/* when token is set and Authorization header is wrong", async () => {
     process.env["RECEIVER_AUTH_TOKEN"] = "test-secret";
     app = createApp(storage);
-    const res = await app.request("/api/incidents", {
+    const res = await app.request("/v1/traces", {
+      method: "POST",
       headers: { Authorization: "Bearer wrong-token" },
     });
     expect(res.status).toBe(401);
   });
 
-  it("returns 200 when token is set and correct Authorization header is provided", async () => {
+  // /api/diagnosis/* (GitHub Actions callback) requires Bearer (ADR 0028)
+  it("returns 401 on /api/diagnosis/* when token is set and no Bearer provided", async () => {
+    process.env["RECEIVER_AUTH_TOKEN"] = "test-secret";
+    app = createApp(storage);
+    const res = await app.request("/api/diagnosis/inc_test", { method: "POST" });
+    expect(res.status).toBe(401);
+  });
+
+  // /api/* Console routes are accessible without Bearer (same-origin protection, ADR 0028)
+  it("returns 200 on /api/incidents without Bearer when token is set (Console same-origin route)", async () => {
+    process.env["RECEIVER_AUTH_TOKEN"] = "test-secret";
+    app = createApp(storage);
+    const res = await app.request("/api/incidents");
+    expect(res.status).toBe(200);
+  });
+
+  it("returns 200 when token is set and correct Authorization header is provided to /api/incidents", async () => {
     process.env["RECEIVER_AUTH_TOKEN"] = "test-secret";
     app = createApp(storage);
     const res = await app.request("/api/incidents", {

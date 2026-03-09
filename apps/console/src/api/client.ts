@@ -1,11 +1,5 @@
-// DEV/PREVIEW CONVENIENCE ONLY — NOT PRODUCTION-READY
-// VITE_RECEIVER_AUTH_TOKEN is embedded in the client bundle at build time.
-// Anyone with the bundle can extract the token. This is acceptable for
-// local development and preview deployments only.
-// Phase E will replace this with a BFF / same-origin proxy so the token
-// never leaves the server. Do NOT use this pattern in production.
-
-const AUTH_TOKEN = import.meta.env["VITE_RECEIVER_AUTH_TOKEN"] as string | undefined;
+// Console runs same-origin with Receiver (ADR 0028).
+// Receiver handles auth server-side — no token in the browser bundle.
 
 function userMessage(status: number): string {
   if (status === 404) return "Not found.";
@@ -15,13 +9,11 @@ function userMessage(status: number): string {
 }
 
 export async function apiFetchPost<T>(path: string, body: unknown): Promise<T> {
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-  };
-  if (AUTH_TOKEN) {
-    headers["Authorization"] = `Bearer ${AUTH_TOKEN}`;
-  }
-  const res = await fetch(path, { method: "POST", headers, body: JSON.stringify(body) });
+  const res = await fetch(path, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
   if (!res.ok) {
     const rawBody = await res.text();
     if (import.meta.env.DEV) {
@@ -33,13 +25,9 @@ export async function apiFetchPost<T>(path: string, body: unknown): Promise<T> {
 }
 
 export async function apiFetch<T>(path: string): Promise<T> {
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-  };
-  if (AUTH_TOKEN) {
-    headers["Authorization"] = `Bearer ${AUTH_TOKEN}`;
-  }
-  const res = await fetch(path, { headers });
+  const res = await fetch(path, {
+    headers: { "Content-Type": "application/json" },
+  });
   if (!res.ok) {
     const rawBody = await res.text();
     if (import.meta.env.DEV) {
