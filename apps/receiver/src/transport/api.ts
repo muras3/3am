@@ -1,6 +1,58 @@
+import Anthropic from "@anthropic-ai/sdk";
 import { Hono } from "hono";
 import { DiagnosisResultSchema, type DiagnosisResult } from "@3amoncall/core";
 import type { StorageDriver } from "../storage/interface.js";
+
+const CHAT_MAX_HISTORY = 10;
+const CHAT_MAX_MESSAGE_CHARS = 500;
+const CHAT_MAX_TOKENS = 512;
+const CHAT_MODEL = process.env["CHAT_MODEL"] ?? "claude-haiku-4-5-20251001";
+
+interface ChatTurn {
+  role: "user" | "assistant";
+  content: string;
+}
+
+function buildChatSystemPrompt(dr: DiagnosisResult): string {
+  const chain = dr.reasoning.causal_chain.map((s) => s.title).join(" → ");
+  return (
+    "You are an incident responder assistant. The engineer is investigating an active incident.\n\n" +
+    `Incident summary: ${dr.summary.what_happened}\n` +
+    `Root cause: ${dr.summary.root_cause_hypothesis}\n` +
+    `Recommended action: ${dr.recommendation.immediate_action}\n` +
+    `Causal chain: ${chain}\n\n` +
+    "Answer concisely in 1-3 sentences. Do not speculate beyond the provided context."
+  );
+}
+
+function validateChatBody(body: unknown): { message: string; history: ChatTurn[] } | string {
+  if (typeof body !== "object" || body === null) return "invalid body";
+  const b = body as Record<string, unknown>;
+
+  const message = b["message"];
+  if (typeof message !== "string" || message.trim().length === 0) return "message is required";
+  if (message.length > CHAT_MAX_MESSAGE_CHARS) {
+    return `message must be at most ${CHAT_MAX_MESSAGE_CHARS} characters`;
+  }
+
+  const history = b["history"] ?? [];
+  if (!Array.isArray(history)) return "history must be an array";
+  if (history.length > CHAT_MAX_HISTORY) {
+    return `history exceeds maximum of ${CHAT_MAX_HISTORY} turns`;
+  }
+  for (const turn of history as unknown[]) {
+    if (
+      typeof turn !== "object" ||
+      turn === null ||
+      !["user", "assistant"].includes((turn as Record<string, unknown>)["role"] as string) ||
+      typeof (turn as Record<string, unknown>)["content"] !== "string"
+    ) {
+      return "invalid history entry";
+    }
+  }
+
+  return { message, history: history as ChatTurn[] };
+}
 
 export function createApiRouter(storage: StorageDriver): Hono {
   const app = new Hono();
@@ -58,6 +110,59 @@ export function createApiRouter(storage: StorageDriver): Hono {
 
     await storage.appendDiagnosis(id, result);
     return c.json({ status: "ok" });
+  });
+
+  app.post("/api/chat/:id", async (c) => {
+    const id = c.req.param("id");
+
+    let body: unknown;
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ error: "invalid body" }, 400);
+    }
+
+    const validated = validateChatBody(body);
+    if (typeof validated === "string") {
+      const status = validated.startsWith("history exceeds") ? 422 : 400;
+      return c.json({ error: validated }, status);
+    }
+    const { message, history } = validated;
+
+    const incident = await storage.getIncident(id);
+    if (incident === null) return c.json({ error: "not found" }, 404);
+    if (!incident.diagnosisResult) {
+      return c.json({ error: "diagnosis not yet available for this incident" }, 404);
+    }
+
+    const systemPrompt = buildChatSystemPrompt(incident.diagnosisResult);
+    const sandboxedMessage = `<user_message>${message}</user_message>`;
+
+    const messages: Anthropic.MessageParam[] = [
+      ...history.map((t) => ({ role: t.role, content: t.content })),
+      { role: "user", content: sandboxedMessage },
+    ];
+
+    // Explicit config so tests can override via ANTHROPIC_BASE_URL / ANTHROPIC_API_KEY env vars
+    // without relying on implicit SDK env scanning.
+    const client = new Anthropic({
+      baseURL: process.env["ANTHROPIC_BASE_URL"],
+      apiKey: process.env["ANTHROPIC_API_KEY"] ?? "no-key",
+    });
+    const response = await client.messages.create({
+      model: CHAT_MODEL,
+      max_tokens: CHAT_MAX_TOKENS,
+      temperature: 0.3,
+      system: systemPrompt,
+      messages,
+    });
+
+    const reply = response.content
+      .filter((b): b is Anthropic.TextBlock => b.type === "text")
+      .map((b) => b.text)
+      .join("");
+
+    return c.json({ reply });
   });
 
   return app;

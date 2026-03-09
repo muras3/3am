@@ -9,14 +9,30 @@ describe("TracesView", () => {
     render(<TracesView incident={testIncident} />);
     const rows = document.querySelectorAll(".trace-attrs-row");
     expect(rows).toHaveLength(2);
-    expect(screen.getByText("web")).toBeInTheDocument();
-    expect(screen.getByText("api-gateway")).toBeInTheDocument();
+    // service name appears in both waterfall and attrs table — use getAllByText
+    expect(screen.getAllByText("web").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("api-gateway").length).toBeGreaterThanOrEqual(1);
   });
 
   it("shows duration and status details", () => {
     render(<TracesView incident={testIncident} />);
-    expect(screen.getByText(/5200ms/)).toBeInTheDocument();
+    // 5200ms appears in both waterfall (as a label) and attrs table
+    expect(screen.getAllByText(/5200ms/).length).toBeGreaterThanOrEqual(1);
+    // HTTP 429 only appears in the attrs table
     expect(screen.getByText(/HTTP 429/)).toBeInTheDocument();
+  });
+
+  it("renders waterfall rows, one per trace", () => {
+    render(<TracesView incident={testIncident} />);
+    const wfRows = document.querySelectorAll(".wf-row");
+    expect(wfRows).toHaveLength(2);
+  });
+
+  it("waterfall row has correct service name", () => {
+    render(<TracesView incident={testIncident} />);
+    const wfRows = document.querySelectorAll(".wf-row");
+    expect(wfRows[0].textContent).toContain("web");
+    expect(wfRows[1].textContent).toContain("api-gateway");
   });
 
   it("shows EmptyView when traces is empty", () => {

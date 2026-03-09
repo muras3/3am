@@ -1,0 +1,261 @@
+/**
+ * Unit tests for POST /api/chat/:incidentId
+ *
+ * Anthropic SDK is mocked via vi.mock so no real API key is required.
+ * Each test exercises one contract condition from ADR 0027.
+ */
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { MemoryAdapter } from "../storage/adapters/memory.js";
+import { createApp } from "../index.js";
+import type { DiagnosisResult } from "@3amoncall/core";
+
+// ── Mock Anthropic SDK ─────────────────────────────────────────────────────
+const mockCreate = vi.fn();
+vi.mock("@anthropic-ai/sdk", () => ({
+  default: class MockAnthropic {
+    messages = { create: mockCreate };
+  },
+}));
+
+// ── Helpers ────────────────────────────────────────────────────────────────
+const TOKEN = "test-token";
+
+function makeApp() {
+  process.env["RECEIVER_AUTH_TOKEN"] = TOKEN;
+  return createApp(new MemoryAdapter());
+}
+
+function authHeader() {
+  return { Authorization: `Bearer ${TOKEN}` };
+}
+
+const minimalDiagnosis: DiagnosisResult = {
+  summary: {
+    what_happened: "Rate limiter cascade caused 504s on /checkout.",
+    root_cause_hypothesis: "Stripe 429 leaked into checkout timeout budget.",
+  },
+  recommendation: {
+    immediate_action: "Disable Stripe retry loop. Add circuit breaker.",
+    action_rationale_short: "Stops cascading 429s from consuming server threads.",
+    do_not: "Do not increase timeout — it worsens head-of-line blocking.",
+  },
+  reasoning: {
+    causal_chain: [
+      { type: "external", title: "Stripe 429", detail: "Stripe rate limited." },
+      { type: "system", title: "Thread exhaustion", detail: "Workers blocked on retries." },
+      { type: "incident", title: "Checkout 504", detail: "Gateway timed out." },
+      { type: "impact", title: "Revenue loss", detail: "Checkout unavailable." },
+    ],
+  },
+  operator_guidance: {
+    watch_items: [],
+    operator_checks: ["Confirm Stripe dashboard shows 429 spike."],
+  },
+  confidence: {
+    confidence_assessment: "High",
+    uncertainty: "Unknown Stripe quota reset time.",
+  },
+  metadata: {
+    incident_id: "inc_test_001",
+    packet_id: "pkt_test_001",
+    model: "claude-haiku-4-5-20251001",
+    prompt_version: "v5",
+    created_at: new Date().toISOString(),
+  },
+};
+
+async function seedIncidentWithDiagnosis(app: ReturnType<typeof makeApp>) {
+  // Ingest an anomalous span to create an incident
+  const ingestRes = await app.request("/v1/traces", {
+    method: "POST",
+    headers: { ...authHeader(), "Content-Type": "application/json" },
+    body: JSON.stringify({
+      resourceSpans: [
+        {
+          resource: {
+            attributes: [
+              { key: "service.name", value: { stringValue: "web" } },
+              { key: "deployment.environment.name", value: { stringValue: "production" } },
+            ],
+          },
+          scopeSpans: [
+            {
+              spans: [
+                {
+                  traceId: "abc123",
+                  spanId: "span001",
+                  name: "POST /checkout",
+                  startTimeUnixNano: "1741392000000000000",
+                  endTimeUnixNano: "1741392005200000000",
+                  status: { code: 2 },
+                  attributes: [
+                    { key: "http.route", value: { stringValue: "/checkout" } },
+                    { key: "http.response.status_code", value: { intValue: 504 } },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    }),
+  });
+  const { incidentId } = (await ingestRes.json()) as { incidentId: string };
+
+  // Attach a diagnosis result
+  const dr: DiagnosisResult = {
+    ...minimalDiagnosis,
+    metadata: { ...minimalDiagnosis.metadata, incident_id: incidentId },
+  };
+  await app.request(`/api/diagnosis/${incidentId}`, {
+    method: "POST",
+    headers: { ...authHeader(), "Content-Type": "application/json" },
+    body: JSON.stringify(dr),
+  });
+
+  return incidentId;
+}
+
+// ── Tests ──────────────────────────────────────────────────────────────────
+describe("POST /api/chat/:incidentId", () => {
+  let app: ReturnType<typeof makeApp>;
+
+  beforeEach(() => {
+    app = makeApp();
+    mockCreate.mockClear();
+    mockCreate.mockResolvedValue({
+      content: [{ type: "text", text: "This is the assistant reply." }],
+    });
+  });
+
+  it("returns 401 without auth", async () => {
+    const res = await app.request("/api/chat/inc_any", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message: "Hello", history: [] }),
+    });
+    expect(res.status).toBe(401);
+  });
+
+  it("returns 404 for unknown incidentId", async () => {
+    const res = await app.request("/api/chat/inc_unknown", {
+      method: "POST",
+      headers: { ...authHeader(), "Content-Type": "application/json" },
+      body: JSON.stringify({ message: "Hello", history: [] }),
+    });
+    expect(res.status).toBe(404);
+  });
+
+  it("returns 404 when diagnosis is not yet available", async () => {
+    // Create incident without attaching diagnosis
+    const ingestRes = await app.request("/v1/traces", {
+      method: "POST",
+      headers: { ...authHeader(), "Content-Type": "application/json" },
+      body: JSON.stringify({
+        resourceSpans: [
+          {
+            resource: {
+              attributes: [
+                { key: "service.name", value: { stringValue: "svc" } },
+                { key: "deployment.environment.name", value: { stringValue: "production" } },
+              ],
+            },
+            scopeSpans: [
+              {
+                spans: [
+                  {
+                    traceId: "def456",
+                    spanId: "span002",
+                    name: "GET /api",
+                    startTimeUnixNano: "1741392100000000000",
+                    endTimeUnixNano: "1741392106000000000",
+                    status: { code: 2 },
+                    attributes: [
+                      { key: "http.route", value: { stringValue: "/api" } },
+                      { key: "http.response.status_code", value: { intValue: 500 } },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      }),
+    });
+    const { incidentId } = (await ingestRes.json()) as { incidentId: string };
+
+    const res = await app.request(`/api/chat/${incidentId}`, {
+      method: "POST",
+      headers: { ...authHeader(), "Content-Type": "application/json" },
+      body: JSON.stringify({ message: "What happened?", history: [] }),
+    });
+    expect(res.status).toBe(404);
+  });
+
+  it("returns 400 when message is missing", async () => {
+    const incidentId = await seedIncidentWithDiagnosis(app);
+    const res = await app.request(`/api/chat/${incidentId}`, {
+      method: "POST",
+      headers: { ...authHeader(), "Content-Type": "application/json" },
+      body: JSON.stringify({ history: [] }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("returns 400 when message exceeds 500 chars", async () => {
+    const incidentId = await seedIncidentWithDiagnosis(app);
+    const res = await app.request(`/api/chat/${incidentId}`, {
+      method: "POST",
+      headers: { ...authHeader(), "Content-Type": "application/json" },
+      body: JSON.stringify({ message: "x".repeat(501), history: [] }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("returns 422 when history exceeds 10 turns", async () => {
+    const incidentId = await seedIncidentWithDiagnosis(app);
+    const history = Array.from({ length: 11 }, (_, i) => ({
+      role: i % 2 === 0 ? "user" : "assistant",
+      content: `turn ${i}`,
+    }));
+    const res = await app.request(`/api/chat/${incidentId}`, {
+      method: "POST",
+      headers: { ...authHeader(), "Content-Type": "application/json" },
+      body: JSON.stringify({ message: "One more question", history }),
+    });
+    expect(res.status).toBe(422);
+  });
+
+  it("returns 200 with reply on valid request", async () => {
+    const incidentId = await seedIncidentWithDiagnosis(app);
+    const res = await app.request(`/api/chat/${incidentId}`, {
+      method: "POST",
+      headers: { ...authHeader(), "Content-Type": "application/json" },
+      body: JSON.stringify({ message: "What should I do first?", history: [] }),
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { reply: string };
+    expect(body.reply).toBe("This is the assistant reply.");
+    expect(mockCreate).toHaveBeenCalledOnce();
+  });
+
+  it("passes conversation history to the model", async () => {
+    const incidentId = await seedIncidentWithDiagnosis(app);
+    const history = [
+      { role: "user", content: "First question" },
+      { role: "assistant", content: "First answer" },
+    ];
+    await app.request(`/api/chat/${incidentId}`, {
+      method: "POST",
+      headers: { ...authHeader(), "Content-Type": "application/json" },
+      body: JSON.stringify({ message: "Follow up", history }),
+    });
+
+    const callArgs = mockCreate.mock.calls[0]?.[0] as { messages: Array<{ role: string }> };
+    // history (2) + sandboxed new message (1) = 3
+    expect(callArgs.messages).toHaveLength(3);
+    expect(callArgs.messages[0]?.role).toBe("user");
+    expect(callArgs.messages[1]?.role).toBe("assistant");
+    expect(callArgs.messages[2]?.role).toBe("user");
+  });
+});

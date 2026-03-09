@@ -74,5 +74,16 @@ jobs:
         run: pnpm --filter @3amoncall/console test
       - name: Typecheck console
         run: pnpm --filter @3amoncall/console typecheck
+      - name: Typecheck console E2E
+        run: pnpm --filter @3amoncall/console typecheck:e2e
       - name: Lint console
         run: pnpm --filter @3amoncall/console lint
+
+      # console E2E (Playwright — Chromium only)
+      - name: Install Playwright browsers
+        run: pnpm --filter @3amoncall/console exec playwright install chromium --with-deps
+      - name: E2E tests (console)
+        run: pnpm --filter @3amoncall/console e2e
+        env:
+          CI: true
+          RECEIVER_AUTH_TOKEN: e2e-test-token

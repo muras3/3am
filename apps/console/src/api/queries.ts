@@ -1,6 +1,19 @@
 import { queryOptions } from "@tanstack/react-query";
-import { apiFetch } from "./client.js";
+import { apiFetch, apiFetchPost } from "./client.js";
 import type { Incident, IncidentPage } from "./types.js";
+
+export interface ChatTurn {
+  role: "user" | "assistant";
+  content: string;
+}
+
+export async function sendChatMessage(
+  incidentId: string,
+  message: string,
+  history: ChatTurn[],
+): Promise<{ reply: string }> {
+  return apiFetchPost<{ reply: string }>(`/api/chat/${incidentId}`, { message, history });
+}
 
 export const incidentQueries = {
   list: () =>

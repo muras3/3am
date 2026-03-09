@@ -31,7 +31,9 @@ export function LeftRail({ incidents, currentIncidentId }: Props) {
           <div className={`incident-item${inc.incidentId === currentIncidentId ? " active" : ""}`}>
             <div className="name">
               {inc.packet.scope.primaryService}
-              <span className="sev sev-critical">open</span>
+              <span className={`sev sev-${inc.packet.severity ?? "critical"}`}>
+                {inc.status}
+              </span>
             </div>
             <div className="meta">
               {inc.packet.scope.affectedRoutes.slice(0, 2).join(" / ")}
