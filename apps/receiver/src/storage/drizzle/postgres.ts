@@ -8,7 +8,7 @@ import postgres from "postgres";
 import { drizzle } from "drizzle-orm/postgres-js";
 import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import { eq, desc, lt, and, sql as drizzleSql, count } from "drizzle-orm";
-import { pgTable, text, timestamp, serial } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, serial, jsonb } from "drizzle-orm/pg-core";
 import type { IncidentPacket, DiagnosisResult, ThinEvent } from "@3amoncall/core";
 import type { Incident, IncidentPage, StorageDriver } from "../interface.js";
 
@@ -16,11 +16,11 @@ import type { Incident, IncidentPage, StorageDriver } from "../interface.js";
 
 const pgIncidents = pgTable("incidents", {
   incidentId: text("incident_id").primaryKey(),
-  status: text("status").notNull().default("open"),
+  status: text("status", { enum: ["open", "closed"] as const }).notNull().default("open"),
   openedAt: text("opened_at").notNull(),
   closedAt: text("closed_at"),
-  packet: text("packet").notNull(),          // JSONB stored as text via drizzle cast
-  diagnosisResult: text("diagnosis_result"), // JSONB stored as text | null
+  packet: jsonb("packet").notNull(),
+  diagnosisResult: jsonb("diagnosis_result"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 });
@@ -71,6 +71,9 @@ export class PostgresAdapter implements StorageDriver {
         created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
       )
     `);
+    await this.db.execute(drizzleSql`
+      CREATE INDEX IF NOT EXISTS idx_incidents_opened_at ON incidents(opened_at DESC)
+    `);
   }
 
   /** Expose raw SQL execution for tests (e.g. TRUNCATE). */
@@ -88,15 +91,11 @@ export class PostgresAdapter implements StorageDriver {
       incidentId: row.incidentId,
       status: row.status as "open" | "closed",
       openedAt: row.openedAt,
-      packet: (typeof row.packet === "string"
-        ? JSON.parse(row.packet)
-        : row.packet) as IncidentPacket,
+      packet: row.packet as IncidentPacket,
     };
     if (row.closedAt) incident.closedAt = row.closedAt;
     if (row.diagnosisResult) {
-      incident.diagnosisResult = (typeof row.diagnosisResult === "string"
-        ? JSON.parse(row.diagnosisResult)
-        : row.diagnosisResult) as DiagnosisResult;
+      incident.diagnosisResult = row.diagnosisResult as DiagnosisResult;
     }
     return incident;
   }
@@ -108,12 +107,12 @@ export class PostgresAdapter implements StorageDriver {
         incidentId: packet.incidentId,
         status: "open",
         openedAt: packet.openedAt,
-        packet: JSON.stringify(packet),
+        packet,
       })
       .onConflictDoUpdate({
         target: pgIncidents.incidentId,
         set: {
-          packet: JSON.stringify(packet),
+          packet,
           updatedAt: new Date(),
         },
       });
@@ -133,7 +132,7 @@ export class PostgresAdapter implements StorageDriver {
   async appendDiagnosis(id: string, result: DiagnosisResult): Promise<void> {
     await this.db
       .update(pgIncidents)
-      .set({ diagnosisResult: JSON.stringify(result), updatedAt: new Date() })
+      .set({ diagnosisResult: result, updatedAt: new Date() })
       .where(eq(pgIncidents.incidentId, id));
   }
 

@@ -90,6 +90,9 @@ export class MemoryAdapter implements StorageDriver {
   }
 
   async saveThinEvent(event: ThinEvent): Promise<void> {
+    if (this.thinEvents.some((e) => e.event_id === event.event_id)) {
+      throw new Error(`Duplicate event_id: ${event.event_id}`);
+    }
     this.thinEvents.push(event);
   }
 

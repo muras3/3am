@@ -1,9 +1,8 @@
 /**
- * Drizzle schema — shared between SQLiteAdapter and PostgresAdapter.
+ * Drizzle schema — SQLite only (used by SQLiteAdapter).
  *
- * Both adapters store IncidentPacket and DiagnosisResult as JSON strings / JSONB.
- * The schema uses text columns so the same definition compiles for both drivers.
- * Postgres-specific jsonb is handled at the adapter level via Drizzle's column helpers.
+ * PostgresAdapter defines its own PG-specific schema inline using pgTable/jsonb.
+ * SQLite stores IncidentPacket and DiagnosisResult as JSON text strings.
  */
 import { sql } from "drizzle-orm";
 import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";

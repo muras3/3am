@@ -53,6 +53,9 @@ export class SQLiteAdapter implements StorageDriver {
         created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
       )
     `);
+    this.db.run(sql`
+      CREATE INDEX IF NOT EXISTS idx_incidents_opened_at ON incidents(opened_at DESC)
+    `);
   }
 
   private toIncident(row: typeof incidents.$inferSelect): Incident {
@@ -136,13 +139,11 @@ export class SQLiteAdapter implements StorageDriver {
   }
 
   async getIncidentByPacketId(packetId: string): Promise<Incident | null> {
-    // Scan packets — for production use an index on packet->>'packetId'
-    const rows = await this.db.select().from(incidents);
-    for (const row of rows) {
-      const packet = JSON.parse(row.packet) as IncidentPacket;
-      if (packet.packetId === packetId) return this.toIncident(row);
-    }
-    return null;
+    const [row] = await this.db
+      .select()
+      .from(incidents)
+      .where(sql`json_extract(${incidents.packet}, '$.packetId') = ${packetId}`);
+    return row ? this.toIncident(row) : null;
   }
 
   async deleteExpiredIncidents(before: Date): Promise<void> {

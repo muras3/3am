@@ -113,7 +113,8 @@ export function runStorageSuite(
       await driver.createIncident(updatedPacket);
 
       const incident = await driver.getIncident(packet.incidentId);
-      // diagnosisResult must be preserved across upsert
+      // packet must be updated and diagnosisResult must be preserved across upsert
+      expect(incident?.packet.packetId).toBe("pkt_test_001_v2");
       expect(incident?.diagnosisResult?.summary.what_happened).toBe("Rate limit cascade.");
     });
 
@@ -154,6 +155,11 @@ export function runStorageSuite(
     });
 
     // appendDiagnosis ────────────────────────────────────────────────────────
+
+    it("appendDiagnosis is a no-op for unknown incidentId", async () => {
+      const dr = makeDiagnosis("inc_unknown", "pkt_unknown");
+      await expect(driver.appendDiagnosis("inc_unknown", dr)).resolves.toBeUndefined();
+    });
 
     it("appendDiagnosis attaches diagnosisResult to incident", async () => {
       const packet = makePacket();
@@ -243,6 +249,12 @@ export function runStorageSuite(
     it("listThinEvents returns empty array when no events stored", async () => {
       const events = await driver.listThinEvents();
       expect(events).toHaveLength(0);
+    });
+
+    it("saveThinEvent throws on duplicate event_id", async () => {
+      const e = makeThinEvent({ event_id: "evt_dup" });
+      await driver.saveThinEvent(e);
+      await expect(driver.saveThinEvent(e)).rejects.toThrow();
     });
   });
 }
