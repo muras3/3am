@@ -37,6 +37,29 @@ function makeApp() {
   return createApp(undefined, { consoleDist });
 }
 
+describe("Receiver static serving — consoleDist not configured", () => {
+  it("GET /unknown returns 404 when consoleDist is not configured", async () => {
+    process.env["ALLOW_INSECURE_DEV_MODE"] = "true";
+    delete process.env["RECEIVER_AUTH_TOKEN"];
+    delete process.env["CONSOLE_DIST_PATH"];
+    const app = createApp();
+    const res = await app.request("/unknown-route");
+    expect(res.status).toBe(404);
+    delete process.env["ALLOW_INSECURE_DEV_MODE"];
+  });
+
+  it("GET / serves index.html via CONSOLE_DIST_PATH env var", async () => {
+    process.env["CONSOLE_DIST_PATH"] = consoleDist;
+    process.env["RECEIVER_AUTH_TOKEN"] = TOKEN;
+    const app = createApp(); // no options.consoleDist — relies on env var
+    delete process.env["CONSOLE_DIST_PATH"];
+    const res = await app.request("/");
+    expect(res.status).toBe(200);
+    const text = await res.text();
+    expect(text).toContain("Console");
+  });
+});
+
 describe("Receiver static serving (E4)", () => {
   it("GET / returns index.html", async () => {
     const app = makeApp();

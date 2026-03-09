@@ -49,17 +49,20 @@ export function createApp(storage?: StorageDriver, options?: AppOptions): Hono {
   // Static serving for the Console SPA (ADR 0028)
   const consoleDist = options?.consoleDist ?? process.env["CONSOLE_DIST_PATH"];
   if (consoleDist) {
+    // Cache index.html once at startup to avoid blocking the event loop per-request (F-E4-001)
+    let indexHtml: string | null = null;
+    try {
+      indexHtml = readFileSync(join(consoleDist, "index.html"), "utf-8");
+    } catch {
+      console.warn("[receiver] Console index.html not found at", consoleDist, "— SPA fallback disabled");
+    }
+
     // Serve static assets (JS, CSS, images) by path
     app.use("/*", serveStatic({ root: consoleDist }));
-    // SPA fallback: unknown paths → index.html (client-side routing)
-    app.get("/*", (c) => {
-      try {
-        const html = readFileSync(join(consoleDist, "index.html"), "utf-8");
-        return c.html(html);
-      } catch {
-        return c.text("Console not built. Run: pnpm --filter @3amoncall/console build", 503);
-      }
-    });
+    // SPA fallback: unknown paths → cached index.html (client-side routing)
+    if (indexHtml) {
+      app.get("/*", (c) => c.html(indexHtml as string));
+    }
   }
 
   return app;
