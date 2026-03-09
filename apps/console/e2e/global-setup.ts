@@ -1,4 +1,6 @@
 import { spawn } from "child_process";
+import { writeFileSync } from "fs";
+import { tmpdir } from "os";
 import path from "path";
 import { fileURLToPath } from "url";
 
@@ -33,8 +35,11 @@ export default async function globalSetup(): Promise<void> {
     stdio: "pipe",
   });
 
-  // Store PID for teardown
-  process.env["E2E_RECEIVER_PID"] = String(receiverProcess.pid);
+  // Store PID in a temp file so globalTeardown (which may run in a separate
+  // Node.js context) can reliably read it across process boundaries.
+  const pidFile = path.join(tmpdir(), "3amoncall-e2e-receiver.pid");
+  writeFileSync(pidFile, String(receiverProcess.pid), "utf8");
+  process.env["E2E_RECEIVER_PID_FILE"] = pidFile;
 
   receiverProcess.stderr?.on("data", (d: Buffer) => {
     if (process.env["DEBUG"]) process.stderr.write(d);

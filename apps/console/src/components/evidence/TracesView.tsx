@@ -52,7 +52,9 @@ export function TracesView({ incident }: Props) {
         </div>
         {traces.map((t) => (
           <div key={t.spanId} className="trace-attrs-row">
-            <div className="ta-span">{t.spanId.slice(0, 12)}...</div>
+            <div className="ta-span">
+              {t.spanId.length > 12 ? `${t.spanId.slice(0, 12)}…` : t.spanId}
+            </div>
             <div className="ta-svc">{t.serviceName}</div>
             <div className="ta-attrs">
               {t.durationMs}ms
