@@ -267,3 +267,58 @@
 .trace-attrs-row .ta-span { font-family:var(--mono); font-size:10px; font-weight:500; }
 .trace-attrs-row .ta-svc { color:var(--ink-2); }
 .trace-attrs-row .ta-attrs { font-family:var(--mono); font-size:10px; color:var(--ink-3); }
+
+/* ── Waterfall (Traces tab) ───────────────────────────── */
+.waterfall {
+  display:flex; flex-direction:column; gap:0;
+  margin-bottom:12px;
+}
+.wf-row {
+  display:flex; align-items:center; gap:10px;
+  padding:5px 0;
+  font-size:11px;
+  border-bottom:1px solid var(--line);
+}
+.wf-row:last-child { border-bottom:none; }
+.wf-bar {
+  height:8px; border-radius:2px; min-width:4px;
+  flex:0 0 auto;
+}
+
+/* ── Logs table ───────────────────────────────────────── */
+.logs-table { display:flex; flex-direction:column; }
+.log-row {
+  display:flex; gap:8px; align-items:baseline;
+  padding:4px 0; font-size:11px;
+  border-bottom:1px solid var(--line);
+}
+.log-row:last-child { border-bottom:none; }
+.lr-time {
+  font-family:var(--mono); font-size:10px; color:var(--ink-3);
+  white-space:nowrap; flex-shrink:0;
+}
+.lr-level {
+  font-size:9px; font-weight:700; text-transform:uppercase;
+  padding:1px 5px; border-radius:var(--radius-xs);
+  flex-shrink:0; min-width:44px; text-align:center;
+}
+.level-error { background:var(--accent-soft); color:var(--accent-text); }
+.level-warn  { background:var(--amber-soft);  color:var(--amber); }
+.lr-svc { font-weight:600; min-width:60px; flex-shrink:0; }
+.lr-msg { color:var(--ink-2); flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+
+/* ── Metrics table ────────────────────────────────────── */
+.metrics-table { display:flex; flex-direction:column; }
+.metric-row {
+  display:grid; grid-template-columns:1fr 80px auto;
+  gap:8px; align-items:baseline;
+  padding:4px 0; font-size:11px;
+  border-bottom:1px solid var(--line);
+}
+.metric-row:last-child { border-bottom:none; }
+.metric-name { font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.metric-svc  { font-size:10px; color:var(--ink-3); white-space:nowrap; }
+.metric-val  { font-family:var(--mono); font-size:10px; color:var(--ink-2); white-space:nowrap; }
+
+/* ── Overflow hints ───────────────────────────────────── */
+.timeline-overflow { font-size:10px; color:var(--ink-3); margin-top:4px; font-style:italic; }

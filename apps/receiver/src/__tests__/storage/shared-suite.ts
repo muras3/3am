@@ -256,5 +256,49 @@ export function runStorageSuite(
       await driver.saveThinEvent(e);
       await expect(driver.saveThinEvent(e)).rejects.toThrow();
     });
+
+    // appendEvidence ─────────────────────────────────────────────────────────
+
+    it("appendEvidence appends changedMetrics to existing incident", async () => {
+      const packet = makePacket();
+      await driver.createIncident(packet);
+      await driver.appendEvidence(packet.incidentId, {
+        changedMetrics: [{ name: "http.duration", value: 42 }],
+      });
+      const incident = await driver.getIncident(packet.incidentId);
+      const ev = incident?.packet.evidence as { changedMetrics: unknown[] };
+      expect(ev.changedMetrics).toHaveLength(1);
+      expect((ev.changedMetrics[0] as { name: string }).name).toBe("http.duration");
+    });
+
+    it("appendEvidence appends relevantLogs to existing incident", async () => {
+      const packet = makePacket();
+      await driver.createIncident(packet);
+      await driver.appendEvidence(packet.incidentId, {
+        relevantLogs: [{ severity: "ERROR", body: "checkout failed" }],
+      });
+      const incident = await driver.getIncident(packet.incidentId);
+      const ev = incident?.packet.evidence as { relevantLogs: unknown[] };
+      expect(ev.relevantLogs).toHaveLength(1);
+      expect((ev.relevantLogs[0] as { severity: string }).severity).toBe("ERROR");
+    });
+
+    it("appendEvidence is a no-op for unknown incidentId", async () => {
+      await expect(
+        driver.appendEvidence("inc_unknown", { changedMetrics: [{ x: 1 }] }),
+      ).resolves.toBeUndefined();
+    });
+
+    it("appendEvidence accumulates across multiple calls", async () => {
+      const packet = makePacket();
+      await driver.createIncident(packet);
+      await driver.appendEvidence(packet.incidentId, { changedMetrics: [{ n: 1 }] });
+      await driver.appendEvidence(packet.incidentId, { changedMetrics: [{ n: 2 }], relevantLogs: [{ l: "a" }] });
+      await driver.appendEvidence(packet.incidentId, { relevantLogs: [{ l: "b" }] });
+      const incident = await driver.getIncident(packet.incidentId);
+      const ev = incident?.packet.evidence as { changedMetrics: unknown[]; relevantLogs: unknown[] };
+      expect(ev.changedMetrics).toHaveLength(2);
+      expect(ev.relevantLogs).toHaveLength(2);
+    });
   });
 }

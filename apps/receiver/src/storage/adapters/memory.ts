@@ -1,5 +1,6 @@
 import type { IncidentPacket, DiagnosisResult, ThinEvent } from "@3amoncall/core";
 import type { Incident, IncidentPage, StorageDriver } from "../interface.js";
+import { mergeEvidenceIntoPacket } from "../interface.js";
 
 export class MemoryAdapter implements StorageDriver {
   private incidents: Map<string, Incident> = new Map();
@@ -44,6 +45,18 @@ export class MemoryAdapter implements StorageDriver {
     this.incidents.set(id, {
       ...incident,
       diagnosisResult: result,
+    });
+  }
+
+  async appendEvidence(
+    id: string,
+    update: { changedMetrics?: unknown[]; relevantLogs?: unknown[] },
+  ): Promise<void> {
+    const incident = this.incidents.get(id);
+    if (!incident) return;
+    this.incidents.set(id, {
+      ...incident,
+      packet: mergeEvidenceIntoPacket(incident.packet, update),
     });
   }
 

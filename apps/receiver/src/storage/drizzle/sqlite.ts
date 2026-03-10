@@ -13,6 +13,7 @@ import { eq, desc, lt, and } from "drizzle-orm";
 import { sql } from "drizzle-orm";
 import type { IncidentPacket, DiagnosisResult, ThinEvent } from "@3amoncall/core";
 import type { Incident, IncidentPage, StorageDriver } from "../interface.js";
+import { mergeEvidenceIntoPacket } from "../interface.js";
 import { incidents, thinEvents } from "./schema.js";
 
 type Schema = { incidents: typeof incidents; thinEvents: typeof thinEvents };
@@ -106,6 +107,19 @@ export class SQLiteAdapter implements StorageDriver {
     await this.db
       .update(incidents)
       .set({ diagnosisResult: JSON.stringify(result), updatedAt: new Date().toISOString() })
+      .where(eq(incidents.incidentId, id));
+  }
+
+  async appendEvidence(
+    id: string,
+    update: { changedMetrics?: unknown[]; relevantLogs?: unknown[] },
+  ): Promise<void> {
+    const incident = await this.getIncident(id);
+    if (!incident) return;
+    const newPacket = mergeEvidenceIntoPacket(incident.packet, update);
+    await this.db
+      .update(incidents)
+      .set({ packet: JSON.stringify(newPacket), updatedAt: new Date().toISOString() })
       .where(eq(incidents.incidentId, id));
   }
 

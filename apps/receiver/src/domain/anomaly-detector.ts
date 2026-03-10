@@ -34,9 +34,7 @@ export function isAnomalous(span: ExtractedSpan): boolean {
   return false
 }
 
-function isRecord(v: unknown): v is Record<string, unknown> {
-  return v !== null && typeof v === 'object'
-}
+import { isRecord, nanoToMs } from './otlp-utils.js'
 
 type OtlpAttributeValue =
   | { stringValue: string }
@@ -55,9 +53,6 @@ function getAttr(attrs: OtlpAttribute[], key: string): string | undefined {
   return undefined
 }
 
-function nanoStringToMs(nanoStr: string): number {
-  return Number(BigInt(nanoStr) / BigInt(1_000_000))
-}
 
 export function extractSpans(payload: unknown): ExtractedSpan[] {
   if (payload === null || typeof payload !== 'object') {
@@ -97,8 +92,8 @@ export function extractSpans(payload: unknown): ExtractedSpan[] {
         const traceId = typeof s['traceId'] === 'string' ? s['traceId'] : ''
         const spanId = typeof s['spanId'] === 'string' ? s['spanId'] : ''
 
-        const startTimeMs = nanoStringToMs(String(s['startTimeUnixNano'] ?? '0'))
-        const endTimeMs = nanoStringToMs(String(s['endTimeUnixNano'] ?? '0'))
+        const startTimeMs = nanoToMs(s['startTimeUnixNano']) ?? 0
+        const endTimeMs = nanoToMs(s['endTimeUnixNano']) ?? 0
         const durationMs = endTimeMs - startTimeMs
 
         const status = s['status'] as Record<string, unknown> | undefined

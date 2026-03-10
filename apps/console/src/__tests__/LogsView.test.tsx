@@ -4,65 +4,58 @@ import { LogsView } from "../components/evidence/LogsView.js";
 import { testIncident } from "./fixtures.js";
 import type { Incident } from "../api/types.js";
 
+const withLogs = (logs: unknown[]): Incident => ({
+  ...testIncident,
+  packet: {
+    ...testIncident.packet,
+    evidence: {
+      ...testIncident.packet.evidence,
+      relevantLogs: logs,
+    },
+  },
+});
+
 describe("LogsView", () => {
-  it("renders triggerSignals as log rows", () => {
+  it("shows EmptyView when relevantLogs is empty", () => {
     render(<LogsView incident={testIncident} />);
+    expect(
+      screen.getByText("No log record data available for this incident."),
+    ).toBeInTheDocument();
+  });
+
+  it("renders relevantLogs entries as log rows", () => {
+    const incident = withLogs([
+      { timestamp: "2026-03-09T03:00:12Z", severity: "ERROR", service: "web", body: "DB timeout" },
+      { timestamp: "2026-03-09T03:00:45Z", severity: "WARN", service: "api", body: "Retry limit" },
+    ]);
+    render(<LogsView incident={incident} />);
     const rows = document.querySelectorAll(".log-row");
     expect(rows).toHaveLength(2);
   });
 
-  it("shows entity in .lr-svc", () => {
-    render(<LogsView incident={testIncident} />);
-    const svcCells = document.querySelectorAll(".lr-svc");
-    const texts = Array.from(svcCells).map((el) => el.textContent);
-    expect(texts).toContain("stripe");
-    expect(texts).toContain("web");
+  it("shows service in .lr-svc", () => {
+    const incident = withLogs([
+      { timestamp: "2026-03-09T03:00:12Z", severity: "ERROR", service: "stripe", body: "429" },
+    ]);
+    render(<LogsView incident={incident} />);
+    expect(document.querySelector(".lr-svc")?.textContent).toBe("stripe");
   });
 
-  it("shows ERROR level for 429 signal", () => {
-    render(<LogsView incident={testIncident} />);
-    // First signal is "HTTP 429"
-    const levelCells = document.querySelectorAll(".lr-level");
-    expect(levelCells[0]).toHaveClass("level-error");
-    expect(levelCells[0].textContent).toBe("ERROR");
+  it("shows ERROR level class for ERROR severity", () => {
+    const incident = withLogs([
+      { timestamp: "2026-03-09T03:00:12Z", severity: "ERROR", service: "web", body: "fail" },
+    ]);
+    render(<LogsView incident={incident} />);
+    expect(document.querySelector(".lr-level")).toHaveClass("level-error");
+    expect(document.querySelector(".lr-level")?.textContent).toBe("ERROR");
   });
 
-  it("shows WARN level for other signals", () => {
-    render(<LogsView incident={testIncident} />);
-    // Second signal is "error_rate > 50%" — contains "error" so it should be ERROR too
-    // Let's test with a signal that has no 429/error keyword
-    const noErrorIncident: Incident = {
-      ...testIncident,
-      packet: {
-        ...testIncident.packet,
-        triggerSignals: [
-          {
-            signal: "latency_p99 > 3000ms",
-            firstSeenAt: "2026-03-09T03:00:00Z",
-            entity: "api",
-          },
-        ],
-      },
-    };
-    render(<LogsView incident={noErrorIncident} />);
-    const levelCells = document.querySelectorAll(".lr-level");
-    // The last rendered one is WARN
-    const lastLevel = levelCells[levelCells.length - 1];
-    expect(lastLevel).toHaveClass("level-warn");
-    expect(lastLevel.textContent).toBe("WARN");
-  });
-
-  it("shows EmptyView when no triggerSignals", () => {
-    const emptyIncident: Incident = {
-      ...testIncident,
-      packet: {
-        ...testIncident.packet,
-        triggerSignals: [],
-      },
-    };
-    render(<LogsView incident={emptyIncident} />);
-    expect(
-      screen.getByText("No trigger signal data available for this incident."),
-    ).toBeInTheDocument();
+  it("shows WARN level class for WARN severity", () => {
+    const incident = withLogs([
+      { timestamp: "2026-03-09T03:00:12Z", severity: "WARN", service: "web", body: "slow" },
+    ]);
+    render(<LogsView incident={incident} />);
+    expect(document.querySelector(".lr-level")).toHaveClass("level-warn");
+    expect(document.querySelector(".lr-level")?.textContent).toBe("WARN");
   });
 });

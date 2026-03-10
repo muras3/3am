@@ -11,6 +11,7 @@ import { eq, desc, lt, and, sql as drizzleSql, count } from "drizzle-orm";
 import { pgTable, text, timestamp, serial, jsonb } from "drizzle-orm/pg-core";
 import type { IncidentPacket, DiagnosisResult, ThinEvent } from "@3amoncall/core";
 import type { Incident, IncidentPage, StorageDriver } from "../interface.js";
+import { mergeEvidenceIntoPacket } from "../interface.js";
 
 // ── Postgres-specific table definitions (JSONB, timestamptz) ─────────────────
 
@@ -133,6 +134,19 @@ export class PostgresAdapter implements StorageDriver {
     await this.db
       .update(pgIncidents)
       .set({ diagnosisResult: result, updatedAt: new Date() })
+      .where(eq(pgIncidents.incidentId, id));
+  }
+
+  async appendEvidence(
+    id: string,
+    update: { changedMetrics?: unknown[]; relevantLogs?: unknown[] },
+  ): Promise<void> {
+    const incident = await this.getIncident(id);
+    if (!incident) return;
+    const newPacket = mergeEvidenceIntoPacket(incident.packet, update);
+    await this.db
+      .update(pgIncidents)
+      .set({ packet: newPacket, updatedAt: new Date() })
       .where(eq(pgIncidents.incidentId, id));
   }
 

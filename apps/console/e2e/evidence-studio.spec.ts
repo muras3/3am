@@ -37,10 +37,11 @@ test.describe("Evidence Studio", () => {
     await expect(page.locator("text=No metrics data")).toBeVisible();
   });
 
-  test("Logs tab shows trigger signal rows", async ({ page }) => {
+  test("Logs tab shows empty state when no relevantLogs", async ({ page }) => {
     await page.click("button.btn-evidence");
     await page.click(".ev-tab:has-text('Logs')");
-    await expect(page.locator(".log-row").first()).toBeVisible();
+    // Seeded incident has relevantLogs: [] — empty state expected until /v1/logs ingest is active
+    await expect(page.locator("text=No log record data")).toBeVisible();
   });
 
   test("Platform logs tab shows Plane column header", async ({ page }) => {
