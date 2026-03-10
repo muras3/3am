@@ -19,6 +19,8 @@ function classifyLevel(signal: string): { label: string; className: string } {
   return { label: "WARN", className: "level-warn" };
 }
 
+const LOGS_LIMIT = 50;
+
 export function LogsView({ incident }: Props) {
   const signals = incident.packet.triggerSignals;
 
@@ -26,9 +28,12 @@ export function LogsView({ incident }: Props) {
     return <EmptyView label="trigger signal" />;
   }
 
+  const visible = signals.slice(0, LOGS_LIMIT);
+  const overflow = signals.length - LOGS_LIMIT;
+
   return (
     <div className="logs-table">
-      {signals.map((s, i) => {
+      {visible.map((s, i) => {
         const { label, className } = classifyLevel(s.signal);
         return (
           <div key={i} className="log-row">
@@ -39,6 +44,9 @@ export function LogsView({ incident }: Props) {
           </div>
         );
       })}
+      {overflow > 0 && (
+        <div className="timeline-overflow">+{overflow} more entries</div>
+      )}
     </div>
   );
 }
