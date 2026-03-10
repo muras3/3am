@@ -16,8 +16,6 @@ exporters:
     path: /var/lib/otel/metrics.json
   otlphttp/receiver:
     endpoint: "${env:RECEIVER_ENDPOINT}"
-    encoding: json
-    compression: none
 
 service:
   pipelines:

@@ -1,5 +1,7 @@
 import { randomUUID } from "crypto";
-import { Hono } from "hono";
+import { promisify } from "node:util";
+import { gunzip } from "node:zlib";
+import { Hono, type Context } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import type { StorageDriver } from "../storage/interface.js";
 import {
@@ -12,8 +14,37 @@ import {
 } from "../domain/formation.js";
 import { createPacket } from "../domain/packetizer.js";
 import { dispatchThinEvent } from "../runtime/github-dispatch.js";
+import { decodeTraces, decodeMetrics, decodeLogs } from "./otlp-protobuf.js";
+
+const gunzipAsync = promisify(gunzip);
 
 const INGEST_BODY_LIMIT = 1 * 1024 * 1024; // 1MB per ADR 0022 (resource exhaustion protection)
+
+/**
+ * Read the raw request body and decompress if Content-Encoding: gzip.
+ * Returns the raw buffer, or an HTTP status code indicating the failure:
+ * - 413: decompressed payload exceeds INGEST_BODY_LIMIT (zip bomb protection)
+ * - 400: unsupported Content-Encoding or corrupt gzip payload
+ */
+async function decompressIfNeeded(c: Context): Promise<Uint8Array | 400 | 413> {
+  const buf = new Uint8Array(await c.req.raw.arrayBuffer());
+  const encoding = c.req.header("Content-Encoding") ?? "";
+  if (encoding === "") {
+    return buf;
+  }
+  if (encoding === "gzip") {
+    try {
+      const decompressed = new Uint8Array(await gunzipAsync(buf));
+      if (decompressed.byteLength > INGEST_BODY_LIMIT) {
+        return 413; // zip bomb
+      }
+      return decompressed;
+    } catch {
+      return 400; // corrupt gzip
+    }
+  }
+  return 400; // unsupported encoding
+}
 
 export function createIngestRouter(storage: StorageDriver): Hono {
   const app = new Hono();
@@ -26,8 +57,31 @@ export function createIngestRouter(storage: StorageDriver): Hono {
     }),
   );
 
+  // Content-Type dispatch pattern (protobuf / JSON / 415) is mirrored in the otlpStubs loop below.
   app.post("/v1/traces", async (c) => {
-    const body = await c.req.json();
+    const ct = c.req.header("Content-Type") ?? "";
+    let body: unknown;
+
+    if (ct.includes("application/x-protobuf")) {
+      const raw = await decompressIfNeeded(c);
+      if (typeof raw === "number") {
+        return c.json({ error: raw === 413 ? "payload too large after decompression" : "invalid Content-Encoding or corrupt body" }, raw);
+      }
+      try {
+        body = decodeTraces(raw);
+      } catch {
+        return c.json({ error: "invalid protobuf body" }, 400);
+      }
+    } else if (ct.includes("application/json")) {
+      try {
+        body = await c.req.json();
+      } catch (err) {
+        if (err instanceof SyntaxError) return c.json({ error: "invalid body" }, 400);
+        throw err; // body limit or other infrastructure errors must propagate
+      }
+    } else {
+      return c.json({ error: "unsupported Content-Type" }, 415);
+    }
 
     const spans = extractSpans(body);
     const anomalousSpans = spans.filter(isAnomalous);
@@ -82,31 +136,69 @@ export function createIngestRouter(storage: StorageDriver): Hono {
     return c.json({ status: "ok", incidentId, packetId: existing.packet.packetId });
   });
 
-  // shape-aware stubs for metrics, logs, and platform events.
-  // Validates Content-Type and basic body shape; returns 501 for protobuf (ADR 0022 Phase E).
-  // Phase C: merge parsed signals into packet evidence.
-  const ingestStubs = [
-    { path: "/v1/metrics" as const, field: "resourceMetrics" },
-    { path: "/v1/logs" as const, field: "resourceLogs" },
-    { path: "/v1/platform-events" as const, field: "events" },
+  // OTLP metrics and logs — protobuf + JSON both accepted (ADR 0022).
+  // Phase 1: validates shape only; packet integration is a separate task.
+  const otlpStubs: {
+    path: "/v1/metrics" | "/v1/logs";
+    field: string;
+    decode: (buf: Uint8Array) => unknown;
+  }[] = [
+    { path: "/v1/metrics", field: "resourceMetrics", decode: decodeMetrics },
+    { path: "/v1/logs", field: "resourceLogs", decode: decodeLogs },
   ];
-  for (const { path, field } of ingestStubs) {
+  for (const { path, field, decode } of otlpStubs) {
     app.post(path, async (c) => {
       const ct = c.req.header("Content-Type") ?? "";
+      let body: unknown;
+
       if (ct.includes("application/x-protobuf")) {
-        // TODO (Phase E): implement OTLP protobuf parsing (ADR 0022 protobuf-first)
-        return c.json({ error: "protobuf not yet supported" }, 501);
+        const raw = await decompressIfNeeded(c);
+        if (typeof raw === "number") {
+          return c.json({ error: raw === 413 ? "payload too large after decompression" : "invalid Content-Encoding or corrupt body" }, raw);
+        }
+        try {
+          body = decode(raw);
+        } catch {
+          return c.json({ error: "invalid protobuf body" }, 400);
+        }
+      } else if (ct.includes("application/json")) {
+        try {
+          body = await c.req.json();
+        } catch (err) {
+          if (err instanceof SyntaxError) return c.json({ error: "invalid body" }, 400);
+          throw err;
+        }
+        if (typeof body !== "object" || body === null) {
+          return c.json({ error: "invalid body" }, 400);
+        }
+      } else {
+        return c.json({ error: "unsupported Content-Type" }, 415);
       }
-      const body = await c.req.json().catch(() => null);
-      if (body === null || typeof body !== "object") {
-        return c.json({ error: "invalid body" }, 400);
-      }
+
       if (!(field in (body as Record<string, unknown>))) {
         return c.json({ error: `missing required field: ${field}` }, 400);
       }
       return c.json({ status: "ok" });
     });
   }
+
+  // Platform events — JSON only (not OTLP format, ADR 0022 scope boundary).
+  app.post("/v1/platform-events", async (c) => {
+    let body: unknown;
+    try {
+      body = await c.req.json();
+    } catch (err) {
+      if (err instanceof SyntaxError) return c.json({ error: "invalid body" }, 400);
+      throw err;
+    }
+    if (typeof body !== "object" || body === null) {
+      return c.json({ error: "invalid body" }, 400);
+    }
+    if (!("events" in (body as Record<string, unknown>))) {
+      return c.json({ error: "missing required field: events" }, 400);
+    }
+    return c.json({ status: "ok" });
+  });
 
   return app;
 }
