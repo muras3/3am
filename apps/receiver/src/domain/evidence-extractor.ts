@@ -176,9 +176,8 @@ export function extractLogEvidence(body: unknown): LogEvidence[] {
         const severity = severityLabel(lr['severityNumber'])
         if (!severity) continue  // below WARN, skip
 
-        // timestamp: timeUnixNano → ISO string.
-        // Drop records with no timestamp: using server clock (Date.now()) as a fallback
-        // would cause spurious incident attachment when openedAt is telemetry-anchored.
+        // Drop records with no timestamp. A Date.now() fallback would cause spurious
+        // incident attachment when openedAt is telemetry-anchored — so we drop instead.
         const startTimeMs = nanoToMs(lr['timeUnixNano']) ?? nanoToMs(lr['observedTimeUnixNano'])
         if (startTimeMs === null) continue
         const timestamp = new Date(startTimeMs).toISOString()

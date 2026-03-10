@@ -175,6 +175,8 @@ export function createIngestRouter(storage: StorageDriver): Hono {
     // resourceMetrics gracefully (returns []), keeping protobuf and JSON paths symmetric.
     const evidences = extractMetricEvidence(body);
     if (evidences.length > 0) {
+      // TODO Phase C: paginate through all pages (cursor loop) so matches are not
+      // missed when there are >100 open incidents (same gap as /v1/traces path).
       const page = await storage.listIncidents({ limit: 100 });
       // NOTE: appendEvidence calls are parallelized across incidents.
       // Each call is a read-modify-write (2 DB round-trips); concurrent writes to
@@ -227,6 +229,7 @@ export function createIngestRouter(storage: StorageDriver): Hono {
     // resourceLogs gracefully (returns []), keeping protobuf and JSON paths symmetric.
     const evidences = extractLogEvidence(body);
     if (evidences.length > 0) {
+      // TODO Phase C: paginate (same gap as /v1/metrics and /v1/traces paths).
       const page = await storage.listIncidents({ limit: 100 });
       // Same race/concurrency trade-off as /v1/metrics — see comment above.
       await Promise.all(

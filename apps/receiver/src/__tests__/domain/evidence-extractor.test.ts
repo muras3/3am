@@ -275,6 +275,32 @@ describe('extractLogEvidence', () => {
     expect(extractLogEvidence(null)).toHaveLength(0)
   })
 
+  it('falls back to observedTimeUnixNano when timeUnixNano is missing', () => {
+    const body = makeResourceLogs({ severityNumber: 17, timeUnixNano: undefined as unknown as string })
+    // Override the generated timeUnixNano with a missing one, set observedTimeUnixNano instead
+    const bodyWithObserved = {
+      resourceLogs: [{
+        resource: {
+          attributes: [
+            { key: 'service.name', value: { stringValue: 'svc-a' } },
+            { key: 'deployment.environment.name', value: { stringValue: 'production' } },
+          ],
+        },
+        scopeLogs: [{
+          logRecords: [{
+            observedTimeUnixNano: BASE_TIME_NS,
+            severityNumber: 17,
+            body: { stringValue: 'fallback test' },
+            attributes: [],
+          }],
+        }],
+      }],
+    }
+    const result = extractLogEvidence(bodyWithObserved)
+    expect(result).toHaveLength(1)
+    expect(result[0].startTimeMs).toBe(BASE_TIME_MS)
+  })
+
   it('excludes log records with no timeUnixNano and no observedTimeUnixNano', () => {
     const body = {
       resourceLogs: [{
