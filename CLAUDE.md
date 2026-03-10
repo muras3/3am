@@ -221,3 +221,69 @@ Murase の最も強い点は、抽象設計を実装可能な contract に落と
 - loadgen is an HTTP server, not a script. Use `/__admin/profile` for runtime profile switching
 - `trigger` (external cause: "flash sale") and `trigger_signal` (first observable symptom: "Stripe 429") are distinct concepts
 - probe-investigate schema has `additionalProperties: false`. Extension fields MUST go in `validation_extensions`
+
+## Design System (console UI)
+
+Source of truth: `docs/mock/incident-console-v3.html`
+
+### Aesthetic direction
+
+**Tone:** editorial-utilitarian — a technical ops tool with precision and restraint. Not playful, not corporate. Think: a Bloomberg terminal that a designer cleaned up.
+
+**The one thing to remember:** warm neutral canvas + single aggressive accent (#E85D3A) + monospaced data. Everything else recedes.
+
+### Tokens (HARD CONSTRAINTS — never deviate)
+
+```css
+/* Surfaces */
+--bg: #FAFAF8;        /* app background */
+--panel: #FFFFFF;
+--panel-2: #F5F5F2;
+--panel-3: #EEEEE8;
+
+/* Ink */
+--ink: #1A1A1A;
+--ink-2: #4A4A48;
+--ink-3: #6F6F68;
+
+/* Borders */
+--line: rgba(26,26,26,0.14);
+--line-strong: rgba(26,26,26,0.24);
+
+/* Semantic colors */
+--accent: #E85D3A;              /* alerts, CTAs, critical */
+--accent-soft: rgba(232,93,58,0.08);
+--teal: #0D7377;                /* system/internal indicators */
+--teal-soft: rgba(13,115,119,0.08);
+--amber: #B8860B;               /* external dependency */
+--amber-soft: rgba(184,134,11,0.08);
+--good: #2E7D52;                /* healthy/resolved */
+--good-soft: rgba(46,125,82,0.08);
+
+/* Typography */
+--font: 'DM Sans', system-ui, sans-serif;
+--mono: 'JetBrains Mono', ui-monospace, monospace;
+
+/* Shape */
+--radius: 6px; --radius-sm: 4px; --radius-xs: 2px;
+
+/* Type scale */
+--fs-xxs: 10px; --fs-xs: 11px; --fs-sm: 12px;
+--fs-md: 13px; --fs-lg: 16px; --fs-xl: 20px;
+```
+
+### Rules
+
+- **NEVER** introduce color values not in this token list
+- **NEVER** use Inter, Roboto, Arial, or system-ui as the primary font
+- All spacing from 4px grid
+- Data/metrics/IDs always use `--mono`; prose/labels use `--font`
+- Motion: subtle only — pulse animations, fade-ins. No bouncy or playful effects
+- Density: information-dense. Prefer compact rows over cards with lots of whitespace
+
+### Layout (3-column)
+
+```
+Left rail 180px  |  Center (flex-1)  |  Right rail 220px
+Incident list    |  Incident Board   |  AI Copilot
+```
