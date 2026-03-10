@@ -19,10 +19,17 @@ export function isArray(v: unknown): v is unknown[] {
  * Convert a nanosecond timestamp (string, number, or unknown) to milliseconds.
  * Returns null for missing/zero values so callers can decide how to handle them.
  */
+const NANO_PER_MS = BigInt(1_000_000)
+
 export function nanoToMs(nano: unknown): number | null {
   if (nano === undefined || nano === null || nano === '0' || nano === 0) return null
-  const n = typeof nano === 'string' ? BigInt(nano) : BigInt(String(nano))
-  return Number(n / BigInt(1_000_000))
+  try {
+    const n = typeof nano === 'string' ? BigInt(nano) : BigInt(String(nano))
+    return Number(n / NANO_PER_MS)
+  } catch {
+    // Non-integer or non-numeric string: treat as missing rather than throwing
+    return null
+  }
 }
 
 /**

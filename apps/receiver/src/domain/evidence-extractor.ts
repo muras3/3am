@@ -49,8 +49,12 @@ function severityLabel(num: unknown): string | null {
   if (isNaN(n) || n < 13) return null
   if (n >= 21) return 'FATAL'
   if (n >= 17) return 'ERROR'
-  if (n >= 13) return 'WARN'
-  return null
+  return 'WARN'
+}
+
+/** Extract the OTLP attributes array from a resource entry. */
+function getResourceAttrs(entry: Record<string, unknown>): unknown {
+  return isRecord(entry['resource']) ? entry['resource']['attributes'] : undefined
 }
 
 /** Compress a histogram datapoint: keep count/sum/min/max, drop buckets. */
@@ -85,7 +89,7 @@ export function extractMetricEvidence(body: unknown): MetricEvidence[] {
 
   for (const rm of resourceMetrics) {
     if (!isRecord(rm)) continue
-    const attrs = isRecord(rm['resource']) ? rm['resource']['attributes'] : undefined
+    const attrs = getResourceAttrs(rm)
     const service = getStringAttr(attrs, 'service.name')
     const environment = getStringAttr(attrs, 'deployment.environment.name')
     if (!service) continue
@@ -160,7 +164,7 @@ export function extractLogEvidence(body: unknown): LogEvidence[] {
 
   for (const rl of resourceLogs) {
     if (!isRecord(rl)) continue
-    const attrs = isRecord(rl['resource']) ? rl['resource']['attributes'] : undefined
+    const attrs = getResourceAttrs(rl)
     const service = getStringAttr(attrs, 'service.name')
     const environment = getStringAttr(attrs, 'deployment.environment.name')
     if (!service) continue

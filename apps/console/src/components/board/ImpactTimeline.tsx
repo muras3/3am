@@ -4,6 +4,11 @@ interface Props {
   incident: Incident;
 }
 
+function formatTime(isoString: string): string {
+  const match = isoString.match(/T(\d{2}:\d{2}:\d{2})/);
+  return match ? match[1] : isoString;
+}
+
 const TIMELINE_LIMIT = 10;
 
 export function ImpactTimeline({ incident }: Props) {
@@ -16,7 +21,7 @@ export function ImpactTimeline({ incident }: Props) {
       {visible.map((s, i) => (
         <div key={i} className="timeline-row">
           <div className="tt">
-            {new Date(s.firstSeenAt).toUTCString().slice(17, 25)}
+            {formatTime(s.firstSeenAt)}
           </div>
           <div className="te">
             {s.signal} @ {s.entity}

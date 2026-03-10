@@ -23,8 +23,10 @@ function formatSummary(summary: unknown): string {
   return parts.join(" · ") || JSON.stringify(summary);
 }
 
+const METRICS_LIMIT = 100;
+
 export function MetricsView({ incident }: Props) {
-  const metrics = incident.packet.evidence.changedMetrics as MetricEntry[];
+  const metrics = (incident.packet.evidence.changedMetrics ?? []) as MetricEntry[];
 
   if (metrics.length === 0) {
     return (
@@ -74,17 +76,15 @@ export function MetricsView({ incident }: Props) {
 
   return (
     <div className="metrics-table">
-      {metrics.slice(0, 100).map((m, i) => (
+      {metrics.slice(0, METRICS_LIMIT).map((m, i) => (
         <div key={i} className="metric-row">
           <div className="metric-name">{m.name ?? "—"}</div>
           <div className="metric-svc">{m.service ?? ""}</div>
           <div className="metric-val">{formatSummary(m.summary)}</div>
         </div>
       ))}
-      {metrics.length > 100 && (
-        <div style={{ fontSize: "10px", color: "var(--ink-3)", marginTop: "4px", fontStyle: "italic" }}>
-          +{metrics.length - 100} more entries
-        </div>
+      {metrics.length > METRICS_LIMIT && (
+        <div className="timeline-overflow">+{metrics.length - METRICS_LIMIT} more entries</div>
       )}
     </div>
   );

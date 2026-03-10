@@ -5,10 +5,8 @@ export function mergeEvidenceIntoPacket(
   packet: IncidentPacket,
   update: { changedMetrics?: unknown[]; relevantLogs?: unknown[] },
 ): IncidentPacket {
-  // Cast to the full evidence type so TypeScript can verify all required fields
-  // (representativeTraces, platformEvents) are preserved via the spread.
   // ?? [] guards against missing fields in rows stored by an older schema version.
-  const ev = packet.evidence as IncidentPacket["evidence"];
+  const ev = packet.evidence;
   return {
     ...packet,
     evidence: {

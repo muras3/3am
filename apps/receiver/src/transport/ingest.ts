@@ -51,6 +51,44 @@ async function decompressIfNeeded(c: Context): Promise<Uint8Array | 400 | 413> {
   return 400; // unsupported encoding
 }
 
+/**
+ * Parse an OTLP request body (protobuf or JSON).
+ * Returns `{ body: unknown }` on success, or a `Response` on error.
+ * The `protoDecoder` is only invoked for application/x-protobuf requests.
+ */
+async function decodeOtlpBody(
+  c: Context,
+  protoDecoder: (raw: Uint8Array) => unknown,
+): Promise<{ body: unknown } | Response> {
+  const ct = c.req.header("Content-Type") ?? "";
+  if (ct.includes("application/x-protobuf")) {
+    const raw = await decompressIfNeeded(c);
+    if (typeof raw === "number") {
+      return c.json(
+        { error: raw === 413 ? "payload too large after decompression" : "invalid Content-Encoding or corrupt body" },
+        raw,
+      );
+    }
+    try {
+      return { body: protoDecoder(raw) };
+    } catch {
+      return c.json({ error: "invalid protobuf body" }, 400);
+    }
+  } else if (ct.includes("application/json")) {
+    try {
+      const body = await c.req.json();
+      if (typeof body !== "object" || body === null) {
+        return c.json({ error: "invalid body" }, 400);
+      }
+      return { body };
+    } catch (err) {
+      if (err instanceof SyntaxError) return c.json({ error: "invalid body" }, 400);
+      throw err;
+    }
+  }
+  return c.json({ error: "unsupported Content-Type" }, 415);
+}
+
 export function createIngestRouter(storage: StorageDriver): Hono {
   const app = new Hono();
 
@@ -62,31 +100,10 @@ export function createIngestRouter(storage: StorageDriver): Hono {
     }),
   );
 
-  // Content-Type dispatch pattern (protobuf / JSON / 415) is mirrored in the otlpStubs loop below.
   app.post("/v1/traces", async (c) => {
-    const ct = c.req.header("Content-Type") ?? "";
-    let body: unknown;
-
-    if (ct.includes("application/x-protobuf")) {
-      const raw = await decompressIfNeeded(c);
-      if (typeof raw === "number") {
-        return c.json({ error: raw === 413 ? "payload too large after decompression" : "invalid Content-Encoding or corrupt body" }, raw);
-      }
-      try {
-        body = decodeTraces(raw);
-      } catch {
-        return c.json({ error: "invalid protobuf body" }, 400);
-      }
-    } else if (ct.includes("application/json")) {
-      try {
-        body = await c.req.json();
-      } catch (err) {
-        if (err instanceof SyntaxError) return c.json({ error: "invalid body" }, 400);
-        throw err; // body limit or other infrastructure errors must propagate
-      }
-    } else {
-      return c.json({ error: "unsupported Content-Type" }, 415);
-    }
+    const result = await decodeOtlpBody(c, decodeTraces);
+    if (result instanceof Response) return result;
+    const { body } = result;
 
     const spans = extractSpans(body);
     const anomalousSpans = spans.filter(isAnomalous);
@@ -144,32 +161,9 @@ export function createIngestRouter(storage: StorageDriver): Hono {
   // OTLP metrics — protobuf + JSON both accepted (ADR 0022).
   // Evidence is extracted and attached to matching open incidents.
   app.post("/v1/metrics", async (c) => {
-    const ct = c.req.header("Content-Type") ?? "";
-    let body: unknown;
-
-    if (ct.includes("application/x-protobuf")) {
-      const raw = await decompressIfNeeded(c);
-      if (typeof raw === "number") {
-        return c.json({ error: raw === 413 ? "payload too large after decompression" : "invalid Content-Encoding or corrupt body" }, raw);
-      }
-      try {
-        body = decodeMetrics(raw);
-      } catch {
-        return c.json({ error: "invalid protobuf body" }, 400);
-      }
-    } else if (ct.includes("application/json")) {
-      try {
-        body = await c.req.json();
-      } catch (err) {
-        if (err instanceof SyntaxError) return c.json({ error: "invalid body" }, 400);
-        throw err;
-      }
-      if (typeof body !== "object" || body === null) {
-        return c.json({ error: "invalid body" }, 400);
-      }
-    } else {
-      return c.json({ error: "unsupported Content-Type" }, 415);
-    }
+    const result = await decodeOtlpBody(c, decodeMetrics);
+    if (result instanceof Response) return result;
+    const { body } = result;
 
     // No explicit field-presence check: extractMetricEvidence handles missing/empty
     // resourceMetrics gracefully (returns []), keeping protobuf and JSON paths symmetric.
@@ -180,7 +174,10 @@ export function createIngestRouter(storage: StorageDriver): Hono {
       const page = await storage.listIncidents({ limit: 100 });
       // NOTE: appendEvidence calls are parallelized across incidents.
       // Each call is a read-modify-write (2 DB round-trips); concurrent writes to
-      // the same incident may lose entries — acceptable in Phase 1 (Phase C: atomic update).
+      // the same incident may cause lost updates if two metric/log batches arrive
+      // simultaneously — under OTel Collector batch-processor concurrency this can
+      // happen in practice and may silently discard evidence entries.
+      // Acceptable in Phase 1 (Phase C: replace with atomic JSONB append).
       // Connection pool size (10) bounds effective concurrency for Postgres.
       await Promise.all(
         page.items.flatMap((incident) => {
@@ -198,32 +195,9 @@ export function createIngestRouter(storage: StorageDriver): Hono {
   // OTLP logs — protobuf + JSON both accepted (ADR 0022).
   // Only WARN/ERROR/FATAL logs (severityNumber >= 13) are extracted and attached.
   app.post("/v1/logs", async (c) => {
-    const ct = c.req.header("Content-Type") ?? "";
-    let body: unknown;
-
-    if (ct.includes("application/x-protobuf")) {
-      const raw = await decompressIfNeeded(c);
-      if (typeof raw === "number") {
-        return c.json({ error: raw === 413 ? "payload too large after decompression" : "invalid Content-Encoding or corrupt body" }, raw);
-      }
-      try {
-        body = decodeLogs(raw);
-      } catch {
-        return c.json({ error: "invalid protobuf body" }, 400);
-      }
-    } else if (ct.includes("application/json")) {
-      try {
-        body = await c.req.json();
-      } catch (err) {
-        if (err instanceof SyntaxError) return c.json({ error: "invalid body" }, 400);
-        throw err;
-      }
-      if (typeof body !== "object" || body === null) {
-        return c.json({ error: "invalid body" }, 400);
-      }
-    } else {
-      return c.json({ error: "unsupported Content-Type" }, 415);
-    }
+    const result = await decodeOtlpBody(c, decodeLogs);
+    if (result instanceof Response) return result;
+    const { body } = result;
 
     // No explicit field-presence check: extractLogEvidence handles missing/empty
     // resourceLogs gracefully (returns []), keeping protobuf and JSON paths symmetric.

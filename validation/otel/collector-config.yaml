@@ -16,6 +16,9 @@ exporters:
     path: /var/lib/otel/metrics.json
   otlphttp/receiver:
     endpoint: "${env:RECEIVER_ENDPOINT}"
+    # No auth headers — the Receiver must be started with ALLOW_INSECURE_DEV_MODE=true
+    # for the validation stack (dev/CI only). Production deployments require a headers
+    # block with Authorization: Bearer <RECEIVER_AUTH_TOKEN>.
 
 service:
   pipelines:
