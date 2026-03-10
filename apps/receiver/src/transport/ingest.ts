@@ -171,13 +171,15 @@ export function createIngestRouter(storage: StorageDriver): Hono {
       return c.json({ error: "unsupported Content-Type" }, 415);
     }
 
-    if (!("resourceMetrics" in (body as Record<string, unknown>))) {
-      return c.json({ error: "missing required field: resourceMetrics" }, 400);
-    }
-
+    // No explicit field-presence check: extractMetricEvidence handles missing/empty
+    // resourceMetrics gracefully (returns []), keeping protobuf and JSON paths symmetric.
     const evidences = extractMetricEvidence(body);
     if (evidences.length > 0) {
       const page = await storage.listIncidents({ limit: 100 });
+      // NOTE: appendEvidence calls are parallelized across incidents.
+      // Each call is a read-modify-write (2 DB round-trips); concurrent writes to
+      // the same incident may lose entries — acceptable in Phase 1 (Phase C: atomic update).
+      // Connection pool size (10) bounds effective concurrency for Postgres.
       await Promise.all(
         page.items.flatMap((incident) => {
           const matching = evidences.filter((e) => shouldAttachEvidence(e, incident));
@@ -221,13 +223,12 @@ export function createIngestRouter(storage: StorageDriver): Hono {
       return c.json({ error: "unsupported Content-Type" }, 415);
     }
 
-    if (!("resourceLogs" in (body as Record<string, unknown>))) {
-      return c.json({ error: "missing required field: resourceLogs" }, 400);
-    }
-
+    // No explicit field-presence check: extractLogEvidence handles missing/empty
+    // resourceLogs gracefully (returns []), keeping protobuf and JSON paths symmetric.
     const evidences = extractLogEvidence(body);
     if (evidences.length > 0) {
       const page = await storage.listIncidents({ limit: 100 });
+      // Same race/concurrency trade-off as /v1/metrics — see comment above.
       await Promise.all(
         page.items.flatMap((incident) => {
           const matching = evidences.filter((e) => shouldAttachEvidence(e, incident));

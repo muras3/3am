@@ -274,6 +274,22 @@ describe('extractLogEvidence', () => {
   it('returns empty array for non-object input', () => {
     expect(extractLogEvidence(null)).toHaveLength(0)
   })
+
+  it('excludes log records with no timeUnixNano and no observedTimeUnixNano', () => {
+    const body = {
+      resourceLogs: [{
+        resource: { attributes: [{ key: 'service.name', value: { stringValue: 'svc' } }] },
+        scopeLogs: [{
+          logRecords: [{
+            // no timeUnixNano, no observedTimeUnixNano
+            severityNumber: 17,
+            body: { stringValue: 'error msg' },
+          }],
+        }],
+      }],
+    }
+    expect(extractLogEvidence(body)).toHaveLength(0)
+  })
 })
 
 // ── shouldAttachEvidence ───────────────────────────────────────────────────

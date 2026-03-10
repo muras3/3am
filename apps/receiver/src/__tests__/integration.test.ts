@@ -423,13 +423,17 @@ describe("Receiver integration tests", () => {
     expect(body.status).toBe("ok");
   });
 
-  it("POST /v1/metrics with missing field returns 400", async () => {
+  it("POST /v1/metrics with missing resourceMetrics field returns ok (graceful no-op)", async () => {
+    // extractMetricEvidence handles missing field gracefully (returns []) —
+    // no explicit 400 to keep protobuf and JSON paths symmetric.
     const res = await app.request("/v1/metrics", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ wrong: [] }),
     });
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(200);
+    const body = await res.json() as { status: string };
+    expect(body.status).toBe("ok");
   });
 
   it("POST /v1/logs with valid JSON body returns ok", async () => {
