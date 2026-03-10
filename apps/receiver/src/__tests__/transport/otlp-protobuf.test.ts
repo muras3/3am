@@ -81,6 +81,34 @@ describe('decodeTraces', () => {
     expect(span.status.code).toBe(2)
   })
 
+  it('converts parentSpanId from base64 to hex', () => {
+    const buf = encode(TraceReq, {
+      resourceSpans: [
+        {
+          scopeSpans: [
+            {
+              spans: [
+                {
+                  traceId: Buffer.from('a3ce929d0e0e47364bf92f3577b34da6', 'hex'),
+                  spanId: Buffer.from('00f067aa0ba902b7', 'hex'),
+                  parentSpanId: Buffer.from('11a067bb0ca903c8', 'hex'),
+                  startTimeUnixNano: '1741392000000000000',
+                  endTimeUnixNano: '1741392000100000000',
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    })
+
+    const result = decodeTraces(buf) as {
+      resourceSpans: { scopeSpans: { spans: { parentSpanId: string }[] }[] }[]
+    }
+    const span = result.resourceSpans[0].scopeSpans[0].spans[0]
+    expect(span.parentSpanId).toBe('11a067bb0ca903c8') // hex, not base64
+  })
+
   it('converts startTimeUnixNano to string (longs:String)', () => {
     const buf = encode(TraceReq, {
       resourceSpans: [

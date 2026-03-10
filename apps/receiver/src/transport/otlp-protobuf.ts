@@ -68,7 +68,7 @@ function normalizeSpanIds(obj: unknown): unknown {
   if (Array.isArray(obj)) return obj.map(normalizeSpanIds)
   const result: Record<string, unknown> = {}
   for (const [key, val] of Object.entries(obj as Record<string, unknown>)) {
-    if ((key === 'traceId' || key === 'spanId') && typeof val === 'string') {
+    if ((key === 'traceId' || key === 'spanId' || key === 'parentSpanId') && typeof val === 'string') {
       result[key] = base64ToHex(val)
     } else {
       result[key] = normalizeSpanIds(val)

@@ -184,6 +184,10 @@ export function createIngestRouter(storage: StorageDriver): Hono {
 
   // Platform events — JSON only (not OTLP format, ADR 0022 scope boundary).
   app.post("/v1/platform-events", async (c) => {
+    const ct = c.req.header("Content-Type") ?? "";
+    if (!ct.includes("application/json")) {
+      return c.json({ error: "unsupported Content-Type" }, 415);
+    }
     let body: unknown;
     try {
       body = await c.req.json();

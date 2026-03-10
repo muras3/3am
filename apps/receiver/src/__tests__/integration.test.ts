@@ -650,14 +650,14 @@ describe("Receiver integration tests", () => {
     expect(res.status).toBe(413);
   });
 
-  it("POST /v1/platform-events + protobuf Content-Type → 400 (JSON only)", async () => {
+  it("POST /v1/platform-events + protobuf Content-Type → 415 (JSON only)", async () => {
     const res = await app.request("/v1/platform-events", {
       method: "POST",
       headers: { "Content-Type": "application/x-protobuf" },
       body: new Uint8Array([1, 2, 3]),
     });
-    // platform-events is JSON-only; protobuf body → c.req.json() fails → 400
-    expect(res.status).toBe(400);
+    // platform-events is JSON-only; non-JSON Content-Type → 415
+    expect(res.status).toBe(415);
   });
 
   // Test 9: Two POST /v1/traces within 5min for same service/env → only 1 ThinEvent
