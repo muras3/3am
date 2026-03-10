@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && cp -r src/transport/proto dist/transport/",
     "bundle": "echo 'TODO: bundle receiver + console dist (Phase E)'",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",

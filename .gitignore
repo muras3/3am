@@ -13,3 +13,4 @@ codeql_*.db/
 
 # Staging env (contains real auth token — never commit)
 validation/.env.staging
+.vercel
