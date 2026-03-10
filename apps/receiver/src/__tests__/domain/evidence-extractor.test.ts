@@ -276,7 +276,6 @@ describe('extractLogEvidence', () => {
   })
 
   it('falls back to observedTimeUnixNano when timeUnixNano is missing', () => {
-    const body = makeResourceLogs({ severityNumber: 17, timeUnixNano: undefined as unknown as string })
     // Override the generated timeUnixNano with a missing one, set observedTimeUnixNano instead
     const bodyWithObserved = {
       resourceLogs: [{
