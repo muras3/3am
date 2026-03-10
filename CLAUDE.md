@@ -124,6 +124,10 @@ Mapping to probe-investigate 10pt scale: 7-8 = 8-10, 5-6 = 5-7, 0-4 = 0-4
 - `develop`: 開発統合ブランチ。全フィーチャーブランチのマージ先
 - `feat/*`, `fix/*`, `docs/*` 等: `develop` base で作成し `develop` へ PR
 
+**Claude への厳禁事項（絶対に破るな）:**
+- `develop` または `main` への直接コミット禁止。必ず `feat/*` 等のブランチを切って PR を出し、ユーザーの明示的な承認を得てからマージすること
+- ユーザーの確認なしに PR をマージすること禁止
+
 ## ADR (Architecture Decision Records)
 
 - ADRs live in `docs/adr/`. Numbered sequentially (e.g. `0011-...`).
