@@ -7,3 +7,6 @@ bundle/
 *.tsbuildinfo
 test-results/
 playwright-report/
+
+# CodeQL
+codeql_*.db/
