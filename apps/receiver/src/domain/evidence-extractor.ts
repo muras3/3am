@@ -130,10 +130,13 @@ export function extractMetricEvidence(body: unknown): MetricEvidence[] {
 
         if (!firstDp) continue
 
-        // startTimeMs: startTimeUnixNano → fallback timeUnixNano → drop
+        // startTimeMs: timeUnixNano (observation time) → fallback startTimeUnixNano → drop
+        // For cumulative metrics, startTimeUnixNano is the SDK start epoch, not the
+        // observation time. Use timeUnixNano so evidence window matching is based on
+        // when the value was actually observed.
         const startTimeMs =
-          nanoToMs(firstDp['startTimeUnixNano']) ??
-          nanoToMs(firstDp['timeUnixNano'])
+          nanoToMs(firstDp['timeUnixNano']) ??
+          nanoToMs(firstDp['startTimeUnixNano'])
         if (startTimeMs === null) continue
 
         results.push({ name, service, environment, startTimeMs, summary })
