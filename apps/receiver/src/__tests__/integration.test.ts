@@ -1,6 +1,27 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { createRequire } from "node:module";
+import { gzipSync } from "node:zlib";
+import protobuf from "protobufjs";
 import { MemoryAdapter } from "../storage/adapters/memory.js";
 import { createApp } from "../index.js";
+
+// ── Protobuf encode helpers ────────────────────────────────────────────────────
+const _require = createRequire(import.meta.url);
+const descriptor: protobuf.INamespace = _require("../transport/proto/otlp.json");
+const _root = protobuf.Root.fromJSON(descriptor);
+const TraceReq = _root.lookupType(
+  "opentelemetry.proto.collector.trace.v1.ExportTraceServiceRequest",
+);
+const MetricsReq = _root.lookupType(
+  "opentelemetry.proto.collector.metrics.v1.ExportMetricsServiceRequest",
+);
+const LogsReq = _root.lookupType(
+  "opentelemetry.proto.collector.logs.v1.ExportLogsServiceRequest",
+);
+
+function encodeProto(Type: protobuf.Type, obj: object): Uint8Array {
+  return Type.encode(Type.fromObject(obj)).finish();
+}
 
 // Minimal OTLP payload with an error span (spanStatusCode=2, httpStatusCode=500)
 const errorSpanPayload = {
@@ -411,15 +432,6 @@ describe("Receiver integration tests", () => {
     expect(res.status).toBe(400);
   });
 
-  it("POST /v1/metrics with protobuf Content-Type returns 501", async () => {
-    const res = await app.request("/v1/metrics", {
-      method: "POST",
-      headers: { "Content-Type": "application/x-protobuf" },
-      body: new Uint8Array([1, 2, 3]),
-    });
-    expect(res.status).toBe(501);
-  });
-
   it("POST /v1/logs with valid JSON body returns ok", async () => {
     const res = await app.request("/v1/logs", {
       method: "POST",
@@ -448,6 +460,204 @@ describe("Receiver integration tests", () => {
       body: oversize,
     });
     expect(res.status).toBe(413);
+  });
+
+  // ── Protobuf ingest (ADR 0022) ────────────────────────────────────────────────
+
+  it("POST /v1/traces + protobuf error span → 200 + incidentId", async () => {
+    const buf = encodeProto(TraceReq, {
+      resourceSpans: [
+        {
+          resource: {
+            attributes: [
+              { key: "service.name", value: { stringValue: "web" } },
+              { key: "deployment.environment.name", value: { stringValue: "production" } },
+            ],
+          },
+          scopeSpans: [
+            {
+              spans: [
+                {
+                  traceId: Buffer.from("a3ce929d0e0e47364bf92f3577b34da6", "hex"),
+                  spanId: Buffer.from("00f067aa0ba902b7", "hex"),
+                  name: "POST /checkout",
+                  startTimeUnixNano: "1741392000000000000",
+                  endTimeUnixNano: "1741392000500000000",
+                  status: { code: 2 },
+                  attributes: [
+                    { key: "http.route", value: { stringValue: "/checkout" } },
+                    { key: "http.response.status_code", value: { intValue: 500 } },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    });
+
+    const res = await app.request("/v1/traces", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-protobuf" },
+      body: buf,
+    });
+
+    expect(res.status).toBe(200);
+    const body = await res.json() as { status: string; incidentId?: string };
+    expect(body.status).toBe("ok");
+    expect(typeof body.incidentId).toBe("string");
+  });
+
+  it("POST /v1/traces + protobuf normal span → 200, no incident", async () => {
+    const buf = encodeProto(TraceReq, {
+      resourceSpans: [
+        {
+          resource: {
+            attributes: [
+              { key: "service.name", value: { stringValue: "web" } },
+              { key: "deployment.environment.name", value: { stringValue: "production" } },
+            ],
+          },
+          scopeSpans: [
+            {
+              spans: [
+                {
+                  traceId: Buffer.from("b3ce929d0e0e47364bf92f3577b34da7", "hex"),
+                  spanId: Buffer.from("11f067aa0ba902b8", "hex"),
+                  name: "GET /health",
+                  startTimeUnixNano: "1741392000000000000",
+                  endTimeUnixNano: "1741392000100000000",
+                  status: { code: 1 },
+                  attributes: [
+                    { key: "http.route", value: { stringValue: "/health" } },
+                    { key: "http.response.status_code", value: { intValue: 200 } },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    });
+
+    const res = await app.request("/v1/traces", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-protobuf" },
+      body: buf,
+    });
+
+    expect(res.status).toBe(200);
+    const listRes = await app.request("/api/incidents");
+    const listBody = await listRes.json() as { items: unknown[] };
+    expect(listBody.items).toHaveLength(0);
+  });
+
+  it("POST /v1/metrics + protobuf → 200", async () => {
+    const buf = encodeProto(MetricsReq, { resourceMetrics: [] });
+    const res = await app.request("/v1/metrics", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-protobuf" },
+      body: buf,
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json() as { status: string };
+    expect(body.status).toBe("ok");
+  });
+
+  it("POST /v1/logs + protobuf → 200", async () => {
+    const buf = encodeProto(LogsReq, { resourceLogs: [] });
+    const res = await app.request("/v1/logs", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-protobuf" },
+      body: buf,
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json() as { status: string };
+    expect(body.status).toBe("ok");
+  });
+
+  it("POST /v1/traces + protobuf + Content-Encoding: gzip → 200", async () => {
+    const buf = encodeProto(TraceReq, { resourceSpans: [] });
+    const compressed = gzipSync(buf);
+    const res = await app.request("/v1/traces", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-protobuf",
+        "Content-Encoding": "gzip",
+      },
+      body: compressed,
+    });
+    expect(res.status).toBe(200);
+  });
+
+  it("POST /v1/traces + unknown Content-Type → 415", async () => {
+    const res = await app.request("/v1/traces", {
+      method: "POST",
+      headers: { "Content-Type": "application/octet-stream" },
+      body: new Uint8Array([1, 2, 3]),
+    });
+    expect(res.status).toBe(415);
+  });
+
+  it("POST /v1/traces + protobuf + Content-Encoding: br → 400", async () => {
+    const res = await app.request("/v1/traces", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-protobuf",
+        "Content-Encoding": "br",
+      },
+      body: new Uint8Array([1, 2, 3]),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("POST /v1/traces + broken protobuf binary → 400", async () => {
+    const res = await app.request("/v1/traces", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-protobuf" },
+      body: new Uint8Array([0xff, 0xfe, 0xfd, 0xfc]),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("POST /v1/traces + protobuf + broken gzip payload → 400", async () => {
+    // Valid gzip magic header but corrupted content
+    const brokenGzip = new Uint8Array([0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0xff, 0xff]);
+    const res = await app.request("/v1/traces", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-protobuf",
+        "Content-Encoding": "gzip",
+      },
+      body: brokenGzip,
+    });
+    // gunzip throws on corrupt data → decompressIfNeeded catches it → 400
+    expect(res.status).toBe(400);
+  });
+
+  it("POST /v1/traces + protobuf + decompressed payload > 1MB → 413", async () => {
+    // 1MB + 1 byte of zeros compresses to ~1KB, but decompresses > 1MB
+    const bigBuf = Buffer.alloc(1024 * 1024 + 1, 0x00);
+    const compressed = gzipSync(bigBuf);
+    const res = await app.request("/v1/traces", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-protobuf",
+        "Content-Encoding": "gzip",
+      },
+      body: compressed,
+    });
+    expect(res.status).toBe(413);
+  });
+
+  it("POST /v1/platform-events + protobuf Content-Type → 415 (JSON only)", async () => {
+    const res = await app.request("/v1/platform-events", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-protobuf" },
+      body: new Uint8Array([1, 2, 3]),
+    });
+    // platform-events is JSON-only; non-JSON Content-Type → 415
+    expect(res.status).toBe(415);
   });
 
   // Test 9: Two POST /v1/traces within 5min for same service/env → only 1 ThinEvent
