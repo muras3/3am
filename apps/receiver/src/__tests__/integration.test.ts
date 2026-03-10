@@ -660,6 +660,242 @@ describe("Receiver integration tests", () => {
     expect(res.status).toBe(415);
   });
 
+  // ── Evidence accumulation tests ───────────────────────────────────────────────
+
+  // BASE_TIME_NS corresponds to startTimeUnixNano in errorSpanPayload (openedAt anchor)
+  const BASE_TIME_NS = "1741392000000000000" // 2025-03-07T16:00:00Z
+
+  // POST /v1/metrics from the same service within window → changedMetrics populated
+  it("POST /v1/traces (error) then /v1/metrics (same service/env, within window) → changedMetrics non-empty", async () => {
+    const traceRes = await app.request("/v1/traces", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(errorSpanPayload),
+    });
+    const { incidentId } = await traceRes.json() as { incidentId: string };
+
+    const metricsPayload = {
+      resourceMetrics: [{
+        resource: {
+          attributes: [
+            { key: "service.name", value: { stringValue: "web" } },
+            { key: "deployment.environment.name", value: { stringValue: "production" } },
+          ],
+        },
+        scopeMetrics: [{
+          metrics: [{
+            name: "http.server.request.duration",
+            histogram: {
+              dataPoints: [{
+                startTimeUnixNano: BASE_TIME_NS,
+                timeUnixNano: BASE_TIME_NS,
+                count: "42",
+                sum: 1234.5,
+                min: 1.0,
+                max: 99.0,
+              }],
+            },
+          }],
+        }],
+      }],
+    };
+
+    const mRes = await app.request("/v1/metrics", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(metricsPayload),
+    });
+    expect(mRes.status).toBe(200);
+
+    const incident = await (await app.request(`/api/incidents/${incidentId}`)).json() as {
+      packet: { evidence: { changedMetrics: unknown[] } };
+    };
+    expect(incident.packet.evidence.changedMetrics.length).toBeGreaterThan(0);
+  });
+
+  // POST /v1/logs (ERROR, same service/env, within window) → relevantLogs populated
+  it("POST /v1/traces (error) then /v1/logs (ERROR, same service/env) → relevantLogs non-empty", async () => {
+    const traceRes = await app.request("/v1/traces", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(errorSpanPayload),
+    });
+    const { incidentId } = await traceRes.json() as { incidentId: string };
+
+    const logsPayload = {
+      resourceLogs: [{
+        resource: {
+          attributes: [
+            { key: "service.name", value: { stringValue: "web" } },
+            { key: "deployment.environment.name", value: { stringValue: "production" } },
+          ],
+        },
+        scopeLogs: [{
+          logRecords: [{
+            timeUnixNano: BASE_TIME_NS,
+            severityNumber: 17,
+            severityText: "ERROR",
+            body: { stringValue: "checkout failed" },
+            attributes: [],
+          }],
+        }],
+      }],
+    };
+
+    const lRes = await app.request("/v1/logs", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(logsPayload),
+    });
+    expect(lRes.status).toBe(200);
+
+    const incident = await (await app.request(`/api/incidents/${incidentId}`)).json() as {
+      packet: { evidence: { relevantLogs: unknown[] } };
+    };
+    expect(incident.packet.evidence.relevantLogs.length).toBeGreaterThan(0);
+  });
+
+  // POST /v1/logs with INFO only → relevantLogs stays empty
+  it("POST /v1/logs (INFO only) → relevantLogs remains empty", async () => {
+    const traceRes = await app.request("/v1/traces", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(errorSpanPayload),
+    });
+    const { incidentId } = await traceRes.json() as { incidentId: string };
+
+    const logsPayload = {
+      resourceLogs: [{
+        resource: {
+          attributes: [
+            { key: "service.name", value: { stringValue: "web" } },
+            { key: "deployment.environment.name", value: { stringValue: "production" } },
+          ],
+        },
+        scopeLogs: [{
+          logRecords: [{
+            timeUnixNano: BASE_TIME_NS,
+            severityNumber: 9, // INFO
+            severityText: "INFO",
+            body: { stringValue: "all good" },
+            attributes: [],
+          }],
+        }],
+      }],
+    };
+
+    await app.request("/v1/logs", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(logsPayload),
+    });
+
+    const incident = await (await app.request(`/api/incidents/${incidentId}`)).json() as {
+      packet: { evidence: { relevantLogs: unknown[] } };
+    };
+    expect(incident.packet.evidence.relevantLogs).toHaveLength(0);
+  });
+
+  // POST /v1/metrics with no matching incident → 200 ok, no-op
+  it("POST /v1/metrics with no matching incident returns 200 and is a no-op", async () => {
+    const metricsPayload = {
+      resourceMetrics: [{
+        resource: {
+          attributes: [
+            { key: "service.name", value: { stringValue: "web" } },
+            { key: "deployment.environment.name", value: { stringValue: "production" } },
+          ],
+        },
+        scopeMetrics: [{
+          metrics: [{
+            name: "http.server.request.duration",
+            gauge: { dataPoints: [{ timeUnixNano: BASE_TIME_NS, asDouble: 0.5 }] },
+          }],
+        }],
+      }],
+    };
+    const res = await app.request("/v1/metrics", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(metricsPayload),
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json() as { status: string };
+    expect(body.status).toBe("ok");
+  });
+
+  // Metrics from affectedDependencies service → attached to incident
+  it("POST /v1/metrics from affectedDependencies service → changedMetrics non-empty", async () => {
+    // Error span with peer.service: stripe → stripe goes into affectedDependencies
+    const spanWithPeer = {
+      resourceSpans: [{
+        resource: {
+          attributes: [
+            { key: "service.name", value: { stringValue: "web" } },
+            { key: "deployment.environment.name", value: { stringValue: "production" } },
+          ],
+        },
+        scopeSpans: [{
+          spans: [{
+            traceId: "abc200",
+            spanId: "span200",
+            name: "POST /checkout",
+            startTimeUnixNano: BASE_TIME_NS,
+            endTimeUnixNano: "1741392000500000000",
+            status: { code: 2 },
+            attributes: [
+              { key: "http.route", value: { stringValue: "/checkout" } },
+              { key: "http.response.status_code", value: { intValue: 500 } },
+              { key: "peer.service", value: { stringValue: "stripe" } },
+            ],
+          }],
+        }],
+      }],
+    };
+
+    const traceRes = await app.request("/v1/traces", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(spanWithPeer),
+    });
+    const { incidentId } = await traceRes.json() as { incidentId: string };
+
+    // Verify stripe is in affectedDependencies
+    const incidentBefore = await (await app.request(`/api/incidents/${incidentId}`)).json() as {
+      packet: { scope: { affectedDependencies: string[] } };
+    };
+    expect(incidentBefore.packet.scope.affectedDependencies).toContain("stripe");
+
+    // Now send metrics from stripe
+    const stripeMetrics = {
+      resourceMetrics: [{
+        resource: {
+          attributes: [
+            { key: "service.name", value: { stringValue: "stripe" } },
+            { key: "deployment.environment.name", value: { stringValue: "production" } },
+          ],
+        },
+        scopeMetrics: [{
+          metrics: [{
+            name: "stripe.api.latency",
+            gauge: { dataPoints: [{ timeUnixNano: BASE_TIME_NS, asDouble: 250.0 }] },
+          }],
+        }],
+      }],
+    };
+
+    await app.request("/v1/metrics", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(stripeMetrics),
+    });
+
+    const incidentAfter = await (await app.request(`/api/incidents/${incidentId}`)).json() as {
+      packet: { evidence: { changedMetrics: unknown[] } };
+    };
+    expect(incidentAfter.packet.evidence.changedMetrics.length).toBeGreaterThan(0);
+  });
+
   // Test 9: Two POST /v1/traces within 5min for same service/env → only 1 ThinEvent
   it("Two error spans within 5min for same service/env produce only 1 ThinEvent", async () => {
     // Both spans use the same startTimeUnixNano (within the 5-minute window)

@@ -1,5 +1,25 @@
 import type { IncidentPacket, DiagnosisResult, ThinEvent } from "@3amoncall/core";
 
+/** Merge new evidence entries into an existing incident packet. */
+export function mergeEvidenceIntoPacket(
+  packet: IncidentPacket,
+  update: { changedMetrics?: unknown[]; relevantLogs?: unknown[] },
+): IncidentPacket {
+  const ev = packet.evidence as {
+    changedMetrics: unknown[];
+    relevantLogs: unknown[];
+    [k: string]: unknown;
+  };
+  return {
+    ...packet,
+    evidence: {
+      ...ev,
+      changedMetrics: [...ev.changedMetrics, ...(update.changedMetrics ?? [])],
+      relevantLogs: [...ev.relevantLogs, ...(update.relevantLogs ?? [])],
+    },
+  };
+}
+
 export interface Incident {
   incidentId: string;
   status: "open" | "closed";
@@ -30,6 +50,15 @@ export interface StorageDriver {
 
   /** Remove closed incidents where openedAt < before */
   deleteExpiredIncidents(before: Date): Promise<void>;
+
+  /**
+   * Append evidence entries to an existing incident's packet.
+   * Unknown incidentId is a no-op (does not throw).
+   */
+  appendEvidence(
+    incidentId: string,
+    update: { changedMetrics?: unknown[]; relevantLogs?: unknown[] },
+  ): Promise<void>;
 
   saveThinEvent(event: ThinEvent): Promise<void>;
 

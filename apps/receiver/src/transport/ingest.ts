@@ -12,6 +12,11 @@ import {
   buildFormationKey,
   shouldAttachToIncident,
 } from "../domain/formation.js";
+import {
+  extractMetricEvidence,
+  extractLogEvidence,
+  shouldAttachEvidence,
+} from "../domain/evidence-extractor.js";
 import { createPacket } from "../domain/packetizer.js";
 import { dispatchThinEvent } from "../runtime/github-dispatch.js";
 import { decodeTraces, decodeMetrics, decodeLogs } from "./otlp-protobuf.js";
@@ -136,51 +141,105 @@ export function createIngestRouter(storage: StorageDriver): Hono {
     return c.json({ status: "ok", incidentId, packetId: existing.packet.packetId });
   });
 
-  // OTLP metrics and logs — protobuf + JSON both accepted (ADR 0022).
-  // Phase 1: validates shape only; packet integration is a separate task.
-  const otlpStubs: {
-    path: "/v1/metrics" | "/v1/logs";
-    field: string;
-    decode: (buf: Uint8Array) => unknown;
-  }[] = [
-    { path: "/v1/metrics", field: "resourceMetrics", decode: decodeMetrics },
-    { path: "/v1/logs", field: "resourceLogs", decode: decodeLogs },
-  ];
-  for (const { path, field, decode } of otlpStubs) {
-    app.post(path, async (c) => {
-      const ct = c.req.header("Content-Type") ?? "";
-      let body: unknown;
+  // OTLP metrics — protobuf + JSON both accepted (ADR 0022).
+  // Evidence is extracted and attached to matching open incidents.
+  app.post("/v1/metrics", async (c) => {
+    const ct = c.req.header("Content-Type") ?? "";
+    let body: unknown;
 
-      if (ct.includes("application/x-protobuf")) {
-        const raw = await decompressIfNeeded(c);
-        if (typeof raw === "number") {
-          return c.json({ error: raw === 413 ? "payload too large after decompression" : "invalid Content-Encoding or corrupt body" }, raw);
-        }
-        try {
-          body = decode(raw);
-        } catch {
-          return c.json({ error: "invalid protobuf body" }, 400);
-        }
-      } else if (ct.includes("application/json")) {
-        try {
-          body = await c.req.json();
-        } catch (err) {
-          if (err instanceof SyntaxError) return c.json({ error: "invalid body" }, 400);
-          throw err;
-        }
-        if (typeof body !== "object" || body === null) {
-          return c.json({ error: "invalid body" }, 400);
-        }
-      } else {
-        return c.json({ error: "unsupported Content-Type" }, 415);
+    if (ct.includes("application/x-protobuf")) {
+      const raw = await decompressIfNeeded(c);
+      if (typeof raw === "number") {
+        return c.json({ error: raw === 413 ? "payload too large after decompression" : "invalid Content-Encoding or corrupt body" }, raw);
       }
+      try {
+        body = decodeMetrics(raw);
+      } catch {
+        return c.json({ error: "invalid protobuf body" }, 400);
+      }
+    } else if (ct.includes("application/json")) {
+      try {
+        body = await c.req.json();
+      } catch (err) {
+        if (err instanceof SyntaxError) return c.json({ error: "invalid body" }, 400);
+        throw err;
+      }
+      if (typeof body !== "object" || body === null) {
+        return c.json({ error: "invalid body" }, 400);
+      }
+    } else {
+      return c.json({ error: "unsupported Content-Type" }, 415);
+    }
 
-      if (!(field in (body as Record<string, unknown>))) {
-        return c.json({ error: `missing required field: ${field}` }, 400);
+    if (!("resourceMetrics" in (body as Record<string, unknown>))) {
+      return c.json({ error: "missing required field: resourceMetrics" }, 400);
+    }
+
+    const evidences = extractMetricEvidence(body);
+    if (evidences.length > 0) {
+      const page = await storage.listIncidents({ limit: 100 });
+      await Promise.all(
+        page.items.flatMap((incident) => {
+          const matching = evidences.filter((e) => shouldAttachEvidence(e, incident));
+          return matching.length > 0
+            ? [storage.appendEvidence(incident.incidentId, { changedMetrics: matching })]
+            : [];
+        }),
+      );
+    }
+
+    return c.json({ status: "ok" });
+  });
+
+  // OTLP logs — protobuf + JSON both accepted (ADR 0022).
+  // Only WARN/ERROR/FATAL logs (severityNumber >= 13) are extracted and attached.
+  app.post("/v1/logs", async (c) => {
+    const ct = c.req.header("Content-Type") ?? "";
+    let body: unknown;
+
+    if (ct.includes("application/x-protobuf")) {
+      const raw = await decompressIfNeeded(c);
+      if (typeof raw === "number") {
+        return c.json({ error: raw === 413 ? "payload too large after decompression" : "invalid Content-Encoding or corrupt body" }, raw);
       }
-      return c.json({ status: "ok" });
-    });
-  }
+      try {
+        body = decodeLogs(raw);
+      } catch {
+        return c.json({ error: "invalid protobuf body" }, 400);
+      }
+    } else if (ct.includes("application/json")) {
+      try {
+        body = await c.req.json();
+      } catch (err) {
+        if (err instanceof SyntaxError) return c.json({ error: "invalid body" }, 400);
+        throw err;
+      }
+      if (typeof body !== "object" || body === null) {
+        return c.json({ error: "invalid body" }, 400);
+      }
+    } else {
+      return c.json({ error: "unsupported Content-Type" }, 415);
+    }
+
+    if (!("resourceLogs" in (body as Record<string, unknown>))) {
+      return c.json({ error: "missing required field: resourceLogs" }, 400);
+    }
+
+    const evidences = extractLogEvidence(body);
+    if (evidences.length > 0) {
+      const page = await storage.listIncidents({ limit: 100 });
+      await Promise.all(
+        page.items.flatMap((incident) => {
+          const matching = evidences.filter((e) => shouldAttachEvidence(e, incident));
+          return matching.length > 0
+            ? [storage.appendEvidence(incident.incidentId, { relevantLogs: matching })]
+            : [];
+        }),
+      );
+    }
+
+    return c.json({ status: "ok" });
+  });
 
   // Platform events — JSON only (not OTLP format, ADR 0022 scope boundary).
   app.post("/v1/platform-events", async (c) => {
