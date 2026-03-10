@@ -1,0 +1,20 @@
+[
+  {
+    "file": ".github/workflows/diagnose.yml",
+    "line": 42,
+    "rule": "run-shell-injection",
+    "verdict": "TRUE_POSITIVE",
+    "severity": "HIGH",
+    "reasoning": "The `run:` block at line 42 interpolates `${{ inputs.packet_id }}` directly into the shell via YAML block scalar expansion. The workflow trigger is `workflow_dispatch` only, so the input cannot be set by arbitrary GitHub users via a PR or issue. However, the Receiver dispatches this workflow programmatically (ADR 0021) by forwarding IDs that originated from inbound OTLP telemetry. A crafted packet_id containing shell metacharacters (`;`, `&&`, `$(...)`, backticks) passed from a malicious OTel source through the Receiver to the dispatch call would be interpolated literally into the shell command before the shell parses it. The `${{ secrets.* }}` expressions in the same step are NOT a concern — repository secrets are not user-controllable — but `${{ inputs.packet_id }}` is the flagged sink and it is reachable via the Receiver's dispatch path.",
+    "fix": "Move `inputs.packet_id` to an `env:` block and reference it as a quoted shell variable. Example:\n\n```yaml\n- name: Fetch incident packet\n  env:\n    PACKET_ID: ${{ inputs.packet_id }}\n    RECEIVER_BASE_URL: ${{ secrets.RECEIVER_BASE_URL }}\n    RECEIVER_AUTH_TOKEN: ${{ secrets.RECEIVER_AUTH_TOKEN }}\n  run: |\n    curl --fail-with-body \\\n      -H \"Authorization: Bearer ${RECEIVER_AUTH_TOKEN}\" \\\n      \"${RECEIVER_BASE_URL}/api/packets/${PACKET_ID}\" \\\n      -o packet.json\n```\n\nAlso validate that `PACKET_ID` matches an expected format (e.g., `^[a-zA-Z0-9_-]+$`) before passing it to curl."
+  },
+  {
+    "file": ".github/workflows/diagnose.yml",
+    "line": 51,
+    "rule": "run-shell-injection",
+    "verdict": "TRUE_POSITIVE",
+    "severity": "HIGH",
+    "reasoning": "The `run:` block at line 51 interpolates `${{ inputs.incident_id }}` into the `--callback-url` argument passed to the CLI process via the shell. Same attack surface as line 42: the Receiver dispatches this workflow with an `incident_id` that ultimately derives from inbound external telemetry. A malicious actor who can influence what the Receiver stores as an incident ID could inject shell metacharacters here. The `${{ secrets.RECEIVER_BASE_URL }}` and `${{ secrets.RECEIVER_AUTH_TOKEN }}` expressions are not a concern (secrets are write-protected by GitHub), but `${{ inputs.incident_id }}` is an untrusted sink in the shell expansion model. Note: `ANTHROPIC_API_KEY` is correctly placed in `env:` already — the same pattern must be applied to the `inputs.*` values.",
+    "fix": "Move `inputs.incident_id` (and for consistency `secrets.RECEIVER_BASE_URL` / `secrets.RECEIVER_AUTH_TOKEN`) to `env:` and reference as quoted shell variables. Example:\n\n```yaml\n- name: Run diagnosis and send result\n  env:\n    ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}\n    INCIDENT_ID: ${{ inputs.incident_id }}\n    RECEIVER_BASE_URL: ${{ secrets.RECEIVER_BASE_URL }}\n    RECEIVER_AUTH_TOKEN: ${{ secrets.RECEIVER_AUTH_TOKEN }}\n  run: |\n    node packages/cli/dist/index.js \\\n      --packet packet.json \\\n      --callback-url \"${RECEIVER_BASE_URL}/api/diagnosis/${INCIDENT_ID}\" \\\n      --callback-token \"${RECEIVER_AUTH_TOKEN}\"\n```\n\nAlso validate `INCIDENT_ID` format before constructing the URL."
+  }
+]
