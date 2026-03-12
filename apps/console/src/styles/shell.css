@@ -177,6 +177,45 @@
   font-size: var(--fs-sm); color: var(--ink-2);
 }
 .service-rail-name { flex: 1; }
+.service-rail-meta {
+  font-family: var(--mono);
+  font-size: var(--fs-xxs);
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+}
+.rail-empty {
+  padding: 12px 14px;
+  font-size: var(--fs-xs);
+  line-height: 1.5;
+  color: var(--ink-3);
+}
+.rail-divider {
+  height: 1px;
+  background: var(--line);
+  margin: 8px 0;
+}
+.rail-incident-entry {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--line);
+  transition: background 0.15s;
+}
+.rail-incident-entry:hover { background: var(--panel-2); }
+.rail-incident-name {
+  flex: 1;
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  color: var(--ink);
+}
+.rail-incident-open {
+  font-size: var(--fs-xxs);
+  color: var(--accent-text);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-weight: 700;
+}
 
 /* ── Center columns — always in DOM, CSS-transitioned ─────── */
 .center-normal,
@@ -204,6 +243,7 @@
   display: flex;
   flex-direction: column;
   gap: 16px;
+  position: relative;
 }
 .app[data-mode="incident"] .center-normal {
   opacity: 0;
@@ -221,7 +261,7 @@
   padding: 24px;
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 18px;
 }
 
 /* Lead row: system-level status headline */
@@ -284,11 +324,12 @@
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
-.service-time {
+.service-metrics {
   font-family: var(--mono);
   font-size: var(--fs-xs);
   color: var(--ink-3);
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 /* Service status dots */
@@ -301,9 +342,101 @@
   animation: healthy-breathe 3s ease-in-out infinite;
 }
 .service-dot--degraded { background: var(--accent); }
+.service-dot--critical { background: var(--accent); }
 @keyframes healthy-breathe {
   0%, 100% { opacity: 0.8; }
   50%       { opacity: 1; }
+}
+
+.incident-entry-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 16px;
+  border: 1px solid color-mix(in srgb, var(--accent) 22%, transparent);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius);
+  background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 8%, transparent) 0%, var(--panel) 100%);
+}
+.incident-entry-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.incident-entry-title {
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  color: var(--ink);
+}
+.incident-entry-text {
+  font-size: var(--fs-xs);
+  color: var(--ink-2);
+  line-height: 1.5;
+}
+.incident-entry-links {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.incident-entry-link {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--accent-soft);
+  color: var(--accent-text);
+  text-decoration: none;
+  font-size: var(--fs-xs);
+  font-weight: 700;
+}
+.incident-entry-link:hover {
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+}
+
+.normal-empty-card {
+  padding: 14px 16px;
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--panel);
+}
+.normal-empty-card--compact {
+  padding: 12px 14px;
+}
+.normal-empty-title {
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  color: var(--ink);
+  margin-bottom: 4px;
+}
+.normal-empty-text {
+  font-size: var(--fs-xs);
+  color: var(--ink-2);
+  line-height: 1.5;
+}
+
+.normal-activity {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.normal-activity-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+.normal-activity-title {
+  font-size: var(--fs-xxs);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--ink-3);
+  font-weight: 700;
+}
+.normal-activity-meta {
+  font-size: var(--fs-xxs);
+  color: var(--ink-3);
+  font-family: var(--mono);
 }
 
 /* ── Right rail: AI Copilot ────────────────────────────────── */
@@ -438,6 +571,17 @@
   background:#fff0ee; color:var(--accent);
 }
 .chat-thinking { opacity:0.5; }
+
+.center-incident::after {
+  content: "";
+  position: sticky;
+  display: block;
+  bottom: 0;
+  height: 18px;
+  margin-top: auto;
+  background: linear-gradient(to bottom, transparent, var(--bg));
+  pointer-events: none;
+}
 
 /* ── Common ────────────────────────────────────────────────── */
 .empty-state {

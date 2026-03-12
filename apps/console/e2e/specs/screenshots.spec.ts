@@ -1,6 +1,5 @@
 import { test, expect } from "@playwright/test";
-
-const TOKEN = "e2e-test-token";
+import { gotoFirstIncident } from "../helpers.js";
 
 /**
  * Golden screenshot tests for receiver-served E2E.
@@ -17,30 +16,16 @@ test("normal mode screenshot", async ({ page }) => {
 });
 
 test("incident workspace screenshot", async ({ page }) => {
-  // Fetch first seeded incident
-  const res = await page.request.get("http://localhost:4319/api/incidents", {
-    headers: { Authorization: `Bearer ${TOKEN}` },
-  });
-  const body = (await res.json()) as { items: Array<{ incidentId: string }> };
-  const incidentId = body.items[0]?.incidentId;
-  if (!incidentId) throw new Error("No seeded incidents found");
-
-  await page.goto(`/?incidentId=${incidentId}`);
+  await gotoFirstIncident(page);
   // Wait for CSS transition to complete
   await page.waitForTimeout(600);
   await expect(page).toHaveScreenshot("incident-workspace.png", { maxDiffPixelRatio: 0.02 });
 });
 
 test("evidence studio screenshot", async ({ page }) => {
-  const res = await page.request.get("http://localhost:4319/api/incidents", {
-    headers: { Authorization: `Bearer ${TOKEN}` },
-  });
-  const body = (await res.json()) as { items: Array<{ incidentId: string }> };
-  const incidentId = body.items[0]?.incidentId;
-  if (!incidentId) throw new Error("No seeded incidents found");
-
-  await page.goto(`/?incidentId=${incidentId}`);
+  await gotoFirstIncident(page);
   await page.waitForTimeout(600);
+  await expect(page.locator("[data-testid=open-evidence-studio]")).toBeVisible();
   await page.click("[data-testid=open-evidence-studio]");
   await expect(page.locator("[data-testid=proof-cards]")).toBeVisible();
   await expect(page).toHaveScreenshot("evidence-studio.png", { maxDiffPixelRatio: 0.02 });

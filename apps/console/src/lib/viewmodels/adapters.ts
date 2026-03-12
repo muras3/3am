@@ -26,14 +26,14 @@ export function buildIncidentWorkspaceVM(
     headline: dr.summary.what_happened,
     chips: buildChips(packet, dr),
     action: {
-      primaryText: dr.recommendation.immediate_action,
-      rationale: dr.recommendation.action_rationale_short,
-      doNot: dr.recommendation.do_not,
+      primaryText: compactAction(dr.recommendation.immediate_action),
+      rationale: compactSentence(dr.recommendation.action_rationale_short, 160),
+      doNot: compactSentence(dr.recommendation.do_not, 180),
     },
     recovery: {
       items: dr.operator_guidance.watch_items.map((item) => ({
-        look: item.label,
-        means: item.state,
+        look: humanizeWatchLabel(item.label),
+        means: compactSentence(item.state, 120),
         status: toRecoveryStatus(item.status),
       })),
     },
@@ -52,6 +52,31 @@ export function buildIncidentWorkspaceVM(
       operatorCheck: dr.operator_guidance.operator_checks[0] ?? "\u2014",
     },
   };
+}
+
+function compactAction(text: string): string {
+  const parts = text.split(/(?<=[.!?])\s+/).filter(Boolean);
+  if (parts.length === 0) return text;
+  const first = parts[0] ?? text;
+  const second = parts[1];
+  if (!second) return compactSentence(first, 180);
+  return compactSentence(`${first} ${second}`, 220);
+}
+
+function compactSentence(text: string, maxChars: number): string {
+  const trimmed = text.trim();
+  if (trimmed.length <= maxChars) return trimmed;
+  const firstClause = trimmed.split(/(?<=[.!?])\s+/)[0] ?? trimmed;
+  if (firstClause.length <= maxChars) return firstClause;
+  return `${firstClause.slice(0, maxChars - 1).trim()}…`;
+}
+
+function humanizeWatchLabel(label: string): string {
+  if (!label.includes("_")) return label;
+  return label
+    .replace(/_total$/i, "")
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (ch) => ch.toUpperCase());
 }
 
 export function buildEvidenceStudioVM(incident: Incident): EvidenceStudioVM {

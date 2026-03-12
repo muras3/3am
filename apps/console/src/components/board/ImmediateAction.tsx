@@ -12,13 +12,7 @@ export function ImmediateAction({ action }: Props) {
       <div className="action-why">
         <strong>Why:</strong> {action.rationale}
       </div>
-      <div
-        style={{
-          marginTop: "8px",
-          fontSize: "var(--fs-xs)",
-          color: "var(--accent-text)",
-        }}
-      >
+      <div className="action-do-not">
         <strong>Do not:</strong> {action.doNot}
       </div>
     </section>

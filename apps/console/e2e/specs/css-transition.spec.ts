@@ -33,6 +33,15 @@ test.describe("Phase 2 CSS transition shell", () => {
     await expect(page.locator("[data-surface=normal]")).toBeVisible();
   });
 
+  test("normal mode exposes active incident entry path", async ({ page }) => {
+    await page.goto("/");
+    await page.waitForLoadState("networkidle");
+    await expect(page.locator("[data-testid=normal-open-incidents]")).toBeVisible();
+    await page.locator(".incident-entry-link").first().click();
+    await page.waitForURL(/[?&]incidentId=/, { timeout: 5000 });
+    await expect(page.locator("[data-surface=incident]")).toBeVisible();
+  });
+
   test("/?incidentId opens incident workspace", async ({ page }) => {
     await gotoFirstIncident(page);
     await expect(page.locator("[data-surface=incident]")).toBeVisible({ timeout: 6000 });

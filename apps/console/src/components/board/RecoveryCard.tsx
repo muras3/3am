@@ -15,12 +15,14 @@ export function RecoveryCard({ recovery }: Props) {
     <section className="section-recovery" data-section="recovery">
       <div className="card-title">Recovery</div>
       {recovery.items.map((item, i) => (
-        <div key={i} className="watch-row">
-          <div className="wl">{item.look}</div>
-          <div className="wv">{item.means}</div>
-          <div className={`ws ${STATUS_CLASS[item.status] ?? "ws-lagging"}`}>
-            {item.status}
+        <div key={i} className="recovery-item">
+          <div className="recovery-item-head">
+            <div className="recovery-look">{item.look}</div>
+            <div className={`ws ${STATUS_CLASS[item.status] ?? "ws-lagging"}`}>
+              {item.status}
+            </div>
           </div>
+          <div className="recovery-means">{item.means}</div>
         </div>
       ))}
     </section>
