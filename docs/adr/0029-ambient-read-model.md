@@ -1,6 +1,6 @@
 # ADR 0029: Ambient Read Model (SpanBuffer + ServiceSurface / RecentActivity)
 
-- Status: Proposed
+- Status: Accepted
 - Date: 2026-03-12
 
 ## Context
@@ -76,15 +76,17 @@ createApiRouter(storage: StorageDriver, spanBuffer?: SpanBuffer): Hono
 **RecentActivity**
 ```typescript
 {
-  ts: number         // Unix ms
+  ts: number              // Unix ms
   service: string
-  route: string
-  httpStatus: number
+  route: string           // httpRoute。HTTP span 以外は空文字
+  httpStatus?: number     // HTTP span 以外は undefined
   durationMs: number
   traceId: string
   anomalous: boolean
 }
 ```
+
+`RecentActivity` は HTTP span に限定しない。`GET /api/activity` は latest-first（`ts` 降順）で返す。
 
 ### 6. health 閾値
 
@@ -136,7 +138,7 @@ createApiRouter(storage: StorageDriver, spanBuffer?: SpanBuffer): Hono
 
 ## Related
 
-- [0013-storage-driver-interface.md](0013-storage-driver-interface.md)
+- [0013-cross-platform-storage-driver.md](0013-cross-platform-storage-driver.md)
 - [0025-phase1-performance-and-responsiveness-guardrails.md](0025-phase1-performance-and-responsiveness-guardrails.md)
 - [0028-receiver-serves-console.md](0028-receiver-serves-console.md)
 - [docs/design/ui-fit-gap-and-implementation-plan-2026-03-12.md](../design/ui-fit-gap-and-implementation-plan-2026-03-12.md)
