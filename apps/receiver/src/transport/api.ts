@@ -2,6 +2,9 @@ import Anthropic from "@anthropic-ai/sdk";
 import { Hono } from "hono";
 import { DiagnosisResultSchema, type DiagnosisResult } from "@3amoncall/core";
 import type { StorageDriver } from "../storage/interface.js";
+import type { SpanBuffer } from "../ambient/span-buffer.js";
+import { computeServices } from "../ambient/service-aggregator.js";
+import { computeActivity } from "../ambient/service-aggregator.js";
 
 const CHAT_MAX_HISTORY = 10;
 const CHAT_MAX_MESSAGE_CHARS = 500;
@@ -54,7 +57,7 @@ function validateChatBody(body: unknown): { message: string; history: ChatTurn[]
   return { message, history: history as ChatTurn[] };
 }
 
-export function createApiRouter(storage: StorageDriver): Hono {
+export function createApiRouter(storage: StorageDriver, spanBuffer?: SpanBuffer): Hono {
   const app = new Hono();
 
   app.get("/api/incidents", async (c) => {
@@ -163,6 +166,21 @@ export function createApiRouter(storage: StorageDriver): Hono {
       .join("");
 
     return c.json({ reply });
+  });
+
+  // ── Ambient read-model routes (ADR 0029) ─────────────────────────────────────
+
+  app.get("/api/services", (c) => {
+    if (!spanBuffer) return c.json([]);
+    return c.json(computeServices(spanBuffer.getAll(), Date.now()));
+  });
+
+  app.get("/api/activity", (c) => {
+    if (!spanBuffer) return c.json([]);
+    const limitStr = c.req.query("limit");
+    const rawLimit = limitStr !== undefined ? parseInt(limitStr, 10) : 20;
+    const limit = Number.isNaN(rawLimit) ? 20 : Math.min(Math.max(rawLimit, 1), 100);
+    return c.json(computeActivity(spanBuffer.getAll(), limit));
   });
 
   return app;
