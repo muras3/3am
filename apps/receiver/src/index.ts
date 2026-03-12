@@ -7,6 +7,7 @@ import type { StorageDriver } from "./storage/interface.js";
 import { MemoryAdapter } from "./storage/adapters/memory.js";
 import { createIngestRouter } from "./transport/ingest.js";
 import { createApiRouter } from "./transport/api.js";
+import { SpanBuffer } from "./ambient/span-buffer.js";
 
 export type { StorageDriver } from "./storage/interface.js";
 export type { Incident, IncidentPage } from "./storage/interface.js";
@@ -18,6 +19,8 @@ export interface AppOptions {
    *  Can also be set via CONSOLE_DIST_PATH env var.
    */
   consoleDist?: string;
+  /** SpanBuffer instance for the ambient read model (ADR 0029). */
+  spanBuffer?: SpanBuffer;
 }
 
 export function createApp(storage?: StorageDriver, options?: AppOptions): Hono {
@@ -43,8 +46,10 @@ export function createApp(storage?: StorageDriver, options?: AppOptions): Hono {
     app.use("/api/diagnosis/*", bearerAuth({ token: authToken }));
   }
 
-  app.route("/", createIngestRouter(store));
-  app.route("/", createApiRouter(store));
+  // Auto-create SpanBuffer if not provided (ADR 0029: always active in production)
+  const spanBuffer = options?.spanBuffer ?? new SpanBuffer();
+  app.route("/", createIngestRouter(store, spanBuffer));
+  app.route("/", createApiRouter(store, spanBuffer));
 
   // Static serving for the Console SPA (ADR 0028)
   const consoleDist = options?.consoleDist ?? process.env["CONSOLE_DIST_PATH"];

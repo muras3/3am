@@ -4,6 +4,7 @@ import { gunzip } from "node:zlib";
 import { Hono, type Context } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import type { StorageDriver } from "../storage/interface.js";
+import type { SpanBuffer } from "../ambient/span-buffer.js";
 import {
   extractSpans,
   isAnomalous,
@@ -89,7 +90,7 @@ async function decodeOtlpBody(
   return c.json({ error: "unsupported Content-Type" }, 415);
 }
 
-export function createIngestRouter(storage: StorageDriver): Hono {
+export function createIngestRouter(storage: StorageDriver, spanBuffer?: SpanBuffer): Hono {
   const app = new Hono();
 
   app.use(
@@ -106,6 +107,7 @@ export function createIngestRouter(storage: StorageDriver): Hono {
     const { body } = result;
 
     const spans = extractSpans(body);
+    spans.forEach((span) => spanBuffer?.push({ ...span, ingestedAt: Date.now() }));
     const anomalousSpans = spans.filter(isAnomalous);
 
     if (anomalousSpans.length === 0) {
