@@ -18,6 +18,11 @@ export default defineConfig({
     trace: "on-first-retry",
   },
 
+  // Platform-agnostic snapshot path: same baseline works on macOS + Linux CI.
+  // Omitting {platform} avoids "missing snapshot" failures when baselines are
+  // committed from macOS and compared on Ubuntu in CI.
+  snapshotPathTemplate: "{testDir}/{testFilePath}-snapshots/{arg}-{projectName}{ext}",
+
   projects: [
     {
       name: "chromium",

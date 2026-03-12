@@ -123,3 +123,9 @@ jobs:
         env:
           CI: true
           RECEIVER_AUTH_TOKEN: e2e-test-token
+
+      - name: E2E tests — receiver-served
+        run: pnpm --filter @3amoncall/console e2e:receiver-served
+        env:
+          CI: true
+          RECEIVER_AUTH_TOKEN: e2e-test-token
