@@ -50,7 +50,7 @@ export function buildIncidentWorkspaceVM(
 export function buildEvidenceStudioVM(incident: Incident): EvidenceStudioVM {
   return {
     proofCards: buildProofCards(incident.packet, incident.diagnosisResult),
-    componentFlow: buildComponentFlow(incident.packet),
+    componentFlow: buildComponentFlow(incident.packet, incident.diagnosisResult),
   };
 }
 
@@ -83,20 +83,16 @@ function buildProofCards(
   const hasPlatformEvents = packet.evidence.platformEvents.length > 0;
   const hasTraces = packet.evidence.representativeTraces.length > 0;
 
-  // Degrade path 6: platform/logs/metrics all empty → use representative traces as sourceFamily
-  // Degrade path 1: diagnosis present + evidence sparse → diagnosis-led
-  let evidenceSource: string;
-  if (hasMetrics) {
-    evidenceSource = "metrics";
-  } else if (hasLogs) {
-    evidenceSource = "logs";
-  } else if (hasPlatformEvents) {
-    evidenceSource = "platform-logs";
-  } else if (hasTraces) {
-    evidenceSource = "traces";
-  } else {
-    evidenceSource = "diagnosis";
-  }
+  // Base evidence source used when no more specific source applies (degrade path 6)
+  const baseEvidenceSource = hasMetrics
+    ? "metrics"
+    : hasLogs
+      ? "logs"
+      : hasPlatformEvents
+        ? "platform-logs"
+        : hasTraces
+          ? "traces"
+          : "diagnosis";
 
   const firstSignal = packet.triggerSignals[0];
   const firstDep = packet.scope.affectedDependencies[0];
@@ -105,7 +101,7 @@ function buildProofCards(
   const firstWatch = dr?.operator_guidance.watch_items[0];
   const firstTrace = packet.evidence.representativeTraces[0];
 
-  // Card 1: External Trigger
+  // Card 1: External Trigger — per-card sourceFamily based on actual data used
   const card1: ProofCardVM = {
     label: "External Trigger",
     proof:
@@ -113,65 +109,91 @@ function buildProofCards(
       firstSignal?.signal ??
       firstDep ??
       "Unknown trigger",
-    sourceFamily: dr ? "diagnosis" : evidenceSource,
+    sourceFamily: externalStep
+      ? "diagnosis"
+      : firstSignal
+        ? "triggers"
+        : baseEvidenceSource,
     detail: externalStep?.detail ?? firstSignal?.entity ?? "",
   };
 
-  // Card 2: Design Gap
+  // Card 2: Design Gap — per-card sourceFamily
   const card2: ProofCardVM = {
     label: "Design Gap",
     proof:
       designStep?.title ??
       dr?.recommendation.action_rationale_short ??
       "Design gap analysis pending",
-    sourceFamily: dr ? "diagnosis" : evidenceSource,
+    sourceFamily: designStep ?? dr?.recommendation ? "diagnosis" : baseEvidenceSource,
     detail: designStep?.detail ?? "",
   };
 
-  // Card 3: Recovery Signal — prefer watch_items, degrade to traces
+  // Card 3: Recovery Signal — per-card sourceFamily based on actual data used
   let recoveryProof: string;
+  let card3SourceFamily: string;
+
   if (firstWatch) {
     recoveryProof = `${firstWatch.label}: ${firstWatch.state}`;
+    card3SourceFamily = "operator-guidance";
   } else if (dr) {
     recoveryProof = dr.summary.what_happened;
+    card3SourceFamily = "diagnosis";
   } else if (firstTrace) {
     recoveryProof = `${firstTrace.serviceName} span: ${firstTrace.httpStatusCode ?? firstTrace.spanStatusCode}`;
+    card3SourceFamily = "traces";
   } else {
     recoveryProof = "Recovery signal pending";
+    card3SourceFamily = baseEvidenceSource;
   }
 
   const card3: ProofCardVM = {
     label: "Recovery Signal",
     proof: recoveryProof,
-    sourceFamily: evidenceSource,
+    sourceFamily: card3SourceFamily,
     detail: firstWatch?.status ?? "",
   };
 
   return [card1, card2, card3];
 }
 
-function buildComponentFlow(packet: IncidentPacket): ComponentFlowVM {
+function buildComponentFlow(
+  packet: IncidentPacket,
+  dr?: DiagnosisResult,
+): ComponentFlowVM {
   const nodes: ComponentFlowVM["nodes"] = [];
   const edges: ComponentFlowVM["edges"] = [];
 
-  // Primary service is always a "cause" node (or "spread" if deps exist)
+  // Primary service is "spread" when it has upstream deps, "cause" otherwise
   nodes.push({
     id: packet.scope.primaryService,
     label: packet.scope.primaryService,
     role: packet.scope.affectedDependencies.length > 0 ? "spread" : "cause",
   });
 
-  // Dependencies are "cause" nodes — they trigger the primary service degradation
+  // Dependencies are "cause" nodes — they trigger primary service degradation
   for (const dep of packet.scope.affectedDependencies) {
     nodes.push({ id: dep, label: dep, role: "cause" });
     edges.push({ from: dep, to: packet.scope.primaryService });
   }
 
-  // Affected services (excluding primary) are "impact" nodes
-  for (const svc of packet.scope.affectedServices) {
-    if (svc !== packet.scope.primaryService) {
-      nodes.push({ id: svc, label: svc, role: "impact" });
-      edges.push({ from: packet.scope.primaryService, to: svc });
+  // Impact nodes from scope.affectedServices (excluding primary)
+  const scopeImpactServices = packet.scope.affectedServices.filter(
+    (svc) => svc !== packet.scope.primaryService,
+  );
+
+  for (const svc of scopeImpactServices) {
+    nodes.push({ id: svc, label: svc, role: "impact" });
+    edges.push({ from: packet.scope.primaryService, to: svc });
+  }
+
+  // Degrade: if affectedServices is sparse, supplement impact nodes from causal chain
+  if (scopeImpactServices.length === 0 && dr) {
+    for (const step of dr.reasoning.causal_chain) {
+      if (step.type === "impact") {
+        const nodeId = `chain-impact:${step.title}`;
+        nodes.push({ id: nodeId, label: step.title, role: "impact" });
+        edges.push({ from: packet.scope.primaryService, to: nodeId });
+      }
     }
   }
 

@@ -145,6 +145,11 @@ describe("buildEvidenceStudioVM", () => {
     expect(vm.proofCards[2]?.proof).toBe(`${firstWatch.label}: ${firstWatch.state}`);
   });
 
+  it("recovery card sourceFamily is operator-guidance when watch_items available", () => {
+    const vm = buildEvidenceStudioVM(testIncident);
+    expect(vm.proofCards[2]?.sourceFamily).toBe("operator-guidance");
+  });
+
   it("componentFlow includes nodes for dependencies and impact services", () => {
     const vm = buildEvidenceStudioVM(testIncident);
     const nodeIds = vm.componentFlow.nodes.map((n) => n.id);
@@ -152,5 +157,35 @@ describe("buildEvidenceStudioVM", () => {
     for (const dep of testPacket.scope.affectedDependencies) {
       expect(nodeIds).toContain(dep);
     }
+  });
+
+  it("componentFlow includes edges between nodes", () => {
+    const vm = buildEvidenceStudioVM(testIncident);
+    expect(vm.componentFlow.edges.length).toBeGreaterThan(0);
+    // Dep edges point to primary service
+    const depEdges = vm.componentFlow.edges.filter(
+      (e) => e.to === testPacket.scope.primaryService,
+    );
+    expect(depEdges.length).toBe(testPacket.scope.affectedDependencies.length);
+  });
+
+  // Degrade path for impact nodes: affectedServices sparse → supplement from causal chain
+  it("adds impact nodes from causal chain when affectedServices only contains primaryService", () => {
+    const incident = makeIncident({
+      packet: {
+        ...testPacket,
+        scope: {
+          ...testPacket.scope,
+          affectedServices: [testPacket.scope.primaryService],
+        },
+      },
+    });
+    const vm = buildEvidenceStudioVM(incident);
+    const impactNodes = vm.componentFlow.nodes.filter((n) => n.role === "impact");
+    // testDiagnosis causal_chain has one "impact" step ("Revenue loss")
+    expect(impactNodes.length).toBeGreaterThan(0);
+    expect(
+      vm.componentFlow.edges.some((e) => e.from === testPacket.scope.primaryService),
+    ).toBe(true);
   });
 });

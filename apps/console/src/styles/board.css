@@ -262,9 +262,17 @@
   font-size:var(--fs-xs); font-weight:600;
   border:1px solid var(--line);
 }
-.flow-node-cause { border-color:rgba(184,134,11,0.3); color:var(--amber); background:var(--amber-soft); }
-.flow-node-spread { border-color:rgba(26,26,26,0.14); color:var(--ink-2); background:var(--panel); }
-.flow-node-impact { border-color:rgba(13,115,119,0.2); color:var(--teal); background:var(--teal-soft); }
+.flow-node-cause { border-color:var(--amber-soft); color:var(--amber); background:var(--amber-soft); }
+.flow-node-spread { border-color:var(--line); color:var(--ink-2); background:var(--panel); }
+.flow-node-impact { border-color:var(--teal-soft); color:var(--teal); background:var(--teal-soft); }
+.flow-edges { display:flex; flex-direction:column; gap:2px; margin-top:4px; }
+.flow-edge {
+  display:flex; align-items:center; gap:4px;
+  font-size:var(--fs-xxs); color:var(--ink-3);
+}
+.flow-edge-from { font-weight:600; color:var(--ink-2); }
+.flow-edge-arrow { color:var(--ink-3); }
+.flow-edge-to { color:var(--ink-2); }
 
 /* Tabs */
 .evidence-tabs {

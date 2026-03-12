@@ -9,9 +9,6 @@ export function ImmediateAction({ action }: Props) {
     <section className="section-action" data-section="action">
       <div className="eyebrow">Immediate Action</div>
       <div className="action-text">{action.primaryText}</div>
-      <div className="action-why">
-        <strong>Why:</strong> {action.rationale}
-      </div>
       <div
         style={{
           marginTop: "8px",

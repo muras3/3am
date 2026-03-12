@@ -26,6 +26,17 @@ export function ComponentFlow({ flow }: Props) {
           </div>
         ))}
       </div>
+      {flow.edges.length > 0 && (
+        <div className="flow-edges">
+          {flow.edges.map((edge, i) => (
+            <div key={i} className="flow-edge">
+              <span className="flow-edge-from">{edge.from}</span>
+              <span className="flow-edge-arrow">→</span>
+              <span className="flow-edge-to">{edge.to}</span>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

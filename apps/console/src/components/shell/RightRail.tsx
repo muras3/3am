@@ -73,7 +73,7 @@ export function RightRail({ incidentId, diagnosisResult }: Props) {
             </div>
           </>
         ) : (
-          <div className="chat-messages" aria-live="polite" data-rail-section="chat">
+          <div className="chat-messages" aria-live="polite">
             {history.map((turn, i) => (
               <div key={i} className={`chat-bubble chat-bubble-${turn.role}`}>
                 {turn.content}
