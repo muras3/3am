@@ -1,5 +1,6 @@
 import { lazy, Suspense, useState } from "react";
 import type { Incident } from "../../api/types.js";
+import type { EvidenceEntryVM } from "../../lib/viewmodels/index.js";
 import {
   buildIncidentWorkspaceVM,
   buildEvidenceStudioVM,
@@ -27,18 +28,28 @@ export function IncidentBoard({ incident }: Props) {
   const vm = buildIncidentWorkspaceVM(incident);
   const studioVM = buildEvidenceStudioVM(incident);
 
-  if (!vm) {
-    return <DiagnosisPending />;
-  }
+  // EvidenceEntry counts come from the packet directly — always available regardless
+  // of diagnosis state, so operators can inspect raw OTel data while LLM runs.
+  const evidenceVM: EvidenceEntryVM = vm?.evidence ?? {
+    traces: incident.packet.evidence.representativeTraces.length,
+    metrics: incident.packet.evidence.changedMetrics.length,
+    logs: incident.packet.evidence.relevantLogs.length,
+  };
 
   return (
     <>
-      <WhatHappened incident={incident} />
-      <ImmediateAction action={vm.action} />
-      <RecoveryCard recovery={vm.recovery} />
-      <CauseCard cause={vm.cause} />
+      {vm ? (
+        <>
+          <WhatHappened headline={vm.headline} chips={vm.chips} />
+          <ImmediateAction action={vm.action} />
+          <RecoveryCard recovery={vm.recovery} />
+          <CauseCard cause={vm.cause} />
+        </>
+      ) : (
+        <DiagnosisPending />
+      )}
       <EvidenceEntry
-        evidence={vm.evidence}
+        evidence={evidenceVM}
         onOpenStudio={() => setStudioOpen(true)}
       />
       {studioOpen && (

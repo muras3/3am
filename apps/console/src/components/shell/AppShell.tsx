@@ -6,6 +6,7 @@ import { useRouterState } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { incidentQueries } from "../../api/queries.js";
+import { buildIncidentWorkspaceVM } from "../../lib/viewmodels/index.js";
 import type { Incident } from "../../api/types.js";
 
 export function AppShell({ children }: { children: ReactNode }) {
@@ -26,6 +27,9 @@ export function AppShell({ children }: { children: ReactNode }) {
       ? queryClient.getQueryData<Incident>(incidentQueries.detail(currentIncidentId).queryKey)
       : undefined;
   const currentIncident = listIncident ?? cachedIncident;
+  const copilotVM = currentIncident
+    ? buildIncidentWorkspaceVM(currentIncident)?.copilot
+    : undefined;
 
   return (
     <div className="app">
@@ -36,6 +40,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         <RightRail
           incidentId={currentIncidentId ?? ""}
           diagnosisResult={currentIncident?.diagnosisResult}
+          copilotVM={copilotVM}
         />
       </div>
     </div>

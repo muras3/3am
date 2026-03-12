@@ -1,4 +1,11 @@
 import type { IncidentPacket, DiagnosisResult } from "@3amoncall/core";
+
+type RecoveryStatus = "watch" | "ok" | "alert";
+const VALID_RECOVERY_STATUSES: ReadonlyArray<string> = ["watch", "ok", "alert"];
+
+function toRecoveryStatus(raw: string): RecoveryStatus {
+  return VALID_RECOVERY_STATUSES.includes(raw) ? (raw as RecoveryStatus) : "watch";
+}
 import type { Incident } from "../../api/types.js";
 import type {
   IncidentWorkspaceVM,
@@ -27,7 +34,7 @@ export function buildIncidentWorkspaceVM(
       items: dr.operator_guidance.watch_items.map((item) => ({
         look: item.label,
         means: item.state,
-        status: item.status as "watch" | "ok" | "alert",
+        status: toRecoveryStatus(item.status),
       })),
     },
     cause: {

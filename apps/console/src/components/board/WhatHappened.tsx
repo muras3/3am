@@ -1,31 +1,19 @@
-import type { Incident } from "../../api/types.js";
+import type { ChipVM } from "../../lib/viewmodels/index.js";
 import { Chip } from "../common/Chip.js";
 
 interface Props {
-  incident: Incident;
+  headline: string;
+  chips: ChipVM[];
 }
 
-export function WhatHappened({ incident }: Props) {
-  const dr = incident.diagnosisResult;
-  if (!dr) return null;
-
-  const hasDeps = incident.packet.scope.affectedDependencies.length > 0;
-  const confLower = dr.confidence.confidence_assessment.toLowerCase();
-  const confLevel = confLower.includes("high")
-    ? "high"
-    : confLower.includes("medium")
-      ? "medium"
-      : "low";
-
+export function WhatHappened({ headline, chips }: Props) {
   return (
     <section className="section-what" data-section="what-broke">
-      <div className="headline">{dr.summary.what_happened}</div>
+      <div className="headline">{headline}</div>
       <div className="impact-chips">
-        {/* Phase D simplification: all incidents diagnosed by this system affect the customer-facing path.
-            Phase E: derive this from packet.scope or diagnosisResult metadata. */}
-        <Chip label="customer-facing" variant="critical" />
-        {hasDeps && <Chip label="external dependency" variant="external" />}
-        <Chip label={`confidence: ${confLevel}`} variant="system" />
+        {chips.map((chip, i) => (
+          <Chip key={i} label={chip.label} variant={chip.kind} />
+        ))}
       </div>
     </section>
   );
