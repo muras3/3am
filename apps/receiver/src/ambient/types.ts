@@ -11,6 +11,12 @@ export type ServiceSurface = {
   /** service.name */
   name: string
   health: 'healthy' | 'degraded' | 'critical'
+  /**
+   * Average requests per second over the full 5-minute TTL window (ADR 0029).
+   * This is a smoothed window average, not an instantaneous rate.
+   * Note: trend bucket values and reqPerSec may diverge for clock-skewed spans
+   * where startTimeMs is older than the 6-minute trend window but ingestedAt is within TTL.
+   */
   reqPerSec: number
   p95Ms: number
   /** Error rate in range 0.0–1.0 */

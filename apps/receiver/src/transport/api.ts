@@ -3,8 +3,7 @@ import { Hono } from "hono";
 import { DiagnosisResultSchema, type DiagnosisResult } from "@3amoncall/core";
 import type { StorageDriver } from "../storage/interface.js";
 import type { SpanBuffer } from "../ambient/span-buffer.js";
-import { computeServices } from "../ambient/service-aggregator.js";
-import { computeActivity } from "../ambient/service-aggregator.js";
+import { computeServices, computeActivity } from "../ambient/service-aggregator.js";
 
 const CHAT_MAX_HISTORY = 10;
 const CHAT_MAX_MESSAGE_CHARS = 500;
