@@ -1,17 +1,16 @@
-import type { DiagnosisResult } from "../../api/types.js";
+import type { ActionVM } from "../../lib/viewmodels/index.js";
 
 interface Props {
-  diagnosisResult: DiagnosisResult;
+  action: ActionVM;
 }
 
-export function ImmediateAction({ diagnosisResult }: Props) {
-  const { recommendation } = diagnosisResult;
+export function ImmediateAction({ action }: Props) {
   return (
-    <section className="section-action">
+    <section className="section-action" data-section="action">
       <div className="eyebrow">Immediate Action</div>
-      <div className="action-text">{recommendation.immediate_action}</div>
+      <div className="action-text">{action.primaryText}</div>
       <div className="action-why">
-        <strong>Why:</strong> {recommendation.action_rationale_short}
+        <strong>Why:</strong> {action.rationale}
       </div>
       <div
         style={{
@@ -20,7 +19,7 @@ export function ImmediateAction({ diagnosisResult }: Props) {
           color: "var(--accent-text)",
         }}
       >
-        <strong>Do not:</strong> {recommendation.do_not}
+        <strong>Do not:</strong> {action.doNot}
       </div>
     </section>
   );

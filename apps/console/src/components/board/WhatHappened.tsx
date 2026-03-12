@@ -18,7 +18,7 @@ export function WhatHappened({ incident }: Props) {
       : "low";
 
   return (
-    <section className="section-what">
+    <section className="section-what" data-section="what-broke">
       <div className="headline">{dr.summary.what_happened}</div>
       <div className="impact-chips">
         {/* Phase D simplification: all incidents diagnosed by this system affect the customer-facing path.

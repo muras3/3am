@@ -1,4 +1,4 @@
-import type { DiagnosisResult } from "../../api/types.js";
+import type { RecoveryVM } from "../../lib/viewmodels/index.js";
 
 const STATUS_CLASS: Record<string, string> = {
   watch: "ws-watch",
@@ -7,23 +7,22 @@ const STATUS_CLASS: Record<string, string> = {
 };
 
 interface Props {
-  diagnosisResult: DiagnosisResult;
+  recovery: RecoveryVM;
 }
 
-export function MitigationWatch({ diagnosisResult }: Props) {
-  const { watch_items } = diagnosisResult.operator_guidance;
+export function RecoveryCard({ recovery }: Props) {
   return (
-    <div className="bottom-card">
+    <section className="section-recovery" data-section="recovery">
       <div className="card-title">Mitigation Watch</div>
-      {watch_items.map((item, i) => (
+      {recovery.items.map((item, i) => (
         <div key={i} className="watch-row">
-          <div className="wl">{item.label}</div>
-          <div className="wv">{item.state}</div>
+          <div className="wl">{item.look}</div>
+          <div className="wv">{item.means}</div>
           <div className={`ws ${STATUS_CLASS[item.status] ?? "ws-lagging"}`}>
             {item.status}
           </div>
         </div>
       ))}
-    </div>
+    </section>
   );
 }

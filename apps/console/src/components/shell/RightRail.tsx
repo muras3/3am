@@ -56,15 +56,16 @@ export function RightRail({ incidentId, diagnosisResult }: Props) {
           <DiagnosisPending />
         ) : history.length === 0 ? (
           <>
-            <div className="diagnosis-card primary">
-              <div className="d-label">Confidence Assessment</div>
-              <div className="d-main">{diagnosisResult.confidence.confidence_assessment}</div>
-            </div>
-            <div className="diagnosis-card">
+            {/* Trust order: uncertainty first, confidence second, operator-check third */}
+            <div className="diagnosis-card" data-rail-section="uncertainty">
               <div className="d-label">Uncertainty</div>
               <div className="d-main">{diagnosisResult.confidence.uncertainty}</div>
             </div>
-            <div className="diagnosis-card">
+            <div className="diagnosis-card primary" data-rail-section="confidence">
+              <div className="d-label">Confidence Assessment</div>
+              <div className="d-main">{diagnosisResult.confidence.confidence_assessment}</div>
+            </div>
+            <div className="diagnosis-card" data-rail-section="operator-check">
               <div className="d-label">Operator Check</div>
               <div className="d-main">
                 {diagnosisResult.operator_guidance.operator_checks[0] ?? "\u2014"}
@@ -72,7 +73,7 @@ export function RightRail({ incidentId, diagnosisResult }: Props) {
             </div>
           </>
         ) : (
-          <div className="chat-messages" aria-live="polite">
+          <div className="chat-messages" aria-live="polite" data-rail-section="chat">
             {history.map((turn, i) => (
               <div key={i} className={`chat-bubble chat-bubble-${turn.role}`}>
                 {turn.content}
@@ -88,7 +89,7 @@ export function RightRail({ incidentId, diagnosisResult }: Props) {
           </div>
         )}
       </div>
-      <div className="copilot-footer">
+      <div className="copilot-footer" data-rail-section="chat">
         {diagnosisResult && (
           <>
             <div className="ask-label">Ask About</div>
