@@ -1,6 +1,7 @@
 import { useRef, useState, useEffect } from "react";
 import { useMutation } from "@tanstack/react-query";
 import type { DiagnosisResult } from "../../api/types.js";
+import type { CopilotVM } from "../../lib/viewmodels/index.js";
 import { sendChatMessage, type ChatTurn } from "../../api/queries.js";
 import { DiagnosisPending } from "../common/DiagnosisPending.js";
 
@@ -13,9 +14,10 @@ const QUICK_PROMPTS = [
 interface Props {
   incidentId: string;
   diagnosisResult?: DiagnosisResult;
+  copilotVM?: CopilotVM;
 }
 
-export function RightRail({ incidentId, diagnosisResult }: Props) {
+export function RightRail({ incidentId, diagnosisResult, copilotVM }: Props) {
   const [history, setHistory] = useState<ChatTurn[]>([]);
   const [input, setInput] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -56,18 +58,26 @@ export function RightRail({ incidentId, diagnosisResult }: Props) {
           <DiagnosisPending />
         ) : history.length === 0 ? (
           <>
-            <div className="diagnosis-card primary">
-              <div className="d-label">Confidence Assessment</div>
-              <div className="d-main">{diagnosisResult.confidence.confidence_assessment}</div>
-            </div>
-            <div className="diagnosis-card">
+            {/* Trust order: uncertainty first, confidence second, operator-check third.
+                Prefer copilotVM (derived from VM layer) when available. */}
+            <div className="diagnosis-card" data-rail-section="uncertainty">
               <div className="d-label">Uncertainty</div>
-              <div className="d-main">{diagnosisResult.confidence.uncertainty}</div>
+              <div className="d-main">
+                {copilotVM?.uncertainty ?? diagnosisResult.confidence.uncertainty}
+              </div>
             </div>
-            <div className="diagnosis-card">
+            <div className="diagnosis-card primary" data-rail-section="confidence">
+              <div className="d-label">Confidence Assessment</div>
+              <div className="d-main">
+                {copilotVM?.confidence ?? diagnosisResult.confidence.confidence_assessment}
+              </div>
+            </div>
+            <div className="diagnosis-card" data-rail-section="operator-check">
               <div className="d-label">Operator Check</div>
               <div className="d-main">
-                {diagnosisResult.operator_guidance.operator_checks[0] ?? "\u2014"}
+                {copilotVM?.operatorCheck ??
+                  diagnosisResult.operator_guidance.operator_checks[0] ??
+                  "\u2014"}
               </div>
             </div>
           </>
@@ -88,7 +98,7 @@ export function RightRail({ incidentId, diagnosisResult }: Props) {
           </div>
         )}
       </div>
-      <div className="copilot-footer">
+      <div className="copilot-footer" data-rail-section="chat">
         {diagnosisResult && (
           <>
             <div className="ask-label">Ask About</div>

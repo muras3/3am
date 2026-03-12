@@ -1,9 +1,5 @@
 import { Fragment } from "react";
-import type { CausalChainStep } from "../../api/types.js";
-
-interface Props {
-  steps: CausalChainStep[];
-}
+import type { CauseVM } from "../../lib/viewmodels/index.js";
 
 function Connector() {
   return (
@@ -16,19 +12,26 @@ function Connector() {
   );
 }
 
-export function CausalChain({ steps }: Props) {
+interface Props {
+  cause: CauseVM;
+}
+
+export function CauseCard({ cause }: Props) {
   return (
-    <section className="section-chain">
-      <div className="label">Why This Action</div>
+    <section className="section-cause" data-section="cause">
+      <div className="label">Root Cause</div>
+      {cause.hypothesis && (
+        <div className="cause-hypothesis">{cause.hypothesis}</div>
+      )}
       <div className="chain-flow">
-        {steps.map((step, i) => (
+        {cause.chain.map((step, i) => (
           <Fragment key={`${step.type}-${i}`}>
             <div className="chain-step" data-type={step.type}>
               <div className="step-tag">{step.type}</div>
               <div className="step-main">{step.title}</div>
               <div className="step-meta">{step.detail}</div>
             </div>
-            {i < steps.length - 1 && <Connector />}
+            {i < cause.chain.length - 1 && <Connector />}
           </Fragment>
         ))}
       </div>

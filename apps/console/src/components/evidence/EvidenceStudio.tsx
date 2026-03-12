@@ -1,17 +1,21 @@
 import { useEffect, useState } from "react";
 import type { Incident } from "../../api/types.js";
+import type { EvidenceStudioVM } from "../../lib/viewmodels/index.js";
 import { EvidenceTabs } from "./EvidenceTabs.js";
 import { TracesView } from "./TracesView.js";
 import { MetricsView } from "./MetricsView.js";
 import { LogsView } from "./LogsView.js";
 import { PlatformLogsView } from "./PlatformLogsView.js";
+import { ProofCards } from "./ProofCards.js";
+import { ComponentFlow } from "./ComponentFlow.js";
 
 interface Props {
   incident: Incident;
+  studioVM: EvidenceStudioVM;
   onClose: () => void;
 }
 
-export function EvidenceStudio({ incident, onClose }: Props) {
+export function EvidenceStudio({ incident, studioVM, onClose }: Props) {
   const [activeTab, setActiveTab] = useState("traces");
 
   useEffect(() => {
@@ -29,7 +33,7 @@ export function EvidenceStudio({ incident, onClose }: Props) {
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      <div className="evidence-modal">
+      <div className="evidence-modal" data-testid="evidence-studio">
         <div className="modal-header">
           <div className="mh-left">
             <div className="mh-eyebrow">Evidence Studio</div>
@@ -41,6 +45,13 @@ export function EvidenceStudio({ incident, onClose }: Props) {
             Close
           </button>
         </div>
+
+        {/* Proof-first: ProofCards and ComponentFlow appear before tabs */}
+        <div className="proof-header">
+          <ProofCards cards={studioVM.proofCards} />
+          <ComponentFlow flow={studioVM.componentFlow} />
+        </div>
+
         <EvidenceTabs activeTab={activeTab} onTabChange={setActiveTab} />
         <div className="evidence-content">
           <div className="evidence-main">
