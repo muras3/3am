@@ -6,6 +6,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig({
   testDir: "./e2e",
+  testMatch: ["specs/**/*.spec.ts"],
   timeout: 30_000,
   retries: process.env["CI"] ? 2 : 0,
   reporter: process.env["CI"] ? "github" : "list",
