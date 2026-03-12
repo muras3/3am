@@ -15,7 +15,7 @@ export default defineConfig({
   globalTeardown: path.resolve(__dirname, "./e2e/global-teardown.ts"),
 
   use: {
-    baseURL: "http://localhost:4319",
+    baseURL: "http://localhost:4321",
     trace: "on-first-retry",
   },
 

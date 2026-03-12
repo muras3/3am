@@ -15,9 +15,9 @@ import path from "path";
 import { fileURLToPath } from "url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const RECEIVER_URL = "http://localhost:4319";
+const RECEIVER_URL = "http://localhost:4321";
 const TOKEN = "e2e-test-token";
-const MOCK_ANTHROPIC_PORT = 4320;
+const MOCK_ANTHROPIC_PORT = 4322;
 const MOCK_ANTHROPIC_REPLY = "Disable the Stripe retry loop immediately to stop the cascade.";
 
 async function waitForReady(url: string, maxMs = 15_000): Promise<void> {
@@ -72,7 +72,7 @@ export default async function globalSetup(): Promise<void> {
     cwd: receiverRoot,
     env: {
       ...process.env,
-      PORT: "4319",
+      PORT: "4321",
       RECEIVER_AUTH_TOKEN: TOKEN,
       ANTHROPIC_BASE_URL: `http://localhost:${MOCK_ANTHROPIC_PORT}`,
       ANTHROPIC_API_KEY: "e2e-mock-key",
