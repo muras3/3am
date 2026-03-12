@@ -7,7 +7,7 @@ import type { StorageDriver } from "./storage/interface.js";
 import { MemoryAdapter } from "./storage/adapters/memory.js";
 import { createIngestRouter } from "./transport/ingest.js";
 import { createApiRouter } from "./transport/api.js";
-import type { SpanBuffer } from "./ambient/span-buffer.js";
+import { SpanBuffer } from "./ambient/span-buffer.js";
 
 export type { StorageDriver } from "./storage/interface.js";
 export type { Incident, IncidentPage } from "./storage/interface.js";
@@ -46,7 +46,8 @@ export function createApp(storage?: StorageDriver, options?: AppOptions): Hono {
     app.use("/api/diagnosis/*", bearerAuth({ token: authToken }));
   }
 
-  const spanBuffer = options?.spanBuffer;
+  // Auto-create SpanBuffer if not provided (ADR 0029: always active in production)
+  const spanBuffer = options?.spanBuffer ?? new SpanBuffer();
   app.route("/", createIngestRouter(store, spanBuffer));
   app.route("/", createApiRouter(store, spanBuffer));
 
