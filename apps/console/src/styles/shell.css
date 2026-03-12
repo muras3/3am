@@ -51,19 +51,58 @@
   font-size:11px; font-weight:600;
 }
 
+/* Status indicator dot — green in normal mode, red pulse in incident mode */
+.status-dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--good);
+  flex-shrink: 0;
+  transition: background 0.3s 0.1s;
+}
+.app[data-mode="incident"] .status-dot {
+  background: var(--accent);
+  animation: status-pulse 1.5s ease-in-out infinite;
+}
+@keyframes status-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 40%, transparent); }
+  50%       { box-shadow: 0 0 0 5px transparent; }
+}
+
+/* Incident context strip — slides in when mode = incident */
+.topbar-incident-context {
+  opacity: 0;
+  transform: translateY(-4px);
+  transition: opacity 0.25s 0.15s, transform 0.25s 0.15s, max-height 0.25s 0.15s;
+  overflow: hidden;
+  max-height: 0;
+  pointer-events: none;
+}
+.app[data-mode="incident"] .topbar-incident-context {
+  opacity: 1;
+  transform: translateY(0);
+  max-height: 32px;
+  pointer-events: auto;
+}
+
 /* ── Main grid ─────────────────────────────────────────────── */
 .main-grid {
-  display:grid;
-  grid-template-columns: 180px 1fr 220px;
-  height:100%; min-height:0;
+  display: grid;
+  grid-template-columns: 180px 1fr var(--right-rail-width, 0px);
+  grid-template-rows: 1fr;
+  height: 100%; min-height: 0;
+  transition: grid-template-columns 0.45s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.app[data-mode="incident"] .main-grid {
+  --right-rail-width: 220px;
 }
 
 /* ── Left rail ─────────────────────────────────────────────── */
 .left-rail {
+  grid-column: 1;
   border-right:1px solid var(--line);
   background:var(--panel);
   display:flex; flex-direction:column;
-  overflow-y:auto;
+  overflow:hidden;
+  position: relative;
 }
 .rail-header {
   padding:12px 14px 8px;
@@ -102,19 +141,317 @@
 .rail-meta-row { display:flex; justify-content:space-between; padding:2px 0; }
 .rail-meta-row strong { color:var(--ink-2); }
 
-/* ── Center: Incident board ────────────────────────────────── */
-.center-board {
-  overflow-y:auto;
-  padding:16px 24px;
-  display:flex; flex-direction:column; gap:16px;
+/* Left rail dual panels — cross-fade on mode change */
+.left-rail-normal,
+.left-rail-incidents {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+}
+.left-rail-normal {
+  opacity: 1;
+  pointer-events: auto;
+  transition: opacity 0.2s;
+}
+.left-rail-incidents {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s 0.1s;
+}
+.app[data-mode="incident"] .left-rail-normal {
+  opacity: 0;
+  pointer-events: none;
+}
+.app[data-mode="incident"] .left-rail-incidents {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* Service rail items (normal mode) */
+.service-rail-item {
+  display: flex; align-items: center; gap: 8px;
+  padding: 7px 14px;
+  border-bottom: 1px solid var(--line);
+  font-size: var(--fs-sm); color: var(--ink-2);
+}
+.service-rail-name { flex: 1; }
+.service-rail-meta {
+  font-family: var(--mono);
+  font-size: var(--fs-xxs);
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+}
+.rail-empty {
+  padding: 12px 14px;
+  font-size: var(--fs-xs);
+  line-height: 1.5;
+  color: var(--ink-3);
+}
+.rail-divider {
+  height: 1px;
+  background: var(--line);
+  margin: 8px 0;
+}
+.rail-incident-entry {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--line);
+  transition: background 0.15s;
+}
+.rail-incident-entry:hover { background: var(--panel-2); }
+.rail-incident-name {
+  flex: 1;
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  color: var(--ink);
+}
+.rail-incident-open {
+  font-size: var(--fs-xxs);
+  color: var(--accent-text);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-weight: 700;
+}
+
+/* ── Center columns — always in DOM, CSS-transitioned ─────── */
+.center-normal,
+.center-incident {
+  grid-column: 2;
+  grid-row: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+/* Normal surface */
+.center-normal {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+  transition: opacity 0.3s, transform 0.3s;
+}
+/* Incident board */
+.center-incident {
+  opacity: 0;
+  transform: translateY(8px);
+  pointer-events: none;
+  transition: opacity 0.3s, transform 0.3s;
+  padding: 16px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  position: relative;
+}
+.app[data-mode="incident"] .center-normal {
+  opacity: 0;
+  transform: translateY(-8px);
+  pointer-events: none;
+}
+.app[data-mode="incident"] .center-incident {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+
+/* ── Normal surface layout ─────────────────────────────────── */
+.normal-surface {
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+/* Lead row: system-level status headline */
+.normal-surface-lead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.normal-surface-indicator {
+  width: 8px; height: 8px; border-radius: 50%;
+  flex-shrink: 0;
+}
+.normal-surface-indicator--ok {
+  background: var(--good);
+  animation: healthy-breathe 3s ease-in-out infinite;
+}
+.normal-surface-indicator--warn { background: var(--accent); }
+.normal-surface-headline {
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  color: var(--ink-2);
+  flex: 1;
+}
+.normal-surface-count {
+  font-size: var(--fs-xs);
+  color: var(--ink-3);
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Service card grid */
+.normal-surface-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.service-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-radius: var(--radius);
+  border: 1px solid var(--line);
+  background: var(--panel);
+}
+.service-card--healthy { background: var(--good-soft); border-color: color-mix(in srgb, var(--good) 15%, transparent); }
+.service-card--degraded { background: var(--accent-soft); border-color: color-mix(in srgb, var(--accent) 20%, transparent); }
+.service-name {
+  font-size: var(--fs-md);
+  color: var(--ink);
+  font-family: var(--font);
+  flex: 1;
+}
+.service-status {
+  font-size: var(--fs-xs);
+  color: var(--ink-3);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.service-metrics {
+  font-family: var(--mono);
+  font-size: var(--fs-xs);
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* Service status dots */
+.service-dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  flex-shrink: 0;
+}
+.service-dot--healthy {
+  background: var(--good);
+  animation: healthy-breathe 3s ease-in-out infinite;
+}
+.service-dot--degraded { background: var(--accent); }
+.service-dot--critical { background: var(--accent); }
+@keyframes healthy-breathe {
+  0%, 100% { opacity: 0.8; }
+  50%       { opacity: 1; }
+}
+
+.incident-entry-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 16px;
+  border: 1px solid color-mix(in srgb, var(--accent) 22%, transparent);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius);
+  background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 8%, transparent) 0%, var(--panel) 100%);
+}
+.incident-entry-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.incident-entry-title {
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  color: var(--ink);
+}
+.incident-entry-text {
+  font-size: var(--fs-xs);
+  color: var(--ink-2);
+  line-height: 1.5;
+}
+.incident-entry-links {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.incident-entry-link {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--accent-soft);
+  color: var(--accent-text);
+  text-decoration: none;
+  font-size: var(--fs-xs);
+  font-weight: 700;
+}
+.incident-entry-link:hover {
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+}
+
+.normal-empty-card {
+  padding: 14px 16px;
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--panel);
+}
+.normal-empty-card--compact {
+  padding: 12px 14px;
+}
+.normal-empty-title {
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  color: var(--ink);
+  margin-bottom: 4px;
+}
+.normal-empty-text {
+  font-size: var(--fs-xs);
+  color: var(--ink-2);
+  line-height: 1.5;
+}
+
+.normal-activity {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.normal-activity-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+.normal-activity-title {
+  font-size: var(--fs-xxs);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--ink-3);
+  font-weight: 700;
+}
+.normal-activity-meta {
+  font-size: var(--fs-xxs);
+  color: var(--ink-3);
+  font-family: var(--mono);
 }
 
 /* ── Right rail: AI Copilot ────────────────────────────────── */
 .right-rail {
+  grid-column: 3;
   border-left:1px solid var(--line);
   background:var(--panel);
   display:flex; flex-direction:column;
-  overflow-y:auto;
+  overflow: hidden;
+  opacity: 0;
+  transition: opacity 0.3s 0.1s;
+}
+.app[data-mode="incident"] .right-rail {
+  opacity: 1;
+  overflow-y: auto;
 }
 .copilot-header {
   padding:12px 14px 8px;
@@ -235,6 +572,17 @@
 }
 .chat-thinking { opacity:0.5; }
 
+.center-incident::after {
+  content: "";
+  position: sticky;
+  display: block;
+  bottom: 0;
+  height: 18px;
+  margin-top: auto;
+  background: linear-gradient(to bottom, transparent, var(--bg));
+  pointer-events: none;
+}
+
 /* ── Common ────────────────────────────────────────────────── */
 .empty-state {
   display:flex; align-items:center; justify-content:center;
@@ -246,4 +594,23 @@
   display:flex; align-items:center; justify-content:center;
   height:100%;
   font-size:var(--fs-md); color:var(--ink-3);
+}
+
+/* ── Accessibility: reduced motion ─────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  .main-grid,
+  .center-normal,
+  .center-incident,
+  .right-rail,
+  .left-rail-normal,
+  .left-rail-incidents,
+  .status-dot,
+  .topbar-incident-context {
+    transition: none;
+    animation: none;
+  }
+  .service-dot--healthy,
+  .normal-surface-indicator--ok {
+    animation: none;
+  }
 }

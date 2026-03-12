@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { gotoFirstIncident } from "./helpers.js";
 
 /**
  * AI Copilot chat E2E tests.
@@ -10,8 +11,7 @@ import { test, expect } from "@playwright/test";
  */
 test.describe("AI Copilot", () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto("/");
-    await page.waitForURL(/\/incidents\//);
+    await gotoFirstIncident(page);
     // Wait for diagnosis data to load so the RightRail shows the chat input
     await expect(page.locator(".right-rail .chat-input-field")).toBeEnabled();
   });

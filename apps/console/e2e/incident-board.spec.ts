@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { gotoFirstIncident } from "./helpers.js";
 
 /**
  * Tests that the IncidentBoard renders correctly for each seeded incident.
@@ -8,9 +9,8 @@ import { test, expect } from "@playwright/test";
  */
 test.describe("IncidentBoard", () => {
   test.beforeEach(async ({ page }) => {
-    // Start from root — it redirects to the first incident and loads all 5 in the rail
-    await page.goto("/");
-    await page.waitForURL(/\/incidents\//);
+    // Navigate to first incident — loads all 5 in the rail (incident mode)
+    await gotoFirstIncident(page);
     // Wait until the list is fully populated
     await expect(page.locator(".incident-item")).toHaveCount(5);
   });

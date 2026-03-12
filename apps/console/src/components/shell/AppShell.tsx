@@ -1,21 +1,47 @@
-import type { ReactNode } from "react";
+import { lazy, Suspense, useEffect, useRef } from "react";
+import { useSearch } from "@tanstack/react-router";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { TopBar } from "./TopBar.js";
 import { LeftRail } from "./LeftRail.js";
 import { RightRail } from "./RightRail.js";
-import { useRouterState } from "@tanstack/react-router";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-
-import { incidentQueries } from "../../api/queries.js";
+import { NormalSurface } from "./NormalSurface.js";
+import { ErrorState } from "../common/ErrorState.js";
+import { ApiError } from "../../api/client.js";
+import { ambientQueries, incidentQueries } from "../../api/queries.js";
 import { buildIncidentWorkspaceVM } from "../../lib/viewmodels/index.js";
 import type { Incident } from "../../api/types.js";
 
-export function AppShell({ children }: { children: ReactNode }) {
-  // Extract incidentId from the URL path — more stable than reading routerState.matches.at(-1)
-  // which would break if a nested route is added between the root and incidents/$incidentId.
-  const pathname = useRouterState({ select: (s) => s.location.pathname });
-  const currentIncidentId = pathname.match(/^\/incidents\/([^/]+)/)?.[1];
+// Lazy-load IncidentBoard (ADR 0025 responsiveness-first)
+const IncidentBoard = lazy(() =>
+  import("../board/IncidentBoard.js").then((m) => ({ default: m.IncidentBoard })),
+);
+
+export function AppShell() {
+  const { incidentId: currentIncidentId } = useSearch({ from: "__root__" });
+  const mode: "normal" | "incident" = currentIncidentId ? "incident" : "normal";
+  const normalInactive = mode === "incident";
+  const incidentInactive = mode === "normal";
+
+  // Focus management: move focus to the newly visible surface on mode change.
+  // tabIndex={-1} makes the divs programmatically focusable without entering tab order.
+  const normalRef = useRef<HTMLDivElement>(null);
+  const incidentRef = useRef<HTMLDivElement>(null);
+  const isFirstRender = useRef(true);
+  useEffect(() => {
+    if (isFirstRender.current) { isFirstRender.current = false; return; }
+    if (mode === "incident") incidentRef.current?.focus();
+    else normalRef.current?.focus();
+  }, [mode]);
 
   const { data: page } = useQuery({ ...incidentQueries.list(), throwOnError: false });
+  const { data: services = [] } = useQuery({
+    ...ambientQueries.services(),
+    throwOnError: false,
+  });
+  const { data: activity = [] } = useQuery({
+    ...ambientQueries.activity(12),
+    throwOnError: false,
+  });
   const incidents = page?.items ?? [];
   const listIncident = incidents.find((i) => i.incidentId === currentIncidentId);
 
@@ -26,17 +52,56 @@ export function AppShell({ children }: { children: ReactNode }) {
     currentIncidentId && !listIncident
       ? queryClient.getQueryData<Incident>(incidentQueries.detail(currentIncidentId).queryKey)
       : undefined;
-  const currentIncident = listIncident ?? cachedIncident;
-  const copilotVM = currentIncident
-    ? buildIncidentWorkspaceVM(currentIncident)?.copilot
-    : undefined;
+  const { data: detailIncident, error: detailError } = useQuery({
+    ...incidentQueries.detail(currentIncidentId ?? ""),
+    enabled: Boolean(currentIncidentId) && !listIncident && !cachedIncident,
+    throwOnError: false,
+    retry: false,
+  });
+  const currentIncident = detailIncident ?? listIncident ?? cachedIncident;
+  const incidentError =
+    detailError instanceof ApiError && detailError.status === 404
+      ? "Incident not found."
+      : detailError instanceof Error
+        ? detailError.message
+        : null;
+  const copilotVM = currentIncident ? buildIncidentWorkspaceVM(currentIncident)?.copilot : undefined;
 
   return (
-    <div className="app">
+    <div className="app" data-mode={mode}>
       <TopBar incident={currentIncident} />
       <div className="main-grid">
-        <LeftRail incidents={incidents} currentIncidentId={currentIncidentId} />
-        <main className="center-board">{children}</main>
+        <LeftRail
+          incidents={incidents}
+          currentIncidentId={currentIncidentId}
+          services={services}
+        />
+        <div
+          ref={normalRef}
+          tabIndex={-1}
+          className="center-normal"
+          aria-hidden={normalInactive}
+          inert={normalInactive}
+          data-surface="normal"
+        >
+          <NormalSurface services={services} activity={activity} incidents={incidents} />
+        </div>
+        <div
+          ref={incidentRef}
+          tabIndex={-1}
+          className="center-incident"
+          aria-hidden={incidentInactive}
+          inert={incidentInactive}
+          data-surface="incident"
+        >
+          <Suspense fallback={null}>
+            {currentIncident
+              ? <IncidentBoard incident={currentIncident} />
+              : incidentError
+                ? <ErrorState message={incidentError} />
+                : null}
+          </Suspense>
+        </div>
         <RightRail
           incidentId={currentIncidentId ?? ""}
           diagnosisResult={currentIncident?.diagnosisResult}

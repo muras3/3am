@@ -15,3 +15,22 @@ export interface IncidentPage {
   items: Incident[];
   nextCursor?: string;
 }
+
+export interface ServiceSurface {
+  name: string;
+  health: "healthy" | "degraded" | "critical";
+  reqPerSec: number;
+  p95Ms: number;
+  errorRate: number;
+  trend: number[];
+}
+
+export interface RecentActivity {
+  ts: number;
+  service: string;
+  route: string;
+  httpStatus?: number;
+  durationMs: number;
+  traceId: string;
+  anomalous: boolean;
+}

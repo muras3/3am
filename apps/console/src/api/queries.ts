@@ -1,6 +1,12 @@
 import { queryOptions } from "@tanstack/react-query";
 import { apiFetch, apiFetchPost } from "./client.js";
-import type { Incident, IncidentPage } from "./types.js";
+import { encodeIncidentId } from "../lib/incidentId.js";
+import type {
+  Incident,
+  IncidentPage,
+  RecentActivity,
+  ServiceSurface,
+} from "./types.js";
 
 export interface ChatTurn {
   role: "user" | "assistant";
@@ -12,7 +18,10 @@ export async function sendChatMessage(
   message: string,
   history: ChatTurn[],
 ): Promise<{ reply: string }> {
-  return apiFetchPost<{ reply: string }>(`/api/chat/${incidentId}`, { message, history });
+  return apiFetchPost<{ reply: string }>(`/api/chat/${encodeIncidentId(incidentId)}`, {
+    message,
+    history,
+  });
 }
 
 export const incidentQueries = {
@@ -26,7 +35,23 @@ export const incidentQueries = {
   detail: (id: string) =>
     queryOptions({
       queryKey: ["incidents", id],
-      queryFn: () => apiFetch<Incident>(`/api/incidents/${id}`),
+      queryFn: () => apiFetch<Incident>(`/api/incidents/${encodeIncidentId(id)}`),
       staleTime: 15_000,
+    }),
+};
+
+export const ambientQueries = {
+  services: () =>
+    queryOptions({
+      queryKey: ["ambient", "services"],
+      queryFn: () => apiFetch<ServiceSurface[]>("/api/services"),
+      staleTime: 15_000,
+    }),
+
+  activity: (limit = 12) =>
+    queryOptions({
+      queryKey: ["ambient", "activity", limit],
+      queryFn: () => apiFetch<RecentActivity[]>(`/api/activity?limit=${limit}`),
+      staleTime: 10_000,
     }),
 };

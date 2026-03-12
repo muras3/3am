@@ -1,42 +1,37 @@
 import { test, expect } from "@playwright/test";
+import { getOpenIncidentCount, gotoFirstIncident } from "./helpers.js";
 
 test.describe("Navigation", () => {
-  test("LeftRail shows 5 incidents", async ({ page }) => {
-    await page.goto("/");
-    // Root route redirects to the first incident
-    await page.waitForURL(/\/incidents\//);
-    // Count incident items rendered in the left rail
+  test("LeftRail shows all open incidents in incident mode", async ({ page }) => {
+    const expectedCount = await getOpenIncidentCount(page);
+    await gotoFirstIncident(page);
+    // Count incident items rendered in the left rail (incident panel is now visible)
     const items = page.locator(".incident-item");
-    await expect(items).toHaveCount(5);
+    await expect(items).toHaveCount(expectedCount);
   });
 
   test("LeftRail items show open status", async ({ page }) => {
-    await page.goto("/");
-    await page.waitForURL(/\/incidents\//);
+    await gotoFirstIncident(page);
     // Each incident-item contains a .sev span that holds the status text ("open")
     const firstSev = page.locator(".incident-item .sev").first();
     await expect(firstSev).toContainText("open");
   });
 
   test("clicking a LeftRail incident navigates to it", async ({ page }) => {
-    await page.goto("/");
-    await page.waitForURL(/\/incidents\//);
+    await gotoFirstIncident(page);
 
     const items = page.locator(".incident-item");
-    // Click the second item (first is already selected)
+    // Click the second item
     await items.nth(1).click();
-    // URL should change to a different incident
-    await page.waitForURL(/\/incidents\//);
+    // URL search param should update to the new incidentId
+    await page.waitForURL(/[?&]incidentId=/);
     // The incident board should be visible
     await expect(page.locator(".section-what")).toBeVisible();
   });
 
   test("deep link to first incident renders board", async ({ page }) => {
-    // The seed script creates incidents whose IDs are assigned by the receiver
-    // (not inc_scenario_01) — navigate via URL after discovering the ID.
-    await page.goto("/");
-    await page.waitForURL(/\/incidents\/(.+)/);
-    // Verify the board loads for the deep-linked URL
+    await gotoFirstIncident(page);
+    // Verify the board loads for the directly-navigated incident
     await expect(page.locator(".section-what")).toBeVisible();
     await expect(page.locator(".section-action")).toBeVisible();
   });
