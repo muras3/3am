@@ -8,9 +8,9 @@ import { test, expect } from "@playwright/test";
  */
 test.describe("IncidentBoard", () => {
   test.beforeEach(async ({ page }) => {
-    // Start from root — it redirects to the first incident and loads all 5 in the rail
+    // Start from root — it redirects to the first incident via search param and loads all 5 in the rail
     await page.goto("/");
-    await page.waitForURL(/\/incidents\//);
+    await page.waitForURL(/[?&]incidentId=/);
     // Wait until the list is fully populated
     await expect(page.locator(".incident-item")).toHaveCount(5);
   });

@@ -11,7 +11,7 @@ import { test, expect } from "@playwright/test";
 test.describe("AI Copilot", () => {
   test.beforeEach(async ({ page }) => {
     await page.goto("/");
-    await page.waitForURL(/\/incidents\//);
+    await page.waitForURL(/[?&]incidentId=/);
     // Wait for diagnosis data to load so the RightRail shows the chat input
     await expect(page.locator(".right-rail .chat-input-field")).toBeEnabled();
   });

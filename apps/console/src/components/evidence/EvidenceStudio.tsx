@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import type { Incident } from "../../api/types.js";
 import type { EvidenceStudioVM } from "../../lib/viewmodels/index.js";
 import { EvidenceTabs } from "./EvidenceTabs.js";
@@ -26,7 +27,7 @@ export function EvidenceStudio({ incident, studioVM, onClose }: Props) {
     return () => window.removeEventListener("keydown", handler);
   }, [onClose]);
 
-  return (
+  return createPortal(
     <div
       className="overlay show"
       onClick={(e) => {
@@ -69,6 +70,7 @@ export function EvidenceStudio({ incident, studioVM, onClose }: Props) {
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

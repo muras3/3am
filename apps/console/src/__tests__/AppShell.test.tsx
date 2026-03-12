@@ -6,10 +6,13 @@ import { incidentQueries } from "../api/queries.js";
 import { testIncident } from "./fixtures.js";
 import type { Incident } from "../api/types.js";
 
-// Mock router so we can control the current pathname
+// Mock router so we can control the current search params.
+// incidentId = "inc_test_001" simulates deep-linking to an incident.
 vi.mock("@tanstack/react-router", () => ({
-  useRouterState: ({ select }: { select: (s: { location: { pathname: string } }) => unknown }) =>
-    select({ location: { pathname: "/incidents/inc_test_001" } }),
+  useSearch: () => ({ incidentId: "inc_test_001" }),
+  Link: ({ children, ...rest }: { children: React.ReactNode; [k: string]: unknown }) => (
+    <a {...(rest as React.AnchorHTMLAttributes<HTMLAnchorElement>)}>{children}</a>
+  ),
 }));
 
 // Lightweight stubs for shell sub-components
@@ -26,6 +29,13 @@ vi.mock("../components/shell/RightRail.js", () => ({
     <div data-testid="right-rail" data-has-diagnosis={diagnosisResult ? "true" : "false"} />
   ),
 }));
+vi.mock("../components/shell/NormalSurface.js", () => ({
+  NormalSurface: () => <div data-testid="normal-surface" />,
+}));
+// IncidentBoard is lazy-loaded via React.lazy in AppShell — stub the module
+vi.mock("../components/board/IncidentBoard.js", () => ({
+  IncidentBoard: () => <div data-testid="incident-board" />,
+}));
 
 function makeClient() {
   return new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -36,39 +46,26 @@ describe("AppShell — detail cache fallback (deep link)", () => {
     const queryClient = makeClient();
     // Simulate: list not yet loaded (items=[]), but detail already in cache
     queryClient.setQueryData(incidentQueries.list().queryKey, { items: [] });
-    queryClient.setQueryData(
-      incidentQueries.detail("inc_test_001").queryKey,
-      testIncident,
-    );
+    queryClient.setQueryData(incidentQueries.detail("inc_test_001").queryKey, testIncident);
 
     render(
       <QueryClientProvider client={queryClient}>
-        <AppShell>
-          <div />
-        </AppShell>
+        <AppShell />
       </QueryClientProvider>,
     );
 
-    expect(screen.getByTestId("top-bar")).toHaveAttribute(
-      "data-incident-id",
-      "inc_test_001",
-    );
-    expect(screen.getByTestId("right-rail")).toHaveAttribute(
-      "data-has-diagnosis",
-      "true",
-    );
+    expect(screen.getByTestId("top-bar")).toHaveAttribute("data-incident-id", "inc_test_001");
+    expect(screen.getByTestId("right-rail")).toHaveAttribute("data-has-diagnosis", "true");
   });
 
   it("falls back to undefined when both list and detail cache are cold", () => {
     const queryClient = makeClient();
     queryClient.setQueryData(incidentQueries.list().queryKey, { items: [] });
-    // detail cache intentionally empty
+    // detail cache intentionally empty — incidentId is in search params but incident is not found
 
     render(
       <QueryClientProvider client={queryClient}>
-        <AppShell>
-          <div />
-        </AppShell>
+        <AppShell />
       </QueryClientProvider>,
     );
 

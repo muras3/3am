@@ -1,4 +1,4 @@
-import { createRootRouteWithContext, Outlet } from "@tanstack/react-router";
+import { createRootRouteWithContext } from "@tanstack/react-router";
 import type { QueryClient } from "@tanstack/react-query";
 import { AppShell } from "../components/shell/AppShell.js";
 
@@ -7,9 +7,8 @@ export interface RouterContext {
 }
 
 export const rootRoute = createRootRouteWithContext<RouterContext>()({
-  component: () => (
-    <AppShell>
-      <Outlet />
-    </AppShell>
-  ),
+  validateSearch: (search: Record<string, unknown>) => ({
+    incidentId: typeof search["incidentId"] === "string" ? search["incidentId"] : undefined,
+  }),
+  component: () => <AppShell />,
 });

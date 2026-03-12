@@ -2,6 +2,7 @@ import type { Incident } from "../../api/types.js";
 
 interface Props {
   incident?: Incident;
+  mode: "normal" | "incident";
 }
 
 export function TopBar({ incident }: Props) {
@@ -12,16 +13,15 @@ export function TopBar({ incident }: Props) {
         3amoncall
       </div>
       <div className="topbar-sep" />
-      {incident ? (
-        <div className="topbar-incident">
-          <span className="id">{incident.incidentId}</span>
-          {incident.packet.scope.primaryService}
-        </div>
-      ) : (
-        <div className="topbar-incident">
-          <span className="id">&mdash;</span>
-        </div>
-      )}
+      <span className="status-dot" />
+      <div className="topbar-incident-context">
+        {incident && (
+          <div className="topbar-incident">
+            <span className="id">{incident.incidentId}</span>
+            {incident.packet.scope.primaryService}
+          </div>
+        )}
+      </div>
       {incident && <div className="severity-badge">Critical</div>}
       <div className="topbar-time" style={{ marginLeft: "auto" }}>
         {incident ? new Date(incident.openedAt).toUTCString().slice(17, 25) + " UTC" : ""}

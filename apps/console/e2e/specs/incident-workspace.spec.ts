@@ -12,7 +12,7 @@ import { test, expect } from "@playwright/test";
 test.describe("Phase 1 product definition gate", () => {
   test.beforeEach(async ({ page }) => {
     await page.goto("/");
-    await page.waitForURL(/\/incidents\//);
+    await page.waitForURL(/[?&]incidentId=/);
     // Wait for the board to render with diagnosis data
     await expect(page.locator("[data-section='what-broke']")).toBeVisible();
   });

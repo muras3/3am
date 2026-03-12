@@ -15,7 +15,7 @@ import { test, expect } from "@playwright/test";
 test.describe("Evidence Studio", () => {
   test.beforeEach(async ({ page }) => {
     await page.goto("/");
-    await page.waitForURL(/\/incidents\//);
+    await page.waitForURL(/[?&]incidentId=/);
     // Wait for the board to fully render before each test
     await expect(page.locator(".section-what")).toBeVisible();
   });
