@@ -79,10 +79,12 @@ test.describe("Phase 2 CSS transition shell", () => {
     await page.emulateMedia({ reducedMotion: "reduce" });
     await gotoNormalMode(page);
 
-    const duration = await page.locator(".center-normal").evaluate((el) =>
-      getComputedStyle(el).transitionDuration,
+    const duration = await page.locator(".center-normal").evaluate(
+      // evaluate runs in browser context; getComputedStyle is a browser global
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (el) => (globalThis as any).getComputedStyle(el).transitionDuration as string,
     );
     // All transition-duration values should be "0s"
-    expect(duration.split(",").every((d) => d.trim() === "0s")).toBe(true);
+    expect(duration.split(",").every((d: string) => d.trim() === "0s")).toBe(true);
   });
 });
