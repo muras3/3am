@@ -1,8 +1,8 @@
 import { render, screen } from "@testing-library/react";
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, afterEach } from "vitest";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { AppShell } from "../components/shell/AppShell.js";
-import { incidentQueries } from "../api/queries.js";
+import { ambientQueries, incidentQueries } from "../api/queries.js";
 import { testIncident } from "./fixtures.js";
 import type { Incident } from "../api/types.js";
 
@@ -41,12 +41,18 @@ function makeClient() {
   return new QueryClient({ defaultOptions: { queries: { retry: false } } });
 }
 
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
+
 describe("AppShell — detail cache fallback (deep link)", () => {
   it("reads currentIncident from detail cache when list query is empty", () => {
     const queryClient = makeClient();
     // Simulate: list not yet loaded (items=[]), but detail already in cache
     queryClient.setQueryData(incidentQueries.list().queryKey, { items: [] });
     queryClient.setQueryData(incidentQueries.detail("inc_test_001").queryKey, testIncident);
+    queryClient.setQueryData(ambientQueries.services().queryKey, []);
+    queryClient.setQueryData(ambientQueries.activity(12).queryKey, []);
 
     render(
       <QueryClientProvider client={queryClient}>
@@ -58,10 +64,15 @@ describe("AppShell — detail cache fallback (deep link)", () => {
     expect(screen.getByTestId("right-rail")).toHaveAttribute("data-has-diagnosis", "true");
   });
 
-  it("falls back to undefined when both list and detail cache are cold", () => {
+  it("shows an explicit not-found state when the deep-linked incident 404s", async () => {
     const queryClient = makeClient();
     queryClient.setQueryData(incidentQueries.list().queryKey, { items: [] });
-    // detail cache intentionally empty — incidentId is in search params but incident is not found
+    queryClient.setQueryData(ambientQueries.services().queryKey, []);
+    queryClient.setQueryData(ambientQueries.activity(12).queryKey, []);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("missing", { status: 404 })),
+    );
 
     render(
       <QueryClientProvider client={queryClient}>
@@ -69,6 +80,7 @@ describe("AppShell — detail cache fallback (deep link)", () => {
       </QueryClientProvider>,
     );
 
+    expect(await screen.findByText("Incident not found.")).toBeInTheDocument();
     expect(screen.getByTestId("top-bar")).toHaveAttribute("data-incident-id", "none");
     expect(screen.getByTestId("right-rail")).toHaveAttribute("data-has-diagnosis", "false");
   });

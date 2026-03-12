@@ -5,7 +5,9 @@ import { TopBar } from "./TopBar.js";
 import { LeftRail } from "./LeftRail.js";
 import { RightRail } from "./RightRail.js";
 import { NormalSurface } from "./NormalSurface.js";
-import { incidentQueries } from "../../api/queries.js";
+import { ErrorState } from "../common/ErrorState.js";
+import { ApiError } from "../../api/client.js";
+import { ambientQueries, incidentQueries } from "../../api/queries.js";
 import { buildIncidentWorkspaceVM } from "../../lib/viewmodels/index.js";
 import type { Incident } from "../../api/types.js";
 
@@ -30,6 +32,14 @@ export function AppShell() {
   }, [mode]);
 
   const { data: page } = useQuery({ ...incidentQueries.list(), throwOnError: false });
+  const { data: services = [] } = useQuery({
+    ...ambientQueries.services(),
+    throwOnError: false,
+  });
+  const { data: activity = [] } = useQuery({
+    ...ambientQueries.activity(12),
+    throwOnError: false,
+  });
   const incidents = page?.items ?? [];
   const listIncident = incidents.find((i) => i.incidentId === currentIncidentId);
 
@@ -40,14 +50,30 @@ export function AppShell() {
     currentIncidentId && !listIncident
       ? queryClient.getQueryData<Incident>(incidentQueries.detail(currentIncidentId).queryKey)
       : undefined;
-  const currentIncident = listIncident ?? cachedIncident;
+  const { data: detailIncident, error: detailError } = useQuery({
+    ...incidentQueries.detail(currentIncidentId ?? ""),
+    enabled: Boolean(currentIncidentId) && !listIncident && !cachedIncident,
+    throwOnError: false,
+    retry: false,
+  });
+  const currentIncident = detailIncident ?? listIncident ?? cachedIncident;
+  const incidentError =
+    detailError instanceof ApiError && detailError.status === 404
+      ? "Incident not found."
+      : detailError instanceof Error
+        ? detailError.message
+        : null;
   const copilotVM = currentIncident ? buildIncidentWorkspaceVM(currentIncident)?.copilot : undefined;
 
   return (
     <div className="app" data-mode={mode}>
       <TopBar incident={currentIncident} />
       <div className="main-grid">
-        <LeftRail incidents={incidents} currentIncidentId={currentIncidentId} />
+        <LeftRail
+          incidents={incidents}
+          currentIncidentId={currentIncidentId}
+          services={services}
+        />
         <div
           ref={normalRef}
           tabIndex={-1}
@@ -55,7 +81,7 @@ export function AppShell() {
           aria-hidden={mode === "incident"}
           data-surface="normal"
         >
-          <NormalSurface />
+          <NormalSurface services={services} activity={activity} incidents={incidents} />
         </div>
         <div
           ref={incidentRef}
@@ -65,7 +91,11 @@ export function AppShell() {
           data-surface="incident"
         >
           <Suspense fallback={null}>
-            {currentIncident && <IncidentBoard incident={currentIncident} />}
+            {currentIncident
+              ? <IncidentBoard incident={currentIncident} />
+              : incidentError
+                ? <ErrorState message={incidentError} />
+                : null}
           </Suspense>
         </div>
         <RightRail
