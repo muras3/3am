@@ -1,38 +1,41 @@
 import { Link } from "@tanstack/react-router";
-import type { Incident } from "../../api/types.js";
-
-const STATIC_SERVICES = [
-  { name: "api-gateway", status: "healthy" },
-  { name: "auth-service", status: "healthy" },
-  { name: "stripe-proxy", status: "degraded" },
-];
+import type { Incident, ServiceSurface } from "../../api/types.js";
 
 interface Props {
   incidents: Incident[];
   currentIncidentId?: string;
+  services: ServiceSurface[];
 }
 
-export function LeftRail({ incidents, currentIncidentId }: Props) {
+function healthLabel(health: ServiceSurface["health"]): string {
+  if (health === "critical") return "critical";
+  if (health === "degraded") return "degraded";
+  return "healthy";
+}
+
+export function LeftRail({ incidents, currentIncidentId, services }: Props) {
   return (
     <aside className="left-rail">
-      {/* Normal mode: service health overview */}
       <div className="left-rail-normal">
         <div className="rail-header">Services</div>
-        {STATIC_SERVICES.map((svc) => (
-          <div key={svc.name} className="service-rail-item">
-            <span className={`service-dot service-dot--${svc.status}`} />
-            <span className="service-rail-name">{svc.name}</span>
-          </div>
-        ))}
-      </div>
+        {services.length === 0 ? (
+          <div className="rail-empty">Ambient service data will appear as traffic flows.</div>
+        ) : (
+          services.map((svc) => (
+            <div key={svc.name} className="service-rail-item">
+              <span className={`service-dot service-dot--${svc.health}`} aria-hidden="true" />
+              <span className="service-rail-name">{svc.name}</span>
+              <span className="service-rail-meta">
+                {Math.round(svc.reqPerSec)}/s · {Math.round(svc.p95Ms)}ms
+              </span>
+            </div>
+          ))
+        )}
 
-      {/* Incident mode: open incident list */}
-      <div className="left-rail-incidents">
+        <div className="rail-divider" />
         <div className="rail-header">Open Incidents</div>
         {incidents.length === 0 ? (
-          <div style={{ padding: "16px 14px", fontSize: "12px", color: "var(--ink-3)" }}>
-            No incidents.
-          </div>
+          <div className="rail-empty">No active incidents.</div>
         ) : (
           incidents.map((inc) => (
             <Link
@@ -41,9 +44,29 @@ export function LeftRail({ incidents, currentIncidentId }: Props) {
               search={{ incidentId: inc.incidentId }}
               style={{ textDecoration: "none", color: "inherit" }}
             >
-              <div
-                className={`incident-item${inc.incidentId === currentIncidentId ? " active" : ""}`}
-              >
+              <div className="rail-incident-entry">
+                <span className={`service-dot service-dot--${healthLabel(inc.packet.severity === "critical" ? "critical" : "degraded")}`} aria-hidden="true" />
+                <span className="rail-incident-name">{inc.packet.scope.primaryService}</span>
+                <span className="rail-incident-open">Open</span>
+              </div>
+            </Link>
+          ))
+        )}
+      </div>
+
+      <div className="left-rail-incidents">
+        <div className="rail-header">Open Incidents</div>
+        {incidents.length === 0 ? (
+          <div className="rail-empty">No incidents.</div>
+        ) : (
+          incidents.map((inc) => (
+            <Link
+              key={inc.incidentId}
+              to="/"
+              search={{ incidentId: inc.incidentId }}
+              style={{ textDecoration: "none", color: "inherit" }}
+            >
+              <div className={`incident-item${inc.incidentId === currentIncidentId ? " active" : ""}`}>
                 <div className="name">
                   {inc.packet.scope.primaryService}
                   <span className={`sev sev-${inc.packet.severity ?? "critical"}`}>
