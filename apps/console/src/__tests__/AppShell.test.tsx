@@ -62,6 +62,8 @@ describe("AppShell — detail cache fallback (deep link)", () => {
 
     expect(screen.getByTestId("top-bar")).toHaveAttribute("data-incident-id", "inc_test_001");
     expect(screen.getByTestId("right-rail")).toHaveAttribute("data-has-diagnosis", "true");
+    expect(document.querySelector("[data-surface='normal']")).toHaveAttribute("inert");
+    expect(document.querySelector("[data-surface='incident']")).not.toHaveAttribute("inert");
   });
 
   it("shows an explicit not-found state when the deep-linked incident 404s", async () => {

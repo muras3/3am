@@ -19,6 +19,8 @@ const IncidentBoard = lazy(() =>
 export function AppShell() {
   const { incidentId: currentIncidentId } = useSearch({ from: "__root__" });
   const mode: "normal" | "incident" = currentIncidentId ? "incident" : "normal";
+  const normalInactive = mode === "incident";
+  const incidentInactive = mode === "normal";
 
   // Focus management: move focus to the newly visible surface on mode change.
   // tabIndex={-1} makes the divs programmatically focusable without entering tab order.
@@ -78,7 +80,8 @@ export function AppShell() {
           ref={normalRef}
           tabIndex={-1}
           className="center-normal"
-          aria-hidden={mode === "incident"}
+          aria-hidden={normalInactive}
+          inert={normalInactive}
           data-surface="normal"
         >
           <NormalSurface services={services} activity={activity} incidents={incidents} />
@@ -87,7 +90,8 @@ export function AppShell() {
           ref={incidentRef}
           tabIndex={-1}
           className="center-incident"
-          aria-hidden={mode === "normal"}
+          aria-hidden={incidentInactive}
+          inert={incidentInactive}
           data-surface="incident"
         >
           <Suspense fallback={null}>

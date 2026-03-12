@@ -74,8 +74,19 @@ test.describe("Phase 2 CSS transition shell", () => {
     await expect(page.locator(".center-incident")).toBeAttached();
   });
 
+  test("inactive surfaces are inert in both modes", async ({ page }) => {
+    await page.goto("/");
+    await page.waitForLoadState("networkidle");
+    await expect(page.locator(".center-incident")).toHaveAttribute("inert", "");
+    await expect(page.locator(".left-rail-incidents")).toHaveAttribute("inert", "");
+
+    await gotoFirstIncident(page);
+    await expect(page.locator(".center-normal")).toHaveAttribute("inert", "");
+    await expect(page.locator(".left-rail-normal")).toHaveAttribute("inert", "");
+  });
+
   test("legacy /incidents/:id URL redirects to /?incidentId=", async ({ page }) => {
-    await page.goto("/incidents/any-id-123");
+    await page.goto("/incidents/inc_legacy_123");
     await page.waitForURL(/[?&]incidentId=/, { timeout: 5000 });
     expect(page.url()).toMatch(/[?&]incidentId=/);
   });

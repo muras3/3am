@@ -1,12 +1,13 @@
 import { test, expect } from "@playwright/test";
-import { gotoFirstIncident } from "./helpers.js";
+import { getOpenIncidentCount, gotoFirstIncident } from "./helpers.js";
 
 test.describe("Navigation", () => {
-  test("LeftRail shows 5 incidents in incident mode", async ({ page }) => {
+  test("LeftRail shows all open incidents in incident mode", async ({ page }) => {
+    const expectedCount = await getOpenIncidentCount(page);
     await gotoFirstIncident(page);
     // Count incident items rendered in the left rail (incident panel is now visible)
     const items = page.locator(".incident-item");
-    await expect(items).toHaveCount(5);
+    await expect(items).toHaveCount(expectedCount);
   });
 
   test("LeftRail items show open status", async ({ page }) => {

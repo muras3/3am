@@ -1,5 +1,6 @@
 import { queryOptions } from "@tanstack/react-query";
 import { apiFetch, apiFetchPost } from "./client.js";
+import { encodeIncidentId } from "../lib/incidentId.js";
 import type {
   Incident,
   IncidentPage,
@@ -17,7 +18,10 @@ export async function sendChatMessage(
   message: string,
   history: ChatTurn[],
 ): Promise<{ reply: string }> {
-  return apiFetchPost<{ reply: string }>(`/api/chat/${incidentId}`, { message, history });
+  return apiFetchPost<{ reply: string }>(`/api/chat/${encodeIncidentId(incidentId)}`, {
+    message,
+    history,
+  });
 }
 
 export const incidentQueries = {
@@ -31,7 +35,7 @@ export const incidentQueries = {
   detail: (id: string) =>
     queryOptions({
       queryKey: ["incidents", id],
-      queryFn: () => apiFetch<Incident>(`/api/incidents/${id}`),
+      queryFn: () => apiFetch<Incident>(`/api/incidents/${encodeIncidentId(id)}`),
       staleTime: 15_000,
     }),
 };

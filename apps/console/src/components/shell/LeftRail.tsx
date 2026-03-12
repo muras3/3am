@@ -14,9 +14,16 @@ function healthLabel(health: ServiceSurface["health"]): string {
 }
 
 export function LeftRail({ incidents, currentIncidentId, services }: Props) {
+  const normalInactive = Boolean(currentIncidentId);
+  const incidentInactive = !normalInactive;
+
   return (
     <aside className="left-rail">
-      <div className="left-rail-normal">
+      <div
+        className="left-rail-normal"
+        aria-hidden={normalInactive}
+        inert={normalInactive}
+      >
         <div className="rail-header">Services</div>
         {services.length === 0 ? (
           <div className="rail-empty">Ambient service data will appear as traffic flows.</div>
@@ -54,7 +61,11 @@ export function LeftRail({ incidents, currentIncidentId, services }: Props) {
         )}
       </div>
 
-      <div className="left-rail-incidents">
+      <div
+        className="left-rail-incidents"
+        aria-hidden={incidentInactive}
+        inert={incidentInactive}
+      >
         <div className="rail-header">Open Incidents</div>
         {incidents.length === 0 ? (
           <div className="rail-empty">No incidents.</div>
