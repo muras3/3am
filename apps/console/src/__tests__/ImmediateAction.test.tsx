@@ -14,6 +14,14 @@ describe("ImmediateAction", () => {
     ).toBeInTheDocument();
   });
 
+  it('renders action_rationale_short with "Why:"', () => {
+    render(<ImmediateAction action={vm.action} />);
+    expect(screen.getByText("Why:")).toBeInTheDocument();
+    expect(
+      screen.getByText(/Reduces blast radius by preventing retry storms/),
+    ).toBeInTheDocument();
+  });
+
   it("renders do_not when present", () => {
     render(<ImmediateAction action={vm.action} />);
     expect(screen.getByText("Do not:")).toBeInTheDocument();

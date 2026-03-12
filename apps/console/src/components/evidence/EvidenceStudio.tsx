@@ -33,7 +33,7 @@ export function EvidenceStudio({ incident, studioVM, onClose }: Props) {
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      <div className="evidence-modal">
+      <div className="evidence-modal" data-testid="evidence-studio">
         <div className="modal-header">
           <div className="mh-left">
             <div className="mh-eyebrow">Evidence Studio</div>

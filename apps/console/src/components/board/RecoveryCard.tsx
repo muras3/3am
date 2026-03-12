@@ -2,7 +2,7 @@ import type { RecoveryVM } from "../../lib/viewmodels/index.js";
 
 const STATUS_CLASS: Record<string, string> = {
   watch: "ws-watch",
-  ok: "ws-next",
+  ok: "ws-ok",
   alert: "ws-lagging",
 };
 
@@ -13,7 +13,7 @@ interface Props {
 export function RecoveryCard({ recovery }: Props) {
   return (
     <section className="section-recovery" data-section="recovery">
-      <div className="card-title">Mitigation Watch</div>
+      <div className="card-title">Recovery</div>
       {recovery.items.map((item, i) => (
         <div key={i} className="watch-row">
           <div className="wl">{item.look}</div>

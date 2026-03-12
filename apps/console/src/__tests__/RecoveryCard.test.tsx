@@ -23,8 +23,8 @@ describe("RecoveryCard", () => {
     expect(statusElements[0]?.classList.contains("ws-lagging")).toBe(true);
     // watch -> ws-watch
     expect(statusElements[1]?.classList.contains("ws-watch")).toBe(true);
-    // ok -> ws-next
-    expect(statusElements[2]?.classList.contains("ws-next")).toBe(true);
+    // ok -> ws-ok (green, not amber)
+    expect(statusElements[2]?.classList.contains("ws-ok")).toBe(true);
   });
 
   it("has correct data-section attribute", () => {
