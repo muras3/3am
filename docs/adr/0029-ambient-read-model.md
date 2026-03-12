@@ -109,6 +109,7 @@ createApiRouter(storage: StorageDriver, spanBuffer?: SpanBuffer): Hono
 
 - レスポンス: `ServiceSurface[]`（HTTP 200, JSON）
 - auth: ADR 0028 準拠 — Console SPA same-origin のため Bearer 不要
+- **ソート順**: health severity 降順（critical → degraded → healthy）、同一 health 内は reqPerSec 降順、同一 reqPerSec は name 昇順。決定的（deterministic）な順序を保証する
 
 **GET /api/activity?limit=N**
 

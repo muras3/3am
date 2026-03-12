@@ -72,7 +72,14 @@ export function computeServices(spans: BufferedSpan[], now?: number): ServiceSur
     results.push({ name, health, reqPerSec, p95Ms, errorRate, trend })
   }
 
-  return results
+  // Sort: health severity desc (critical first), then reqPerSec desc, then name asc
+  const healthOrder = { critical: 0, degraded: 1, healthy: 2 } as const
+  return results.sort(
+    (a, b) =>
+      healthOrder[a.health] - healthOrder[b.health] ||
+      b.reqPerSec - a.reqPerSec ||
+      a.name.localeCompare(b.name),
+  )
 }
 
 export function computeActivity(spans: BufferedSpan[], limit: number): RecentActivity[] {

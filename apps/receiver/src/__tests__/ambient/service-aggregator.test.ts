@@ -243,6 +243,21 @@ describe('computeActivity', () => {
     expect(result[0].httpStatus).toBeUndefined()
   })
 
+  it('sorts by health severity desc, reqPerSec desc, name asc', () => {
+    const now = 1700000300000
+    // svc-b: critical (500 errors), svc-a: degraded (slow), svc-c: healthy
+    const spans = [
+      makeSpan({ serviceName: 'svc-c', startTimeMs: now - 1000, ingestedAt: now - 1000 }),
+      makeSpan({ serviceName: 'svc-a', durationMs: 3000, startTimeMs: now - 1000, ingestedAt: now - 1000 }),
+      makeSpan({ serviceName: 'svc-b', httpStatusCode: 500, startTimeMs: now - 1000, ingestedAt: now - 1000 }),
+    ]
+    const result = computeServices(spans, now)
+    expect(result.map((s) => s.name)).toEqual(['svc-b', 'svc-a', 'svc-c'])
+    expect(result[0].health).toBe('critical')
+    expect(result[1].health).toBe('degraded')
+    expect(result[2].health).toBe('healthy')
+  })
+
   it('maps all RecentActivity fields correctly', () => {
     const span = makeSpan({
       spanId: 'x',
