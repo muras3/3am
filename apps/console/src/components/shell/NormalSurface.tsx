@@ -20,11 +20,11 @@ export function NormalSurface() {
         <span className="normal-surface-count">{STATIC_SERVICES.length}&nbsp;services</span>
       </div>
 
-      <div className="normal-surface-grid">
+      <ul className="normal-surface-grid">
         {STATIC_SERVICES.map((svc) => (
           <ServiceCard key={svc.name} {...svc} />
         ))}
-      </div>
+      </ul>
     </div>
   );
 }
@@ -39,13 +39,13 @@ function ServiceCard({
   lastSeen: string;
 }) {
   return (
-    <div className={`service-card service-card--${status}`} role="listitem">
+    <li className={`service-card service-card--${status}`}>
       <span className={`service-dot service-dot--${status}`} aria-hidden="true" />
       <span className="service-name">{name}</span>
       <span className="service-status">{status}</span>
       <time className="service-time" dateTime={`2026-03-12T${lastSeen}`}>
         {lastSeen}
       </time>
-    </div>
+    </li>
   );
 }

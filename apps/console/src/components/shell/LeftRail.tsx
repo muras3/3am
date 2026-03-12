@@ -10,7 +10,6 @@ const STATIC_SERVICES = [
 interface Props {
   incidents: Incident[];
   currentIncidentId?: string;
-  mode: "normal" | "incident";
 }
 
 export function LeftRail({ incidents, currentIncidentId }: Props) {

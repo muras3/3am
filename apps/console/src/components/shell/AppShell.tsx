@@ -1,4 +1,4 @@
-import { lazy, Suspense } from "react";
+import { lazy, Suspense, useEffect, useRef } from "react";
 import { useSearch } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { TopBar } from "./TopBar.js";
@@ -18,6 +18,17 @@ export function AppShell() {
   const { incidentId: currentIncidentId } = useSearch({ from: "__root__" });
   const mode: "normal" | "incident" = currentIncidentId ? "incident" : "normal";
 
+  // Focus management: move focus to the newly visible surface on mode change.
+  // tabIndex={-1} makes the divs programmatically focusable without entering tab order.
+  const normalRef = useRef<HTMLDivElement>(null);
+  const incidentRef = useRef<HTMLDivElement>(null);
+  const isFirstRender = useRef(true);
+  useEffect(() => {
+    if (isFirstRender.current) { isFirstRender.current = false; return; }
+    if (mode === "incident") incidentRef.current?.focus();
+    else normalRef.current?.focus();
+  }, [mode]);
+
   const { data: page } = useQuery({ ...incidentQueries.list(), throwOnError: false });
   const incidents = page?.items ?? [];
   const listIncident = incidents.find((i) => i.incidentId === currentIncidentId);
@@ -34,13 +45,25 @@ export function AppShell() {
 
   return (
     <div className="app" data-mode={mode}>
-      <TopBar incident={currentIncident} mode={mode} />
+      <TopBar incident={currentIncident} />
       <div className="main-grid">
-        <LeftRail incidents={incidents} currentIncidentId={currentIncidentId} mode={mode} />
-        <div className="center-normal" aria-hidden={mode === "incident"} data-surface="normal">
+        <LeftRail incidents={incidents} currentIncidentId={currentIncidentId} />
+        <div
+          ref={normalRef}
+          tabIndex={-1}
+          className="center-normal"
+          aria-hidden={mode === "incident"}
+          data-surface="normal"
+        >
           <NormalSurface />
         </div>
-        <div className="center-incident" aria-hidden={mode === "normal"} data-surface="incident">
+        <div
+          ref={incidentRef}
+          tabIndex={-1}
+          className="center-incident"
+          aria-hidden={mode === "normal"}
+          data-surface="incident"
+        >
           <Suspense fallback={null}>
             {currentIncident && <IncidentBoard incident={currentIncident} />}
           </Suspense>

@@ -2,7 +2,6 @@ import type { Incident } from "../../api/types.js";
 
 interface Props {
   incident?: Incident;
-  mode: "normal" | "incident";
 }
 
 export function TopBar({ incident }: Props) {

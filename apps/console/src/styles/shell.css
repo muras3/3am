@@ -63,15 +63,15 @@
   animation: status-pulse 1.5s ease-in-out infinite;
 }
 @keyframes status-pulse {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(232,93,58,0.4); }
-  50%       { box-shadow: 0 0 0 5px rgba(232,93,58,0); }
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 40%, transparent); }
+  50%       { box-shadow: 0 0 0 5px transparent; }
 }
 
 /* Incident context strip — slides in when mode = incident */
 .topbar-incident-context {
   opacity: 0;
   transform: translateY(-4px);
-  transition: opacity 0.25s 0.15s, transform 0.25s 0.15s;
+  transition: opacity 0.25s 0.15s, transform 0.25s 0.15s, max-height 0.25s 0.15s;
   overflow: hidden;
   max-height: 0;
   pointer-events: none;
@@ -90,7 +90,6 @@
   grid-template-rows: 1fr;
   height: 100%; min-height: 0;
   transition: grid-template-columns 0.45s cubic-bezier(0.4, 0, 0.2, 1);
-  will-change: grid-template-columns;
 }
 .app[data-mode="incident"] .main-grid {
   --right-rail-width: 220px;
@@ -258,6 +257,9 @@
   display: flex;
   flex-direction: column;
   gap: 6px;
+  list-style: none;
+  padding: 0;
+  margin: 0;
 }
 .service-card {
   display: flex;
@@ -268,8 +270,8 @@
   border: 1px solid var(--line);
   background: var(--panel);
 }
-.service-card--healthy { background: var(--good-soft); border-color: rgba(46,125,82,0.15); }
-.service-card--degraded { background: var(--accent-soft); border-color: rgba(232,93,58,0.2); }
+.service-card--healthy { background: var(--good-soft); border-color: color-mix(in srgb, var(--good) 15%, transparent); }
+.service-card--degraded { background: var(--accent-soft); border-color: color-mix(in srgb, var(--accent) 20%, transparent); }
 .service-name {
   font-size: var(--fs-md);
   color: var(--ink);

@@ -12,6 +12,7 @@
     "typecheck:e2e": "tsc --project tsconfig.e2e.json",
     "lint": "eslint src",
     "e2e": "playwright test",
+    "e2e:receiver-served": "playwright test --config playwright.receiver-served.config.ts",
     "e2e:ui": "playwright test --ui"
   },
   "dependencies": {

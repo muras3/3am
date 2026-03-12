@@ -1,10 +1,12 @@
 import { test, expect } from "@playwright/test";
+import { gotoFirstIncident } from "../helpers.js";
 
 /**
  * Phase 2 CSS transition gate tests.
  *
  * Verifies the in-place CSS transition shell:
- * - NormalSurface is shown at "/" when no incidents exist
+ * - NormalSurface is shown at "/" (no incidentId) — with or without incidents in DB
+ * - "/" does NOT auto-redirect to incident mode when incidents exist (P1 product fix)
  * - Incident workspace is shown at "/?incidentId=..."
  * - Both center divs are always in the DOM (never unmounted)
  * - Right rail expands when entering incident mode
@@ -12,38 +14,32 @@ import { test, expect } from "@playwright/test";
  * - No transitions when prefers-reduced-motion: reduce is active
  */
 
-import type { Page } from "@playwright/test";
-
-/** Navigate to "/" with the incident list API mocked to return empty (forces normal mode). */
-async function gotoNormalMode(page: Page) {
-  await page.route("**/api/incidents*", (route) =>
-    route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({ items: [] }),
-    }),
-  );
-  await page.goto("/");
-  // Wait for React to render (no redirect since list is empty)
-  await page.waitForTimeout(300);
-}
-
 test.describe("Phase 2 CSS transition shell", () => {
-  test("/ shows NormalSurface when no incidents", async ({ page }) => {
-    await gotoNormalMode(page);
+  test("/ shows NormalSurface when no incidentId in URL", async ({ page }) => {
+    await page.goto("/");
+    await page.waitForLoadState("networkidle");
+    await expect(page.locator("[data-surface=normal]")).toBeVisible();
+  });
+
+  test("/ stays in normal mode even with seeded incidents — no auto-redirect", async ({
+    page,
+  }) => {
+    // This test verifies the product behavior fix: seeded incidents must NOT
+    // trigger an automatic redirect to incident mode. Normal mode is the ambient
+    // base state; users enter incident mode by explicit navigation only.
+    await page.goto("/");
+    await page.waitForLoadState("networkidle");
+    expect(page.url()).not.toMatch(/[?&]incidentId=/);
     await expect(page.locator("[data-surface=normal]")).toBeVisible();
   });
 
   test("/?incidentId opens incident workspace", async ({ page }) => {
-    await page.goto("/");
-    // Auto-redirect fires when incidents are seeded
-    await page.waitForURL(/[?&]incidentId=/, { timeout: 8000 });
+    await gotoFirstIncident(page);
     await expect(page.locator("[data-surface=incident]")).toBeVisible({ timeout: 6000 });
   });
 
   test("right rail expands to ~220px in incident mode", async ({ page }) => {
-    await page.goto("/");
-    await page.waitForURL(/[?&]incidentId=/);
+    await gotoFirstIncident(page);
     // Wait for the grid transition to complete (450ms + buffer)
     await page.waitForTimeout(600);
     const box = await page.locator(".right-rail").boundingBox();
@@ -55,7 +51,8 @@ test.describe("Phase 2 CSS transition shell", () => {
   test("center-normal and center-incident are always attached in normal mode", async ({
     page,
   }) => {
-    await gotoNormalMode(page);
+    await page.goto("/");
+    await page.waitForLoadState("networkidle");
     await expect(page.locator(".center-normal")).toBeAttached();
     await expect(page.locator(".center-incident")).toBeAttached();
   });
@@ -63,8 +60,7 @@ test.describe("Phase 2 CSS transition shell", () => {
   test("center-normal and center-incident are always attached in incident mode", async ({
     page,
   }) => {
-    await page.goto("/");
-    await page.waitForURL(/[?&]incidentId=/);
+    await gotoFirstIncident(page);
     await expect(page.locator(".center-normal")).toBeAttached();
     await expect(page.locator(".center-incident")).toBeAttached();
   });
@@ -77,7 +73,8 @@ test.describe("Phase 2 CSS transition shell", () => {
 
   test("no transition when prefers-reduced-motion: reduce", async ({ page }) => {
     await page.emulateMedia({ reducedMotion: "reduce" });
-    await gotoNormalMode(page);
+    await page.goto("/");
+    await page.waitForLoadState("networkidle");
 
     const duration = await page.locator(".center-normal").evaluate(
       // evaluate runs in browser context; getComputedStyle is a browser global
