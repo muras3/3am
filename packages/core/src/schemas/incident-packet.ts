@@ -70,6 +70,7 @@ export const IncidentPacketSchema = z.object({
   openedAt: z.string(),
   status: z.enum(["open", "closed"]).optional(),
   severity: z.string().optional(),
+  generation: z.number().optional(),
   window: WindowSchema,
   scope: ScopeSchema,
   // situation layer (ADR 0018)

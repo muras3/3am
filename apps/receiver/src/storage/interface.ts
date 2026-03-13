@@ -1,4 +1,24 @@
 import type { IncidentPacket, DiagnosisResult, ThinEvent } from "@3amoncall/core";
+import type { ExtractedSpan } from "../domain/anomaly-detector.js";
+
+export interface AnomalousSignal {
+  signal: string;       // e.g., "http_429", "http_500", "span_error", "slow_span", "exception"
+  firstSeenAt: string;  // ISO timestamp
+  entity: string;       // serviceName
+  spanId: string;       // originating span
+}
+
+export interface IncidentRawState {
+  spans: ExtractedSpan[];
+  anomalousSignals: AnomalousSignal[];
+  metricEvidence: unknown[];    // Plan 6 で typed 化
+  logEvidence: unknown[];       // Plan 6 で typed 化
+  platformEvents: unknown[];    // Plan 5 で活性化
+}
+
+export function createEmptyRawState(): IncidentRawState {
+  return { spans: [], anomalousSignals: [], metricEvidence: [], logEvidence: [], platformEvents: [] }
+}
 
 /** Merge new evidence entries into an existing incident packet. */
 export function mergeEvidenceIntoPacket(
@@ -24,6 +44,7 @@ export interface Incident {
   closedAt?: string;
   packet: IncidentPacket;
   diagnosisResult?: DiagnosisResult;
+  rawState: IncidentRawState;
 }
 
 export interface IncidentPage {
@@ -56,6 +77,12 @@ export interface StorageDriver {
     incidentId: string,
     update: { changedMetrics?: unknown[]; relevantLogs?: unknown[] },
   ): Promise<void>;
+
+  appendSpans(incidentId: string, spans: ExtractedSpan[]): Promise<void>;
+
+  appendAnomalousSignals(incidentId: string, signals: AnomalousSignal[]): Promise<void>;
+
+  getRawState(incidentId: string): Promise<IncidentRawState | null>;
 
   saveThinEvent(event: ThinEvent): Promise<void>;
 

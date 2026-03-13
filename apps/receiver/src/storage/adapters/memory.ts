@@ -1,6 +1,7 @@
 import type { IncidentPacket, DiagnosisResult, ThinEvent } from "@3amoncall/core";
-import type { Incident, IncidentPage, StorageDriver } from "../interface.js";
-import { mergeEvidenceIntoPacket } from "../interface.js";
+import type { ExtractedSpan } from "../../domain/anomaly-detector.js";
+import type { AnomalousSignal, Incident, IncidentPage, IncidentRawState, StorageDriver } from "../interface.js";
+import { createEmptyRawState, mergeEvidenceIntoPacket } from "../interface.js";
 
 export class MemoryAdapter implements StorageDriver {
   private incidents: Map<string, Incident> = new Map();
@@ -10,7 +11,7 @@ export class MemoryAdapter implements StorageDriver {
   async createIncident(packet: IncidentPacket): Promise<void> {
     const existing = this.incidents.get(packet.incidentId);
     if (existing) {
-      // Upsert: update packet but preserve diagnosisResult and openedAt
+      // Upsert: update packet but preserve diagnosisResult, openedAt, and rawState
       this.incidents.set(packet.incidentId, {
         ...existing,
         packet,
@@ -21,6 +22,7 @@ export class MemoryAdapter implements StorageDriver {
         status: "open",
         openedAt: packet.openedAt,
         packet,
+        rawState: createEmptyRawState(),
       });
     }
     this.packetIndex.set(packet.packetId, packet.incidentId);
@@ -58,6 +60,22 @@ export class MemoryAdapter implements StorageDriver {
       ...incident,
       packet: mergeEvidenceIntoPacket(incident.packet, update),
     });
+  }
+
+  async appendSpans(incidentId: string, spans: ExtractedSpan[]): Promise<void> {
+    const incident = this.incidents.get(incidentId);
+    if (!incident) return;
+    incident.rawState.spans.push(...spans);
+  }
+
+  async appendAnomalousSignals(incidentId: string, signals: AnomalousSignal[]): Promise<void> {
+    const incident = this.incidents.get(incidentId);
+    if (!incident) return;
+    incident.rawState.anomalousSignals.push(...signals);
+  }
+
+  async getRawState(incidentId: string): Promise<IncidentRawState | null> {
+    return this.incidents.get(incidentId)?.rawState ?? null;
   }
 
   async listIncidents(opts: {

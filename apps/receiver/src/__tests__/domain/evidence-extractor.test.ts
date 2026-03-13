@@ -129,6 +129,7 @@ function makeIncident(): Incident {
     status: 'open',
     openedAt: new Date(BASE_TIME_MS).toISOString(),
     packet,
+    rawState: { spans: [], anomalousSignals: [], metricEvidence: [], logEvidence: [], platformEvents: [] },
   }
 }
 
