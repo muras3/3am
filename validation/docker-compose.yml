@@ -76,9 +76,12 @@ services:
       DEFAULT_LATENCY_MS: "120"
       RATE_LIMIT_STATUS: "429"
       RATE_LIMIT_LATENCY_MS: "250"
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
       APP_LOG_FILE: /workspace/out/service-logs/mock-stripe.jsonl
     ports:
       - "4000:4000"
+    depends_on:
+      - otel-collector
     volumes:
       - ./out:/workspace/out
 

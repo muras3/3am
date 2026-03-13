@@ -2,7 +2,10 @@ const http = require("http");
 const fs = require("fs");
 const { URL } = require("url");
 const { trace, SpanStatusCode } = require("@opentelemetry/api");
+const { logs } = require("@opentelemetry/api-logs");
 const { NodeSDK } = require("@opentelemetry/sdk-node");
+const { BatchLogRecordProcessor } = require("@opentelemetry/sdk-logs");
+const { OTLPLogExporter } = require("@opentelemetry/exporter-logs-otlp-http");
 const { OTLPTraceExporter } = require("@opentelemetry/exporter-trace-otlp-http");
 
 const port = Number(process.env.PORT || 7001);
@@ -18,11 +21,17 @@ const state = {
   slowLatencyMs: SLOW_LATENCY_MS
 };
 
-function log(message, fields = {}) {
-  const payload = { ts: new Date().toISOString(), message, ...fields };
+let otelLogger;
+
+function log(message, fields = {}, level = "info") {
+  const payload = { ts: new Date().toISOString(), level, message, ...fields };
   process.stdout.write(JSON.stringify(payload) + "\n");
   if (logStream) {
     logStream.write(JSON.stringify(payload) + "\n");
+  }
+  if (otelLogger) {
+    const severityNumber = { trace: 1, debug: 5, info: 9, warn: 13, error: 17, fatal: 21 }[level] ?? 0;
+    otelLogger.emit({ severityNumber, severityText: level.toUpperCase(), body: message, attributes: fields });
   }
 }
 
@@ -67,10 +76,12 @@ async function main() {
   }
 
   const sdk = new NodeSDK({
-    traceExporter: new OTLPTraceExporter({ url: `${otlpEndpoint}/v1/traces` })
+    traceExporter: new OTLPTraceExporter({ url: `${otlpEndpoint}/v1/traces` }),
+    logRecordProcessor: new BatchLogRecordProcessor(new OTLPLogExporter({ url: `${otlpEndpoint}/v1/logs` }))
   });
   await sdk.start();
   tracer = trace.getTracer("mock-notification-svc");
+  otelLogger = logs.getLogger("mock-notification-svc");
 
   const server = http.createServer(async (req, res) => {
     const url = new URL(req.url, `http://${req.headers.host}`);
@@ -130,11 +141,11 @@ async function main() {
 
         await sleep(actualWait);
 
-        log("notification sent", {
-          mode: state.mode,
-          latencyMs: actualWait,
-          orderId: body.orderId || ""
-        });
+        if (state.mode === "slow") {
+          log("notification slow latency", { orderId: body.orderId || "", latencyMs: actualWait, mode: state.mode }, "warn");
+        } else {
+          log("notification sent", { mode: state.mode, latencyMs: actualWait, orderId: body.orderId || "" });
+        }
 
         span.end();
         sendJson(res, 200, { ok: true, provider: "mock-notification-svc" });
