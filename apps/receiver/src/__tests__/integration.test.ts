@@ -1253,7 +1253,7 @@ describe("Formation: dependency-based incident grouping (OC-1 to OC-6)", () => {
     expect(items).toHaveLength(1);
 
     // Both requests should return the same incidentId
-    expect(r1.incidentId).toBe(r2.incidentId ?? r1.incidentId);
+    expect(r2.incidentId).toBe(r1.incidentId);
 
     // Packet composition checks
     const incident = items[0];
