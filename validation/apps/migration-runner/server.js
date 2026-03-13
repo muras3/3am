@@ -1,7 +1,10 @@
 const http = require("http");
 const { Client } = require("pg");
 const { trace, SpanStatusCode } = require("@opentelemetry/api");
+const { logs } = require("@opentelemetry/api-logs");
 const { NodeSDK } = require("@opentelemetry/sdk-node");
+const { BatchLogRecordProcessor } = require("@opentelemetry/sdk-logs");
+const { OTLPLogExporter } = require("@opentelemetry/exporter-logs-otlp-http");
 const { OTLPTraceExporter } = require("@opentelemetry/exporter-trace-otlp-http");
 
 const port = Number(process.env.PORT || 5001);
@@ -12,6 +15,7 @@ const appLogFile = process.env.APP_LOG_FILE || "";
 
 let logStream = null;
 let tracer;
+let otelLogger;
 
 const state = {
   phase: "idle",
@@ -27,11 +31,15 @@ const state = {
   migrationHoldSec: null
 };
 
-function log(message, fields = {}) {
-  const payload = { ts: new Date().toISOString(), message, ...fields };
+function log(message, fields = {}, level = "info") {
+  const payload = { ts: new Date().toISOString(), level, message, ...fields };
   process.stdout.write(JSON.stringify(payload) + "\n");
   if (logStream) {
     logStream.write(JSON.stringify(payload) + "\n");
+  }
+  if (otelLogger) {
+    const severityNumber = { trace: 1, debug: 5, info: 9, warn: 13, error: 17, fatal: 21 }[level] ?? 0;
+    otelLogger.emit({ severityNumber, severityText: level.toUpperCase(), body: message, attributes: fields });
   }
 }
 
@@ -121,7 +129,7 @@ async function startMigration(config = {}) {
   state.connectionA_pid = pidResultA.rows[0].pid;
   await state.clientA.query("BEGIN");
   state.lockHoldStartedAt = new Date().toISOString();
-  log("analytics query started", { pid: state.connectionA_pid, readerHoldSec });
+  log("analytics query started", { pid: state.connectionA_pid, readerHoldSec }, "warn");
 
   state.clientA.query("LOCK TABLE orders IN ACCESS SHARE MODE").then(async () => {
     await state.clientA.query("SELECT pg_sleep($1)", [readerHoldSec]);
@@ -155,13 +163,13 @@ async function startMigration(config = {}) {
       const pidResultB = await state.clientB.query("SELECT pg_backend_pid() AS pid");
       state.connectionB_pid = pidResultB.rows[0].pid;
       state.alterStartedAt = new Date().toISOString();
-      log("migration started", { pid: state.connectionB_pid, migrationHoldSec });
+      log("migration started", { pid: state.connectionB_pid, migrationHoldSec }, "warn");
 
       await state.clientB.query("BEGIN");
       await state.clientB.query("ALTER TABLE orders ADD COLUMN IF NOT EXISTS priority INTEGER DEFAULT 0");
       state.phase = "exclusive_lock_held";
       state.exclusiveLockStartedAt = new Date().toISOString();
-      log("migration exclusive lock acquired", { pid: state.connectionB_pid, migrationHoldSec });
+      log("migration exclusive lock acquired", { pid: state.connectionB_pid, migrationHoldSec }, "warn");
       await state.clientB.query("SELECT pg_sleep($1)", [migrationHoldSec]);
       await state.clientB.query("COMMIT");
       await state.clientB.end();
@@ -247,10 +255,12 @@ async function main() {
   }
 
   const sdk = new NodeSDK({
-    traceExporter: new OTLPTraceExporter({ url: `${otlpEndpoint}/v1/traces` })
+    traceExporter: new OTLPTraceExporter({ url: `${otlpEndpoint}/v1/traces` }),
+    logRecordProcessor: new BatchLogRecordProcessor(new OTLPLogExporter({ url: `${otlpEndpoint}/v1/logs` }))
   });
   await sdk.start();
   tracer = trace.getTracer("migration-runner");
+  otelLogger = logs.getLogger("migration-runner");
 
   // Ensure orders table exists with seed data
   await ensureOrdersTable();

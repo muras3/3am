@@ -2,7 +2,10 @@ const http = require("http");
 const fs = require("fs");
 const { URL } = require("url");
 const { trace, SpanStatusCode } = require("@opentelemetry/api");
+const { logs } = require("@opentelemetry/api-logs");
 const { NodeSDK } = require("@opentelemetry/sdk-node");
+const { BatchLogRecordProcessor } = require("@opentelemetry/sdk-logs");
+const { OTLPLogExporter } = require("@opentelemetry/exporter-logs-otlp-http");
 const { OTLPTraceExporter } = require("@opentelemetry/exporter-trace-otlp-http");
 
 const port = Number(process.env.PORT || 6001);
@@ -19,11 +22,17 @@ const state = {
   auth_failures: 0
 };
 
-function log(message, fields = {}) {
-  const payload = { ts: new Date().toISOString(), message, ...fields };
+let otelLogger;
+
+function log(message, fields = {}, level = "info") {
+  const payload = { ts: new Date().toISOString(), level, message, ...fields };
   process.stdout.write(JSON.stringify(payload) + "\n");
   if (logStream) {
     logStream.write(JSON.stringify(payload) + "\n");
+  }
+  if (otelLogger) {
+    const severityNumber = { trace: 1, debug: 5, info: 9, warn: 13, error: 17, fatal: 21 }[level] ?? 0;
+    otelLogger.emit({ severityNumber, severityText: level.toUpperCase(), body: message, attributes: fields });
   }
 }
 
@@ -64,10 +73,12 @@ let tracer;
 
 async function main() {
   const sdk = new NodeSDK({
-    traceExporter: new OTLPTraceExporter({ url: `${otlpEndpoint}/v1/traces` })
+    traceExporter: new OTLPTraceExporter({ url: `${otlpEndpoint}/v1/traces` }),
+    logRecordProcessor: new BatchLogRecordProcessor(new OTLPLogExporter({ url: `${otlpEndpoint}/v1/logs` }))
   });
   await sdk.start();
   tracer = trace.getTracer("mock-sendgrid");
+  otelLogger = logs.getLogger("mock-sendgrid");
 
   const server = http.createServer(async (req, res) => {
     const url = new URL(req.url, `http://${req.headers.host}`);
@@ -125,7 +136,7 @@ async function main() {
           if (state.valid_keys.has(key)) {
             await sleep(80);
             span.setAttributes({
-              "sendgrid.status_code": 202,
+              "http.response.status_code": 202,
               "sendgrid.key_revoked": false,
               "sendgrid.provider": "mock-sendgrid"
             });
@@ -135,12 +146,12 @@ async function main() {
             state.auth_failures += 1;
             await sleep(200);
             span.setAttributes({
-              "sendgrid.status_code": 401,
+              "http.response.status_code": 401,
               "sendgrid.key_revoked": true,
               "sendgrid.provider": "mock-sendgrid"
             });
             span.setStatus({ code: SpanStatusCode.ERROR, message: "authorization revoked" });
-            log("sendgrid request", { key_prefix: key.slice(0, 8), status_code: 401 });
+            log("sendgrid auth failure", { key_prefix: key.slice(0, 8), status_code: 401 }, "error");
             sendJson(res, 401, {
               errors: [{
                 message: "The provided authorization grant is invalid, expired, or revoked",
@@ -149,11 +160,12 @@ async function main() {
             });
           } else {
             span.setAttributes({
-              "sendgrid.status_code": 403,
+              "http.response.status_code": 403,
               "sendgrid.key_revoked": false,
               "sendgrid.provider": "mock-sendgrid"
             });
-            log("sendgrid request", { key_prefix: key.slice(0, 8), status_code: 403 });
+            span.setStatus({ code: SpanStatusCode.ERROR, message: "forbidden" });
+            log("sendgrid auth failure", { key_prefix: key.slice(0, 8), status_code: 403 }, "error");
             sendJson(res, 403, { error: "forbidden" });
           }
         } finally {

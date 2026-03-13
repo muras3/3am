@@ -56,7 +56,7 @@ function handleNotificationsSend(req, res, ctx) {
         });
 
         span.setAttributes({
-          "sendgrid.status_code": response.statusCode,
+          "http.response.status_code": response.statusCode,
           "deployment.id": deploymentId,
           "sendgrid.key_revoked": response.statusCode === 401
         });

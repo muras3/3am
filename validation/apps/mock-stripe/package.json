@@ -1,5 +1,5 @@
 {
-  "name": "mock-sendgrid",
+  "name": "mock-stripe",
   "private": true,
   "version": "0.1.0",
   "dependencies": {

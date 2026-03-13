@@ -80,7 +80,7 @@ async function handleApiOrders(req, res, ctx) {
               const latencyMs = Date.now() - notifyStartedAt;
               notifySpan.setAttributes({
                 "notification.latency_ms": latencyMs,
-                "notification.status_code": response.statusCode
+                "http.response.status_code": response.statusCode
               });
               log("info", "notification sent", { orderId, latencyMs });
               notifySpan.end();
