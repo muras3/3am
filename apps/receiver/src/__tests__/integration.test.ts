@@ -111,6 +111,7 @@ function makeTraceSpan(options: {
   startTimeUnixNano: string;
   endTimeUnixNano: string;
   httpStatusCode?: number;
+  peerService?: string;
   spanStatusCode: number;
   route?: string;
 }): object {
@@ -125,6 +126,12 @@ function makeTraceSpan(options: {
     attributes.push({
       key: "http.response.status_code",
       value: { intValue: options.httpStatusCode },
+    });
+  }
+  if (options.peerService) {
+    attributes.push({
+      key: "peer.service",
+      value: { stringValue: options.peerService },
     });
   }
 
@@ -1069,6 +1076,7 @@ describe("Receiver integration tests", () => {
           endTimeUnixNano: "1741392000500000000",
           spanStatusCode: 2,
           httpStatusCode: 500,
+          peerService: "stripe",
           route: "/checkout",
         }),
       ]),
@@ -1090,6 +1098,7 @@ describe("Receiver integration tests", () => {
           endTimeUnixNano: "1741392060500000000",
           spanStatusCode: 2,
           httpStatusCode: 500,
+          peerService: "stripe",
           route: "/checkout",
         }),
       ]),
@@ -1101,6 +1110,7 @@ describe("Receiver integration tests", () => {
           endTimeUnixNano: "1741391990500000000",
           spanStatusCode: 2,
           httpStatusCode: 503,
+          peerService: "stripe",
           route: "/charge",
         }),
         makeTraceSpan({
@@ -1110,6 +1120,7 @@ describe("Receiver integration tests", () => {
           endTimeUnixNano: "1741392065500000000",
           spanStatusCode: 2,
           httpStatusCode: 503,
+          peerService: "stripe",
           route: "/charge",
         }),
       ]),
