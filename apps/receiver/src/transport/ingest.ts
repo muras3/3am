@@ -8,7 +8,6 @@ import type { SpanBuffer } from "../ambient/span-buffer.js";
 import {
   extractSpans,
   isAnomalous,
-  type ExtractedSpan,
 } from "../domain/anomaly-detector.js";
 import {
   buildFormationKey,

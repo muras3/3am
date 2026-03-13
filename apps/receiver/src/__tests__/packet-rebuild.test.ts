@@ -23,7 +23,6 @@ import type { IncidentPacket } from "@3amoncall/core";
 // Base time anchor (same as integration.test.ts so formation window logic aligns)
 const BASE_TIME_NS = "1741392000000000000"; // 2025-03-07T16:00:00Z
 const BASE_TIME_PLUS_1MIN_NS = "1741392060000000000"; // +60s
-const BASE_TIME_PLUS_2MIN_NS = "1741392120000000000"; // +120s
 
 /** First error batch: http 500 from "web" service */
 function makeErrorBatch1() {

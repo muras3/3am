@@ -17,10 +17,10 @@ export function buildAnomalousSignals(anomalousSpans: ExtractedSpan[]): Anomalou
     const signal =
       span.httpStatusCode !== undefined
         ? `http_${span.httpStatusCode}`
-        : span.spanStatusCode === 2
-          ? "span_error"
-          : span.exceptionCount > 0
-            ? "exception"
+        : span.exceptionCount > 0
+          ? "exception"
+          : span.spanStatusCode === 2
+            ? "span_error"
             : "slow_span"
     return {
       signal,
