@@ -1257,13 +1257,9 @@ describe("Formation: dependency-based incident grouping (OC-1 to OC-6)", () => {
 
     // Packet composition checks
     const incident = items[0];
+    expect(incident.packet.scope.affectedServices).toContain("api-service");
+    expect(incident.packet.scope.affectedServices).toContain("checkout-service");
     expect(incident.packet.scope.affectedDependencies).toContain("stripe");
-    // After the second span is appended and packet rebuilt, affectedServices should
-    // include both services (or at least "checkout-service")
-    expect(
-      incident.packet.scope.affectedServices.length +
-      (incident.packet.scope.affectedDependencies.length > 0 ? 1 : 0),
-    ).toBeGreaterThan(0);
   });
 
   // OC-3: no peerService → classic service matching → 1 incident
