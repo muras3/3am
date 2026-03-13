@@ -46,6 +46,11 @@ const packet: IncidentPacket = {
 };
 
 describe("buildPrompt", () => {
+  it("renders the primaryService in the Scope section label", () => {
+    const prompt = buildPrompt(packet);
+    expect(prompt).toContain("Primary service:       checkout-api");
+  });
+
   it("includes primaryService in the prompt", () => {
     const prompt = buildPrompt(packet);
     expect(prompt).toContain("checkout-api");
