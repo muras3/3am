@@ -55,6 +55,7 @@ export function normalizeDependency(raw: string | undefined): string | undefined
  * `primaryService` is stable across requests (matches Plan 3 selectPrimaryService).
  */
 export function buildFormationKey(spans: ExtractedSpan[]): IncidentFormationKey {
+  if (spans.length === 0) throw new Error('buildFormationKey requires at least one span')
   const firstSpan = spans[0]
 
   // Collect raw peer.service values, ignoring absent ones

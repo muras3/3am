@@ -1,6 +1,7 @@
 import { randomUUID } from "crypto"
 import type { IncidentPacket } from "@3amoncall/core"
 import { type ExtractedSpan, isAnomalous } from "./anomaly-detector.js"
+import { normalizeDependency } from "./formation.js"
 import type { AnomalousSignal, IncidentRawState } from "../storage/interface.js"
 
 type RepresentativeTrace = {
@@ -70,7 +71,14 @@ export function rebuildPacket(
   // MAX_CROSS_SERVICE_MERGE guard (see formation.ts).
   const affectedServices = [...new Set(spans.map((s) => s.serviceName))]
   const affectedRoutes = [...new Set(spans.flatMap((s) => (s.httpRoute ? [s.httpRoute] : [])))]
-  const affectedDependencies = [...new Set(spans.flatMap((s) => (s.peerService ? [s.peerService.toLowerCase()] : [])))]
+  const affectedDependencies = [
+    ...new Set(
+      spans.flatMap((s) => {
+        const dep = normalizeDependency(s.peerService)
+        return dep !== undefined ? [dep] : []
+      }),
+    ),
+  ]
 
   // triggerSignals: dedup by signal+entity, keep earliest firstSeenAt per group
   const groupMap = new Map<string, { signal: string; firstSeenAt: string; entity: string }>()

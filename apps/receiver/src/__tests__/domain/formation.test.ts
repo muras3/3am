@@ -365,9 +365,28 @@ describe('shouldAttachToIncident: dependency-first logic', () => {
     expect(shouldAttachToIncident(key, incident, signalTimeMs)).toBe(true)
   })
 
+  // ── Asymmetric case: dependency-bearing signal vs no-dependency incident ───────
+
+  it('dependency signal does NOT merge into no-dependency incident (split-first)', () => {
+    // Signal has peerService=stripe → key.dependency='stripe'
+    const key = buildFormationKey([{ ...BASE_SPAN, peerService: 'stripe' }])
+    // Existing incident was created without any peerService → affectedDependencies=[]
+    const incident = makeIncident('production', 'api-service', openedAt, 'open', [])
+    // Even though same service and same env, split because incident has no stripe dependency
+    expect(shouldAttachToIncident(key, incident, signalTimeMs)).toBe(false)
+  })
+
   // ── MAX_CROSS_SERVICE_MERGE constant sanity ──────────────────────────────────
 
   it('MAX_CROSS_SERVICE_MERGE equals 3', () => {
     expect(MAX_CROSS_SERVICE_MERGE).toBe(3)
+  })
+})
+
+// ── buildFormationKey precondition guard ──────────────────────────────────────
+
+describe('buildFormationKey: precondition', () => {
+  it('throws when called with an empty spans array', () => {
+    expect(() => buildFormationKey([])).toThrow('buildFormationKey requires at least one span')
   })
 })
