@@ -105,6 +105,65 @@ const normalSpanPayload = {
   ],
 };
 
+function makeTraceSpan(options: {
+  traceId: string;
+  spanId: string;
+  startTimeUnixNano: string;
+  endTimeUnixNano: string;
+  httpStatusCode?: number;
+  spanStatusCode: number;
+  route?: string;
+}): object {
+  const attributes = [];
+  if (options.route) {
+    attributes.push({
+      key: "http.route",
+      value: { stringValue: options.route },
+    });
+  }
+  if (options.httpStatusCode !== undefined) {
+    attributes.push({
+      key: "http.response.status_code",
+      value: { intValue: options.httpStatusCode },
+    });
+  }
+
+  return {
+    traceId: options.traceId,
+    spanId: options.spanId,
+    name: options.route ?? options.spanId,
+    startTimeUnixNano: options.startTimeUnixNano,
+    endTimeUnixNano: options.endTimeUnixNano,
+    status: { code: options.spanStatusCode },
+    attributes,
+  };
+}
+
+function makeResourceSpans(
+  serviceName: string,
+  spans: object[],
+  environment = "production",
+) {
+  return {
+    resource: {
+      attributes: [
+        { key: "service.name", value: { stringValue: serviceName } },
+        {
+          key: "deployment.environment.name",
+          value: { stringValue: environment },
+        },
+      ],
+    },
+    scopeSpans: [{ spans }],
+  };
+}
+
+function makeTracePayload(resourceSpans: object[]) {
+  return {
+    resourceSpans,
+  };
+}
+
 function makeDiagnosisFixture(incidentId: string) {
   return {
     summary: {
@@ -959,5 +1018,120 @@ describe("Receiver integration tests", () => {
 
     const thinEvents = await storage.listThinEvents();
     expect(thinEvents).toHaveLength(1);
+  });
+
+  it("sets primaryService from the triggering anomalous service on initial create", async () => {
+    const payload = makeTracePayload([
+      makeResourceSpans("edge-proxy", [
+        makeTraceSpan({
+          traceId: "primary-create-001",
+          spanId: "edge-normal",
+          startTimeUnixNano: "1741392001000000000",
+          endTimeUnixNano: "1741392001200000000",
+          spanStatusCode: 1,
+          route: "/checkout",
+        }),
+      ]),
+      makeResourceSpans("checkout-api", [
+        makeTraceSpan({
+          traceId: "primary-create-001",
+          spanId: "checkout-anomaly",
+          startTimeUnixNano: "1741392000000000000",
+          endTimeUnixNano: "1741392000500000000",
+          spanStatusCode: 2,
+          httpStatusCode: 500,
+          route: "/checkout",
+        }),
+      ]),
+    ]);
+
+    const res = await app.request("/v1/traces", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const { incidentId } = await res.json() as { incidentId: string };
+
+    const incident = await (await app.request(`/api/incidents/${incidentId}`)).json() as {
+      packet: { scope: { primaryService: string } };
+    };
+
+    expect(incident.packet.scope.primaryService).toBe("checkout-api");
+  });
+
+  it("keeps primaryService immutable after later batches attach", async () => {
+    const createPayload = makeTracePayload([
+      makeResourceSpans("checkout-api", [
+        makeTraceSpan({
+          traceId: "primary-immutable-001",
+          spanId: "create-anomaly",
+          startTimeUnixNano: "1741392000000000000",
+          endTimeUnixNano: "1741392000500000000",
+          spanStatusCode: 2,
+          httpStatusCode: 500,
+          route: "/checkout",
+        }),
+      ]),
+    ]);
+
+    const createRes = await app.request("/v1/traces", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(createPayload),
+    });
+    const { incidentId } = await createRes.json() as { incidentId: string };
+
+    const attachPayload = makeTracePayload([
+      makeResourceSpans("checkout-api", [
+        makeTraceSpan({
+          traceId: "primary-immutable-002",
+          spanId: "attach-anchor",
+          startTimeUnixNano: "1741392060000000000",
+          endTimeUnixNano: "1741392060500000000",
+          spanStatusCode: 2,
+          httpStatusCode: 500,
+          route: "/checkout",
+        }),
+      ]),
+      makeResourceSpans("billing-worker", [
+        makeTraceSpan({
+          traceId: "primary-immutable-002",
+          spanId: "attach-earlier-b",
+          startTimeUnixNano: "1741391990000000000",
+          endTimeUnixNano: "1741391990500000000",
+          spanStatusCode: 2,
+          httpStatusCode: 503,
+          route: "/charge",
+        }),
+        makeTraceSpan({
+          traceId: "primary-immutable-002",
+          spanId: "attach-later-b",
+          startTimeUnixNano: "1741392065000000000",
+          endTimeUnixNano: "1741392065500000000",
+          spanStatusCode: 2,
+          httpStatusCode: 503,
+          route: "/charge",
+        }),
+      ]),
+    ]);
+
+    const attachRes = await app.request("/v1/traces", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(attachPayload),
+    });
+
+    const attachBody = await attachRes.json() as { incidentId: string };
+    expect(attachBody.incidentId).toBe(incidentId);
+
+    const incident = await (await app.request(`/api/incidents/${incidentId}`)).json() as {
+      packet: {
+        scope: { primaryService: string };
+        triggerSignals: Array<{ entity: string }>;
+      };
+    };
+
+    expect(incident.packet.scope.primaryService).toBe("checkout-api");
+    expect(incident.packet.triggerSignals.some((signal) => signal.entity === "billing-worker")).toBe(true);
   });
 });

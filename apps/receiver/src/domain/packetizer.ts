@@ -31,6 +31,18 @@ export function buildAnomalousSignals(anomalousSpans: ExtractedSpan[]): Anomalou
   })
 }
 
+export function selectPrimaryService(spans: ExtractedSpan[]): string {
+  const anomalous = spans
+    .filter(isAnomalous)
+    .slice()
+    .sort((a, b) =>
+      a.startTimeMs !== b.startTimeMs
+        ? a.startTimeMs - b.startTimeMs
+        : a.serviceName.localeCompare(b.serviceName),
+    )
+  return anomalous[0]?.serviceName ?? spans[0]?.serviceName ?? "unknown"
+}
+
 export function rebuildPacket(
   incidentId: string,
   packetId: string,
@@ -38,6 +50,7 @@ export function rebuildPacket(
   rawState: IncidentRawState,
   existingEvidence?: { changedMetrics?: unknown[]; relevantLogs?: unknown[]; platformEvents?: unknown[] },
   generation?: number,
+  primaryService?: string,
 ): IncidentPacket {
   const { spans, anomalousSignals } = rawState
 
@@ -49,7 +62,9 @@ export function rebuildPacket(
 
   // scope
   const environment = spans[0]?.environment ?? "unknown"
-  const primaryService = spans[0]?.serviceName ?? "unknown"
+  // NOTE: primaryService is immutable after incident creation (ADR 0018 amendment).
+  // Rebuilds preserve the original triggering service instead of recalculating it.
+  const resolvedPrimaryService = primaryService ?? selectPrimaryService(spans)
   const affectedServices = [...new Set(spans.map((s) => s.serviceName))]
   const affectedRoutes = [...new Set(spans.flatMap((s) => (s.httpRoute ? [s.httpRoute] : [])))]
   const affectedDependencies = [...new Set(spans.flatMap((s) => (s.peerService ? [s.peerService] : [])))]
@@ -92,7 +107,7 @@ export function rebuildPacket(
     },
     scope: {
       environment,
-      primaryService,
+      primaryService: resolvedPrimaryService,
       affectedServices,
       affectedRoutes,
       affectedDependencies,
@@ -118,6 +133,7 @@ export function createPacket(
   openedAt: string,
   spans: ExtractedSpan[],
 ): IncidentPacket {
+  const primaryService = selectPrimaryService(spans)
   const rawState: IncidentRawState = {
     spans,
     anomalousSignals: buildAnomalousSignals(spans.filter(isAnomalous)),
@@ -126,5 +142,5 @@ export function createPacket(
     platformEvents: [],
   }
   const packetId = randomUUID()
-  return rebuildPacket(incidentId, packetId, openedAt, rawState, undefined, 1)
+  return rebuildPacket(incidentId, packetId, openedAt, rawState, undefined, 1, primaryService)
 }

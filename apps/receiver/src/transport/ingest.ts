@@ -172,6 +172,7 @@ export function createIngestRouter(storage: StorageDriver, spanBuffer?: SpanBuff
         rawState,
         existing.packet.evidence,
         generation,
+        existing.packet.scope.primaryService,
       );
       await storage.createIncident(rebuiltPacket);
     }

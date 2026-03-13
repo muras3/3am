@@ -33,6 +33,10 @@ incident を incident として識別するための層。
 - `window`
 - `scope`
 
+> **Amendment (2026-03-13, Plan 3 / B-1):** `scope.primaryService` の canonical 定義は "the service that first exhibited anomalous behavior when the incident was created" とする。`createPacket()` で一度だけ確定し、以後の packet rebuild や `updatePacketWithSpans()` では変更しない。
+
+> **Amendment (2026-03-13, Plan 3 / B-1):** `primaryService` の決定アルゴリズムは `selectPrimaryService(spans)` として固定する。anomalous spans を `startTimeMs asc -> serviceName asc` で sort し、先頭の `serviceName` を採用する。anomalous spans が存在しない場合のみ `spans[0].serviceName` に fallback する。
+
 ### 2. `situation`
 
 incident の事実ベースの状況説明層。
@@ -97,6 +101,7 @@ packet から raw data や保存済み artifact へ戻るための層。
 - recommendation や reasoning を packet に入れると、Receiver が LLM 的責務を持ってしまう
 - semantic sections を固定すれば、UI が多少変わっても packet の安定性を保てる
 - Console, CLI, GitHub Actions が同じ canonical model を参照できる
+- `primaryService` を triggering service として固定することで、UI headline / diagnosis prompt / formation key comparison の主語を span 順序から切り離せる
 
 ## Consequences
 
@@ -104,6 +109,8 @@ packet から raw data や保存済み artifact へ戻るための層。
 - `diagnosis result` は packet とは別の出力契約として定義する必要がある
 - UI は packet をそのまま描画するのではなく、packet を土台に表示モデルを構成する
 - field 詳細は今後更新されうるが、semantic sections 自体は Phase 1 の基礎契約になる
+- `scope.primaryService` は incident 作成時の triggering service を保持し、後続 signal では更新しない
+- UI / diagnosis / formation key 側も、この `primaryService` を incident の canonical subject として扱う
 
 > **Amendment (2026-03-13):** Packet は derived view であるため、同一 packetId で内容が更新される。packetId は latest canonical view を指す stable identifier である。詳細は [ADR 0030](0030-incident-state-and-packet-rebuild.md) を参照。
 

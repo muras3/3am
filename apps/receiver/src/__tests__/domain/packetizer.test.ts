@@ -1,8 +1,24 @@
 import { describe, it, expect } from 'vitest'
 import { IncidentPacketSchema } from '@3amoncall/core'
-import { buildAnomalousSignals, createPacket, rebuildPacket } from '../../domain/packetizer.js'
+import { buildAnomalousSignals, createPacket, rebuildPacket, selectPrimaryService } from '../../domain/packetizer.js'
 import { isAnomalous, type ExtractedSpan } from '../../domain/anomaly-detector.js'
 import type { IncidentRawState } from '../../storage/interface.js'
+
+function makeSpan(overrides: Partial<ExtractedSpan> = {}): ExtractedSpan {
+  return {
+    traceId: overrides.traceId ?? 'trace-default',
+    spanId: overrides.spanId ?? 'span-default',
+    serviceName: overrides.serviceName ?? 'api-service',
+    environment: overrides.environment ?? 'production',
+    httpRoute: overrides.httpRoute ?? '/checkout',
+    httpStatusCode: overrides.httpStatusCode,
+    spanStatusCode: overrides.spanStatusCode ?? 1,
+    durationMs: overrides.durationMs ?? 100,
+    startTimeMs: overrides.startTimeMs ?? 1700000000000,
+    exceptionCount: overrides.exceptionCount ?? 0,
+    peerService: overrides.peerService,
+  }
+}
 
 const spans: ExtractedSpan[] = [
   {
@@ -44,6 +60,27 @@ describe('createPacket', () => {
 
   it('has the incidentId from the argument', () => {
     expect(packet.incidentId).toBe('inc_test_001')
+  })
+
+  it('sets primaryService to the first anomalous service rather than the first span', () => {
+    const reordered = [
+      makeSpan({
+        traceId: 'trace010',
+        spanId: 'span010',
+        serviceName: 'edge-proxy',
+        startTimeMs: 1700000002000,
+      }),
+      makeSpan({
+        traceId: 'trace011',
+        spanId: 'span011',
+        serviceName: 'checkout-api',
+        startTimeMs: 1700000001000,
+        httpStatusCode: 500,
+        spanStatusCode: 2,
+      }),
+    ]
+
+    expect(createPacket('inc_test_010', '2023-11-14T22:13:20.000Z', reordered).scope.primaryService).toBe('checkout-api')
   })
 
   it('scope.affectedServices contains both services', () => {
@@ -91,6 +128,76 @@ describe('createPacket', () => {
   })
 })
 
+describe('selectPrimaryService', () => {
+  it('is order-independent when only one anomalous service exists', () => {
+    const expected = 'service-a'
+    const variants: ExtractedSpan[][] = [
+      [
+        makeSpan({ serviceName: 'service-b', spanId: 'span-b1', startTimeMs: 1700000001000 }),
+        makeSpan({ serviceName: expected, spanId: 'span-a1', startTimeMs: 1700000000500, httpStatusCode: 500, spanStatusCode: 2 }),
+        makeSpan({ serviceName: 'service-c', spanId: 'span-c1', startTimeMs: 1700000002000 }),
+      ],
+      [
+        makeSpan({ serviceName: expected, spanId: 'span-a2', startTimeMs: 1700000000500, httpStatusCode: 500, spanStatusCode: 2 }),
+        makeSpan({ serviceName: 'service-b', spanId: 'span-b2', startTimeMs: 1700000001000 }),
+        makeSpan({ serviceName: 'service-c', spanId: 'span-c2', startTimeMs: 1700000002000 }),
+      ],
+      [
+        makeSpan({ serviceName: 'service-c', spanId: 'span-c3', startTimeMs: 1700000002000 }),
+        makeSpan({ serviceName: 'service-b', spanId: 'span-b3', startTimeMs: 1700000001000 }),
+        makeSpan({ serviceName: expected, spanId: 'span-a3', startTimeMs: 1700000000500, httpStatusCode: 500, spanStatusCode: 2 }),
+      ],
+    ]
+
+    for (const spans of variants) {
+      expect(selectPrimaryService(spans)).toBe(expected)
+    }
+  })
+
+  it('chooses the earliest anomalous service by start time', () => {
+    expect(
+      selectPrimaryService([
+        makeSpan({ serviceName: 'service-a', spanId: 'span-a', startTimeMs: 1700000000100, httpStatusCode: 500, spanStatusCode: 2 }),
+        makeSpan({ serviceName: 'service-b', spanId: 'span-b', startTimeMs: 1700000000200, httpStatusCode: 500, spanStatusCode: 2 }),
+      ]),
+    ).toBe('service-a')
+
+    expect(
+      selectPrimaryService([
+        makeSpan({ serviceName: 'service-b', spanId: 'span-b', startTimeMs: 1700000000100, httpStatusCode: 500, spanStatusCode: 2 }),
+        makeSpan({ serviceName: 'service-a', spanId: 'span-a', startTimeMs: 1700000000200, httpStatusCode: 500, spanStatusCode: 2 }),
+      ]),
+    ).toBe('service-b')
+  })
+
+  it('breaks anomalous timestamp ties by service name', () => {
+    const selected = selectPrimaryService([
+      makeSpan({ serviceName: 'service-b', spanId: 'span-b', startTimeMs: 1700000000100, httpStatusCode: 500, spanStatusCode: 2 }),
+      makeSpan({ serviceName: 'service-a', spanId: 'span-a', startTimeMs: 1700000000100, httpStatusCode: 500, spanStatusCode: 2 }),
+    ])
+
+    expect(selected).toBe('service-a')
+  })
+
+  it('ignores non-anomalous spans before anomalous upstream spans', () => {
+    const selected = selectPrimaryService([
+      makeSpan({ serviceName: 'downstream-cache', spanId: 'span-cache', startTimeMs: 1700000000100 }),
+      makeSpan({ serviceName: 'checkout-api', spanId: 'span-api', startTimeMs: 1700000000200, httpStatusCode: 500, spanStatusCode: 2 }),
+    ])
+
+    expect(selected).toBe('checkout-api')
+  })
+
+  it('falls back to spans[0].serviceName only when no anomalous spans exist', () => {
+    const selected = selectPrimaryService([
+      makeSpan({ serviceName: 'frontend', spanId: 'span-front', startTimeMs: 1700000000100 }),
+      makeSpan({ serviceName: 'checkout-api', spanId: 'span-api', startTimeMs: 1700000000200, spanStatusCode: 0 }),
+    ])
+
+    expect(selected).toBe('frontend')
+  })
+})
+
 // ---
 
 const makeRawState = (allSpans: ExtractedSpan[], signals?: IncidentRawState['anomalousSignals']): IncidentRawState => ({
@@ -119,6 +226,23 @@ describe('rebuildPacket', () => {
   it('generation counter is stored in packet', () => {
     const packet = rebuildPacket('inc_1', 'pkt_1', '2023-11-14T22:13:20.000Z', rawState, undefined, 3)
     expect(packet.generation).toBe(3)
+  })
+
+  it('preserves the original primaryService during rebuilds', () => {
+    const packet = rebuildPacket(
+      'inc_1',
+      'pkt_1',
+      '2023-11-14T22:13:20.000Z',
+      makeRawState([
+        makeSpan({ serviceName: 'checkout-api', spanId: 'span-a', startTimeMs: 1700000000000, httpStatusCode: 500, spanStatusCode: 2 }),
+        makeSpan({ serviceName: 'billing-worker', spanId: 'span-b', startTimeMs: 1699999999000, httpStatusCode: 503, spanStatusCode: 2 }),
+      ]),
+      undefined,
+      2,
+      'checkout-api',
+    )
+
+    expect(packet.scope.primaryService).toBe('checkout-api')
   })
 
   it('existingEvidence is preserved in output', () => {
