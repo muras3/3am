@@ -6,7 +6,7 @@ const { trace, metrics, SpanStatusCode } = require("@opentelemetry/api");
 const { logs } = require("@opentelemetry/api-logs");
 const { OTLPLogExporter } = require("@opentelemetry/exporter-logs-otlp-http");
 const { NodeSDK } = require("@opentelemetry/sdk-node");
-const { LoggerProvider, BatchLogRecordProcessor } = require("@opentelemetry/sdk-logs");
+const { BatchLogRecordProcessor } = require("@opentelemetry/sdk-logs");
 const { OTLPTraceExporter } = require("@opentelemetry/exporter-trace-otlp-http");
 const { OTLPMetricExporter } = require("@opentelemetry/exporter-metrics-otlp-http");
 const { PeriodicExportingMetricReader } = require("@opentelemetry/sdk-metrics");
@@ -300,16 +300,14 @@ function resetState(runId) {
 
 async function main() {
   state.logStream = initLogStream(appLogFile);
-  const loggerProvider = new LoggerProvider({
-    processors: [new BatchLogRecordProcessor(new OTLPLogExporter({ url: `${otlpEndpoint}/v1/logs` }))]
-  });
-  logs.setGlobalLoggerProvider(loggerProvider);
   const sdk = new NodeSDK({
+    serviceName: "validation-web",
     traceExporter: new OTLPTraceExporter({ url: `${otlpEndpoint}/v1/traces` }),
     metricReader: new PeriodicExportingMetricReader({
       exporter: new OTLPMetricExporter({ url: `${otlpEndpoint}/v1/metrics` }),
       exportIntervalMillis: 2000
-    })
+    }),
+    logRecordProcessor: new BatchLogRecordProcessor(new OTLPLogExporter({ url: `${otlpEndpoint}/v1/logs` }))
   });
   await sdk.start();
 
