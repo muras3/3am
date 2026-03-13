@@ -41,7 +41,7 @@ export function normalizeDependency(raw: string | undefined): string | undefined
   if (!raw || raw.trim() === '') return undefined
   if (IGNORED_DEPENDENCY_NAMES.has(raw.toLowerCase())) return undefined
   if (IP_ADDRESS_PATTERN.test(raw)) return undefined
-  return raw
+  return raw.toLowerCase()
 }
 
 /**
@@ -60,7 +60,7 @@ export function buildFormationKey(spans: ExtractedSpan[]): IncidentFormationKey 
   // Collect raw peer.service values, ignoring absent ones
   const rawPeerServices = spans
     .map((s) => s.peerService)
-    .filter((p): p is string => p !== undefined && p !== '')
+    .filter((p): p is string => p !== undefined)
 
   // Normalize each raw value; after normalization collapse distinct set
   const normalizedDeps = new Set(

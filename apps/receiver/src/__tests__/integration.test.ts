@@ -1209,11 +1209,16 @@ async function postTraces(
   return res.json() as Promise<{ status: string; incidentId?: string; packetId?: string }>;
 }
 
+type IncidentListItem = {
+  incidentId: string;
+  packet: { scope: { affectedDependencies: string[]; affectedServices: string[] }; triggerSignals: unknown[] };
+};
+
 async function getIncidents(
   app: ReturnType<typeof createApp>,
-): Promise<{ items: Array<{ incidentId: string; packet: { scope: { affectedDependencies: string[]; affectedServices: string[] }; triggerSignals: unknown[] } }> }> {
+): Promise<{ items: IncidentListItem[] }> {
   const res = await app.request("/api/incidents");
-  return res.json() as Promise<{ items: Array<{ incidentId: string; packet: { scope: { affectedDependencies: string[]; affectedServices: string[] }; triggerSignals: unknown[] } }> }>;
+  return res.json() as Promise<{ items: IncidentListItem[] }>;
 }
 
 describe("Formation: dependency-based incident grouping (OC-1 to OC-6)", () => {

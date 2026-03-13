@@ -70,7 +70,7 @@ export function rebuildPacket(
   // MAX_CROSS_SERVICE_MERGE guard (see formation.ts).
   const affectedServices = [...new Set(spans.map((s) => s.serviceName))]
   const affectedRoutes = [...new Set(spans.flatMap((s) => (s.httpRoute ? [s.httpRoute] : [])))]
-  const affectedDependencies = [...new Set(spans.flatMap((s) => (s.peerService ? [s.peerService] : [])))]
+  const affectedDependencies = [...new Set(spans.flatMap((s) => (s.peerService ? [s.peerService.toLowerCase()] : [])))]
 
   // triggerSignals: dedup by signal+entity, keep earliest firstSeenAt per group
   const groupMap = new Map<string, { signal: string; firstSeenAt: string; entity: string }>()
