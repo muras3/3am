@@ -118,7 +118,9 @@ function log(level, message, fields = {}) {
     state.logStream.write(JSON.stringify(payload) + "\n");
   }
   if (otelLogger) {
+    const severityNumber = { trace: 1, debug: 5, info: 9, warn: 13, error: 17, fatal: 21 }[level] ?? 0;
     otelLogger.emit({
+      severityNumber,
       severityText: level.toUpperCase(),
       body: message,
       attributes: runAttrs(fields)
@@ -243,7 +245,7 @@ async function callPayment(orderId) {
         if (response.statusCode !== 429) {
           span.setAttributes({
             "payment.attempts": attempt,
-            "http.status_code": response.statusCode
+            "http.response.status_code": response.statusCode
           });
           return { attempt, response };
         }
@@ -255,7 +257,7 @@ async function callPayment(orderId) {
         if (attempt >= retryMaxAttempts) {
           span.setAttributes({
             "payment.attempts": attempt,
-            "http.status_code": response.statusCode,
+            "http.response.status_code": response.statusCode,
             "retry.exhausted": true
           });
           return { attempt, response };

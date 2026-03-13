@@ -2,7 +2,10 @@ const http = require("http");
 const fs = require("fs");
 const { URL } = require("url");
 const { trace, metrics, SpanStatusCode } = require("@opentelemetry/api");
+const { logs } = require("@opentelemetry/api-logs");
 const { NodeSDK } = require("@opentelemetry/sdk-node");
+const { LoggerProvider, BatchLogRecordProcessor } = require("@opentelemetry/sdk-logs");
+const { OTLPLogExporter } = require("@opentelemetry/exporter-logs-otlp-http");
 const { OTLPTraceExporter } = require("@opentelemetry/exporter-trace-otlp-http");
 const { OTLPMetricExporter } = require("@opentelemetry/exporter-metrics-otlp-http");
 const { PeriodicExportingMetricReader } = require("@opentelemetry/sdk-metrics");
@@ -17,6 +20,7 @@ const cache = new Map();
 const stats = { hitCount: 0, missCount: 0, cachedErrorsTotal: 0 };
 
 let tracer;
+let otelLogger;
 let cachedErrorsCounter;
 let logStream = null;
 
@@ -25,11 +29,15 @@ if (appLogFile) {
   logStream = fs.createWriteStream(appLogFile, { flags: "a" });
 }
 
-function log(message, fields = {}) {
-  const payload = { ts: new Date().toISOString(), message, ...fields };
+function log(message, fields = {}, level = "info") {
+  const payload = { ts: new Date().toISOString(), level, message, ...fields };
   process.stdout.write(JSON.stringify(payload) + "\n");
   if (logStream) {
     logStream.write(JSON.stringify(payload) + "\n");
+  }
+  if (otelLogger) {
+    const severityNumber = { trace: 1, debug: 5, info: 9, warn: 13, error: 17, fatal: 21 }[level] ?? 0;
+    otelLogger.emit({ severityNumber, severityText: level.toUpperCase(), body: message, attributes: fields });
   }
 }
 
@@ -147,10 +155,16 @@ async function handleRequest(req, res) {
         span.setAttributes({
           "cdn.cache_status": "HIT",
           "cdn.cached_status_code": entry.statusCode,
+          "http.response.status_code": entry.statusCode,
           "cdn.age_sec": ageSec,
           "http.response.header.cache_control": entry.cacheControl || ""
         });
-        log("cache hit", { key, statusCode: entry.statusCode, ageSec });
+        if (entry.statusCode >= 500) {
+          span.setStatus({ code: SpanStatusCode.ERROR });
+          log("serving stale error from cache", { key, statusCode: entry.statusCode, ageSec, cacheControl: entry.cacheControl }, "warn");
+        } else {
+          log("cache hit", { key, statusCode: entry.statusCode, ageSec });
+        }
         const headers = { ...entry.headers, "x-cache": "HIT", age: String(ageSec) };
         res.writeHead(entry.statusCode, headers);
         res.end(entry.body);
@@ -165,9 +179,13 @@ async function handleRequest(req, res) {
       span.setAttributes({
         "cdn.cache_status": "MISS",
         "cdn.cached_status_code": origin.statusCode,
+        "http.response.status_code": origin.statusCode,
         "cdn.age_sec": 0,
         "http.response.header.cache_control": cc
       });
+      if (origin.statusCode >= 500) {
+        span.setStatus({ code: SpanStatusCode.ERROR });
+      }
 
       if (isPublic(cc) && sMaxAge !== null) {
         const ttl = cdnCacheTtlSec !== null ? cdnCacheTtlSec : sMaxAge;
@@ -180,7 +198,11 @@ async function handleRequest(req, res) {
           cachedAt: now,
           expiresAt: now + ttl * 1000
         });
-        log("cached response", { key, statusCode: origin.statusCode, ttlSec: ttl });
+        if (origin.statusCode >= 500) {
+          log("caching error response from origin", { key, statusCode: origin.statusCode, ttlSec: ttl, cacheControl: cc }, "warn");
+        } else {
+          log("cached response", { key, statusCode: origin.statusCode, ttlSec: ttl });
+        }
         if (origin.statusCode >= 400) {
           stats.cachedErrorsTotal += 1;
           cachedErrorsCounter.add(1, { "http.status_code": origin.statusCode });
@@ -201,6 +223,11 @@ async function handleRequest(req, res) {
 }
 
 async function main() {
+  const loggerProvider = new LoggerProvider({
+    processors: [new BatchLogRecordProcessor(new OTLPLogExporter({ url: `${otlpEndpoint}/v1/logs` }))]
+  });
+  logs.setGlobalLoggerProvider(loggerProvider);
+
   const sdk = new NodeSDK({
     serviceName: "mock-cdn",
     traceExporter: new OTLPTraceExporter({ url: `${otlpEndpoint}/v1/traces` }),
@@ -212,6 +239,7 @@ async function main() {
   await sdk.start();
 
   tracer = trace.getTracer("mock-cdn");
+  otelLogger = logs.getLogger("mock-cdn");
   const meter = metrics.getMeter("mock-cdn");
 
   cachedErrorsCounter = meter.createCounter("cdn_cached_errors_total", {
