@@ -108,15 +108,23 @@ export function createIngestRouter(storage: StorageDriver, spanBuffer?: SpanBuff
 
     const spans = extractSpans(body);
     spans.forEach((span) => spanBuffer?.push({ ...span, ingestedAt: Date.now() }));
-    const anomalousSpans = spans.filter(isAnomalous);
+
+    // Sort anomalous spans by (startTimeMs asc, serviceName asc) for deterministic
+    // primaryService selection — same algorithm as Plan 3 selectPrimaryService().
+    const anomalousSpans = spans
+      .filter(isAnomalous)
+      .sort((a, b) =>
+        a.startTimeMs !== b.startTimeMs
+          ? a.startTimeMs - b.startTimeMs
+          : a.serviceName.localeCompare(b.serviceName),
+      );
 
     if (anomalousSpans.length === 0) {
       return c.json({ status: "ok" });
     }
 
-    const firstSpan = anomalousSpans[0];
-    const formationKey = buildFormationKey(firstSpan);
-    const signalTimeMs = firstSpan.startTimeMs;
+    const formationKey = buildFormationKey(anomalousSpans);
+    const signalTimeMs = anomalousSpans[0].startTimeMs;
 
     // Find existing open incident for this formation key within window.
     // Phase C: paginate through all pages (cursor loop) so matches are not
@@ -131,7 +139,7 @@ export function createIngestRouter(storage: StorageDriver, spanBuffer?: SpanBuff
     // Use signal time (not server clock) so formation window is anchored to telemetry
     const openedAt = existing
       ? existing.openedAt
-      : new Date(firstSpan.startTimeMs).toISOString();
+      : new Date(anomalousSpans[0].startTimeMs).toISOString();
 
     if (isNew) {
       // Pass all spans (not just anomalous) so the packet captures the full

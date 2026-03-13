@@ -1,11 +1,22 @@
 import { describe, it, expect } from 'vitest'
-import { buildFormationKey, shouldAttachToIncident, FORMATION_WINDOW_MS } from '../../domain/formation.js'
+import {
+  buildFormationKey,
+  shouldAttachToIncident,
+  normalizeDependency,
+  FORMATION_WINDOW_MS,
+  MAX_CROSS_SERVICE_MERGE,
+} from '../../domain/formation.js'
 import type { ExtractedSpan } from '../../domain/anomaly-detector.js'
 import type { Incident } from '../../storage/interface.js'
 import type { IncidentPacket } from '@3amoncall/core'
 
 // Minimal IncidentPacket fixture — only fields needed for formation logic
-function makePacket(environment: string, primaryService: string): IncidentPacket {
+function makePacket(
+  environment: string,
+  primaryService: string,
+  affectedDependencies: string[] = [],
+  affectedServices: string[] = [],
+): IncidentPacket {
   return {
     schemaVersion: 'incident-packet/v1alpha1',
     packetId: 'pkt_test',
@@ -19,9 +30,9 @@ function makePacket(environment: string, primaryService: string): IncidentPacket
     scope: {
       environment,
       primaryService,
-      affectedServices: [],
+      affectedServices,
       affectedRoutes: [],
-      affectedDependencies: [],
+      affectedDependencies,
     },
     triggerSignals: [],
     evidence: {
@@ -44,12 +55,14 @@ function makeIncident(
   primaryService: string,
   openedAt: string,
   status: 'open' | 'closed' = 'open',
+  affectedDependencies: string[] = [],
+  affectedServices: string[] = [],
 ): Incident {
   return {
     incidentId: 'inc_test',
     status,
     openedAt,
-    packet: makePacket(environment, primaryService),
+    packet: makePacket(environment, primaryService, affectedDependencies, affectedServices),
     rawState: { spans: [], anomalousSignals: [], metricEvidence: [], logEvidence: [], platformEvents: [] },
   }
 }
@@ -66,33 +79,142 @@ const BASE_SPAN: ExtractedSpan = {
   exceptionCount: 0,
 }
 
+// ── buildFormationKey — original tests (updated to new [spans] signature) ──────
+
 describe('buildFormationKey', () => {
   it('returns environment matching span.environment', () => {
-    const key = buildFormationKey(BASE_SPAN)
+    const key = buildFormationKey([BASE_SPAN])
     expect(key.environment).toBe('production')
   })
 
   it('returns primaryService matching span.serviceName', () => {
-    const key = buildFormationKey(BASE_SPAN)
+    const key = buildFormationKey([BASE_SPAN])
     expect(key.primaryService).toBe('api-service')
   })
 
   it('timeWindow.start is ISO string of span.startTimeMs', () => {
-    const key = buildFormationKey(BASE_SPAN)
+    const key = buildFormationKey([BASE_SPAN])
     expect(key.timeWindow.start).toBe(new Date(BASE_SPAN.startTimeMs).toISOString())
   })
 
   it('timeWindow.end is ISO string of span.startTimeMs + 5 minutes', () => {
-    const key = buildFormationKey(BASE_SPAN)
+    const key = buildFormationKey([BASE_SPAN])
     expect(key.timeWindow.end).toBe(
       new Date(BASE_SPAN.startTimeMs + FORMATION_WINDOW_MS).toISOString(),
     )
   })
+
+  // ── New: dependency derivation ──────────────────────────────────────────────
+
+  it('dependency is set when all spans share the same peerService', () => {
+    const spans: ExtractedSpan[] = [
+      { ...BASE_SPAN, peerService: 'stripe' },
+      { ...BASE_SPAN, spanId: 'span2', peerService: 'stripe' },
+    ]
+    const key = buildFormationKey(spans)
+    expect(key.dependency).toBe('stripe')
+  })
+
+  it('dependency is undefined when spans have multiple distinct peerService values', () => {
+    const spans: ExtractedSpan[] = [
+      { ...BASE_SPAN, peerService: 'stripe' },
+      { ...BASE_SPAN, spanId: 'span2', peerService: 'redis' },
+    ]
+    const key = buildFormationKey(spans)
+    expect(key.dependency).toBeUndefined()
+  })
+
+  it('dependency is undefined when no span has peerService', () => {
+    const key = buildFormationKey([BASE_SPAN])
+    expect(key.dependency).toBeUndefined()
+  })
+
+  it('dependency is undefined when peerService is empty string (normalization)', () => {
+    const key = buildFormationKey([{ ...BASE_SPAN, peerService: '' }])
+    expect(key.dependency).toBeUndefined()
+  })
+
+  it('dependency is undefined when peerService is "localhost" (normalization)', () => {
+    const key = buildFormationKey([{ ...BASE_SPAN, peerService: 'localhost' }])
+    expect(key.dependency).toBeUndefined()
+  })
+
+  it('dependency is undefined when peerService is "127.0.0.1" (normalization)', () => {
+    const key = buildFormationKey([{ ...BASE_SPAN, peerService: '127.0.0.1' }])
+    expect(key.dependency).toBeUndefined()
+  })
+
+  it('dependency is undefined when peerService is an IP address like "192.168.1.100"', () => {
+    const key = buildFormationKey([{ ...BASE_SPAN, peerService: '192.168.1.100' }])
+    expect(key.dependency).toBeUndefined()
+  })
+
+  it('dependency is undefined when peerService is an internal IP address like "10.0.0.1"', () => {
+    const key = buildFormationKey([{ ...BASE_SPAN, peerService: '10.0.0.1' }])
+    expect(key.dependency).toBeUndefined()
+  })
+
+  it('localhost and empty peerService normalize to undefined → single-distinct → fallback (no dependency)', () => {
+    // Both "localhost" and "" normalize to undefined — so normalizedDeps.size === 0 → dependency = undefined
+    const spans: ExtractedSpan[] = [
+      { ...BASE_SPAN, peerService: 'localhost' },
+      { ...BASE_SPAN, spanId: 'span2', peerService: '' },
+    ]
+    const key = buildFormationKey(spans)
+    expect(key.dependency).toBeUndefined()
+  })
 })
+
+// ── normalizeDependency unit tests ─────────────────────────────────────────────
+
+describe('normalizeDependency', () => {
+  it('returns undefined for empty string', () => {
+    expect(normalizeDependency('')).toBeUndefined()
+  })
+
+  it('returns undefined for undefined', () => {
+    expect(normalizeDependency(undefined)).toBeUndefined()
+  })
+
+  it('returns undefined for "localhost"', () => {
+    expect(normalizeDependency('localhost')).toBeUndefined()
+  })
+
+  it('returns undefined for "127.0.0.1"', () => {
+    expect(normalizeDependency('127.0.0.1')).toBeUndefined()
+  })
+
+  it('returns undefined for "::1"', () => {
+    expect(normalizeDependency('::1')).toBeUndefined()
+  })
+
+  it('returns undefined for "0.0.0.0"', () => {
+    expect(normalizeDependency('0.0.0.0')).toBeUndefined()
+  })
+
+  it('returns undefined for "192.168.1.100" (IP address)', () => {
+    expect(normalizeDependency('192.168.1.100')).toBeUndefined()
+  })
+
+  it('returns undefined for "10.0.0.1" (internal IP)', () => {
+    expect(normalizeDependency('10.0.0.1')).toBeUndefined()
+  })
+
+  it('returns the value for a legitimate service name like "stripe"', () => {
+    expect(normalizeDependency('stripe')).toBe('stripe')
+  })
+
+  it('returns the value for a FQDN-style service name', () => {
+    expect(normalizeDependency('redis.internal')).toBe('redis.internal')
+  })
+})
+
+// ── shouldAttachToIncident — original tests ────────────────────────────────────
 
 describe('shouldAttachToIncident', () => {
   const openedAt = new Date(BASE_SPAN.startTimeMs).toISOString()
-  const key = buildFormationKey(BASE_SPAN)
+  // key without dependency: classic service matching
+  const key = buildFormationKey([BASE_SPAN])
 
   it('returns true when env+service match AND signal is 4 minutes after openedAt (within 5min)', () => {
     const incident = makeIncident('production', 'api-service', openedAt)
@@ -118,9 +240,134 @@ describe('shouldAttachToIncident', () => {
     expect(shouldAttachToIncident(key, incident, signalTimeMs)).toBe(false)
   })
 
-  it('returns false when primaryService differs', () => {
+  it('returns false when primaryService differs (no dependency key)', () => {
     const incident = makeIncident('production', 'other-service', openedAt)
     const signalTimeMs = BASE_SPAN.startTimeMs + 1 * 60 * 1000
     expect(shouldAttachToIncident(key, incident, signalTimeMs)).toBe(false)
+  })
+})
+
+// ── shouldAttachToIncident — new dependency-first tests ───────────────────────
+
+describe('shouldAttachToIncident: dependency-first logic', () => {
+  const openedAt = new Date(BASE_SPAN.startTimeMs).toISOString()
+  const signalTimeMs = BASE_SPAN.startTimeMs + 1 * 60 * 1000 // 1 min later (within window)
+
+  // ── split cases ─────────────────────────────────────────────────────────────
+
+  it('split: same service, different dependency → false', () => {
+    const key = buildFormationKey([{ ...BASE_SPAN, peerService: 'twilio' }])
+    const incident = makeIncident('production', 'api-service', openedAt, 'open', ['stripe'])
+    expect(shouldAttachToIncident(key, incident, signalTimeMs)).toBe(false)
+  })
+
+  it('split: same service, different dependency (closed incident) → false', () => {
+    const key = buildFormationKey([{ ...BASE_SPAN, peerService: 'redis' }])
+    const incident = makeIncident('production', 'api-service', openedAt, 'closed', ['stripe'])
+    expect(shouldAttachToIncident(key, incident, signalTimeMs)).toBe(false)
+  })
+
+  // ── merge cases ──────────────────────────────────────────────────────────────
+
+  it('merge: same service, same dependency → true', () => {
+    const key = buildFormationKey([{ ...BASE_SPAN, peerService: 'stripe' }])
+    const incident = makeIncident('production', 'api-service', openedAt, 'open', ['stripe'])
+    expect(shouldAttachToIncident(key, incident, signalTimeMs)).toBe(true)
+  })
+
+  it('merge: different service (in affectedServices), same dependency → true (cross-service, small incident)', () => {
+    const key = buildFormationKey([{ ...BASE_SPAN, serviceName: 'checkout-service', peerService: 'stripe' }])
+    // incident has 1 affected service → length=1 < MAX_CROSS_SERVICE_MERGE(3)
+    const incident = makeIncident('production', 'api-service', openedAt, 'open', ['stripe'], ['worker-service'])
+    expect(shouldAttachToIncident(key, incident, signalTimeMs)).toBe(true)
+  })
+
+  it('merge: same dependency, key service is primaryService of incident → true (same service path)', () => {
+    const key = buildFormationKey([{ ...BASE_SPAN, serviceName: 'api-service', peerService: 'stripe' }])
+    const incident = makeIncident('production', 'api-service', openedAt, 'open', ['stripe'])
+    expect(shouldAttachToIncident(key, incident, signalTimeMs)).toBe(true)
+  })
+
+  // ── MAX_CROSS_SERVICE_MERGE boundary tests ───────────────────────────────────
+
+  it('MAX boundary: affectedServices.length === MAX-1 (=2) → true (merge allowed)', () => {
+    const key = buildFormationKey([{ ...BASE_SPAN, serviceName: 'checkout-service', peerService: 'stripe' }])
+    // incident already has 2 affected services: affectedServices.length = 2 = MAX-1
+    const incident = makeIncident(
+      'production', 'api-service', openedAt, 'open',
+      ['stripe'],
+      ['worker-service', 'billing-service'], // length = 2 = MAX-1
+    )
+    expect(shouldAttachToIncident(key, incident, signalTimeMs)).toBe(true)
+  })
+
+  it('MAX boundary: affectedServices.length === MAX (=3) → false (split)', () => {
+    const key = buildFormationKey([{ ...BASE_SPAN, serviceName: 'checkout-service', peerService: 'stripe' }])
+    // incident already has 3 affected services: affectedServices.length = 3 = MAX
+    const incident = makeIncident(
+      'production', 'api-service', openedAt, 'open',
+      ['stripe'],
+      ['worker-service', 'billing-service', 'report-service'], // length = 3 = MAX
+    )
+    expect(shouldAttachToIncident(key, incident, signalTimeMs)).toBe(false)
+  })
+
+  it('MAX boundary: affectedServices.length > MAX → false (split continues)', () => {
+    const key = buildFormationKey([{ ...BASE_SPAN, serviceName: 'fifth-service', peerService: 'stripe' }])
+    const incident = makeIncident(
+      'production', 'api-service', openedAt, 'open',
+      ['stripe'],
+      ['worker-service', 'billing-service', 'report-service', 'batch-service'], // length = 4 > MAX
+    )
+    expect(shouldAttachToIncident(key, incident, signalTimeMs)).toBe(false)
+  })
+
+  // ── env / window negative cases ──────────────────────────────────────────────
+
+  it('same dependency but different env → false', () => {
+    const key = buildFormationKey([{ ...BASE_SPAN, peerService: 'stripe' }])
+    const incident = makeIncident('staging', 'api-service', openedAt, 'open', ['stripe'])
+    expect(shouldAttachToIncident(key, incident, signalTimeMs)).toBe(false)
+  })
+
+  it('same dependency but signal outside 5min window → false', () => {
+    const key = buildFormationKey([{ ...BASE_SPAN, peerService: 'stripe' }])
+    const incident = makeIncident('production', 'api-service', openedAt, 'open', ['stripe'])
+    const outsideWindowMs = BASE_SPAN.startTimeMs + 6 * 60 * 1000 // 6 min later
+    expect(shouldAttachToIncident(key, incident, outsideWindowMs)).toBe(false)
+  })
+
+  // ── fallback to classic service matching ─────────────────────────────────────
+
+  it('fallback: no peerService → classic primaryService matching → true when same service', () => {
+    const key = buildFormationKey([BASE_SPAN]) // no peerService → dependency = undefined
+    const incident = makeIncident('production', 'api-service', openedAt)
+    expect(shouldAttachToIncident(key, incident, signalTimeMs)).toBe(true)
+  })
+
+  it('fallback: no peerService → classic primaryService matching → false when different service', () => {
+    const key = buildFormationKey([BASE_SPAN])
+    const incident = makeIncident('production', 'other-service', openedAt)
+    expect(shouldAttachToIncident(key, incident, signalTimeMs)).toBe(false)
+  })
+
+  it('fallback: localhost peerService → dependency=undefined → falls through to service matching', () => {
+    const key = buildFormationKey([{ ...BASE_SPAN, peerService: 'localhost' }])
+    expect(key.dependency).toBeUndefined() // confirm normalization
+    const incident = makeIncident('production', 'api-service', openedAt)
+    expect(shouldAttachToIncident(key, incident, signalTimeMs)).toBe(true)
+  })
+
+  it('fallback: IP peerService → dependency=undefined → falls through to service matching', () => {
+    const key = buildFormationKey([{ ...BASE_SPAN, peerService: '192.168.0.10' }])
+    expect(key.dependency).toBeUndefined()
+    const incident = makeIncident('production', 'api-service', openedAt)
+    expect(shouldAttachToIncident(key, incident, signalTimeMs)).toBe(true)
+  })
+
+  // ── MAX_CROSS_SERVICE_MERGE constant sanity ──────────────────────────────────
+
+  it('MAX_CROSS_SERVICE_MERGE equals 3', () => {
+    expect(MAX_CROSS_SERVICE_MERGE).toBe(3)
   })
 })
