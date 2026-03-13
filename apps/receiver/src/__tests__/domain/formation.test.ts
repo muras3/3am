@@ -50,6 +50,7 @@ function makeIncident(
     status,
     openedAt,
     packet: makePacket(environment, primaryService),
+    rawState: { spans: [], anomalousSignals: [], metricEvidence: [], logEvidence: [], platformEvents: [] },
   }
 }
 

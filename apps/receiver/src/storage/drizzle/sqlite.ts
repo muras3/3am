@@ -12,8 +12,9 @@ import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import { eq, desc, lt, and } from "drizzle-orm";
 import { sql } from "drizzle-orm";
 import type { IncidentPacket, DiagnosisResult, ThinEvent } from "@3amoncall/core";
-import type { Incident, IncidentPage, StorageDriver } from "../interface.js";
-import { mergeEvidenceIntoPacket } from "../interface.js";
+import type { ExtractedSpan } from "../../domain/anomaly-detector.js";
+import type { AnomalousSignal, Incident, IncidentPage, IncidentRawState, StorageDriver } from "../interface.js";
+import { createEmptyRawState, mergeEvidenceIntoPacket } from "../interface.js";
 import { incidents, thinEvents } from "./schema.js";
 
 type Schema = { incidents: typeof incidents; thinEvents: typeof thinEvents };
@@ -40,6 +41,7 @@ export class SQLiteAdapter implements StorageDriver {
         closed_at       TEXT,
         packet          TEXT NOT NULL,
         diagnosis_result TEXT,
+        raw_state       TEXT,
         created_at      TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
         updated_at      TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
       )
@@ -65,6 +67,7 @@ export class SQLiteAdapter implements StorageDriver {
       status: row.status,
       openedAt: row.openedAt,
       packet: JSON.parse(row.packet) as IncidentPacket,
+      rawState: row.rawState ? (JSON.parse(row.rawState) as IncidentRawState) : createEmptyRawState(),
     };
     if (row.closedAt) incident.closedAt = row.closedAt;
     if (row.diagnosisResult) {
@@ -169,6 +172,34 @@ export class SQLiteAdapter implements StorageDriver {
           lt(incidents.openedAt, before.toISOString()),
         ),
       );
+  }
+
+  async appendSpans(incidentId: string, spans: ExtractedSpan[]): Promise<void> {
+    const incident = await this.getIncident(incidentId);
+    if (!incident) return;
+    const rawState: IncidentRawState = { ...incident.rawState, spans: [...incident.rawState.spans, ...spans] };
+    await this.db
+      .update(incidents)
+      .set({ rawState: JSON.stringify(rawState), updatedAt: new Date().toISOString() })
+      .where(eq(incidents.incidentId, incidentId));
+  }
+
+  async appendAnomalousSignals(incidentId: string, signals: AnomalousSignal[]): Promise<void> {
+    const incident = await this.getIncident(incidentId);
+    if (!incident) return;
+    const rawState: IncidentRawState = {
+      ...incident.rawState,
+      anomalousSignals: [...incident.rawState.anomalousSignals, ...signals],
+    };
+    await this.db
+      .update(incidents)
+      .set({ rawState: JSON.stringify(rawState), updatedAt: new Date().toISOString() })
+      .where(eq(incidents.incidentId, incidentId));
+  }
+
+  async getRawState(incidentId: string): Promise<IncidentRawState | null> {
+    const incident = await this.getIncident(incidentId);
+    return incident ? incident.rawState : null;
   }
 
   async saveThinEvent(event: ThinEvent): Promise<void> {

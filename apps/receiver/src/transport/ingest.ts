@@ -8,6 +8,7 @@ import type { SpanBuffer } from "../ambient/span-buffer.js";
 import {
   extractSpans,
   isAnomalous,
+  type ExtractedSpan,
 } from "../domain/anomaly-detector.js";
 import {
   buildFormationKey,
@@ -18,7 +19,7 @@ import {
   extractLogEvidence,
   shouldAttachEvidence,
 } from "../domain/evidence-extractor.js";
-import { createPacket } from "../domain/packetizer.js";
+import { buildAnomalousSignals, createPacket, rebuildPacket } from "../domain/packetizer.js";
 import { dispatchThinEvent } from "../runtime/github-dispatch.js";
 import { decodeTraces, decodeMetrics, decodeLogs } from "./otlp-protobuf.js";
 
@@ -134,16 +135,16 @@ export function createIngestRouter(storage: StorageDriver, spanBuffer?: SpanBuff
       : new Date(firstSpan.startTimeMs).toISOString();
 
     if (isNew) {
-      // Only create the packet (and emit ThinEvent) for new incidents.
-      // Attaching to an existing incident does not overwrite the stored packet,
-      // preserving the stable packet_id that was already emitted in the ThinEvent.
-      // Phase C: accumulate evidence across signals via appendEvidence().
       // Pass all spans (not just anomalous) so the packet captures the full
       // incident-scoped evidence bundle per ADR 0016/0018 (affectedServices,
       // representativeTraces, traceRefs include healthy sibling spans).
       // triggerSignals is computed inside createPacket by re-filtering isAnomalous.
       const packet = createPacket(incidentId, openedAt, spans);
       await storage.createIncident(packet);
+      // ADR 0030: save all spans and anomalous signals to raw state so future
+      // rebuilds have the complete incident history as their single source of truth.
+      await storage.appendSpans(incidentId, spans);
+      await storage.appendAnomalousSignals(incidentId, buildAnomalousSignals(anomalousSpans));
       const thinEvent = {
         event_id: "evt_" + randomUUID(),
         event_type: "incident.created" as const,
@@ -157,6 +158,24 @@ export function createIngestRouter(storage: StorageDriver, spanBuffer?: SpanBuff
       return c.json({ status: "ok", incidentId, packetId: packet.packetId });
     }
 
+    // ADR 0030: existing incident attach — append new spans/signals to raw state and
+    // rebuild the packet so later signals are reflected in the canonical view.
+    // packetId is stable across rebuilds (thin event reference remains valid).
+    await storage.appendSpans(incidentId, spans);
+    await storage.appendAnomalousSignals(incidentId, buildAnomalousSignals(anomalousSpans));
+    const rawState = await storage.getRawState(incidentId);
+    if (rawState !== null) {
+      const generation = (existing.packet.generation ?? 1) + 1;
+      const rebuiltPacket = rebuildPacket(
+        incidentId,
+        existing.packet.packetId,
+        existing.openedAt,
+        rawState,
+        existing.packet.evidence,
+        generation,
+      );
+      await storage.createIncident(rebuiltPacket);
+    }
     return c.json({ status: "ok", incidentId, packetId: existing.packet.packetId });
   });
 

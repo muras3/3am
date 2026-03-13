@@ -10,8 +10,9 @@ import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import { eq, desc, lt, and, sql as drizzleSql, count } from "drizzle-orm";
 import { pgTable, text, timestamp, serial, jsonb } from "drizzle-orm/pg-core";
 import type { IncidentPacket, DiagnosisResult, ThinEvent } from "@3amoncall/core";
-import type { Incident, IncidentPage, StorageDriver } from "../interface.js";
-import { mergeEvidenceIntoPacket } from "../interface.js";
+import type { ExtractedSpan } from "../../domain/anomaly-detector.js";
+import type { AnomalousSignal, Incident, IncidentPage, IncidentRawState, StorageDriver } from "../interface.js";
+import { createEmptyRawState, mergeEvidenceIntoPacket } from "../interface.js";
 
 // ── Postgres-specific table definitions (JSONB, timestamptz) ─────────────────
 
@@ -22,6 +23,7 @@ const pgIncidents = pgTable("incidents", {
   closedAt: text("closed_at"),
   packet: jsonb("packet").notNull(),
   diagnosisResult: jsonb("diagnosis_result"),
+  rawState: jsonb("raw_state"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 });
@@ -58,6 +60,7 @@ export class PostgresAdapter implements StorageDriver {
         closed_at        TEXT,
         packet           JSONB NOT NULL,
         diagnosis_result JSONB,
+        raw_state        JSONB,
         created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
         updated_at       TIMESTAMPTZ NOT NULL DEFAULT now()
       )
@@ -93,6 +96,7 @@ export class PostgresAdapter implements StorageDriver {
       status: row.status as "open" | "closed",
       openedAt: row.openedAt,
       packet: row.packet as IncidentPacket,
+      rawState: row.rawState ? (row.rawState as IncidentRawState) : createEmptyRawState(),
     };
     if (row.closedAt) incident.closedAt = row.closedAt;
     if (row.diagnosisResult) {
@@ -196,6 +200,34 @@ export class PostgresAdapter implements StorageDriver {
           lt(pgIncidents.openedAt, before.toISOString()),
         ),
       );
+  }
+
+  async appendSpans(incidentId: string, spans: ExtractedSpan[]): Promise<void> {
+    const incident = await this.getIncident(incidentId);
+    if (!incident) return;
+    const rawState: IncidentRawState = { ...incident.rawState, spans: [...incident.rawState.spans, ...spans] };
+    await this.db
+      .update(pgIncidents)
+      .set({ rawState, updatedAt: new Date() })
+      .where(eq(pgIncidents.incidentId, incidentId));
+  }
+
+  async appendAnomalousSignals(incidentId: string, signals: AnomalousSignal[]): Promise<void> {
+    const incident = await this.getIncident(incidentId);
+    if (!incident) return;
+    const rawState: IncidentRawState = {
+      ...incident.rawState,
+      anomalousSignals: [...incident.rawState.anomalousSignals, ...signals],
+    };
+    await this.db
+      .update(pgIncidents)
+      .set({ rawState, updatedAt: new Date() })
+      .where(eq(pgIncidents.incidentId, incidentId));
+  }
+
+  async getRawState(incidentId: string): Promise<IncidentRawState | null> {
+    const incident = await this.getIncident(incidentId);
+    return incident ? incident.rawState : null;
   }
 
   async saveThinEvent(event: ThinEvent): Promise<void> {

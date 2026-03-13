@@ -5,7 +5,8 @@
  * This ensures all adapters satisfy the same behavioural contract.
  */
 import { describe, it, expect, beforeEach } from "vitest";
-import type { StorageDriver } from "../../storage/interface.js";
+import type { StorageDriver, AnomalousSignal } from "../../storage/interface.js";
+import type { ExtractedSpan } from "../../domain/anomaly-detector.js";
 import type { IncidentPacket, DiagnosisResult, ThinEvent } from "@3amoncall/core";
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
@@ -287,6 +288,136 @@ export function runStorageSuite(
       await expect(
         driver.appendEvidence("inc_unknown", { changedMetrics: [{ x: 1 }] }),
       ).resolves.toBeUndefined();
+    });
+
+    // appendSpans ────────────────────────────────────────────────────────────
+
+    it("createIncident initializes rawState with empty arrays", async () => {
+      const packet = makePacket();
+      await driver.createIncident(packet);
+      const rawState = await driver.getRawState(packet.incidentId);
+      expect(rawState).not.toBeNull();
+      expect(rawState?.spans).toEqual([]);
+      expect(rawState?.anomalousSignals).toEqual([]);
+      expect(rawState?.metricEvidence).toEqual([]);
+      expect(rawState?.logEvidence).toEqual([]);
+      expect(rawState?.platformEvents).toEqual([]);
+    });
+
+    it("appendSpans accumulates spans across multiple calls", async () => {
+      const packet = makePacket();
+      await driver.createIncident(packet);
+
+      const span1: ExtractedSpan = {
+        traceId: "trace_001", spanId: "span_001", serviceName: "web",
+        environment: "production", spanStatusCode: 2, durationMs: 100,
+        startTimeMs: 1000, exceptionCount: 0,
+      };
+      const span2: ExtractedSpan = {
+        traceId: "trace_001", spanId: "span_002", serviceName: "web",
+        environment: "production", spanStatusCode: 0, durationMs: 6000,
+        startTimeMs: 1100, exceptionCount: 0,
+      };
+
+      await driver.appendSpans(packet.incidentId, [span1]);
+      await driver.appendSpans(packet.incidentId, [span2]);
+
+      const rawState = await driver.getRawState(packet.incidentId);
+      expect(rawState?.spans).toHaveLength(2);
+      expect(rawState?.spans[0].spanId).toBe("span_001");
+      expect(rawState?.spans[1].spanId).toBe("span_002");
+    });
+
+    it("appendSpans is a no-op for unknown incidentId", async () => {
+      const span: ExtractedSpan = {
+        traceId: "t", spanId: "s", serviceName: "svc",
+        environment: "prod", spanStatusCode: 0, durationMs: 50,
+        startTimeMs: 0, exceptionCount: 0,
+      };
+      // Should not throw
+      await driver.appendSpans("inc_unknown", [span]);
+    });
+
+    // appendAnomalousSignals ─────────────────────────────────────────────────
+
+    it("appendAnomalousSignals accumulates signals across multiple calls", async () => {
+      const packet = makePacket();
+      await driver.createIncident(packet);
+
+      const sig1: AnomalousSignal = {
+        signal: "http_429", firstSeenAt: "2026-03-09T03:00:00Z",
+        entity: "stripe", spanId: "span_001",
+      };
+      const sig2: AnomalousSignal = {
+        signal: "slow_span", firstSeenAt: "2026-03-09T03:01:00Z",
+        entity: "web", spanId: "span_002",
+      };
+
+      await driver.appendAnomalousSignals(packet.incidentId, [sig1]);
+      await driver.appendAnomalousSignals(packet.incidentId, [sig2]);
+
+      const rawState = await driver.getRawState(packet.incidentId);
+      expect(rawState?.anomalousSignals).toHaveLength(2);
+      expect(rawState?.anomalousSignals[0].signal).toBe("http_429");
+      expect(rawState?.anomalousSignals[1].signal).toBe("slow_span");
+    });
+
+    it("appendAnomalousSignals is a no-op for unknown incidentId", async () => {
+      const sig: AnomalousSignal = {
+        signal: "http_500", firstSeenAt: "2026-03-09T03:00:00Z",
+        entity: "web", spanId: "span_x",
+      };
+      // Should not throw
+      await driver.appendAnomalousSignals("inc_unknown", [sig]);
+    });
+
+    // getRawState ────────────────────────────────────────────────────────────
+
+    it("getRawState returns null for unknown incidentId", async () => {
+      expect(await driver.getRawState("inc_unknown")).toBeNull();
+    });
+
+    it("getRawState reflects spans and signals appended independently", async () => {
+      const packet = makePacket();
+      await driver.createIncident(packet);
+
+      const span: ExtractedSpan = {
+        traceId: "t1", spanId: "s1", serviceName: "api",
+        environment: "production", spanStatusCode: 2, durationMs: 200,
+        startTimeMs: 5000, exceptionCount: 1,
+      };
+      const sig: AnomalousSignal = {
+        signal: "exception", firstSeenAt: "2026-03-09T03:00:00Z",
+        entity: "api", spanId: "s1",
+      };
+
+      await driver.appendSpans(packet.incidentId, [span]);
+      await driver.appendAnomalousSignals(packet.incidentId, [sig]);
+
+      const rawState = await driver.getRawState(packet.incidentId);
+      expect(rawState?.spans).toHaveLength(1);
+      expect(rawState?.anomalousSignals).toHaveLength(1);
+      expect(rawState?.spans[0].exceptionCount).toBe(1);
+      expect(rawState?.anomalousSignals[0].signal).toBe("exception");
+    });
+
+    it("createIncident upsert preserves rawState accumulated before re-insert", async () => {
+      const packet = makePacket();
+      await driver.createIncident(packet);
+
+      const span: ExtractedSpan = {
+        traceId: "t1", spanId: "s1", serviceName: "web",
+        environment: "production", spanStatusCode: 0, durationMs: 10,
+        startTimeMs: 0, exceptionCount: 0,
+      };
+      await driver.appendSpans(packet.incidentId, [span]);
+
+      // Upsert (re-create) should preserve rawState
+      const updatedPacket = makePacket({ packetId: "pkt_test_001_v2" });
+      await driver.createIncident(updatedPacket);
+
+      const rawState = await driver.getRawState(packet.incidentId);
+      expect(rawState?.spans).toHaveLength(1);
     });
 
     it("appendEvidence accumulates across multiple calls", async () => {
