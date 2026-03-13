@@ -129,7 +129,11 @@ export function shouldAttachToIncident(
 
     if (sameService) return true
 
-    // cross-service + same dependency: only merge within the conservative guard
+    // cross-service + same dependency: only merge within the conservative guard.
+    // NOTE: scope.affectedServices always includes primaryService (packetizer contract),
+    // so for a fresh single-service incident affectedServices.length === 1.
+    // The guard therefore allows at most MAX_CROSS_SERVICE_MERGE − 1 additional services,
+    // yielding a total of MAX_CROSS_SERVICE_MERGE distinct services per incident.
     return scope.affectedServices.length < MAX_CROSS_SERVICE_MERGE
   }
 

@@ -65,6 +65,9 @@ export function rebuildPacket(
   // NOTE: primaryService is immutable after incident creation (ADR 0018 amendment).
   // Rebuilds preserve the original triggering service instead of recalculating it.
   const resolvedPrimaryService = primaryService ?? selectPrimaryService(spans)
+  // NOTE: affectedServices always includes primaryService.
+  // shouldAttachToIncident() relies on this guarantee when evaluating the
+  // MAX_CROSS_SERVICE_MERGE guard (see formation.ts).
   const affectedServices = [...new Set(spans.map((s) => s.serviceName))]
   const affectedRoutes = [...new Set(spans.flatMap((s) => (s.httpRoute ? [s.httpRoute] : [])))]
   const affectedDependencies = [...new Set(spans.flatMap((s) => (s.peerService ? [s.peerService] : [])))]
