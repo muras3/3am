@@ -113,6 +113,7 @@ export class PostgresAdapter implements StorageDriver {
         status: "open",
         openedAt: packet.openedAt,
         packet,
+        rawState: createEmptyRawState(),
       })
       .onConflictDoUpdate({
         target: pgIncidents.incidentId,

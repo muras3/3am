@@ -12,7 +12,9 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { performance } from "node:perf_hooks";
 import { MemoryAdapter } from "../storage/adapters/memory.js";
 import { createApp } from "../index.js";
-import { rebuildPacket } from "../domain/packetizer.js";
+import { rebuildPacket, buildAnomalousSignals } from "../domain/packetizer.js";
+import { isAnomalous } from "../domain/anomaly-detector.js";
+import type { ExtractedSpan } from "../domain/anomaly-detector.js";
 import type { IncidentRawState } from "../storage/interface.js";
 import type { IncidentPacket } from "@3amoncall/core";
 
@@ -703,5 +705,34 @@ describe("Gate 5: Performance — rebuild under time budget", () => {
     // Average attach time must not balloon relative to the first response
     // (factor-3 budget covers micro-benchmarking variance)
     expect(avgAttachMs).toBeLessThan(Math.max(firstResponseMs * 3, 100));
+  });
+
+  it("rebuildPacket with 500-span rawState completes within 500ms (Gate 5 spec)", () => {
+    // Build a 500-span raw state directly without ingest overhead
+    const spans: ExtractedSpan[] = Array.from({ length: 500 }, (_, i) => ({
+      traceId: `trace${i.toString().padStart(4, "0")}`,
+      spanId: `span${i.toString().padStart(4, "0")}`,
+      serviceName: `service-${i % 5}`,
+      environment: "production",
+      httpStatusCode: i % 10 === 0 ? 500 : 200,
+      spanStatusCode: i % 10 === 0 ? 2 : 1,
+      durationMs: i % 20 === 0 ? 6000 : 100,
+      startTimeMs: 1741392000000 + i * 1000,
+      exceptionCount: 0,
+    }));
+
+    const rawState: IncidentRawState = {
+      spans,
+      anomalousSignals: buildAnomalousSignals(spans.filter(isAnomalous)),
+      metricEvidence: [],
+      logEvidence: [],
+      platformEvents: [],
+    };
+
+    const t = performance.now();
+    rebuildPacket("inc_perf", "pkt_perf", "2025-03-07T16:00:00.000Z", rawState);
+    const elapsedMs = performance.now() - t;
+
+    expect(elapsedMs).toBeLessThan(500);
   });
 });

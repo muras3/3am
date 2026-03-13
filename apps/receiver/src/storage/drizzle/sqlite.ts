@@ -85,6 +85,7 @@ export class SQLiteAdapter implements StorageDriver {
         status: "open",
         openedAt: packet.openedAt,
         packet: JSON.stringify(packet),
+        rawState: JSON.stringify(createEmptyRawState()),
         createdAt: now,
         updatedAt: now,
       })
