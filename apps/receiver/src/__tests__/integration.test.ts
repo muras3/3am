@@ -1158,6 +1158,7 @@ function makeSpanPayload(opts: {
   environment?: string;
   httpStatusCode?: number;
   spanStatusCode?: number;
+  spanKind?: number;
   startTimeUnixNano?: string;
   peerService?: string;
   traceId?: string;
@@ -1168,6 +1169,7 @@ function makeSpanPayload(opts: {
     environment = "production",
     httpStatusCode = 429,
     spanStatusCode = 0,
+    spanKind,
     startTimeUnixNano = "1741392000000000000",
     peerService,
     traceId = "abc" + Math.random().toString(36).slice(2, 8),
@@ -1189,6 +1191,7 @@ function makeSpanPayload(opts: {
                 traceId,
                 spanId,
                 name: "POST /api",
+                ...(spanKind !== undefined ? { kind: spanKind } : {}),
                 startTimeUnixNano,
                 endTimeUnixNano: String(BigInt(startTimeUnixNano) + BigInt(500_000_000)),
                 status: { code: spanStatusCode },
@@ -1222,7 +1225,7 @@ async function postTraces(
 
 type IncidentListItem = {
   incidentId: string;
-  packet: { scope: { affectedDependencies: string[]; affectedServices: string[] }; triggerSignals: unknown[] };
+  packet: { scope: { primaryService: string; affectedDependencies: string[]; affectedServices: string[] }; triggerSignals: unknown[] };
 };
 
 async function getIncidents(
@@ -1365,5 +1368,82 @@ describe("Formation: dependency-based incident grouping (OC-1 to OC-6)", () => {
 
     const { items } = await getIncidents(app);
     expect(items).toHaveLength(1);
+  });
+
+  // OC-8: SERVER 429 spans are not incident triggers (deliberate rate-limiting is not a failure)
+  it("OC-8: SERVER span (kind=2) returning 429 does not create an incident", async () => {
+    // Simulate a dependency service (e.g. mock-stripe) emitting its own SERVER 429 spans.
+    // Even with spanStatus=ERROR set, these must not open a new incident.
+    const result = await postTraces(app, makeSpanPayload({
+      serviceName: "mock-stripe",
+      httpStatusCode: 429,
+      spanStatusCode: 2,  // instrumentation may set ERROR alongside 429
+      spanKind: 2,        // SERVER
+    }));
+
+    expect(result.status).toBe("ok");
+    expect(result.incidentId).toBeUndefined();
+
+    const { items } = await getIncidents(app);
+    expect(items).toHaveLength(0);
+  });
+
+  // OC-9: SERVER 429 does not trigger, but a CLIENT 429 from the caller does
+  it("OC-9: SERVER 429 (no incident) followed by CLIENT 429 from calling service → 1 incident for caller", async () => {
+    // dependency service emits SERVER 429 — must not trigger
+    await postTraces(app, makeSpanPayload({
+      serviceName: "mock-stripe",
+      httpStatusCode: 429,
+      spanStatusCode: 2,
+      spanKind: 2,
+    }));
+
+    // calling service emits a span showing it received 429 — triggers incident
+    await postTraces(app, makeSpanPayload({
+      serviceName: "checkout-service",
+      httpStatusCode: 429,
+      spanKind: 3,  // CLIENT
+    }));
+
+    const { items } = await getIncidents(app);
+    expect(items).toHaveLength(1);
+    expect(items[0].packet.scope.primaryService).toBe("checkout-service");
+  });
+
+  // OC-10: SERVER 429-only batch appends anomalous signals to existing incident (evidence retention)
+  it("OC-10: SERVER 429-only batch appends signals to matching existing incident without creating a new one", async () => {
+    // Step 1: create an incident with a trigger span (SERVER 500, no peerService)
+    const r1 = await postTraces(app, makeSpanPayload({
+      serviceName: "api-service",
+      httpStatusCode: 500,
+      spanStatusCode: 2,
+      startTimeUnixNano: "1741392000000000000",
+    }));
+    const incidentId = r1.incidentId!;
+    expect(incidentId).toBeDefined();
+
+    const rawStateBefore = await storage.getRawState(incidentId);
+    const signalCountBefore = rawStateBefore?.anomalousSignals.length ?? 0;
+    expect(signalCountBefore).toBeGreaterThan(0); // sanity: initial trigger appended signals
+
+    // Step 2: POST a SERVER 429-only batch (same service+env, within window).
+    // isIncidentTrigger returns false (no new incident), but isAnomalous returns true
+    // (429 is an anomalous signal that should be retained as evidence).
+    const r2 = await postTraces(app, makeSpanPayload({
+      serviceName: "api-service",
+      httpStatusCode: 429,
+      spanStatusCode: 2,
+      spanKind: 2, // SERVER
+      startTimeUnixNano: "1741392060000000000", // 1 min later, within 5-min window
+    }));
+
+    // No new incident
+    expect(r2.incidentId).toBeUndefined();
+    const { items } = await getIncidents(app);
+    expect(items).toHaveLength(1);
+
+    // The 429 signal must be appended to the existing incident's rawState
+    const rawStateAfter = await storage.getRawState(incidentId);
+    expect(rawStateAfter?.anomalousSignals.length).toBeGreaterThan(signalCountBefore);
   });
 });

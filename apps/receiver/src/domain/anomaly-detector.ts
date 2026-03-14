@@ -6,6 +6,7 @@ export type ExtractedSpan = {
   httpRoute?: string
   httpStatusCode?: number
   spanStatusCode: number // 0=unset, 1=ok, 2=error (OTLP span.status.code)
+  spanKind?: number      // OTel span kind: 1=INTERNAL, 2=SERVER, 3=CLIENT, 4=PRODUCER, 5=CONSUMER
   durationMs: number
   startTimeMs: number
   exceptionCount: number  // number of exception events in this span
@@ -14,6 +15,9 @@ export type ExtractedSpan = {
 
 // Spans slower than this threshold are considered anomalous (ADR 0023)
 const SLOW_SPAN_THRESHOLD_MS = 5000
+
+// OTel span kind value for server-side spans (https://opentelemetry.io/docs/specs/otel/trace/api/#spankind)
+const SPAN_KIND_SERVER = 2
 
 export function isAnomalous(span: ExtractedSpan): boolean {
   if (span.httpStatusCode !== undefined && span.httpStatusCode >= 500) {
@@ -32,6 +36,46 @@ export function isAnomalous(span: ExtractedSpan): boolean {
     return true
   }
   return false
+}
+
+/**
+ * Determines whether an anomalous span is eligible to open (or attach to) an incident.
+ *
+ * Separates "telemetry anomaly detection" (isAnomalous) from "incident trigger eligibility":
+ * a span can be anomalous as evidence without being the right anchor for a new incident.
+ *
+ * Span-kind-aware rule table:
+ *
+ * | Condition          | SERVER | CLIENT | INTERNAL | UNSPECIFIED/absent |
+ * |--------------------|--------|--------|----------|--------------------|
+ * | httpStatus ≥ 500   |   ✓    |   ✓    |    ✓     |         ✓          |
+ * | httpStatus = 429   | **✗**  |   ✓    |    ✓     |    ✓ (safe default)|
+ * | spanStatus = ERROR |   ✓    |   ✓    |    ✓     |         ✓          |
+ * | duration > 5000ms  |   ✓    |   ✓    |    ✓     |         ✓          |
+ * | exceptionCount > 0 |   ✓    |   ✓    |    ✓     |         ✓          |
+ *
+ * SERVER + 429: "I am deliberately rate-limiting my callers" — not a service failure.
+ *   Even if spanStatus=ERROR is also set, the 429 rule takes precedence.
+ * UNSPECIFIED/absent spanKind: treated as trigger-eligible (backward-compatible safe default).
+ *
+ * Note: SERVER 429 spans are still anomalous signal evidence (isAnomalous returns true)
+ * and may be attached to an existing incident's rawState; they just cannot start a new one.
+ */
+export function isIncidentTrigger(span: ExtractedSpan): boolean {
+  if (span.spanKind === SPAN_KIND_SERVER) {
+    if (span.httpStatusCode !== undefined) {
+      // HTTP server span: httpStatusCode is the authoritative signal.
+      // 4xx responses (incl. 429 rate-limiting) are deliberate decisions, not failures.
+      return span.httpStatusCode >= 500
+    }
+    // Non-HTTP server span (gRPC, messaging, etc.): use span status and other signals.
+    return (
+      span.spanStatusCode === 2 ||
+      span.durationMs > SLOW_SPAN_THRESHOLD_MS ||
+      span.exceptionCount > 0
+    )
+  }
+  return isAnomalous(span)
 }
 
 import { isRecord, nanoToMs } from './otlp-utils.js'
@@ -91,6 +135,7 @@ export function extractSpans(payload: unknown): ExtractedSpan[] {
 
         const traceId = typeof s['traceId'] === 'string' ? s['traceId'] : ''
         const spanId = typeof s['spanId'] === 'string' ? s['spanId'] : ''
+        const spanKind = typeof s['kind'] === 'number' ? s['kind'] : undefined
 
         const startTimeMs = nanoToMs(s['startTimeUnixNano']) ?? 0
         const endTimeMs = nanoToMs(s['endTimeUnixNano']) ?? 0
@@ -121,6 +166,7 @@ export function extractSpans(payload: unknown): ExtractedSpan[] {
           httpRoute,
           httpStatusCode,
           spanStatusCode,
+          spanKind,
           durationMs,
           startTimeMs,
           exceptionCount,
