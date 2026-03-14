@@ -16,8 +16,11 @@ export type ExtractedSpan = {
 // Spans slower than this threshold are considered anomalous (ADR 0023)
 const SLOW_SPAN_THRESHOLD_MS = 5000
 
-// OTel span kind value for server-side spans (https://opentelemetry.io/docs/specs/otel/trace/api/#spankind)
+// OTel span kind values (https://opentelemetry.io/docs/specs/otel/trace/api/#spankind)
+// NOTE: Some OTel SDK versions export SERVER spans as INTERNAL (kind=1) due to
+// a 0-based API enum vs 1-based OTLP protobuf enum mapping discrepancy.
 const SPAN_KIND_SERVER = 2
+const SPAN_KIND_INTERNAL = 1
 
 export function isAnomalous(span: ExtractedSpan): boolean {
   if (span.httpStatusCode !== undefined && span.httpStatusCode >= 500) {
@@ -49,22 +52,25 @@ export function isAnomalous(span: ExtractedSpan): boolean {
  * | Condition          | SERVER | CLIENT | INTERNAL | UNSPECIFIED/absent |
  * |--------------------|--------|--------|----------|--------------------|
  * | httpStatus ≥ 500   |   ✓    |   ✓    |    ✓     |         ✓          |
- * | httpStatus = 429   | **✗**  |   ✓    |    ✓     |    ✓ (safe default)|
+ * | httpStatus = 429   | **✗**  |   ✓    | **✗**    |    ✓ (safe default)|
  * | spanStatus = ERROR |   ✓    |   ✓    |    ✓     |         ✓          |
  * | duration > 5000ms  |   ✓    |   ✓    |    ✓     |         ✓          |
  * | exceptionCount > 0 |   ✓    |   ✓    |    ✓     |         ✓          |
  *
  * SERVER + 429: "I am deliberately rate-limiting my callers" — not a service failure.
  *   Even if spanStatus=ERROR is also set, the 429 rule takes precedence.
+ * INTERNAL + 429: Treated like SERVER. Some OTel SDK versions export SERVER spans as
+ *   INTERNAL (kind=1) due to API vs OTLP protobuf enum offset (API.SERVER=1 → OTLP.INTERNAL=1).
+ *   Applying the same conservative rule prevents spurious incidents from mislabeled rate-limit spans.
  * UNSPECIFIED/absent spanKind: treated as trigger-eligible (backward-compatible safe default).
  *
  * Note: SERVER 429 spans are still anomalous signal evidence (isAnomalous returns true)
  * and may be attached to an existing incident's rawState; they just cannot start a new one.
  */
 export function isIncidentTrigger(span: ExtractedSpan): boolean {
-  if (span.spanKind === SPAN_KIND_SERVER) {
+  if (span.spanKind === SPAN_KIND_SERVER || span.spanKind === SPAN_KIND_INTERNAL) {
     if (span.httpStatusCode !== undefined) {
-      // HTTP server span: httpStatusCode is the authoritative signal.
+      // HTTP server/internal span: httpStatusCode is the authoritative signal.
       // 4xx responses (incl. 429 rate-limiting) are deliberate decisions, not failures.
       return span.httpStatusCode >= 500
     }
