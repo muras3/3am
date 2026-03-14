@@ -14,7 +14,7 @@ export type ExtractedSpan = {
 }
 
 // Spans slower than this threshold are considered anomalous (ADR 0023)
-const SLOW_SPAN_THRESHOLD_MS = 5000
+export const SLOW_SPAN_THRESHOLD_MS = 5000
 
 // OTel span kind values (https://opentelemetry.io/docs/specs/otel/trace/api/#spankind)
 // NOTE: Some OTel SDK versions export SERVER spans as INTERNAL (kind=1) due to

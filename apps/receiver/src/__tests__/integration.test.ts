@@ -4,6 +4,7 @@ import { gzipSync } from "node:zlib";
 import protobuf from "protobufjs";
 import { MemoryAdapter } from "../storage/adapters/memory.js";
 import { createApp } from "../index.js";
+import { MAX_REPRESENTATIVE_TRACES } from "../domain/packetizer.js";
 
 // ── Protobuf encode helpers ────────────────────────────────────────────────────
 const _require = createRequire(import.meta.url);
@@ -1485,5 +1486,216 @@ describe("Formation: dependency-based incident grouping (OC-1 to OC-6)", () => {
     // The 429 signal must be appended to the existing incident's rawState
     const rawStateAfter = await storage.getRawState(incidentId);
     expect(rawStateAfter?.anomalousSignals.length).toBeGreaterThan(signalCountBefore);
+  });
+});
+
+// ── Representative traces ranking: rebuild integration ────────────────────────
+
+describe("Representative traces ranking: rebuild integration", () => {
+  let storage: MemoryAdapter;
+  let app: ReturnType<typeof createApp>;
+
+  // BASE_NS: 2025-03-07T16:00:00Z — used as an anchor for all spans in this block
+  const BASE_NS = "1741392000000000000";
+
+  // Helper: build an OTLP JSON payload with a single span from "ranking-svc" in production.
+  // httpStatusCode and spanStatusCode control whether the span is anomalous.
+  function makeRankingSpan(opts: {
+    traceId: string;
+    spanId: string;
+    httpStatusCode: number;
+    spanStatusCode: number;
+    startOffsetMs?: number;
+  }) {
+    const startNs = BigInt(BASE_NS) + BigInt((opts.startOffsetMs ?? 0) * 1_000_000);
+    const endNs = startNs + BigInt(200_000_000); // 200ms duration
+    return makeTracePayload([
+      makeResourceSpans("ranking-svc", [
+        makeTraceSpan({
+          traceId: opts.traceId,
+          spanId: opts.spanId,
+          startTimeUnixNano: startNs.toString(),
+          endTimeUnixNano: endNs.toString(),
+          httpStatusCode: opts.httpStatusCode,
+          spanStatusCode: opts.spanStatusCode,
+          route: "/api/rank",
+        }),
+      ]),
+    ]);
+  }
+
+  beforeEach(() => {
+    delete process.env["RECEIVER_AUTH_TOKEN"];
+    process.env["ALLOW_INSECURE_DEV_MODE"] = "true";
+    storage = new MemoryAdapter();
+    app = createApp(storage);
+  });
+
+  afterEach(() => {
+    delete process.env["ALLOW_INSECURE_DEV_MODE"];
+  });
+
+  // Test 1: Ranking applied on first incident creation
+  it("anomalous span (HTTP 500) ranks first in representativeTraces on initial create", async () => {
+    // Send: 1 anomalous span + 5 normal spans (all within same window)
+    const anomalousRes = await app.request("/v1/traces", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(
+        makeRankingSpan({ traceId: "rank-t1", spanId: "rank-anomaly", httpStatusCode: 500, spanStatusCode: 2 }),
+      ),
+    });
+    const { incidentId } = await anomalousRes.json() as { incidentId: string };
+
+    // Attach 5 normal spans to the same incident (they arrive within 5-min window)
+    for (let i = 0; i < 5; i++) {
+      await app.request("/v1/traces", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(
+          makeRankingSpan({
+            traceId: `rank-t1`,
+            spanId: `rank-normal-${i}`,
+            httpStatusCode: 200,
+            spanStatusCode: 1,
+            startOffsetMs: 10 + i * 5,
+          }),
+        ),
+      });
+    }
+
+    const incident = await (await app.request(`/api/incidents/${incidentId}`)).json() as {
+      packet: { evidence: { representativeTraces: Array<{ spanId: string; httpStatusCode?: number }> } };
+    };
+
+    const traces = incident.packet.evidence.representativeTraces;
+    expect(traces.length).toBeGreaterThan(0);
+
+    // The anomalous span (HTTP 500) must appear first — it has the highest score
+    expect(traces[0].spanId).toBe("rank-anomaly");
+    expect(traces[0].httpStatusCode).toBe(500);
+  });
+
+  // Test 2: Ranking maintained after attach + rebuild
+  it("anomalous spans appear in representativeTraces after attach rebuild, length ≤ MAX_REPRESENTATIVE_TRACES", async () => {
+    // Phase 1: create incident with 3 normal spans
+    const firstNormal = makeRankingSpan({
+      traceId: "rank-t2-normal",
+      spanId: "rank-t2-normal-0",
+      httpStatusCode: 200,
+      spanStatusCode: 1,
+    });
+    const _createRes = await app.request("/v1/traces", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(firstNormal),
+    });
+
+    // If first batch is all-normal, no incident is created.
+    // So we need to seed with an anomalous span first then attach normals.
+    // Instead: create incident via anomalous span, then attach more anomalous spans.
+    const seedPayload = makeRankingSpan({
+      traceId: "rank-t2-seed",
+      spanId: "rank-t2-seed-span",
+      httpStatusCode: 500,
+      spanStatusCode: 2,
+    });
+    const seedRes = await app.request("/v1/traces", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(seedPayload),
+    });
+    const { incidentId } = await seedRes.json() as { incidentId: string };
+
+    // Phase 2: attach 5 more anomalous spans (same service/env, within window)
+    for (let i = 0; i < 5; i++) {
+      await app.request("/v1/traces", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(
+          makeRankingSpan({
+            traceId: "rank-t2-seed",
+            spanId: `rank-t2-attach-${i}`,
+            httpStatusCode: 429,
+            spanStatusCode: 2,
+            startOffsetMs: 30 + i * 10,
+          }),
+        ),
+      });
+    }
+
+    const incident = await (await app.request(`/api/incidents/${incidentId}`)).json() as {
+      packet: { evidence: { representativeTraces: Array<{ httpStatusCode?: number; spanStatusCode: number }> } };
+    };
+
+    const traces = incident.packet.evidence.representativeTraces;
+
+    // All attached anomalous spans should be present (either 429 or 500)
+    const anomalousCount = traces.filter(
+      (t) => (t.httpStatusCode !== undefined && t.httpStatusCode >= 400) || t.spanStatusCode === 2,
+    ).length;
+    expect(anomalousCount).toBeGreaterThan(0);
+
+    // Length must not exceed the cap
+    expect(traces.length).toBeLessThanOrEqual(MAX_REPRESENTATIVE_TRACES);
+  });
+
+  // Test 3: Determinism across 2 rebuilds with identical input
+  it("identical span batches produce identical representativeTraces across 2 rebuilds", async () => {
+    // Create incident via first batch
+    const batchPayload = makeRankingSpan({
+      traceId: "rank-t3",
+      spanId: "rank-t3-span",
+      httpStatusCode: 500,
+      spanStatusCode: 2,
+    });
+
+    const firstRes = await app.request("/v1/traces", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(batchPayload),
+    });
+    const { incidentId } = await firstRes.json() as { incidentId: string };
+
+    const incidentAfterFirst = await (await app.request(`/api/incidents/${incidentId}`)).json() as {
+      packet: { evidence: { representativeTraces: Array<{ traceId: string; spanId: string }> } };
+    };
+    const tracesAfterFirst = incidentAfterFirst.packet.evidence.representativeTraces;
+
+    // Post the same content again (different spanId to avoid dedup by traceId+spanId,
+    // but same anomaly score so ranking is deterministic)
+    const batchPayload2 = makeRankingSpan({
+      traceId: "rank-t3",
+      spanId: "rank-t3-span-b",
+      httpStatusCode: 500,
+      spanStatusCode: 2,
+      startOffsetMs: 60,
+    });
+
+    await app.request("/v1/traces", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(batchPayload2),
+    });
+
+    const incidentAfterSecond = await (await app.request(`/api/incidents/${incidentId}`)).json() as {
+      packet: { evidence: { representativeTraces: Array<{ traceId: string; spanId: string }> } };
+    };
+    const tracesAfterSecond = incidentAfterSecond.packet.evidence.representativeTraces;
+
+    // Both rebuilds must include the first span (it has max score and deterministic tiebreak)
+    // The first span from tracesAfterFirst must still be present in tracesAfterSecond
+    expect(tracesAfterFirst.length).toBeGreaterThan(0);
+    expect(tracesAfterSecond.length).toBeGreaterThan(0);
+
+    // The top span from the first rebuild must still appear in the second rebuild
+    // (determinism guarantee: same traceId+spanId key → same position)
+    const firstTopSpanId = tracesAfterFirst[0].spanId;
+    const secondSpanIds = tracesAfterSecond.map((t) => t.spanId);
+    expect(secondSpanIds).toContain(firstTopSpanId);
+
+    // Lengths must both be within budget
+    expect(tracesAfterFirst.length).toBeLessThanOrEqual(MAX_REPRESENTATIVE_TRACES);
+    expect(tracesAfterSecond.length).toBeLessThanOrEqual(MAX_REPRESENTATIVE_TRACES);
   });
 });

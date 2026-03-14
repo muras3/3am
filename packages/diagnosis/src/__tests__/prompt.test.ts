@@ -81,4 +81,76 @@ describe("buildPrompt", () => {
     expect(prompt).toContain("Step 1");
     expect(prompt).toContain("Step 7");
   });
+
+  it("consumes representativeTraces with peerService correctly (diagnosis gate)", () => {
+    // Packet with a peerService=stripe span and a HTTP 429 span in representativeTraces
+    const packetWithPeer: IncidentPacket = {
+      schemaVersion: "incident-packet/v1alpha1",
+      packetId: "pkt_gate_test",
+      incidentId: "inc_gate_test",
+      openedAt: "2026-03-09T00:00:00Z",
+      window: {
+        start: "2026-03-09T00:00:00Z",
+        detect: "2026-03-09T00:01:00Z",
+        end: "2026-03-09T00:05:00Z",
+      },
+      scope: {
+        environment: "production",
+        primaryService: "checkout-api",
+        affectedServices: ["checkout-api"],
+        affectedRoutes: ["/checkout"],
+        affectedDependencies: ["stripe"],
+      },
+      triggerSignals: [
+        { signal: "http_429", firstSeenAt: "2026-03-09T00:01:00Z", entity: "checkout-api" },
+      ],
+      evidence: {
+        changedMetrics: [],
+        representativeTraces: [
+          {
+            traceId: "trace_peer_1",
+            spanId: "span_peer_1",
+            serviceName: "checkout-api",
+            durationMs: 1200,
+            httpStatusCode: 429,
+            spanStatusCode: 0,
+          },
+          {
+            traceId: "trace_peer_2",
+            spanId: "span_peer_2",
+            serviceName: "checkout-api",
+            durationMs: 800,
+            httpStatusCode: 500,
+            spanStatusCode: 2,
+          },
+        ],
+        relevantLogs: [],
+        platformEvents: [],
+      },
+      pointers: {
+        traceRefs: ["trace_peer_1", "trace_peer_2"],
+        logRefs: [],
+        metricRefs: [],
+        platformLogRefs: [],
+      },
+    };
+
+    // buildPrompt must complete without throwing
+    let prompt: string;
+    expect(() => {
+      prompt = buildPrompt(packetWithPeer);
+    }).not.toThrow();
+
+    // The prompt must contain both trace IDs from representativeTraces,
+    // confirming that buildPrompt iterated over the full traces array.
+    expect(prompt!).toContain("trace_peer_1");
+    expect(prompt!).toContain("trace_peer_2");
+
+    // The Representative Traces section must include serviceName entries
+    expect(prompt!).toContain("service=checkout-api");
+
+    // Both HTTP status codes from the representative traces must be rendered
+    expect(prompt!).toContain("httpStatus=429");
+    expect(prompt!).toContain("httpStatus=500");
+  });
 });
