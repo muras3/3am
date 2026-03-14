@@ -7,7 +7,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import type { StorageDriver, AnomalousSignal } from "../../storage/interface.js";
 import type { ExtractedSpan } from "../../domain/anomaly-detector.js";
-import type { IncidentPacket, DiagnosisResult, ThinEvent } from "@3amoncall/core";
+import type { IncidentPacket, DiagnosisResult, PlatformEvent, ThinEvent } from "@3amoncall/core";
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
 
@@ -369,6 +369,48 @@ export function runStorageSuite(
       };
       // Should not throw
       await driver.appendAnomalousSignals("inc_unknown", [sig]);
+    });
+
+    // appendPlatformEvents ───────────────────────────────────────────────────
+
+    it("appendPlatformEvents accumulates platform events across multiple calls", async () => {
+      const packet = makePacket();
+      await driver.createIncident(packet);
+
+      const event1: PlatformEvent = {
+        eventType: "deploy",
+        timestamp: "2026-03-09T03:00:00Z",
+        environment: "production",
+        description: "checkout deploy",
+        service: "web",
+      };
+      const event2: PlatformEvent = {
+        eventType: "provider_incident",
+        timestamp: "2026-03-09T03:01:00Z",
+        environment: "production",
+        description: "stripe degraded",
+        provider: "stripe",
+        eventId: "evt_provider_1",
+      };
+
+      await driver.appendPlatformEvents(packet.incidentId, [event1]);
+      await driver.appendPlatformEvents(packet.incidentId, [event2]);
+
+      const rawState = await driver.getRawState(packet.incidentId);
+      expect(rawState?.platformEvents).toHaveLength(2);
+      expect(rawState?.platformEvents[0]?.eventType).toBe("deploy");
+      expect(rawState?.platformEvents[1]?.eventId).toBe("evt_provider_1");
+    });
+
+    it("appendPlatformEvents is a no-op for unknown incidentId", async () => {
+      const event: PlatformEvent = {
+        eventType: "deploy",
+        timestamp: "2026-03-09T03:00:00Z",
+        environment: "production",
+        description: "checkout deploy",
+      };
+
+      await expect(driver.appendPlatformEvents("inc_unknown", [event])).resolves.toBeUndefined();
     });
 
     // getRawState ────────────────────────────────────────────────────────────
