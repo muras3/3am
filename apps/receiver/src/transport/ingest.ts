@@ -3,7 +3,9 @@ import { promisify } from "node:util";
 import { gunzip } from "node:zlib";
 import { Hono, type Context } from "hono";
 import { bodyLimit } from "hono/body-limit";
-import type { StorageDriver } from "../storage/interface.js";
+import { z } from "zod";
+import { PlatformEventSchema, type PlatformEvent } from "@3amoncall/core";
+import type { Incident, StorageDriver } from "../storage/interface.js";
 import type { SpanBuffer } from "../ambient/span-buffer.js";
 import {
   extractSpans,
@@ -26,6 +28,9 @@ import { decodeTraces, decodeMetrics, decodeLogs } from "./otlp-protobuf.js";
 const gunzipAsync = promisify(gunzip);
 
 const INGEST_BODY_LIMIT = 1 * 1024 * 1024; // 1MB per ADR 0022 (resource exhaustion protection)
+const PlatformEventsRequestSchema = z.object({
+  events: z.array(PlatformEventSchema),
+}).strict();
 
 /**
  * Read the raw request body and decompress if Content-Encoding: gzip.
@@ -89,6 +94,51 @@ async function decodeOtlpBody(
     }
   }
   return c.json({ error: "unsupported Content-Type" }, 415);
+}
+
+async function listAllIncidents(storage: StorageDriver): Promise<Incident[]> {
+  const items: Incident[] = [];
+  let cursor: string | undefined = undefined;
+
+  do {
+    const page = await storage.listIncidents({ limit: 100, cursor });
+    items.push(...page.items);
+    cursor = page.nextCursor;
+  } while (cursor !== undefined);
+
+  return items;
+}
+
+function isPlatformEventCandidate(event: PlatformEvent, incident: Incident): boolean {
+  if (incident.status !== "open") return false;
+  if (incident.packet.scope.environment !== event.environment) return false;
+  if (event.service && !incident.packet.scope.affectedServices.includes(event.service)) return false;
+
+  const eventTimeMs = new Date(event.timestamp).getTime();
+  const windowStartMs = new Date(incident.packet.window.start).getTime();
+  const windowEndMs = new Date(incident.packet.window.end).getTime();
+
+  return windowStartMs <= eventTimeMs && eventTimeMs <= windowEndMs;
+}
+
+function selectBestIncidentForPlatformEvent(
+  event: PlatformEvent,
+  incidents: Incident[],
+): Incident | undefined {
+  const eventTimeMs = new Date(event.timestamp).getTime();
+
+  return incidents
+    .filter((incident) => isPlatformEventCandidate(event, incident))
+    .sort((a, b) => {
+      const aDistance = Math.abs(new Date(a.packet.window.detect).getTime() - eventTimeMs);
+      const bDistance = Math.abs(new Date(b.packet.window.detect).getTime() - eventTimeMs);
+      if (aDistance !== bDistance) return aDistance - bDistance;
+
+      const openedAtDiff = new Date(b.openedAt).getTime() - new Date(a.openedAt).getTime();
+      if (openedAtDiff !== 0) return openedAtDiff;
+
+      return a.incidentId.localeCompare(b.incidentId);
+    })[0];
 }
 
 export function createIngestRouter(storage: StorageDriver, spanBuffer?: SpanBuffer): Hono {
@@ -284,9 +334,48 @@ export function createIngestRouter(storage: StorageDriver, spanBuffer?: SpanBuff
     if (typeof body !== "object" || body === null) {
       return c.json({ error: "invalid body" }, 400);
     }
-    if (!("events" in (body as Record<string, unknown>))) {
-      return c.json({ error: "missing required field: events" }, 400);
+
+    const parsed = PlatformEventsRequestSchema.safeParse(body);
+    if (!parsed.success) {
+      return c.json({ error: "invalid body" }, 400);
     }
+
+    if (parsed.data.events.length === 0) {
+      return c.json({ status: "ok" });
+    }
+
+    const incidents = await listAllIncidents(storage);
+    const eventsByIncidentId = new Map<string, PlatformEvent[]>();
+
+    for (const event of parsed.data.events) {
+      const incident = selectBestIncidentForPlatformEvent(event, incidents);
+      if (!incident) continue;
+
+      const current = eventsByIncidentId.get(incident.incidentId) ?? [];
+      current.push(event);
+      eventsByIncidentId.set(incident.incidentId, current);
+    }
+
+    for (const [incidentId, events] of eventsByIncidentId) {
+      const incident = incidents.find((candidate) => candidate.incidentId === incidentId);
+      if (!incident) continue;
+
+      await storage.appendPlatformEvents(incidentId, events);
+      const rawState = await storage.getRawState(incidentId);
+      if (rawState === null) continue;
+
+      const rebuiltPacket = rebuildPacket(
+        incidentId,
+        incident.packet.packetId,
+        incident.openedAt,
+        rawState,
+        incident.packet.evidence,
+        (incident.packet.generation ?? 1) + 1,
+        incident.packet.scope.primaryService,
+      );
+      await storage.createIncident(rebuiltPacket);
+    }
+
     return c.json({ status: "ok" });
   });
 
