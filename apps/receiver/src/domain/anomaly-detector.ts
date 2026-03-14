@@ -13,7 +13,7 @@ export type ExtractedSpan = {
 }
 
 // Spans slower than this threshold are considered anomalous (ADR 0023)
-const SLOW_SPAN_THRESHOLD_MS = 5000
+export const SLOW_SPAN_THRESHOLD_MS = 5000
 
 export function isAnomalous(span: ExtractedSpan): boolean {
   if (span.httpStatusCode !== undefined && span.httpStatusCode >= 500) {

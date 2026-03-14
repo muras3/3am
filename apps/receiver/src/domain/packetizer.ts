@@ -38,7 +38,7 @@
 
 import { randomUUID } from "crypto"
 import type { IncidentPacket } from "@3amoncall/core"
-import { type ExtractedSpan, isAnomalous } from "./anomaly-detector.js"
+import { type ExtractedSpan, isAnomalous, SLOW_SPAN_THRESHOLD_MS } from "./anomaly-detector.js"
 import { normalizeDependency } from "./formation.js"
 import type { AnomalousSignal, IncidentRawState } from "../storage/interface.js"
 
@@ -89,7 +89,7 @@ function scoreSpan(span: ExtractedSpan): number {
   if (span.httpStatusCode === 429) score += 3
   if (span.exceptionCount > 0) score += 2
   if (span.spanStatusCode === 2) score += 2
-  if (span.durationMs > 5000) score += 1
+  if (span.durationMs > SLOW_SPAN_THRESHOLD_MS) score += 1
   if (span.peerService !== undefined) score += 1
   return score
 }
@@ -115,7 +115,18 @@ function compareByScore(a: ExtractedSpan, b: ExtractedSpan): number {
 // 2-stage representative traces selection
 // ---------------------------------------------------------------------------
 
-function selectRepresentativeTraces(spans: ExtractedSpan[]): ExtractedSpan[] {
+function toRepresentativeTrace(span: ExtractedSpan): RepresentativeTrace {
+  return {
+    traceId: span.traceId,
+    spanId: span.spanId,
+    serviceName: span.serviceName,
+    durationMs: span.durationMs,
+    httpStatusCode: span.httpStatusCode,
+    spanStatusCode: span.spanStatusCode,
+  }
+}
+
+function selectRepresentativeTraces(spans: ExtractedSpan[]): RepresentativeTrace[] {
   if (spans.length === 0) return []
 
   // Pre-sort all spans once: score desc, tie-break asc
@@ -148,8 +159,8 @@ function selectRepresentativeTraces(spans: ExtractedSpan[]): ExtractedSpan[] {
   // ------------------------------------------------------------------
   // Remaining spans (guaranteed excluded) sorted by service diversity first,
   // then by the existing score order.
-  const guaranteedSet = new Set(guaranteed.map((s) => s.traceId + s.spanId))
-  const remaining = scored.filter((s) => !guaranteedSet.has(s.traceId + s.spanId))
+  const guaranteedSet = new Set(guaranteed.map(tiebreakerKey))
+  const remaining = scored.filter((s) => !guaranteedSet.has(tiebreakerKey(s)))
 
   // Partition: new services first, then already-seen services.
   // Within each partition the original score order is preserved.
@@ -178,8 +189,8 @@ function selectRepresentativeTraces(spans: ExtractedSpan[]): ExtractedSpan[] {
 
   if (!hasDep) {
     // Find the best (highest-score) dep span not already selected
-    const selectedKeys = new Set(selected.map((s) => s.traceId + s.spanId))
-    const depSpan = scored.find((s) => s.peerService !== undefined && !selectedKeys.has(s.traceId + s.spanId))
+    const selectedKeys = new Set(selected.map(tiebreakerKey))
+    const depSpan = scored.find((s) => s.peerService !== undefined && !selectedKeys.has(tiebreakerKey(s)))
 
     if (depSpan !== undefined) {
       // Injection candidates are Phase 2 picks only; guaranteed are untouchable.
@@ -211,7 +222,7 @@ function selectRepresentativeTraces(spans: ExtractedSpan[]): ExtractedSpan[] {
     }
   }
 
-  return selected
+  return selected.map(toRepresentativeTrace)
 }
 
 // ---------------------------------------------------------------------------
@@ -297,15 +308,7 @@ export function rebuildPacket(
   const triggerSignals = [...groupMap.values()]
 
   // representativeTraces — 2-stage scoring + diversity selection (Plan 4 / B-2)
-  const selectedSpans = selectRepresentativeTraces(spans)
-  const representativeTraces: RepresentativeTrace[] = selectedSpans.map((s) => ({
-    traceId: s.traceId,
-    spanId: s.spanId,
-    serviceName: s.serviceName,
-    durationMs: s.durationMs,
-    httpStatusCode: s.httpStatusCode,
-    spanStatusCode: s.spanStatusCode,
-  }))
+  const representativeTraces = selectRepresentativeTraces(spans)
 
   // pointers
   const traceRefs = [...new Set(spans.map((s) => s.traceId))]
