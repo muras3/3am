@@ -1465,7 +1465,7 @@ describe("Representative traces ranking: rebuild integration", () => {
       httpStatusCode: 200,
       spanStatusCode: 1,
     });
-    const createRes = await app.request("/v1/traces", {
+    const _createRes = await app.request("/v1/traces", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(firstNormal),

@@ -711,7 +711,7 @@ describe('2-stage selection: dependency injection', () => {
     // Note: if depSpan has score=1 (peerService +1), it may appear in Phase 1 or Phase 2
     // since it has lower score than the p1 spans (score=7). Let's verify no injection happened
     // by checking that all 10 selected are from p1
-    const p1TraceIds = new Set(p1.map((s) => s.traceId))
+    const _p1TraceIds = new Set(p1.map((s) => s.traceId))
     // The dep span has score=1 while p1 have score=7, so dep will be ranked last.
     // Phase 1 takes top 3 from p1. Phase 2 fills with p1 (different services) up to MAX.
     // dep span is never selected as it's score=1 vs p1 score=7.
