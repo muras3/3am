@@ -9,7 +9,7 @@ import { drizzle } from "drizzle-orm/postgres-js";
 import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import { eq, desc, lt, and, sql as drizzleSql, count } from "drizzle-orm";
 import { pgTable, text, timestamp, serial, jsonb } from "drizzle-orm/pg-core";
-import type { IncidentPacket, DiagnosisResult, ThinEvent } from "@3amoncall/core";
+import type { IncidentPacket, DiagnosisResult, PlatformEvent, ThinEvent } from "@3amoncall/core";
 import type { ExtractedSpan } from "../../domain/anomaly-detector.js";
 import type { AnomalousSignal, Incident, IncidentPage, IncidentRawState, StorageDriver } from "../interface.js";
 import { createEmptyRawState, mergeEvidenceIntoPacket } from "../interface.js";
@@ -219,6 +219,19 @@ export class PostgresAdapter implements StorageDriver {
     const rawState: IncidentRawState = {
       ...incident.rawState,
       anomalousSignals: [...incident.rawState.anomalousSignals, ...signals],
+    };
+    await this.db
+      .update(pgIncidents)
+      .set({ rawState, updatedAt: new Date() })
+      .where(eq(pgIncidents.incidentId, incidentId));
+  }
+
+  async appendPlatformEvents(incidentId: string, events: PlatformEvent[]): Promise<void> {
+    const incident = await this.getIncident(incidentId);
+    if (!incident) return;
+    const rawState: IncidentRawState = {
+      ...incident.rawState,
+      platformEvents: [...incident.rawState.platformEvents, ...events],
     };
     await this.db
       .update(pgIncidents)

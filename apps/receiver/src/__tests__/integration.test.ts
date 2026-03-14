@@ -543,6 +543,24 @@ describe("Receiver integration tests", () => {
     expect(res.status).toBe(200);
   });
 
+  it("POST /v1/platform-events with invalid event body returns 400", async () => {
+    const res = await app.request("/v1/platform-events", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        events: [
+          {
+            eventType: "deploy",
+            timestamp: "2025-03-07T16:00:00.250Z",
+            environment: "production",
+          },
+        ],
+      }),
+    });
+
+    expect(res.status).toBe(400);
+  });
+
   // Body size limit (F-203): >1MB payload → 413
   it("POST /v1/traces with payload >1MB returns 413", async () => {
     // 1MB + 1 byte of padding inside a JSON string field
@@ -887,6 +905,160 @@ describe("Receiver integration tests", () => {
       packet: { evidence: { relevantLogs: unknown[] } };
     };
     expect(incident.packet.evidence.relevantLogs).toHaveLength(0);
+  });
+
+  it("POST /v1/traces then /v1/platform-events attaches typed platform event and deterministic ref", async () => {
+    const traceRes = await app.request("/v1/traces", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(errorSpanPayload),
+    });
+    const { incidentId } = await traceRes.json() as { incidentId: string };
+
+    const event = {
+      eventType: "deploy",
+      timestamp: "2025-03-08T00:00:00.250Z",
+      environment: "production",
+      description: "web rollout 2025.03.07.1",
+      service: "web",
+      deploymentId: "dep_123",
+      releaseVersion: "2025.03.07.1",
+      details: { initiatedBy: "gha" },
+    };
+
+    const platformRes = await app.request("/v1/platform-events", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ events: [event] }),
+    });
+    expect(platformRes.status).toBe(200);
+
+    const incident = await (await app.request(`/api/incidents/${incidentId}`)).json() as {
+      packet: {
+        evidence: { platformEvents: Array<typeof event> };
+        pointers: { platformLogRefs: string[] };
+      };
+    };
+
+    expect(incident.packet.evidence.platformEvents).toEqual([event]);
+    expect(incident.packet.pointers.platformLogRefs).toEqual([
+      "2025-03-08T00:00:00.250Z:deploy:web",
+    ]);
+  });
+
+  it("POST /v1/platform-events with environment mismatch or service mismatch does not attach", async () => {
+    const traceRes = await app.request("/v1/traces", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(errorSpanPayload),
+    });
+    const { incidentId } = await traceRes.json() as { incidentId: string };
+
+    const platformRes = await app.request("/v1/platform-events", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        events: [
+          {
+            eventType: "deploy",
+            timestamp: "2025-03-08T00:00:00.250Z",
+            environment: "staging",
+            description: "wrong environment",
+            service: "web",
+          },
+          {
+            eventType: "config_change",
+            timestamp: "2025-03-08T00:00:00.250Z",
+            environment: "production",
+            description: "wrong service",
+            service: "worker",
+          },
+        ],
+      }),
+    });
+    expect(platformRes.status).toBe(200);
+
+    const incident = await (await app.request(`/api/incidents/${incidentId}`)).json() as {
+      packet: {
+        evidence: { platformEvents: unknown[] };
+        pointers: { platformLogRefs: string[] };
+      };
+    };
+
+    expect(incident.packet.evidence.platformEvents).toEqual([]);
+    expect(incident.packet.pointers.platformLogRefs).toEqual([]);
+  });
+
+  it("POST /v1/platform-events attaches to the single best matching incident", async () => {
+    const incident1TraceRes = await app.request("/v1/traces", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(
+        makeTracePayload([
+          makeResourceSpans("web", [
+            makeTraceSpan({
+              traceId: "trace-best-1",
+              spanId: "span-best-1",
+              startTimeUnixNano: "1741392000000000000",
+              endTimeUnixNano: "1741392600000000000",
+              httpStatusCode: 500,
+              spanStatusCode: 2,
+              route: "/checkout",
+            }),
+          ]),
+        ]),
+      ),
+    });
+    const { incidentId: incident1Id } = await incident1TraceRes.json() as { incidentId: string };
+
+    const incident2TraceRes = await app.request("/v1/traces", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(
+        makeTracePayload([
+          makeResourceSpans("web", [
+            makeTraceSpan({
+              traceId: "trace-best-2",
+              spanId: "span-best-2",
+              startTimeUnixNano: "1741392360000000000",
+              endTimeUnixNano: "1741392960000000000",
+              httpStatusCode: 500,
+              spanStatusCode: 2,
+              route: "/checkout",
+            }),
+          ]),
+        ]),
+      ),
+    });
+    const { incidentId: incident2Id } = await incident2TraceRes.json() as { incidentId: string };
+
+    const platformRes = await app.request("/v1/platform-events", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        events: [
+          {
+            eventType: "deploy",
+            timestamp: "2025-03-08T00:07:00.000Z",
+            environment: "production",
+            description: "web deploy overlaps both incidents",
+            service: "web",
+          },
+        ],
+      }),
+    });
+    expect(platformRes.status).toBe(200);
+
+    const incident1 = await (await app.request(`/api/incidents/${incident1Id}`)).json() as {
+      packet: { evidence: { platformEvents: unknown[] } };
+    };
+    const incident2 = await (await app.request(`/api/incidents/${incident2Id}`)).json() as {
+      packet: { evidence: { platformEvents: Array<{ timestamp: string }> } };
+    };
+
+    expect(incident1.packet.evidence.platformEvents).toEqual([]);
+    expect(incident2.packet.evidence.platformEvents).toHaveLength(1);
+    expect(incident2.packet.evidence.platformEvents[0]?.timestamp).toBe("2025-03-08T00:07:00.000Z");
   });
 
   // POST /v1/metrics with no matching incident → 200 ok, no-op

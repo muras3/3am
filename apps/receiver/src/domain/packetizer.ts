@@ -39,7 +39,7 @@
  */
 
 import { randomUUID } from "crypto"
-import type { IncidentPacket } from "@3amoncall/core"
+import type { IncidentPacket, PlatformEvent } from "@3amoncall/core"
 import { type ExtractedSpan, isAnomalous, SLOW_SPAN_THRESHOLD_MS } from "./anomaly-detector.js"
 import { normalizeDependency } from "./formation.js"
 import type { AnomalousSignal, IncidentRawState } from "../storage/interface.js"
@@ -277,6 +277,10 @@ export function buildAnomalousSignals(anomalousSpans: ExtractedSpan[]): Anomalou
   })
 }
 
+export function buildPlatformLogRef(event: PlatformEvent): string {
+  return event.eventId ?? `${event.timestamp}:${event.eventType}:${event.service ?? event.provider ?? "global"}`
+}
+
 export function selectPrimaryService(spans: ExtractedSpan[]): string {
   const anomalous = spans
     .filter(isAnomalous)
@@ -294,11 +298,11 @@ export function rebuildPacket(
   packetId: string,
   openedAt: string,
   rawState: IncidentRawState,
-  existingEvidence?: { changedMetrics?: unknown[]; relevantLogs?: unknown[]; platformEvents?: unknown[] },
+  existingEvidence?: { changedMetrics?: unknown[]; relevantLogs?: unknown[] },
   generation?: number,
   primaryService?: string,
 ): IncidentPacket {
-  const { spans, anomalousSignals } = rawState
+  const { spans, anomalousSignals, platformEvents } = rawState
 
   // window
   const windowStart = Math.min(...spans.map((s) => s.startTimeMs))
@@ -341,6 +345,7 @@ export function rebuildPacket(
 
   // pointers
   const traceRefs = [...new Set(spans.map((s) => s.traceId))]
+  const platformLogRefs = platformEvents.map(buildPlatformLogRef)
 
   return {
     schemaVersion: "incident-packet/v1alpha1",
@@ -366,13 +371,13 @@ export function rebuildPacket(
       changedMetrics: existingEvidence?.changedMetrics ?? [],
       representativeTraces,
       relevantLogs: existingEvidence?.relevantLogs ?? [],
-      platformEvents: existingEvidence?.platformEvents ?? [],
+      platformEvents,
     },
     pointers: {
       traceRefs,
       logRefs: [],
       metricRefs: [],
-      platformLogRefs: [],
+      platformLogRefs,
     },
   }
 }

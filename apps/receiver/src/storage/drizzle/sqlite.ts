@@ -11,7 +11,7 @@ import { drizzle } from "drizzle-orm/better-sqlite3";
 import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import { eq, desc, lt, and } from "drizzle-orm";
 import { sql } from "drizzle-orm";
-import type { IncidentPacket, DiagnosisResult, ThinEvent } from "@3amoncall/core";
+import type { IncidentPacket, DiagnosisResult, PlatformEvent, ThinEvent } from "@3amoncall/core";
 import type { ExtractedSpan } from "../../domain/anomaly-detector.js";
 import type { AnomalousSignal, Incident, IncidentPage, IncidentRawState, StorageDriver } from "../interface.js";
 import { createEmptyRawState, mergeEvidenceIntoPacket } from "../interface.js";
@@ -191,6 +191,19 @@ export class SQLiteAdapter implements StorageDriver {
     const rawState: IncidentRawState = {
       ...incident.rawState,
       anomalousSignals: [...incident.rawState.anomalousSignals, ...signals],
+    };
+    await this.db
+      .update(incidents)
+      .set({ rawState: JSON.stringify(rawState), updatedAt: new Date().toISOString() })
+      .where(eq(incidents.incidentId, incidentId));
+  }
+
+  async appendPlatformEvents(incidentId: string, events: PlatformEvent[]): Promise<void> {
+    const incident = await this.getIncident(incidentId);
+    if (!incident) return;
+    const rawState: IncidentRawState = {
+      ...incident.rawState,
+      platformEvents: [...incident.rawState.platformEvents, ...events],
     };
     await this.db
       .update(incidents)

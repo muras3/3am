@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { ZodError } from "zod";
-import { IncidentPacketSchema } from "../incident-packet.js";
+import { IncidentPacketSchema, PlatformEventSchema } from "../incident-packet.js";
 
 const minimalValidPacket = {
   schemaVersion: "incident-packet/v1alpha1",
@@ -147,5 +147,68 @@ describe("IncidentPacketSchema", () => {
     };
     const result = IncidentPacketSchema.parse(withValidTrace);
     expect(result.evidence.representativeTraces).toHaveLength(1);
+  });
+
+  it("accepts platformEvents with valid PlatformEventSchema shape", () => {
+    const withPlatformEvent = {
+      ...minimalValidPacket,
+      evidence: {
+        ...minimalValidPacket.evidence,
+        platformEvents: [
+          {
+            eventType: "deploy",
+            timestamp: "2026-03-08T00:00:30Z",
+            environment: "production",
+            description: "checkout-api release rolled out",
+            service: "checkout-api",
+            deploymentId: "dep_123",
+            releaseVersion: "2026.03.08.1",
+            eventId: "evt_platform_1",
+            details: { initiatedBy: "gha" },
+          },
+        ],
+      },
+    };
+
+    const result = IncidentPacketSchema.parse(withPlatformEvent);
+    expect(result.evidence.platformEvents).toHaveLength(1);
+    expect(result.evidence.platformEvents[0]?.eventType).toBe("deploy");
+  });
+
+  it("rejects invalid platformEvents shape", () => {
+    const withBadPlatformEvent = {
+      ...minimalValidPacket,
+      evidence: {
+        ...minimalValidPacket.evidence,
+        platformEvents: [{ eventType: "deploy", timestamp: "2026-03-08T00:00:30Z" }],
+      },
+    };
+
+    expect(() => IncidentPacketSchema.parse(withBadPlatformEvent)).toThrow(ZodError);
+  });
+});
+
+describe("PlatformEventSchema", () => {
+  it("rejects unknown keys", () => {
+    expect(() =>
+      PlatformEventSchema.parse({
+        eventType: "deploy",
+        timestamp: "2026-03-08T00:00:30Z",
+        environment: "production",
+        description: "release",
+        extra: true,
+      }),
+    ).toThrow(ZodError);
+  });
+
+  it("rejects unsupported event types", () => {
+    expect(() =>
+      PlatformEventSchema.parse({
+        eventType: "maintenance",
+        timestamp: "2026-03-08T00:00:30Z",
+        environment: "production",
+        description: "release",
+      }),
+    ).toThrow(ZodError);
   });
 });
