@@ -21,6 +21,7 @@ function handleDbRecentOrders(req, res, ctx) {
     ctx.enqueueWork(async () => {
       return ctx.tracer.startActiveSpan("db.query", {
         attributes: {
+          "peer.service": "postgres",
           "db.system": "postgresql",
           "db.statement": "SELECT id, status FROM orders ORDER BY id DESC LIMIT 10",
           "db.operation": "select"
