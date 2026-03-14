@@ -142,7 +142,7 @@ importers:
         specifier: ^7.4.0
         version: 7.5.4
       zod:
-        specifier: ^3
+        specifier: ^3.25.76
         version: 3.25.76
     devDependencies:
       '@3amoncall/config-eslint':
