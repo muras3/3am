@@ -66,6 +66,8 @@ services:
       interval: 5s
       timeout: 3s
       retries: 5
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
 
   mock-stripe:
     build:
@@ -222,6 +224,7 @@ services:
       SENDGRID_ADMIN_URL: http://mock-sendgrid:6001
       WEB_V2_BASE_URL: http://web-v2:3000
       OTEL_COLLECTOR_DIR: /workspace/out/collector
+      FAST_MODE: "${FAST_MODE:-0}"
     volumes:
       - ./scenarios:/workspace/scenarios:ro
       - ./out:/workspace/out
@@ -231,3 +234,6 @@ services:
       - loadgen
       - otel-collector
     command: ["node", "/app/run.js", "third_party_api_rate_limit_cascade"]
+
+volumes:
+  postgres_data:

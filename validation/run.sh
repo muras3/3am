@@ -12,6 +12,7 @@
 # Environment variables:
 #   ANTHROPIC_API_KEY   Required. Anthropic API key for LLM diagnosis.
 #   RECEIVER_PORT       Receiver port (default: 4319)
+#   DATABASE_URL        Optional. If set, receiver uses PostgresAdapter (default: MemoryAdapter)
 #   MAX_DIAGNOSES       LLM call limit (default: 1)
 #   DIAGNOSIS_MODEL     Model to use (default: claude-sonnet-4-6)
 #   FAST_MODE           Set to 1 for fast scenario timing (default: 1)
@@ -28,8 +29,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 RECEIVER_PORT="${RECEIVER_PORT:-4319}"
 RECEIVER_BASE_URL="http://localhost:${RECEIVER_PORT}"
+RECEIVER_ENDPOINT="http://host.docker.internal:${RECEIVER_PORT}"
 MAX_DIAGNOSES="${MAX_DIAGNOSES:-1}"
 FAST_MODE="${FAST_MODE:-1}"
+DATABASE_URL="${DATABASE_URL:-}"
 RECEIVER_PID=""
 
 log() { echo "[run.sh] $*"; }
@@ -45,8 +48,7 @@ trap cleanup EXIT
 
 # ── 1. Prereqs ────────────────────────────────────────────────────────────────
 if [[ -z "${ANTHROPIC_API_KEY:-}" ]]; then
-  err "ANTHROPIC_API_KEY is not set"
-  exit 1
+  log "ANTHROPIC_API_KEY not set — LLM diagnosis will be skipped"
 fi
 
 if ! docker info > /dev/null 2>&1; then
@@ -54,29 +56,51 @@ if ! docker info > /dev/null 2>&1; then
   exit 1
 fi
 
-# ── 2. Start Receiver (if not already up) ────────────────────────────────────
-if curl -sf "$RECEIVER_BASE_URL/api/incidents" > /dev/null 2>&1; then
-  log "Receiver already running on port $RECEIVER_PORT"
-else
-  log "Starting Receiver on port $RECEIVER_PORT..."
+# ── 2. Start Postgres first (when DATABASE_URL is set) ───────────────────────
+if [[ -n "$DATABASE_URL" ]]; then
+  log "Starting Postgres (DATABASE_URL mode)..."
+  cd "$SCRIPT_DIR"
+  RECEIVER_ENDPOINT="$RECEIVER_ENDPOINT" docker compose up -d --wait postgres
+  log "Running DB migrations..."
   cd "$REPO_ROOT"
-  PORT=$RECEIVER_PORT ALLOW_INSECURE_DEV_MODE=true \
-    pnpm --filter @3amoncall/receiver dev > /tmp/3amoncall-receiver.log 2>&1 &
-  RECEIVER_PID=$!
-
-  for i in $(seq 1 30); do
-    curl -sf "$RECEIVER_BASE_URL/api/incidents" > /dev/null 2>&1 && break
-    sleep 1
-  done
-
-  if ! curl -sf "$RECEIVER_BASE_URL/api/incidents" > /dev/null 2>&1; then
-    err "Receiver failed to start. Check /tmp/3amoncall-receiver.log"
-    exit 1
-  fi
-  log "Receiver ready (PID $RECEIVER_PID)"
+  DATABASE_URL="$DATABASE_URL" pnpm --filter @3amoncall/receiver db:migrate > /dev/null 2>&1
 fi
 
-# ── 3. Docker Compose (validation stack) ─────────────────────────────────────
+# ── 3. Start Receiver ────────────────────────────────────────────────────────
+# Kill any process on the receiver port to ensure correct adapter is used
+EXISTING_PID=$(lsof -ti ":$RECEIVER_PORT" 2>/dev/null | head -1 || true)
+if [[ -n "$EXISTING_PID" ]]; then
+  log "Stopping existing process on port $RECEIVER_PORT (PID $EXISTING_PID)..."
+  kill "$EXISTING_PID" 2>/dev/null || true
+  sleep 1
+fi
+
+log "Starting Receiver on port $RECEIVER_PORT${DATABASE_URL:+ (PostgresAdapter)}..."
+cd "$REPO_ROOT"
+
+if [[ -n "$DATABASE_URL" ]]; then
+  # Build compiled receiver to avoid tsx watch restart issues
+  pnpm --filter @3amoncall/receiver build > /dev/null 2>&1
+  DATABASE_URL="$DATABASE_URL" PORT=$RECEIVER_PORT ALLOW_INSECURE_DEV_MODE=true \
+    node apps/receiver/dist/server.js > /tmp/3amoncall-receiver.log 2>&1 &
+else
+  PORT=$RECEIVER_PORT ALLOW_INSECURE_DEV_MODE=true \
+    pnpm --filter @3amoncall/receiver dev > /tmp/3amoncall-receiver.log 2>&1 &
+fi
+RECEIVER_PID=$!
+
+for i in $(seq 1 30); do
+  curl -sf "$RECEIVER_BASE_URL/api/incidents" > /dev/null 2>&1 && break
+  sleep 1
+done
+
+if ! curl -sf "$RECEIVER_BASE_URL/api/incidents" > /dev/null 2>&1; then
+  err "Receiver failed to start. Check /tmp/3amoncall-receiver.log"
+  exit 1
+fi
+log "Receiver ready (PID $RECEIVER_PID)"
+
+# ── 4. Docker Compose (validation stack) ─────────────────────────────────────
 # Map scenario → Docker Compose profile for scenario-specific services:
 #   db_migration_lock_contention           → db-migration (migration-runner)
 #   cascading_timeout_downstream_dependency → cascading-timeout (mock-notification-svc)
@@ -90,18 +114,19 @@ case "$SCENARIO" in
   secrets_rotation_partial_propagation)    COMPOSE_PROFILE="secrets-rotation" ;;
 esac
 
-log "Starting validation stack${COMPOSE_PROFILE:+ (profile: $COMPOSE_PROFILE)}..."
+log "Starting validation stack (remaining services)${COMPOSE_PROFILE:+ (profile: $COMPOSE_PROFILE)}..."
 cd "$SCRIPT_DIR"
 if [[ -n "$COMPOSE_PROFILE" ]]; then
-  docker compose --profile "$COMPOSE_PROFILE" up -d --wait
+  RECEIVER_ENDPOINT="$RECEIVER_ENDPOINT" docker compose --profile "$COMPOSE_PROFILE" up -d --wait
 else
-  docker compose up -d --wait otel-collector postgres mock-stripe web loadgen
+  RECEIVER_ENDPOINT="$RECEIVER_ENDPOINT" docker compose up -d --wait otel-collector postgres mock-stripe web loadgen
 fi
 
 # ── 4. Run scenario ───────────────────────────────────────────────────────────
 log "Running scenario: $SCENARIO (FAST_MODE=$FAST_MODE)"
-docker compose run --rm -e FAST_MODE="$FAST_MODE" scenario-runner \
-  node /app/run.js "$SCENARIO"
+RECEIVER_ENDPOINT="$RECEIVER_ENDPOINT" docker compose run --rm \
+  -e FAST_MODE="$FAST_MODE" \
+  scenario-runner node /app/run.js "$SCENARIO"
 
 # ── 5. Wait for traces to reach Receiver ─────────────────────────────────────
 log "Waiting for incidents to be ingested..."
@@ -117,14 +142,18 @@ if [[ "$INCIDENT_COUNT" -eq 0 ]]; then
 fi
 
 # ── 6. LLM Diagnosis ─────────────────────────────────────────────────────────
-log "Running LLM diagnosis (max $MAX_DIAGNOSES call(s))..."
-cd "$REPO_ROOT"
-MAX_DIAGNOSES="$MAX_DIAGNOSES" \
-  RECEIVER_BASE_URL="$RECEIVER_BASE_URL" \
-  npx tsx "$SCRIPT_DIR/tools/local-diagnose.ts"
+if [[ -n "${ANTHROPIC_API_KEY:-}" ]]; then
+  log "Running LLM diagnosis (max $MAX_DIAGNOSES call(s))..."
+  cd "$REPO_ROOT"
+  MAX_DIAGNOSES="$MAX_DIAGNOSES" \
+    RECEIVER_BASE_URL="$RECEIVER_BASE_URL" \
+    npx tsx "$SCRIPT_DIR/tools/local-diagnose.ts"
+else
+  log "Skipping LLM diagnosis (ANTHROPIC_API_KEY not set)"
+fi
 
 # ── 7. Print result ───────────────────────────────────────────────────────────
-log "Diagnosis complete. Fetching result..."
+log "Fetching result..."
 curl -sf "$RECEIVER_BASE_URL/api/incidents" | python3 -c "
 import json, sys
 data = json.load(sys.stdin)
