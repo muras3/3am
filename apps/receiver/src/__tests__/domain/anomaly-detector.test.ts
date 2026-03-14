@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { isAnomalous, extractSpans, type ExtractedSpan } from '../../domain/anomaly-detector.js'
+import { isAnomalous, isIncidentTrigger, extractSpans, type ExtractedSpan } from '../../domain/anomaly-detector.js'
 
 describe('isAnomalous', () => {
   it('returns false for HTTP 200 span with spanStatusCode=1 (ok)', () => {
@@ -221,5 +221,98 @@ describe('extractSpans', () => {
 
   it('returns [] for payload with empty resourceSpans array', () => {
     expect(extractSpans({ resourceSpans: [] })).toEqual([])
+  })
+
+  it('extracts spanKind from span.kind field', () => {
+    const payload = {
+      resourceSpans: [{
+        resource: { attributes: [{ key: 'service.name', value: { stringValue: 'mock-stripe' } }] },
+        scopeSpans: [{
+          spans: [{
+            traceId: 'abc123', spanId: 'span001', kind: 2,
+            startTimeUnixNano: '1700000000000000000', endTimeUnixNano: '1700000001000000000',
+            status: { code: 0 }, attributes: [], events: [],
+          }],
+        }],
+      }],
+    }
+    const spans = extractSpans(payload)
+    expect(spans[0].spanKind).toBe(2)
+  })
+
+  it('sets spanKind to undefined when span.kind is absent', () => {
+    const payload = {
+      resourceSpans: [{
+        resource: { attributes: [{ key: 'service.name', value: { stringValue: 'api' } }] },
+        scopeSpans: [{
+          spans: [{
+            traceId: 'abc123', spanId: 'span001',
+            startTimeUnixNano: '1700000000000000000', endTimeUnixNano: '1700000001000000000',
+            status: { code: 0 }, attributes: [], events: [],
+          }],
+        }],
+      }],
+    }
+    const spans = extractSpans(payload)
+    expect(spans[0].spanKind).toBeUndefined()
+  })
+})
+
+// ── isIncidentTrigger ─────────────────────────────────────────────────────────
+
+describe('isIncidentTrigger', () => {
+  const base: ExtractedSpan = {
+    traceId: 'trace1', spanId: 'span1', serviceName: 'svc',
+    environment: 'production', spanStatusCode: 0,
+    durationMs: 100, startTimeMs: 1700000000000, exceptionCount: 0,
+  }
+
+  // ── SERVER 429 is NOT a trigger (deliberate rate-limiting) ────────────────
+
+  it('returns false for SERVER span (kind=2) with HTTP 429', () => {
+    expect(isIncidentTrigger({ ...base, httpStatusCode: 429, spanKind: 2 })).toBe(false)
+  })
+
+  it('returns false for SERVER span (kind=2) with HTTP 429 even when spanStatus=ERROR', () => {
+    // spanStatus=ERROR does not override the SERVER 429 rule
+    expect(isIncidentTrigger({ ...base, httpStatusCode: 429, spanStatusCode: 2, spanKind: 2 })).toBe(false)
+  })
+
+  // ── Non-SERVER 429 IS a trigger ───────────────────────────────────────────
+
+  it('returns true for CLIENT span (kind=3) with HTTP 429 — being rate-limited by upstream', () => {
+    expect(isIncidentTrigger({ ...base, httpStatusCode: 429, spanKind: 3 })).toBe(true)
+  })
+
+  it('returns true for INTERNAL span (kind=1) with HTTP 429', () => {
+    expect(isIncidentTrigger({ ...base, httpStatusCode: 429, spanKind: 1 })).toBe(true)
+  })
+
+  it('returns true for HTTP 429 when spanKind is absent — backward compatible safe default', () => {
+    expect(isIncidentTrigger({ ...base, httpStatusCode: 429 })).toBe(true)
+  })
+
+  // ── SERVER 5xx is still a trigger (local failure) ─────────────────────────
+
+  it('returns true for SERVER span (kind=2) with HTTP 500', () => {
+    expect(isIncidentTrigger({ ...base, httpStatusCode: 500, spanStatusCode: 2, spanKind: 2 })).toBe(true)
+  })
+
+  // ── Non-429 anomaly conditions pass through unchanged ─────────────────────
+
+  it('returns true for SERVER span with spanStatus=ERROR and no httpStatusCode', () => {
+    expect(isIncidentTrigger({ ...base, spanStatusCode: 2, spanKind: 2 })).toBe(true)
+  })
+
+  it('returns true for slow span regardless of kind', () => {
+    expect(isIncidentTrigger({ ...base, durationMs: 5001, spanKind: 2 })).toBe(true)
+  })
+
+  it('returns true for span with exceptionCount > 0 regardless of kind', () => {
+    expect(isIncidentTrigger({ ...base, exceptionCount: 1, spanKind: 2 })).toBe(true)
+  })
+
+  it('returns false for normal healthy span', () => {
+    expect(isIncidentTrigger({ ...base, httpStatusCode: 200 })).toBe(false)
   })
 })

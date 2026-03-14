@@ -7,7 +7,7 @@ import type { StorageDriver } from "../storage/interface.js";
 import type { SpanBuffer } from "../ambient/span-buffer.js";
 import {
   extractSpans,
-  isAnomalous,
+  isIncidentTrigger,
 } from "../domain/anomaly-detector.js";
 import {
   buildFormationKey,
@@ -109,10 +109,13 @@ export function createIngestRouter(storage: StorageDriver, spanBuffer?: SpanBuff
     const spans = extractSpans(body);
     spans.forEach((span) => spanBuffer?.push({ ...span, ingestedAt: Date.now() }));
 
-    // Sort anomalous spans by (startTimeMs asc, serviceName asc) for deterministic
-    // primaryService selection — same algorithm as Plan 3 selectPrimaryService().
+    // Filter to incident-trigger-eligible spans only (span-kind-aware rule table).
+    // isIncidentTrigger excludes e.g. SERVER 429 spans (deliberate rate-limiting)
+    // which are anomalous evidence but should not open a new incident.
+    // Sorted by (startTimeMs asc, serviceName asc) for deterministic primaryService
+    // selection — same algorithm as Plan 3 selectPrimaryService().
     const anomalousSpans = spans
-      .filter(isAnomalous)
+      .filter(isIncidentTrigger)
       .sort((a, b) =>
         a.startTimeMs !== b.startTimeMs
           ? a.startTimeMs - b.startTimeMs
