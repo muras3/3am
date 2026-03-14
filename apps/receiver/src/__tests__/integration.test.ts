@@ -350,9 +350,10 @@ describe("Receiver integration tests", () => {
 
     const res = await app.request("/api/incidents");
     expect(res.status).toBe(200);
-    const body = await res.json() as { items: Array<{ incidentId: string }> };
+    const body = await res.json() as { items: Array<{ incidentId: string; rawState?: unknown }> };
     expect(body.items).toHaveLength(1);
     expect(typeof body.items[0].incidentId).toBe("string");
+    expect(body.items[0].rawState).toBeUndefined();
   });
 
   // Test 4: GET /api/incidents/:id → 200, incidentId matches
@@ -367,8 +368,29 @@ describe("Receiver integration tests", () => {
 
     const res = await app.request(`/api/incidents/${incidentId}`);
     expect(res.status).toBe(200);
-    const body = await res.json() as { incidentId: string };
+    const body = await res.json() as { incidentId: string; rawState?: unknown };
     expect(body.incidentId).toBe(incidentId);
+    expect(body.rawState).toBeUndefined();
+  });
+
+  it("GET /api/incidents/:id/raw returns the incident with rawState for debugging", async () => {
+    const traceRes = await app.request("/v1/traces", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(errorSpanPayload),
+    });
+    const traceBody = await traceRes.json() as { incidentId: string };
+    const { incidentId } = traceBody;
+
+    const res = await app.request(`/api/incidents/${incidentId}/raw`);
+    expect(res.status).toBe(200);
+    const body = await res.json() as {
+      incidentId: string;
+      rawState: { spans: unknown[]; anomalousSignals: unknown[] };
+    };
+    expect(body.incidentId).toBe(incidentId);
+    expect(body.rawState.spans.length).toBeGreaterThan(0);
+    expect(body.rawState.anomalousSignals.length).toBeGreaterThan(0);
   });
 
   // Test 5: GET /api/packets/:packetId → 200, schemaVersion is "incident-packet/v1alpha1"

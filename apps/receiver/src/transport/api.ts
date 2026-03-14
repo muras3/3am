@@ -1,7 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { Hono } from "hono";
 import { DiagnosisResultSchema, type DiagnosisResult } from "@3amoncall/core";
-import type { StorageDriver } from "../storage/interface.js";
+import type { Incident, IncidentPage, StorageDriver } from "../storage/interface.js";
 import type { SpanBuffer } from "../ambient/span-buffer.js";
 import { computeServices, computeActivity } from "../ambient/service-aggregator.js";
 
@@ -13,6 +13,24 @@ const CHAT_MODEL = process.env["CHAT_MODEL"] ?? "claude-haiku-4-5-20251001";
 interface ChatTurn {
   role: "user" | "assistant";
   content: string;
+}
+
+type IncidentResponse = Omit<Incident, "rawState">;
+type IncidentPageResponse = {
+  items: IncidentResponse[];
+  nextCursor?: string;
+};
+
+function toIncidentResponse(incident: Incident): IncidentResponse {
+  const { rawState: _rawState, ...response } = incident;
+  return response;
+}
+
+function toIncidentPageResponse(page: IncidentPage): IncidentPageResponse {
+  return {
+    items: page.items.map(toIncidentResponse),
+    nextCursor: page.nextCursor,
+  };
 }
 
 function buildChatSystemPrompt(dr: DiagnosisResult): string {
@@ -66,7 +84,16 @@ export function createApiRouter(storage: StorageDriver, spanBuffer?: SpanBuffer)
     const limit = Number.isNaN(rawLimit) ? 20 : Math.min(Math.max(rawLimit, 1), 100);
 
     const page = await storage.listIncidents({ limit, cursor });
-    return c.json(page);
+    return c.json(toIncidentPageResponse(page));
+  });
+
+  app.get("/api/incidents/:id/raw", async (c) => {
+    const id = c.req.param("id");
+    const incident = await storage.getIncident(id);
+    if (incident === null) {
+      return c.json({ error: "not found" }, 404);
+    }
+    return c.json(incident);
   });
 
   app.get("/api/incidents/:id", async (c) => {
@@ -75,7 +102,7 @@ export function createApiRouter(storage: StorageDriver, spanBuffer?: SpanBuffer)
     if (incident === null) {
       return c.json({ error: "not found" }, 404);
     }
-    return c.json(incident);
+    return c.json(toIncidentResponse(incident));
   });
 
   app.get("/api/packets/:packetId", async (c) => {
