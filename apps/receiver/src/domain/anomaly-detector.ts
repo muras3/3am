@@ -19,11 +19,14 @@ const SLOW_SPAN_THRESHOLD_MS = 5000
 // OTel span kind value for server-side spans (https://opentelemetry.io/docs/specs/otel/trace/api/#spankind)
 const SPAN_KIND_SERVER = 2
 
+// HTTP status codes with special anomaly trigger semantics
+const HTTP_RATE_LIMITED = 429
+
 export function isAnomalous(span: ExtractedSpan): boolean {
   if (span.httpStatusCode !== undefined && span.httpStatusCode >= 500) {
     return true
   }
-  if (span.httpStatusCode === 429) {
+  if (span.httpStatusCode === HTTP_RATE_LIMITED) {
     return true
   }
   if (span.spanStatusCode === 2) {
