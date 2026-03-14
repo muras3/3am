@@ -15,11 +15,13 @@
  *   score > 0. These are always included regardless of route/service caps.
  *   This ensures the most critical signals are never dropped.
  *
- * Phase 2 — Diversity fill:
+ * Phase 2 — Diversity fill (greedy, dynamic service preference):
  *   Fill the remaining budget (up to MAX_REPRESENTATIVE_TRACES=10) from
- *   the remaining scored spans, preferring services not yet seen (cascade
- *   coverage), then applying a per-route cap of MAX_ROUTE_DIVERSITY=3 to
- *   avoid over-representing a single hot route.
+ *   the remaining scored spans. At each step, a span from a service not
+ *   yet selected in Phase 2 is preferred over same-service spans, evaluated
+ *   dynamically as the selection grows (not a one-time static partition).
+ *   A per-route cap of MAX_ROUTE_DIVERSITY=3 prevents a single hot route
+ *   from monopolising slots.
  *
  * ### Dependency injection
  *   If no selected span has a peerService, inject one external-dependency
@@ -96,10 +98,11 @@ function scoreSpan(span: ExtractedSpan): number {
 
 /**
  * Tie-break key: deterministic ordering when scores are equal.
- * Uses traceId + spanId lexicographic order.
+ * Uses `traceId:spanId` (colon-delimited) to avoid concatenation collisions
+ * when traceId/spanId strings have variable lengths.
  */
 function tiebreakerKey(span: ExtractedSpan): string {
-  return span.traceId + span.spanId
+  return `${span.traceId}:${span.spanId}`
 }
 
 /**
@@ -155,28 +158,54 @@ function selectRepresentativeTraces(spans: ExtractedSpan[]): RepresentativeTrace
   }
 
   // ------------------------------------------------------------------
-  // Phase 2 — Diversity fill
+  // Phase 2 — Diversity fill (greedy with dynamic service-diversity preference)
   // ------------------------------------------------------------------
-  // Remaining spans (guaranteed excluded) sorted by service diversity first,
-  // then by the existing score order.
+  // At each step, prefer a span whose service has not yet been selected in
+  // Phase 2 (dynamic, not a one-time partition). This prevents a high-score
+  // service from consuming multiple Phase 2 slots before other services get
+  // a chance, which is critical for cascade-spread coverage.
+  // Fallback: if no unseen-service span is available within the route cap,
+  // pick the best remaining span regardless of service.
   const guaranteedSet = new Set(guaranteed.map(tiebreakerKey))
   const remaining = scored.filter((s) => !guaranteedSet.has(tiebreakerKey(s)))
 
-  // Partition: new services first, then already-seen services.
-  // Within each partition the original score order is preserved.
-  const newServiceSpans = remaining.filter((s) => !serviceSet.has(s.serviceName))
-  const existingServiceSpans = remaining.filter((s) => serviceSet.has(s.serviceName))
-  const candidates = [...newServiceSpans, ...existingServiceSpans]
-
   const phase2Picks: ExtractedSpan[] = []
+  const phase2ServiceSet = new Set<string>()   // services selected so far in Phase 2
+  const phase2PickedKeys = new Set<string>()   // identity keys of picked spans
+  const budget = MAX_REPRESENTATIVE_TRACES - guaranteed.length
 
-  for (const span of candidates) {
-    if (guaranteed.length + phase2Picks.length >= MAX_REPRESENTATIVE_TRACES) break
-    const key = `${span.serviceName}:${span.httpRoute ?? ""}`
-    if ((routeCaps[key] ?? 0) >= MAX_ROUTE_DIVERSITY) continue
-    phase2Picks.push(span)
-    routeCaps[key] = (routeCaps[key] ?? 0) + 1
-    serviceSet.add(span.serviceName)
+  while (phase2Picks.length < budget) {
+    let picked: ExtractedSpan | undefined
+
+    // Pass 1: prefer span from a service not yet seen in Phase 2
+    for (const span of remaining) {
+      if (phase2PickedKeys.has(tiebreakerKey(span))) continue
+      const key = `${span.serviceName}:${span.httpRoute ?? ""}`
+      if ((routeCaps[key] ?? 0) >= MAX_ROUTE_DIVERSITY) continue
+      if (!phase2ServiceSet.has(span.serviceName)) {
+        picked = span
+        break
+      }
+    }
+
+    // Pass 2: no unseen-service available — take best remaining within route cap
+    if (picked === undefined) {
+      for (const span of remaining) {
+        if (phase2PickedKeys.has(tiebreakerKey(span))) continue
+        const key = `${span.serviceName}:${span.httpRoute ?? ""}`
+        if ((routeCaps[key] ?? 0) >= MAX_ROUTE_DIVERSITY) continue
+        picked = span
+        break
+      }
+    }
+
+    if (picked === undefined) break
+
+    phase2Picks.push(picked)
+    phase2PickedKeys.add(tiebreakerKey(picked))
+    const routeKey = `${picked.serviceName}:${picked.httpRoute ?? ""}`
+    routeCaps[routeKey] = (routeCaps[routeKey] ?? 0) + 1
+    phase2ServiceSet.add(picked.serviceName)
   }
 
   // ------------------------------------------------------------------
