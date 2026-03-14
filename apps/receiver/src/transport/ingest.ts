@@ -3,11 +3,14 @@ import { promisify } from "node:util";
 import { gunzip } from "node:zlib";
 import { Hono, type Context } from "hono";
 import { bodyLimit } from "hono/body-limit";
-import type { StorageDriver } from "../storage/interface.js";
+import { z } from "zod";
+import { PlatformEventSchema, type PlatformEvent } from "@3amoncall/core";
+import type { Incident, StorageDriver } from "../storage/interface.js";
 import type { SpanBuffer } from "../ambient/span-buffer.js";
 import {
   extractSpans,
   isAnomalous,
+  isIncidentTrigger,
 } from "../domain/anomaly-detector.js";
 import {
   buildFormationKey,
@@ -25,6 +28,9 @@ import { decodeTraces, decodeMetrics, decodeLogs } from "./otlp-protobuf.js";
 const gunzipAsync = promisify(gunzip);
 
 const INGEST_BODY_LIMIT = 1 * 1024 * 1024; // 1MB per ADR 0022 (resource exhaustion protection)
+const PlatformEventsRequestSchema = z.object({
+  events: z.array(PlatformEventSchema),
+}).strict();
 
 /**
  * Read the raw request body and decompress if Content-Encoding: gzip.
@@ -90,6 +96,51 @@ async function decodeOtlpBody(
   return c.json({ error: "unsupported Content-Type" }, 415);
 }
 
+async function listAllIncidents(storage: StorageDriver): Promise<Incident[]> {
+  const items: Incident[] = [];
+  let cursor: string | undefined = undefined;
+
+  do {
+    const page = await storage.listIncidents({ limit: 100, cursor });
+    items.push(...page.items);
+    cursor = page.nextCursor;
+  } while (cursor !== undefined);
+
+  return items;
+}
+
+function isPlatformEventCandidate(event: PlatformEvent, incident: Incident): boolean {
+  if (incident.status !== "open") return false;
+  if (incident.packet.scope.environment !== event.environment) return false;
+  if (event.service && !incident.packet.scope.affectedServices.includes(event.service)) return false;
+
+  const eventTimeMs = new Date(event.timestamp).getTime();
+  const windowStartMs = new Date(incident.packet.window.start).getTime();
+  const windowEndMs = new Date(incident.packet.window.end).getTime();
+
+  return windowStartMs <= eventTimeMs && eventTimeMs <= windowEndMs;
+}
+
+function selectBestIncidentForPlatformEvent(
+  event: PlatformEvent,
+  incidents: Incident[],
+): Incident | undefined {
+  const eventTimeMs = new Date(event.timestamp).getTime();
+
+  return incidents
+    .filter((incident) => isPlatformEventCandidate(event, incident))
+    .sort((a, b) => {
+      const aDistance = Math.abs(new Date(a.packet.window.detect).getTime() - eventTimeMs);
+      const bDistance = Math.abs(new Date(b.packet.window.detect).getTime() - eventTimeMs);
+      if (aDistance !== bDistance) return aDistance - bDistance;
+
+      const openedAtDiff = new Date(b.openedAt).getTime() - new Date(a.openedAt).getTime();
+      if (openedAtDiff !== 0) return openedAtDiff;
+
+      return a.incidentId.localeCompare(b.incidentId);
+    })[0];
+}
+
 export function createIngestRouter(storage: StorageDriver, spanBuffer?: SpanBuffer): Hono {
   const app = new Hono();
 
@@ -109,22 +160,30 @@ export function createIngestRouter(storage: StorageDriver, spanBuffer?: SpanBuff
     const spans = extractSpans(body);
     spans.forEach((span) => spanBuffer?.push({ ...span, ingestedAt: Date.now() }));
 
-    // Sort anomalous spans by (startTimeMs asc, serviceName asc) for deterministic
-    // primaryService selection — same algorithm as Plan 3 selectPrimaryService().
-    const anomalousSpans = spans
-      .filter(isAnomalous)
+    // signalSpans: all anomalous spans (isAnomalous) — for evidence/signal recording.
+    // triggerSpans: subset eligible to open a new incident (isIncidentTrigger) —
+    //   e.g. SERVER 429 is anomalous evidence but must not open a new incident.
+    // Sorted by (startTimeMs asc, serviceName asc) for deterministic primaryService
+    // selection — same algorithm as Plan 3 selectPrimaryService().
+    const signalSpans = spans.filter(isAnomalous);
+    const triggerSpans = signalSpans
+      .filter(isIncidentTrigger)
       .sort((a, b) =>
         a.startTimeMs !== b.startTimeMs
           ? a.startTimeMs - b.startTimeMs
           : a.serviceName.localeCompare(b.serviceName),
       );
 
-    if (anomalousSpans.length === 0) {
+    if (signalSpans.length === 0) {
       return c.json({ status: "ok" });
     }
 
-    const formationKey = buildFormationKey(anomalousSpans);
-    const signalTimeMs = anomalousSpans[0].startTimeMs;
+    // Formation key and signal time: use triggerSpans when available (preserves
+    // existing behavior for new-incident creation); fall back to signalSpans for
+    // evidence-only batches that have no trigger-eligible spans (e.g. SERVER 429).
+    const anchorSpans = triggerSpans.length > 0 ? triggerSpans : signalSpans;
+    const formationKey = buildFormationKey(anchorSpans);
+    const signalTimeMs = anchorSpans[0].startTimeMs;
 
     // Find existing open incident for this formation key within window.
     // Phase C: paginate through all pages (cursor loop) so matches are not
@@ -134,12 +193,22 @@ export function createIngestRouter(storage: StorageDriver, spanBuffer?: SpanBuff
       shouldAttachToIncident(formationKey, incident, signalTimeMs),
     );
 
+    // Evidence-only path: anomalous signals but no trigger-eligible spans.
+    // Append to existing incident as evidence; do not create a new incident.
+    if (triggerSpans.length === 0) {
+      if (existing) {
+        await storage.appendSpans(existing.incidentId, spans);
+        await storage.appendAnomalousSignals(existing.incidentId, buildAnomalousSignals(signalSpans));
+      }
+      return c.json({ status: "ok" });
+    }
+
     const isNew = !existing;
     const incidentId = existing ? existing.incidentId : "inc_" + randomUUID();
     // Use signal time (not server clock) so formation window is anchored to telemetry
     const openedAt = existing
       ? existing.openedAt
-      : new Date(anomalousSpans[0].startTimeMs).toISOString();
+      : new Date(triggerSpans[0].startTimeMs).toISOString();
 
     if (isNew) {
       // Pass all spans (not just anomalous) so the packet captures the full
@@ -150,8 +219,9 @@ export function createIngestRouter(storage: StorageDriver, spanBuffer?: SpanBuff
       await storage.createIncident(packet);
       // ADR 0030: save all spans and anomalous signals to raw state so future
       // rebuilds have the complete incident history as their single source of truth.
+      // signalSpans (isAnomalous) is used for evidence — broader than triggerSpans.
       await storage.appendSpans(incidentId, spans);
-      await storage.appendAnomalousSignals(incidentId, buildAnomalousSignals(anomalousSpans));
+      await storage.appendAnomalousSignals(incidentId, buildAnomalousSignals(signalSpans));
       const thinEvent = {
         event_id: "evt_" + randomUUID(),
         event_type: "incident.created" as const,
@@ -169,7 +239,7 @@ export function createIngestRouter(storage: StorageDriver, spanBuffer?: SpanBuff
     // rebuild the packet so later signals are reflected in the canonical view.
     // packetId is stable across rebuilds (thin event reference remains valid).
     await storage.appendSpans(incidentId, spans);
-    await storage.appendAnomalousSignals(incidentId, buildAnomalousSignals(anomalousSpans));
+    await storage.appendAnomalousSignals(incidentId, buildAnomalousSignals(signalSpans));
     const rawState = await storage.getRawState(incidentId);
     if (rawState !== null) {
       const generation = (existing.packet.generation ?? 1) + 1;
@@ -264,9 +334,48 @@ export function createIngestRouter(storage: StorageDriver, spanBuffer?: SpanBuff
     if (typeof body !== "object" || body === null) {
       return c.json({ error: "invalid body" }, 400);
     }
-    if (!("events" in (body as Record<string, unknown>))) {
-      return c.json({ error: "missing required field: events" }, 400);
+
+    const parsed = PlatformEventsRequestSchema.safeParse(body);
+    if (!parsed.success) {
+      return c.json({ error: "invalid body" }, 400);
     }
+
+    if (parsed.data.events.length === 0) {
+      return c.json({ status: "ok" });
+    }
+
+    const incidents = await listAllIncidents(storage);
+    const eventsByIncidentId = new Map<string, PlatformEvent[]>();
+
+    for (const event of parsed.data.events) {
+      const incident = selectBestIncidentForPlatformEvent(event, incidents);
+      if (!incident) continue;
+
+      const current = eventsByIncidentId.get(incident.incidentId) ?? [];
+      current.push(event);
+      eventsByIncidentId.set(incident.incidentId, current);
+    }
+
+    for (const [incidentId, events] of eventsByIncidentId) {
+      const incident = incidents.find((candidate) => candidate.incidentId === incidentId);
+      if (!incident) continue;
+
+      await storage.appendPlatformEvents(incidentId, events);
+      const rawState = await storage.getRawState(incidentId);
+      if (rawState === null) continue;
+
+      const rebuiltPacket = rebuildPacket(
+        incidentId,
+        incident.packet.packetId,
+        incident.openedAt,
+        rawState,
+        incident.packet.evidence,
+        (incident.packet.generation ?? 1) + 1,
+        incident.packet.scope.primaryService,
+      );
+      await storage.createIncident(rebuiltPacket);
+    }
+
     return c.json({ status: "ok" });
   });
 
