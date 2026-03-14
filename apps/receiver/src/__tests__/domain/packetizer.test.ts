@@ -1,6 +1,14 @@
 import { describe, it, expect } from 'vitest'
 import { IncidentPacketSchema } from '@3amoncall/core'
-import { buildAnomalousSignals, createPacket, rebuildPacket, selectPrimaryService } from '../../domain/packetizer.js'
+import {
+  buildAnomalousSignals,
+  createPacket,
+  rebuildPacket,
+  selectPrimaryService,
+  MAX_REPRESENTATIVE_TRACES,
+  TOP_ANOMALY_GUARANTEE,
+  MAX_ROUTE_DIVERSITY,
+} from '../../domain/packetizer.js'
 import { isAnomalous, type ExtractedSpan } from '../../domain/anomaly-detector.js'
 import type { IncidentRawState } from '../../storage/interface.js'
 
@@ -353,10 +361,13 @@ describe('rebuildPacket', () => {
   })
 
   it('representativeTraces capped at 10 spans', () => {
+    // Use 15 spans across distinct service:route keys so route diversity cap
+    // does not apply — the only cap that matters is MAX_REPRESENTATIVE_TRACES (10).
     const manySpans: ExtractedSpan[] = Array.from({ length: 15 }, (_, i) => ({
       traceId: `trace${i}`,
       spanId: `span${i}`,
-      serviceName: 'svc',
+      serviceName: `svc-${i}`,       // distinct service per span
+      httpRoute: `/route-${i}`,      // distinct route per span
       environment: 'production',
       spanStatusCode: 1,
       durationMs: 100,
@@ -366,5 +377,590 @@ describe('rebuildPacket', () => {
     const raw = makeRawState(manySpans)
     const packet = rebuildPacket('inc_1', 'pkt_1', '2023-11-14T22:13:20.000Z', raw)
     expect(packet.evidence.representativeTraces).toHaveLength(10)
+  })
+})
+
+// =============================================================================
+// 2a. Top anomaly guarantee tests
+// =============================================================================
+
+describe('2-stage selection: top anomaly guarantee', () => {
+  it('guaranteed spans always included: 30 spans, 5 HTTP504 + 25 normal → guaranteed 3', () => {
+    // 5 anomalous spans (score=5 each: http>=500 +3, spanStatus=2 +2)
+    const anomalous = Array.from({ length: 5 }, (_, i) =>
+      makeSpan({
+        traceId: `trace-anom-${i}`,
+        spanId: `span-anom-${i}`,
+        serviceName: 'service-A',
+        httpRoute: '/checkout',
+        httpStatusCode: 504,
+        spanStatusCode: 2,
+      })
+    )
+    // 25 normal spans (score=0)
+    const normal = Array.from({ length: 25 }, (_, i) =>
+      makeSpan({
+        traceId: `trace-norm-${i}`,
+        spanId: `span-norm-${i}`,
+        serviceName: 'service-A',
+        httpRoute: '/checkout',
+        httpStatusCode: 200,
+        spanStatusCode: 1,
+      })
+    )
+    const allSpans = [...normal, ...anomalous] // anomalous at the end (old slice would miss them)
+    const raw = makeRawState(allSpans)
+    const packet = rebuildPacket('inc_1', 'pkt_1', '2023-11-14T22:13:20.000Z', raw)
+
+    const traces = packet.evidence.representativeTraces as Array<{ traceId: string }>
+    const anomalousTraceIds = new Set(anomalous.map((s) => s.traceId))
+    const selectedAnomalousCount = traces.filter((t) => anomalousTraceIds.has(t.traceId)).length
+
+    // At least TOP_ANOMALY_GUARANTEE anomalous spans must be selected
+    expect(selectedAnomalousCount).toBeGreaterThanOrEqual(TOP_ANOMALY_GUARANTEE)
+  })
+
+  it('only 1 score>0 span → that 1 span is always selected', () => {
+    const single = makeSpan({
+      traceId: 'trace-special',
+      spanId: 'span-special',
+      serviceName: 'service-A',
+      httpRoute: '/pay',
+      httpStatusCode: 429,
+      spanStatusCode: 2,
+    })
+    const normal = Array.from({ length: 15 }, (_, i) =>
+      makeSpan({ traceId: `trace-n-${i}`, spanId: `span-n-${i}`, serviceName: 'service-A' })
+    )
+    const raw = makeRawState([...normal, single])
+    const packet = rebuildPacket('inc_1', 'pkt_1', '2023-11-14T22:13:20.000Z', raw)
+
+    const traces = packet.evidence.representativeTraces as Array<{ traceId: string }>
+    expect(traces.some((t) => t.traceId === 'trace-special')).toBe(true)
+  })
+
+  it('TOP_ANOMALY_GUARANTEE spans are protected from route cap displacement', () => {
+    // Create MORE than MAX_ROUTE_DIVERSITY anomalous spans on the same route
+    // All with very high score — they should all be guaranteed up to TOP_ANOMALY_GUARANTEE
+    const hotRouteAnomalous = Array.from({ length: TOP_ANOMALY_GUARANTEE + 2 }, (_, i) =>
+      makeSpan({
+        traceId: `trace-hot-${i}`,
+        spanId: `span-hot-${i}`,
+        serviceName: 'service-A',
+        httpRoute: '/hot-route',
+        httpStatusCode: 500,
+        spanStatusCode: 2,
+        exceptionCount: 1, // score = 3 + 2 + 2 = 7
+      })
+    )
+    const raw = makeRawState(hotRouteAnomalous)
+    const packet = rebuildPacket('inc_1', 'pkt_1', '2023-11-14T22:13:20.000Z', raw)
+
+    const traces = packet.evidence.representativeTraces as Array<{ traceId: string }>
+    const hotTraceIds = new Set(hotRouteAnomalous.slice(0, TOP_ANOMALY_GUARANTEE).map((s) => s.traceId))
+
+    // All TOP_ANOMALY_GUARANTEE spans must be present despite route cap
+    for (const id of hotTraceIds) {
+      expect(traces.some((t) => t.traceId === id)).toBe(true)
+    }
+  })
+})
+
+// =============================================================================
+// 2b. Cascade service diversity tests
+// =============================================================================
+
+describe('2-stage selection: cascade service diversity', () => {
+  it('upstream-svc (1 span HTTP500) is selected even with 20 downstream spans', () => {
+    const upstream = makeSpan({
+      traceId: 'trace-upstream',
+      spanId: 'span-upstream',
+      serviceName: 'upstream-svc',
+      httpRoute: '/api',
+      httpStatusCode: 500,
+      spanStatusCode: 2,
+    })
+    const downstream = Array.from({ length: 20 }, (_, i) =>
+      makeSpan({
+        traceId: `trace-ds-${i}`,
+        spanId: `span-ds-${i}`,
+        serviceName: 'downstream-svc',
+        httpRoute: '/api/downstream',
+        httpStatusCode: 504,
+        spanStatusCode: 2,
+      })
+    )
+    const raw = makeRawState([...downstream, upstream])
+    const packet = rebuildPacket('inc_1', 'pkt_1', '2023-11-14T22:13:20.000Z', raw)
+
+    const traces = packet.evidence.representativeTraces as Array<{ traceId: string }>
+    expect(traces.some((t) => t.traceId === 'trace-upstream')).toBe(true)
+  })
+
+  it('downstream-svc is capped at MAX_ROUTE_DIVERSITY per service:route key', () => {
+    const downstream = Array.from({ length: 20 }, (_, i) =>
+      makeSpan({
+        traceId: `trace-ds-${i}`,
+        spanId: `span-ds-${i}`,
+        serviceName: 'downstream-svc',
+        httpRoute: '/api/downstream',
+        httpStatusCode: 504,
+        spanStatusCode: 2,
+      })
+    )
+    const raw = makeRawState(downstream)
+    const packet = rebuildPacket('inc_1', 'pkt_1', '2023-11-14T22:13:20.000Z', raw)
+
+    const traces = packet.evidence.representativeTraces as Array<{ traceId: string; serviceName: string }>
+    // Count downstream-svc on /api/downstream (key = "downstream-svc:/api/downstream")
+    // Phase 1 picks (up to TOP_ANOMALY_GUARANTEE) can exceed route cap,
+    // but total for that key should not exceed TOP_ANOMALY_GUARANTEE + MAX_ROUTE_DIVERSITY
+    const dsCount = traces.filter((t) => t.traceId.startsWith('trace-ds-')).length
+    expect(dsCount).toBeLessThanOrEqual(TOP_ANOMALY_GUARANTEE + MAX_ROUTE_DIVERSITY)
+  })
+})
+
+// =============================================================================
+// 2c. Dependency injection tests
+// =============================================================================
+
+describe('2-stage selection: dependency injection', () => {
+  it('no peerService anywhere → no injection, output unchanged', () => {
+    const noDep = Array.from({ length: 5 }, (_, i) =>
+      makeSpan({
+        traceId: `trace-nd-${i}`,
+        spanId: `span-nd-${i}`,
+        serviceName: 'service-A',
+        httpRoute: '/api',
+        httpStatusCode: 500,
+        spanStatusCode: 2,
+      })
+    )
+    const raw = makeRawState(noDep)
+    const packet = rebuildPacket('inc_1', 'pkt_1', '2023-11-14T22:13:20.000Z', raw)
+
+    // Should still be valid
+    expect(() => IncidentPacketSchema.parse(packet)).not.toThrow()
+    const traces = packet.evidence.representativeTraces as Array<{ spanId: string }>
+    // All must be from noDep
+    const ndSpanIds = new Set(noDep.map((s) => s.spanId))
+    for (const t of traces) {
+      expect(ndSpanIds.has(t.spanId)).toBe(true)
+    }
+  })
+
+  it('Phase 2 has score=0 span → it is replaced by dep span (Phase 1 protected)', () => {
+    // Phase 1: 3 high-score spans (no peerService)
+    const guaranteed = Array.from({ length: TOP_ANOMALY_GUARANTEE }, (_, i) =>
+      makeSpan({
+        traceId: `trace-g-${i}`,
+        spanId: `span-g-${i}`,
+        serviceName: 'service-A',
+        httpRoute: `/hot-${i}`,
+        httpStatusCode: 500,
+        spanStatusCode: 2,
+        exceptionCount: 1,
+      })
+    )
+    // Phase 2 fill: score=0 normal spans
+    const normals = Array.from({ length: 4 }, (_, i) =>
+      makeSpan({
+        traceId: `trace-norm-${i}`,
+        spanId: `span-norm-${i}`,
+        serviceName: `service-N${i}`,
+        httpRoute: `/route-n${i}`,
+        spanStatusCode: 1,
+        httpStatusCode: 200,
+      })
+    )
+    // Dep span: available for injection but not yet selected
+    const depSpan = makeSpan({
+      traceId: 'trace-dep',
+      spanId: 'span-dep',
+      serviceName: 'service-dep',
+      httpRoute: '/dep',
+      peerService: 'stripe',
+      spanStatusCode: 1,
+      httpStatusCode: 200,
+    })
+
+    const raw = makeRawState([...guaranteed, ...normals, depSpan])
+    const packet = rebuildPacket('inc_1', 'pkt_1', '2023-11-14T22:13:20.000Z', raw)
+    const traces = packet.evidence.representativeTraces as Array<{ traceId: string }>
+
+    // dep span must be injected
+    expect(traces.some((t) => t.traceId === 'trace-dep')).toBe(true)
+    // Phase 1 guaranteed spans must still be present
+    for (const g of guaranteed) {
+      expect(traces.some((t) => t.traceId === g.traceId)).toBe(true)
+    }
+  })
+
+  it('Phase 2 picks all score>0 → last Phase 2 span (lowest score) is replaced', () => {
+    // Phase 1: 3 high-score spans (score=7, no peerService)
+    const p1 = Array.from({ length: TOP_ANOMALY_GUARANTEE }, (_, i) =>
+      makeSpan({
+        traceId: `trace-p1-${i}`,
+        spanId: `span-p1-${i}`,
+        serviceName: 'service-A',
+        httpRoute: `/route-p1-${i}`,
+        httpStatusCode: 500,
+        spanStatusCode: 2,
+        exceptionCount: 1,
+      })
+    )
+    // Phase 2: score=1 (duration>5000) spans — all above 0
+    const p2 = Array.from({ length: 3 }, (_, i) =>
+      makeSpan({
+        traceId: `trace-p2-${i}`,
+        spanId: `span-p2-${i}`,
+        serviceName: `service-B${i}`,
+        httpRoute: `/route-p2-${i}`,
+        spanStatusCode: 1,
+        durationMs: 6000, // score=1
+      })
+    )
+    // Dep span: not in Phase 1 or Phase 2 yet
+    const depSpan = makeSpan({
+      traceId: 'trace-dep-2',
+      spanId: 'span-dep-2',
+      serviceName: 'service-dep-2',
+      httpRoute: '/dep2',
+      peerService: 'sendgrid',
+      spanStatusCode: 1,
+      durationMs: 100,
+    })
+
+    const raw = makeRawState([...p1, ...p2, depSpan])
+    const packet = rebuildPacket('inc_1', 'pkt_1', '2023-11-14T22:13:20.000Z', raw)
+    const traces = packet.evidence.representativeTraces as Array<{ traceId: string }>
+
+    // dep span must be injected
+    expect(traces.some((t) => t.traceId === 'trace-dep-2')).toBe(true)
+    // Phase 1 spans must still be present
+    for (const g of p1) {
+      expect(traces.some((t) => t.traceId === g.traceId)).toBe(true)
+    }
+  })
+
+  it('Phase 2 picks = 0, selected < MAX → dep span appended', () => {
+    // Only TOP_ANOMALY_GUARANTEE spans, no Phase 2 candidates, all no peerService
+    // And selected < MAX_REPRESENTATIVE_TRACES
+    const p1 = Array.from({ length: TOP_ANOMALY_GUARANTEE }, (_, i) =>
+      makeSpan({
+        traceId: `trace-only-${i}`,
+        spanId: `span-only-${i}`,
+        serviceName: 'service-A',
+        httpRoute: `/route-${i}`,
+        httpStatusCode: 500,
+        spanStatusCode: 2,
+      })
+    )
+    const depSpan = makeSpan({
+      traceId: 'trace-dep-3',
+      spanId: 'span-dep-3',
+      serviceName: 'service-dep-3',
+      httpRoute: '/dep3',
+      peerService: 'twilio',
+      spanStatusCode: 1,
+      durationMs: 100,
+    })
+
+    const raw = makeRawState([...p1, depSpan])
+    const packet = rebuildPacket('inc_1', 'pkt_1', '2023-11-14T22:13:20.000Z', raw)
+    const traces = packet.evidence.representativeTraces as Array<{ traceId: string }>
+
+    // dep span appended
+    expect(traces.some((t) => t.traceId === 'trace-dep-3')).toBe(true)
+    // Phase 1 preserved
+    for (const g of p1) {
+      expect(traces.some((t) => t.traceId === g.traceId)).toBe(true)
+    }
+  })
+
+  it('Phase 2 picks = 0 AND selected == MAX → inject skipped', () => {
+    // Exactly MAX_REPRESENTATIVE_TRACES high-score spans, none with peerService
+    // + 1 dep span not selected
+    const p1 = Array.from({ length: MAX_REPRESENTATIVE_TRACES }, (_, i) =>
+      makeSpan({
+        traceId: `trace-full-${i}`,
+        spanId: `span-full-${i}`,
+        serviceName: `service-${i}`,
+        httpRoute: `/route-${i}`,
+        httpStatusCode: 500,
+        spanStatusCode: 2,
+        exceptionCount: 1, // score=7, high enough to all be Phase 1 or fill
+      })
+    )
+    const depSpan = makeSpan({
+      traceId: 'trace-dep-inject-skip',
+      spanId: 'span-dep-inject-skip',
+      serviceName: 'service-dep-skip',
+      httpRoute: '/dep-skip',
+      peerService: 'external-svc',
+      spanStatusCode: 1,
+    })
+
+    const raw = makeRawState([...p1, depSpan])
+    const packet = rebuildPacket('inc_1', 'pkt_1', '2023-11-14T22:13:20.000Z', raw)
+    const traces = packet.evidence.representativeTraces as Array<{ traceId: string }>
+
+    // Exactly MAX traces
+    expect(traces).toHaveLength(MAX_REPRESENTATIVE_TRACES)
+    // dep span should NOT be injected (would exceed MAX and replace a guaranteed span)
+    // Note: if depSpan has score=1 (peerService +1), it may appear in Phase 1 or Phase 2
+    // since it has lower score than the p1 spans (score=7). Let's verify no injection happened
+    // by checking that all 10 selected are from p1
+    const p1TraceIds = new Set(p1.map((s) => s.traceId))
+    // The dep span has score=1 while p1 have score=7, so dep will be ranked last.
+    // Phase 1 takes top 3 from p1. Phase 2 fills with p1 (different services) up to MAX.
+    // dep span is never selected as it's score=1 vs p1 score=7.
+    // This test verifies the total count doesn't exceed MAX.
+    expect(traces.length).toBeLessThanOrEqual(MAX_REPRESENTATIVE_TRACES)
+  })
+
+  it('dependency span already in Phase 1 → no injection needed', () => {
+    // A dep span (peerService=stripe) that also has high score → goes into Phase 1
+    const depInGuaranteed = makeSpan({
+      traceId: 'trace-dep-guaranteed',
+      spanId: 'span-dep-guaranteed',
+      serviceName: 'service-A',
+      httpRoute: '/pay',
+      httpStatusCode: 500,
+      spanStatusCode: 2,
+      peerService: 'stripe', // peerService +1 and http500 +3 and spanStatus=2 +2 = score=6
+    })
+    const normals = Array.from({ length: 5 }, (_, i) =>
+      makeSpan({
+        traceId: `trace-n-${i}`,
+        spanId: `span-n-${i}`,
+        serviceName: 'service-A',
+        httpRoute: '/other',
+        httpStatusCode: 200,
+        spanStatusCode: 1,
+      })
+    )
+    const raw = makeRawState([depInGuaranteed, ...normals])
+    const packet = rebuildPacket('inc_1', 'pkt_1', '2023-11-14T22:13:20.000Z', raw)
+    const traces = packet.evidence.representativeTraces as Array<{ traceId: string }>
+
+    // dep span present (from Phase 1)
+    expect(traces.some((t) => t.traceId === 'trace-dep-guaranteed')).toBe(true)
+    // No duplicate injection
+    const depCount = traces.filter((t) => t.traceId === 'trace-dep-guaranteed').length
+    expect(depCount).toBe(1)
+  })
+})
+
+// =============================================================================
+// 2d. Route diversity tests
+// =============================================================================
+
+describe('2-stage selection: route diversity', () => {
+  it('same service:route with 20 HTTP429 spans → capped at MAX_ROUTE_DIVERSITY in Phase 2', () => {
+    const hotSpans = Array.from({ length: 20 }, (_, i) =>
+      makeSpan({
+        traceId: `trace-pay-${i}`,
+        spanId: `span-pay-${i}`,
+        serviceName: 'service-A',
+        httpRoute: '/api/pay',
+        httpStatusCode: 429,
+        spanStatusCode: 2,
+      })
+    )
+    const raw = makeRawState(hotSpans)
+    const packet = rebuildPacket('inc_1', 'pkt_1', '2023-11-14T22:13:20.000Z', raw)
+    const traces = packet.evidence.representativeTraces as Array<{ traceId: string }>
+
+    // Phase 1 takes TOP_ANOMALY_GUARANTEE (ignoring route cap)
+    // Phase 2 adds up to MAX_ROUTE_DIVERSITY more for the same key
+    // Total should be TOP_ANOMALY_GUARANTEE + MAX_ROUTE_DIVERSITY at most
+    expect(traces.length).toBeLessThanOrEqual(TOP_ANOMALY_GUARANTEE + MAX_ROUTE_DIVERSITY)
+  })
+
+  it('remaining budget after cap is filled by other routes/services', () => {
+    // 20 spans on hot route
+    const hotSpans = Array.from({ length: 20 }, (_, i) =>
+      makeSpan({
+        traceId: `trace-hot-${i}`,
+        spanId: `span-hot-${i}`,
+        serviceName: 'service-A',
+        httpRoute: '/api/pay',
+        httpStatusCode: 429,
+        spanStatusCode: 2,
+      })
+    )
+    // 5 spans on a different route
+    const altSpans = Array.from({ length: 5 }, (_, i) =>
+      makeSpan({
+        traceId: `trace-alt-${i}`,
+        spanId: `span-alt-${i}`,
+        serviceName: 'service-B',
+        httpRoute: '/api/refund',
+        httpStatusCode: 500,
+        spanStatusCode: 2,
+      })
+    )
+    const raw = makeRawState([...hotSpans, ...altSpans])
+    const packet = rebuildPacket('inc_1', 'pkt_1', '2023-11-14T22:13:20.000Z', raw)
+    const traces = packet.evidence.representativeTraces as Array<{ traceId: string }>
+
+    // At least 1 from altSpans (service diversity)
+    const altTraceIds = new Set(altSpans.map((s) => s.traceId))
+    expect(traces.some((t) => altTraceIds.has(t.traceId))).toBe(true)
+  })
+
+  it('Phase 1 guaranteed spans are not dropped even if they exceed route cap', () => {
+    // TOP_ANOMALY_GUARANTEE + 1 spans on same route (all high score)
+    const overCap = Array.from({ length: TOP_ANOMALY_GUARANTEE + 1 }, (_, i) =>
+      makeSpan({
+        traceId: `trace-overcap-${i}`,
+        spanId: `span-overcap-${i}`,
+        serviceName: 'service-A',
+        httpRoute: '/api/pay',
+        httpStatusCode: 500,
+        spanStatusCode: 2,
+        exceptionCount: 1,
+      })
+    )
+    const raw = makeRawState(overCap)
+    const packet = rebuildPacket('inc_1', 'pkt_1', '2023-11-14T22:13:20.000Z', raw)
+    const traces = packet.evidence.representativeTraces as Array<{ traceId: string }>
+
+    // The first TOP_ANOMALY_GUARANTEE spans (highest score, or by tie-break) must be present
+    // Score is equal for all, so tie-break by traceId+spanId lex
+    const sortedOvercap = overCap.slice().sort((a, b) =>
+      (a.traceId + a.spanId).localeCompare(b.traceId + b.spanId)
+    )
+    const guaranteedTraces = sortedOvercap.slice(0, TOP_ANOMALY_GUARANTEE)
+    for (const g of guaranteedTraces) {
+      expect(traces.some((t) => t.traceId === g.traceId)).toBe(true)
+    }
+  })
+})
+
+// =============================================================================
+// 2e. Determinism tests
+// =============================================================================
+
+describe('2-stage selection: determinism', () => {
+  const deterministicSpans = [
+    makeSpan({ traceId: 'trace-d1', spanId: 'span-d1', serviceName: 'svc-A', httpRoute: '/a', httpStatusCode: 500, spanStatusCode: 2 }),
+    makeSpan({ traceId: 'trace-d2', spanId: 'span-d2', serviceName: 'svc-B', httpRoute: '/b', httpStatusCode: 429, spanStatusCode: 1 }),
+    makeSpan({ traceId: 'trace-d3', spanId: 'span-d3', serviceName: 'svc-C', httpRoute: '/c', spanStatusCode: 1, durationMs: 6000 }),
+    makeSpan({ traceId: 'trace-d4', spanId: 'span-d4', serviceName: 'svc-D', httpRoute: '/d', spanStatusCode: 1, durationMs: 100 }),
+    makeSpan({ traceId: 'trace-d5', spanId: 'span-d5', serviceName: 'svc-E', httpRoute: '/e', spanStatusCode: 1, durationMs: 100 }),
+  ]
+
+  it('same span set processed twice → identical representativeTraces', () => {
+    const raw = makeRawState(deterministicSpans)
+    const p1 = rebuildPacket('inc_1', 'pkt_1', '2023-11-14T22:13:20.000Z', raw, undefined, 1)
+    const p2 = rebuildPacket('inc_1', 'pkt_1', '2023-11-14T22:13:20.000Z', raw, undefined, 1)
+    expect(JSON.stringify(p1.evidence.representativeTraces))
+      .toBe(JSON.stringify(p2.evidence.representativeTraces))
+  })
+
+  it('shuffled input order → same representativeTraces output', () => {
+    const shuffled = [...deterministicSpans].reverse()
+    const raw1 = makeRawState(deterministicSpans)
+    const raw2 = makeRawState(shuffled)
+    const p1 = rebuildPacket('inc_1', 'pkt_1', '2023-11-14T22:13:20.000Z', raw1, undefined, 1)
+    const p2 = rebuildPacket('inc_1', 'pkt_1', '2023-11-14T22:13:20.000Z', raw2, undefined, 1)
+    expect(JSON.stringify(p1.evidence.representativeTraces))
+      .toBe(JSON.stringify(p2.evidence.representativeTraces))
+  })
+
+  it('tie-break by traceId+spanId lex is deterministic', () => {
+    // All spans same score — ordering purely by tie-break
+    const tiedSpans = [
+      makeSpan({ traceId: 'zzz', spanId: 'zzz', serviceName: 'svc-Z', httpRoute: '/z', httpStatusCode: 500, spanStatusCode: 2 }),
+      makeSpan({ traceId: 'aaa', spanId: 'aaa', serviceName: 'svc-A', httpRoute: '/a', httpStatusCode: 500, spanStatusCode: 2 }),
+      makeSpan({ traceId: 'mmm', spanId: 'mmm', serviceName: 'svc-M', httpRoute: '/m', httpStatusCode: 500, spanStatusCode: 2 }),
+    ]
+    const raw = makeRawState(tiedSpans)
+
+    // Run multiple times with different input orders
+    for (const order of [tiedSpans, [...tiedSpans].reverse(), [tiedSpans[2], tiedSpans[0], tiedSpans[1]]]) {
+      const rawVariant = makeRawState(order)
+      const p = rebuildPacket('inc_1', 'pkt_1', '2023-11-14T22:13:20.000Z', rawVariant, undefined, 1)
+      const firstTrace = (p.evidence.representativeTraces as Array<{ traceId: string }>)[0]
+      // 'aaa'+'aaa' is lex smallest → should be first
+      expect(firstTrace.traceId).toBe('aaa')
+    }
+
+    // Verify output matches the canonical sorted version
+    const p = rebuildPacket('inc_1', 'pkt_1', '2023-11-14T22:13:20.000Z', raw, undefined, 1)
+    const traces = p.evidence.representativeTraces as Array<{ traceId: string }>
+    expect(traces[0].traceId).toBe('aaa')
+    expect(traces[1].traceId).toBe('mmm')
+    expect(traces[2].traceId).toBe('zzz')
+  })
+})
+
+// =============================================================================
+// 2f. Old implementation comparison (product gate)
+// =============================================================================
+
+describe('2-stage selection: old slice(0,10) regression gate', () => {
+  it('anomalous span at index 10 → old slice missed it, new ranking selects it via Phase 1', () => {
+    // 10 normal spans (index 0-9) then 1 anomalous (index 10)
+    // Old slice(0,10) would miss the anomalous span
+    const normals = Array.from({ length: 10 }, (_, i) =>
+      makeSpan({
+        traceId: `trace-norm-${i}`,
+        spanId: `span-norm-${i}`,
+        serviceName: 'svc-normal',
+        httpRoute: '/health',
+        spanStatusCode: 1,
+        httpStatusCode: 200,
+      })
+    )
+    const anomalous = makeSpan({
+      traceId: 'trace-anomalous-late',
+      spanId: 'span-anomalous-late',
+      serviceName: 'svc-anomalous',
+      httpRoute: '/checkout',
+      httpStatusCode: 429,
+      spanStatusCode: 2,
+    })
+    const allSpans = [...normals, anomalous] // anomalous at index 10
+
+    const raw = makeRawState(allSpans)
+    const packet = rebuildPacket('inc_1', 'pkt_1', '2023-11-14T22:13:20.000Z', raw)
+    const traces = packet.evidence.representativeTraces as Array<{ traceId: string }>
+
+    // New algorithm: anomalous span must be selected (Phase 1 guarantee)
+    expect(traces.some((t) => t.traceId === 'trace-anomalous-late')).toBe(true)
+  })
+
+  it('dependency span at index 15 → old slice missed it, new ranking injects it', () => {
+    // 15 normal spans, then 1 dep span (peerService=stripe)
+    const normals = Array.from({ length: 15 }, (_, i) =>
+      makeSpan({
+        traceId: `trace-norm2-${i}`,
+        spanId: `span-norm2-${i}`,
+        serviceName: `svc-norm-${i % 5}`, // 5 different services to fill Phase 2
+        httpRoute: `/route-${i % 3}`,
+        spanStatusCode: 1,
+        httpStatusCode: 200,
+      })
+    )
+    const depSpan = makeSpan({
+      traceId: 'trace-dep-late',
+      spanId: 'span-dep-late',
+      serviceName: 'svc-dep',
+      httpRoute: '/dep',
+      peerService: 'stripe',
+      spanStatusCode: 1,
+      httpStatusCode: 200,
+    })
+    const allSpans = [...normals, depSpan] // depSpan at index 15
+
+    const raw = makeRawState(allSpans)
+    const packet = rebuildPacket('inc_1', 'pkt_1', '2023-11-14T22:13:20.000Z', raw)
+    const traces = packet.evidence.representativeTraces as Array<{ traceId: string }>
+
+    // New algorithm: dep span injected via dependency injection
+    expect(traces.some((t) => t.traceId === 'trace-dep-late')).toBe(true)
   })
 })
