@@ -1,7 +1,7 @@
 const http = require("http");
 const fs = require("fs");
 const { URL } = require("url");
-const { trace, SpanStatusCode } = require("@opentelemetry/api");
+const { trace, SpanKind, SpanStatusCode } = require("@opentelemetry/api");
 const { logs } = require("@opentelemetry/api-logs");
 const { NodeSDK } = require("@opentelemetry/sdk-node");
 const { BatchLogRecordProcessor } = require("@opentelemetry/sdk-logs");
@@ -111,7 +111,7 @@ async function main() {
       return;
     }
     if (req.method === "POST" && url.pathname === "/charge") {
-      await tracer.startActiveSpan("stripe.charge", async (span) => {
+      await tracer.startActiveSpan("stripe.charge", { kind: SpanKind.SERVER }, async (span) => {
         try {
           if (state.mode === "rate_limited") {
             await sleep(state.rateLimitLatencyMs);

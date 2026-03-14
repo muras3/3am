@@ -1,7 +1,7 @@
 const http = require("http");
 const fs = require("fs");
 const { URL } = require("url");
-const { trace, metrics, SpanStatusCode } = require("@opentelemetry/api");
+const { trace, metrics, SpanKind, SpanStatusCode } = require("@opentelemetry/api");
 const { logs } = require("@opentelemetry/api-logs");
 const { NodeSDK } = require("@opentelemetry/sdk-node");
 const { BatchLogRecordProcessor } = require("@opentelemetry/sdk-logs");
@@ -146,7 +146,7 @@ async function handleRequest(req, res) {
 
   const key = cacheKey(req.method, url.host, url.pathname, url.search);
 
-  return tracer.startActiveSpan("cdn.request", async (span) => {
+  return tracer.startActiveSpan("cdn.request", { kind: SpanKind.SERVER }, async (span) => {
     try {
       const entry = cache.get(key);
       if (entry && Date.now() < entry.expiresAt) {
