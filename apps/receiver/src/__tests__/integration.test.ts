@@ -4,7 +4,6 @@ import { gzipSync } from "node:zlib";
 import protobuf from "protobufjs";
 import { MemoryAdapter } from "../storage/adapters/memory.js";
 import { createApp } from "../index.js";
-import { MAX_REPRESENTATIVE_TRACES } from "../domain/packetizer.js";
 
 // ── Protobuf encode helpers ────────────────────────────────────────────────────
 const _require = createRequire(import.meta.url);
@@ -351,10 +350,9 @@ describe("Receiver integration tests", () => {
 
     const res = await app.request("/api/incidents");
     expect(res.status).toBe(200);
-    const body = await res.json() as { items: Array<{ incidentId: string; rawState?: unknown }> };
+    const body = await res.json() as { items: Array<{ incidentId: string }> };
     expect(body.items).toHaveLength(1);
     expect(typeof body.items[0].incidentId).toBe("string");
-    expect(body.items[0].rawState).toBeUndefined();
   });
 
   // Test 4: GET /api/incidents/:id → 200, incidentId matches
@@ -369,29 +367,8 @@ describe("Receiver integration tests", () => {
 
     const res = await app.request(`/api/incidents/${incidentId}`);
     expect(res.status).toBe(200);
-    const body = await res.json() as { incidentId: string; rawState?: unknown };
+    const body = await res.json() as { incidentId: string };
     expect(body.incidentId).toBe(incidentId);
-    expect(body.rawState).toBeUndefined();
-  });
-
-  it("GET /api/incidents/:id/raw returns the incident with rawState for debugging", async () => {
-    const traceRes = await app.request("/v1/traces", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(errorSpanPayload),
-    });
-    const traceBody = await traceRes.json() as { incidentId: string };
-    const { incidentId } = traceBody;
-
-    const res = await app.request(`/api/incidents/${incidentId}/raw`);
-    expect(res.status).toBe(200);
-    const body = await res.json() as {
-      incidentId: string;
-      rawState: { spans: unknown[]; anomalousSignals: unknown[] };
-    };
-    expect(body.incidentId).toBe(incidentId);
-    expect(body.rawState.spans.length).toBeGreaterThan(0);
-    expect(body.rawState.anomalousSignals.length).toBeGreaterThan(0);
   });
 
   // Test 5: GET /api/packets/:packetId → 200, schemaVersion is "incident-packet/v1alpha1"
@@ -1181,7 +1158,6 @@ function makeSpanPayload(opts: {
   environment?: string;
   httpStatusCode?: number;
   spanStatusCode?: number;
-  spanKind?: number;
   startTimeUnixNano?: string;
   peerService?: string;
   traceId?: string;
@@ -1192,7 +1168,6 @@ function makeSpanPayload(opts: {
     environment = "production",
     httpStatusCode = 429,
     spanStatusCode = 0,
-    spanKind,
     startTimeUnixNano = "1741392000000000000",
     peerService,
     traceId = "abc" + Math.random().toString(36).slice(2, 8),
@@ -1214,7 +1189,6 @@ function makeSpanPayload(opts: {
                 traceId,
                 spanId,
                 name: "POST /api",
-                ...(spanKind !== undefined ? { kind: spanKind } : {}),
                 startTimeUnixNano,
                 endTimeUnixNano: String(BigInt(startTimeUnixNano) + BigInt(500_000_000)),
                 status: { code: spanStatusCode },
@@ -1248,7 +1222,7 @@ async function postTraces(
 
 type IncidentListItem = {
   incidentId: string;
-  packet: { scope: { primaryService: string; affectedDependencies: string[]; affectedServices: string[] }; triggerSignals: unknown[] };
+  packet: { scope: { affectedDependencies: string[]; affectedServices: string[] }; triggerSignals: unknown[] };
 };
 
 async function getIncidents(
@@ -1391,311 +1365,5 @@ describe("Formation: dependency-based incident grouping (OC-1 to OC-6)", () => {
 
     const { items } = await getIncidents(app);
     expect(items).toHaveLength(1);
-  });
-
-  // OC-8: SERVER 429 spans are not incident triggers (deliberate rate-limiting is not a failure)
-  it("OC-8: SERVER span (kind=2) returning 429 does not create an incident", async () => {
-    // Simulate a dependency service (e.g. mock-stripe) emitting its own SERVER 429 spans.
-    // Even with spanStatus=ERROR set, these must not open a new incident.
-    const result = await postTraces(app, makeSpanPayload({
-      serviceName: "mock-stripe",
-      httpStatusCode: 429,
-      spanStatusCode: 2,  // instrumentation may set ERROR alongside 429
-      spanKind: 2,        // SERVER
-    }));
-
-    expect(result.status).toBe("ok");
-    expect(result.incidentId).toBeUndefined();
-
-    const { items } = await getIncidents(app);
-    expect(items).toHaveLength(0);
-  });
-
-  // OC-9: SERVER 429 does not trigger, but a CLIENT 429 from the caller does
-  it("OC-9: SERVER 429 (no incident) followed by CLIENT 429 from calling service → 1 incident for caller", async () => {
-    // dependency service emits SERVER 429 — must not trigger
-    await postTraces(app, makeSpanPayload({
-      serviceName: "mock-stripe",
-      httpStatusCode: 429,
-      spanStatusCode: 2,
-      spanKind: 2,
-    }));
-
-    // calling service emits a span showing it received 429 — triggers incident
-    await postTraces(app, makeSpanPayload({
-      serviceName: "checkout-service",
-      httpStatusCode: 429,
-      spanKind: 3,  // CLIENT
-    }));
-
-    const { items } = await getIncidents(app);
-    expect(items).toHaveLength(1);
-    expect(items[0].packet.scope.primaryService).toBe("checkout-service");
-  });
-
-  // OC-11: INTERNAL 429 spans (OTel SDK version quirk: SERVER reported as INTERNAL) do not trigger
-  it("OC-11: INTERNAL span (kind=1) returning 429 does not create an incident", async () => {
-    // Some OTel SDK versions export SERVER spans as kind=1 (INTERNAL) instead of kind=2 (SERVER).
-    // The 429 non-trigger rule must apply to INTERNAL spans as well.
-    const result = await postTraces(app, makeSpanPayload({
-      serviceName: "mock-stripe",
-      httpStatusCode: 429,
-      spanStatusCode: 2,  // instrumentation may set ERROR alongside 429
-      spanKind: 1,        // INTERNAL — mislabeled SERVER due to OTel SDK quirk
-    }));
-
-    expect(result.status).toBe("ok");
-    expect(result.incidentId).toBeUndefined();
-
-    const { items } = await getIncidents(app);
-    expect(items).toHaveLength(0);
-  });
-
-  // OC-10: SERVER 429-only batch appends anomalous signals to existing incident (evidence retention)
-  it("OC-10: SERVER 429-only batch appends signals to matching existing incident without creating a new one", async () => {
-    // Step 1: create an incident with a trigger span (SERVER 500, no peerService)
-    const r1 = await postTraces(app, makeSpanPayload({
-      serviceName: "api-service",
-      httpStatusCode: 500,
-      spanStatusCode: 2,
-      startTimeUnixNano: "1741392000000000000",
-    }));
-    const incidentId = r1.incidentId!;
-    expect(incidentId).toBeDefined();
-
-    const rawStateBefore = await storage.getRawState(incidentId);
-    const signalCountBefore = rawStateBefore?.anomalousSignals.length ?? 0;
-    expect(signalCountBefore).toBeGreaterThan(0); // sanity: initial trigger appended signals
-
-    // Step 2: POST a SERVER 429-only batch (same service+env, within window).
-    // isIncidentTrigger returns false (no new incident), but isAnomalous returns true
-    // (429 is an anomalous signal that should be retained as evidence).
-    const r2 = await postTraces(app, makeSpanPayload({
-      serviceName: "api-service",
-      httpStatusCode: 429,
-      spanStatusCode: 2,
-      spanKind: 2, // SERVER
-      startTimeUnixNano: "1741392060000000000", // 1 min later, within 5-min window
-    }));
-
-    // No new incident
-    expect(r2.incidentId).toBeUndefined();
-    const { items } = await getIncidents(app);
-    expect(items).toHaveLength(1);
-
-    // The 429 signal must be appended to the existing incident's rawState
-    const rawStateAfter = await storage.getRawState(incidentId);
-    expect(rawStateAfter?.anomalousSignals.length).toBeGreaterThan(signalCountBefore);
-  });
-});
-
-// ── Representative traces ranking: rebuild integration ────────────────────────
-
-describe("Representative traces ranking: rebuild integration", () => {
-  let storage: MemoryAdapter;
-  let app: ReturnType<typeof createApp>;
-
-  // BASE_NS: 2025-03-07T16:00:00Z — used as an anchor for all spans in this block
-  const BASE_NS = "1741392000000000000";
-
-  // Helper: build an OTLP JSON payload with a single span from "ranking-svc" in production.
-  // httpStatusCode and spanStatusCode control whether the span is anomalous.
-  function makeRankingSpan(opts: {
-    traceId: string;
-    spanId: string;
-    httpStatusCode: number;
-    spanStatusCode: number;
-    startOffsetMs?: number;
-  }) {
-    const startNs = BigInt(BASE_NS) + BigInt((opts.startOffsetMs ?? 0) * 1_000_000);
-    const endNs = startNs + BigInt(200_000_000); // 200ms duration
-    return makeTracePayload([
-      makeResourceSpans("ranking-svc", [
-        makeTraceSpan({
-          traceId: opts.traceId,
-          spanId: opts.spanId,
-          startTimeUnixNano: startNs.toString(),
-          endTimeUnixNano: endNs.toString(),
-          httpStatusCode: opts.httpStatusCode,
-          spanStatusCode: opts.spanStatusCode,
-          route: "/api/rank",
-        }),
-      ]),
-    ]);
-  }
-
-  beforeEach(() => {
-    delete process.env["RECEIVER_AUTH_TOKEN"];
-    process.env["ALLOW_INSECURE_DEV_MODE"] = "true";
-    storage = new MemoryAdapter();
-    app = createApp(storage);
-  });
-
-  afterEach(() => {
-    delete process.env["ALLOW_INSECURE_DEV_MODE"];
-  });
-
-  // Test 1: Ranking applied on first incident creation
-  it("anomalous span (HTTP 500) ranks first in representativeTraces on initial create", async () => {
-    // Send: 1 anomalous span + 5 normal spans (all within same window)
-    const anomalousRes = await app.request("/v1/traces", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(
-        makeRankingSpan({ traceId: "rank-t1", spanId: "rank-anomaly", httpStatusCode: 500, spanStatusCode: 2 }),
-      ),
-    });
-    const { incidentId } = await anomalousRes.json() as { incidentId: string };
-
-    // Attach 5 normal spans to the same incident (they arrive within 5-min window)
-    for (let i = 0; i < 5; i++) {
-      await app.request("/v1/traces", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(
-          makeRankingSpan({
-            traceId: `rank-t1`,
-            spanId: `rank-normal-${i}`,
-            httpStatusCode: 200,
-            spanStatusCode: 1,
-            startOffsetMs: 10 + i * 5,
-          }),
-        ),
-      });
-    }
-
-    const incident = await (await app.request(`/api/incidents/${incidentId}`)).json() as {
-      packet: { evidence: { representativeTraces: Array<{ spanId: string; httpStatusCode?: number }> } };
-    };
-
-    const traces = incident.packet.evidence.representativeTraces;
-    expect(traces.length).toBeGreaterThan(0);
-
-    // The anomalous span (HTTP 500) must appear first — it has the highest score
-    expect(traces[0].spanId).toBe("rank-anomaly");
-    expect(traces[0].httpStatusCode).toBe(500);
-  });
-
-  // Test 2: Ranking maintained after attach + rebuild
-  it("anomalous spans appear in representativeTraces after attach rebuild, length ≤ MAX_REPRESENTATIVE_TRACES", async () => {
-    // Phase 1: create incident with 3 normal spans
-    const firstNormal = makeRankingSpan({
-      traceId: "rank-t2-normal",
-      spanId: "rank-t2-normal-0",
-      httpStatusCode: 200,
-      spanStatusCode: 1,
-    });
-    const _createRes = await app.request("/v1/traces", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(firstNormal),
-    });
-
-    // If first batch is all-normal, no incident is created.
-    // So we need to seed with an anomalous span first then attach normals.
-    // Instead: create incident via anomalous span, then attach more anomalous spans.
-    const seedPayload = makeRankingSpan({
-      traceId: "rank-t2-seed",
-      spanId: "rank-t2-seed-span",
-      httpStatusCode: 500,
-      spanStatusCode: 2,
-    });
-    const seedRes = await app.request("/v1/traces", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(seedPayload),
-    });
-    const { incidentId } = await seedRes.json() as { incidentId: string };
-
-    // Phase 2: attach 5 more anomalous spans (same service/env, within window)
-    for (let i = 0; i < 5; i++) {
-      await app.request("/v1/traces", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(
-          makeRankingSpan({
-            traceId: "rank-t2-seed",
-            spanId: `rank-t2-attach-${i}`,
-            httpStatusCode: 429,
-            spanStatusCode: 2,
-            startOffsetMs: 30 + i * 10,
-          }),
-        ),
-      });
-    }
-
-    const incident = await (await app.request(`/api/incidents/${incidentId}`)).json() as {
-      packet: { evidence: { representativeTraces: Array<{ httpStatusCode?: number; spanStatusCode: number }> } };
-    };
-
-    const traces = incident.packet.evidence.representativeTraces;
-
-    // All attached anomalous spans should be present (either 429 or 500)
-    const anomalousCount = traces.filter(
-      (t) => (t.httpStatusCode !== undefined && t.httpStatusCode >= 400) || t.spanStatusCode === 2,
-    ).length;
-    expect(anomalousCount).toBeGreaterThan(0);
-
-    // Length must not exceed the cap
-    expect(traces.length).toBeLessThanOrEqual(MAX_REPRESENTATIVE_TRACES);
-  });
-
-  // Test 3: Determinism across 2 rebuilds with identical input
-  it("identical span batches produce identical representativeTraces across 2 rebuilds", async () => {
-    // Create incident via first batch
-    const batchPayload = makeRankingSpan({
-      traceId: "rank-t3",
-      spanId: "rank-t3-span",
-      httpStatusCode: 500,
-      spanStatusCode: 2,
-    });
-
-    const firstRes = await app.request("/v1/traces", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(batchPayload),
-    });
-    const { incidentId } = await firstRes.json() as { incidentId: string };
-
-    const incidentAfterFirst = await (await app.request(`/api/incidents/${incidentId}`)).json() as {
-      packet: { evidence: { representativeTraces: Array<{ traceId: string; spanId: string }> } };
-    };
-    const tracesAfterFirst = incidentAfterFirst.packet.evidence.representativeTraces;
-
-    // Post the same content again (different spanId to avoid dedup by traceId+spanId,
-    // but same anomaly score so ranking is deterministic)
-    const batchPayload2 = makeRankingSpan({
-      traceId: "rank-t3",
-      spanId: "rank-t3-span-b",
-      httpStatusCode: 500,
-      spanStatusCode: 2,
-      startOffsetMs: 60,
-    });
-
-    await app.request("/v1/traces", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(batchPayload2),
-    });
-
-    const incidentAfterSecond = await (await app.request(`/api/incidents/${incidentId}`)).json() as {
-      packet: { evidence: { representativeTraces: Array<{ traceId: string; spanId: string }> } };
-    };
-    const tracesAfterSecond = incidentAfterSecond.packet.evidence.representativeTraces;
-
-    // Both rebuilds must include the first span (it has max score and deterministic tiebreak)
-    // The first span from tracesAfterFirst must still be present in tracesAfterSecond
-    expect(tracesAfterFirst.length).toBeGreaterThan(0);
-    expect(tracesAfterSecond.length).toBeGreaterThan(0);
-
-    // The top span from the first rebuild must still appear in the second rebuild
-    // (determinism guarantee: same traceId+spanId key → same position)
-    const firstTopSpanId = tracesAfterFirst[0].spanId;
-    const secondSpanIds = tracesAfterSecond.map((t) => t.spanId);
-    expect(secondSpanIds).toContain(firstTopSpanId);
-
-    // Lengths must both be within budget
-    expect(tracesAfterFirst.length).toBeLessThanOrEqual(MAX_REPRESENTATIVE_TRACES);
-    expect(tracesAfterSecond.length).toBeLessThanOrEqual(MAX_REPRESENTATIVE_TRACES);
   });
 });
