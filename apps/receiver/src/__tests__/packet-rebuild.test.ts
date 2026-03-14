@@ -392,15 +392,17 @@ describe("Gate 3: Diagnosis path", () => {
     delete process.env["ALLOW_INSECURE_DEV_MODE"];
   });
 
-  it.skipIf(!process.env["ANTHROPIC_API_KEY"])(
+  const shouldRunLiveDiagnosisTest =
+    process.env["RUN_LIVE_ANTHROPIC_TESTS"] === "true" &&
+    Boolean(process.env["ANTHROPIC_API_KEY"]);
+
+  it.skipIf(!shouldRunLiveDiagnosisTest)(
     "rebuilt packet can be passed to diagnose() and yields root_cause_hypothesis + immediate_action",
     async () => {
-      // Dynamic import avoids a compile-time dependency on @3amoncall/diagnosis
-      // inside apps/receiver. The import is only evaluated when ANTHROPIC_API_KEY
-      // is set (i.e. the test is not skipped).
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const dynamicImport = new Function("specifier", "return import(specifier)") as (s: string) => Promise<any>;
-      const { diagnose } = await dynamicImport("@3amoncall/diagnosis") as {
+      // Dynamic import is evaluated only when ANTHROPIC_API_KEY is set.
+      // Using import() directly avoids the Node/Vitest "dynamic import callback"
+      // failure triggered by wrapping import() inside new Function().
+      const { diagnose } = await import("../../../../packages/diagnosis/src/index.ts") as {
         diagnose: (packet: IncidentPacket) => Promise<{
           summary: { root_cause_hypothesis: string };
           recommendation: { immediate_action: string };
