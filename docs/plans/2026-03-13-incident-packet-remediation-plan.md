@@ -97,7 +97,7 @@ DB-backed に持つ方向を基本とする。
 
 ### A-1 Packet is not rebuilt for existing incidents
 
-- Status: `open`
+- Status: `done`
 - Problem:
   - 新規 incident の時だけ `createPacket()` を呼ぶ
   - 既存 incident への attach 時は packet を更新しない
@@ -121,10 +121,14 @@ DB-backed に持つ方向を基本とする。
   - 既存 incident に新しい trace signal が来た時、packet の `scope`, `triggerSignals`,
     `representativeTraces`, `pointers` が更新される
   - packet が incident の最新状態を表すことを integration test で確認できる
+- Result:
+  - incident raw state と packet rebuild が実装された
+  - staging で `generation > 1` の incident packet を観測し、後続 attach 後も packet が更新されることを確認した
+  - signal / metric / log attach 後に incident packet が stale snapshot のまま固定されない状態になった
 
 ### A-2 Formation key ignores dependency
 
-- Status: `open`
+- Status: `done`
 - Problem:
   - formation key が `environment + primaryService + 5min` に偏っている
   - ADR 0017 が期待する dependency-based grouping が未実装
@@ -142,6 +146,10 @@ DB-backed に持つ方向を基本とする。
 - Done when:
   - dependency が異なる障害は別 incident になる
   - 同 dependency 起因の multi-service 波及を統合できるケースが test で確認できる
+- Result:
+  - formation key に dependency を導入し、split-first の方針を receiver に反映した
+  - validation scenario で `affectedDependencies = ["stripe"]` を持つ incident packet を観測し、service fallback だけに依存しない grouping に改善した
+  - validation 側の telemetry 修正も含め、`validation-web -> stripe` の causal chain が packet 上に残ることを確認した
 
 ### A-3 platformEvents are dead code
 
@@ -206,9 +214,39 @@ DB-backed に持つ方向を基本とする。
 - Done when:
   - concurrent append の race を adapter integration test で検知・防止できる
 
+### A-6 Incident APIs expose the wrong projection
+
+- Status: `in_progress`
+- Problem:
+  - incident API が storage の内部 record をそのまま返しやすい構造になっていた
+  - `rawState` のような internal state が normal API に漏れると、
+    packet を導出 view として分離した意味が薄れる
+  - 一覧 API も packet 全体を返しており、summary 用途に対して重い
+- Locations:
+  - [apps/receiver/src/transport/api.ts](/Users/murase/project/3amoncall/apps/receiver/src/transport/api.ts)
+  - [apps/receiver/src/storage/interface.ts](/Users/murase/project/3amoncall/apps/receiver/src/storage/interface.ts)
+- Why this matters:
+  - API 利用者から見ると incident packet と raw internal state の境界が不明瞭になる
+  - `/api/incidents` の payload が不必要に重くなり、Console の一覧操作を悪化させる
+  - packet を canonical view、raw state を internal source of truth とする設計が API に反映されない
+- Resolution approach:
+  - normal incident APIs は projection を返す
+  - `GET /api/incidents` と `GET /api/incidents/:id` から `rawState` を除外する
+  - debug 用にのみ raw endpoint を分離する
+  - 次段で `GET /api/incidents` を summary DTO に絞る
+- Priority: `P0`
+- Done when:
+  - `GET /api/incidents` と `GET /api/incidents/:id` が internal `rawState` を返さない
+  - raw incident record が必要な場合は explicit な debug endpoint からのみ取得できる
+  - `GET /api/incidents` が packet 全体ではなく summary DTO を返す
+- Result so far:
+  - `GET /api/incidents` と `GET /api/incidents/:id` は `rawState` を返さないよう修正済み
+  - `GET /api/incidents/:id/raw` を debug endpoint として追加済み
+  - 残課題は `GET /api/incidents` の summary DTO 化
+
 ### B-1 primaryService depends on span order
 
-- Status: `open`
+- Status: `done`
 - Problem:
   - `primaryService = spans[0].serviceName`
 - Locations:
@@ -227,6 +265,10 @@ DB-backed に持つ方向を基本とする。
   - primaryService が `triggering anomalous service` として code/comment/test に明文化される
   - primaryService の選定が deterministic かつ order-independent になる
   - span 順序を変えても同じ packet scope になる test がある
+- Result:
+  - `primaryService` は `triggering anomalous service` として固定された
+  - staging で scenario 1 の incident packet に `primaryService = validation-web` を観測し、dependency service 側へ主語がぶれないことを確認した
+  - packet の主語が `unknown_service:node` へ倒れるケースは、validation 側 span kind 修正後は再現しなくなった
 
 ### B-2 representativeTraces are just the first 10 spans
 
@@ -256,7 +298,7 @@ DB-backed に持つ方向を基本とする。
 
 ### B-3 triggerSignals are frozen at initial packet creation
 
-- Status: `open`
+- Status: `done`
 - Problem:
   - triggerSignals が初回 anomalous batch のみで固定される
 - Locations:
@@ -274,6 +316,10 @@ DB-backed に持つ方向を基本とする。
 - Priority: `P0`
 - Done when:
   - 後続 signal attach 後に triggerSignals が更新される
+- Result:
+  - `triggerSignals` は incident timeline から再導出されるようになった
+  - staging で `exception`, `span_error`, `http_429`, `http_504` を含む incident packet を観測し、初回 batch 固定ではないことを確認した
+  - non-trigger anomalous spans も evidence/signal として保持する ingest 修正により、SERVER 429 などの signal が packet から欠落しにくくなった
 
 ### B-4 Evidence schema is too loose
 
@@ -381,13 +427,31 @@ DB-backed に持つ方向を基本とする。
 
 1. `A-1`
 2. `A-2`
-3. `B-1`
-4. `B-2`
-5. `B-3`
-6. `A-3`
-7. `B-4`
-8. `B-5`
-9. `B-6`
+3. `A-6`
+4. `B-1`
+5. `B-2`
+6. `B-3`
+7. `A-3`
+8. `B-4`
+9. `B-5`
+10. `B-6`
+
+## Post-Series Validation
+
+Plan 1-8 をすべて完了した後、以下をまとめて再確認する。
+
+- representativeTraces quality
+  - `representativeTraces` が incident の核心 signal / dependency / spread を安定して表していること
+  - 200/正常 span に偏らず、異常 trace が deterministic に前面へ出ること
+- diagnosis stability
+  - 同系統 scenario 間で diagnosis quality のばらつきが小さいこと
+  - `rate limit + retry amplification` のような主要 causal pattern を継続して読み取れること
+- platform context completeness
+  - `platformEvents` が packet に入り、deploy/config/provider 文脈を deterministic fact として参照できること
+  - `platform_count = 0` が常態化していないこと
+- end-to-end packet quality
+  - packet freshness, primaryService, affectedDependencies, triggerSignals, evidence, retrieval が一貫して incident の最新状態を表すこと
+  - validation scenario 群を再実行して、packet と diagnosis の両方が operator intuition と整合すること
 
 ## ADR Impact
 

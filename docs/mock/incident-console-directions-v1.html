@@ -1,0 +1,1140 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>3amoncall UI Directions v1</title>
+<style>
+  :root {
+    --bg: #f5f0e8;
+    --bg-2: #fbf8f3;
+    --panel: rgba(255, 251, 245, 0.92);
+    --panel-2: rgba(246, 239, 229, 0.9);
+    --panel-3: #ebe3d5;
+    --ink: #151210;
+    --ink-2: #5a534d;
+    --ink-3: #857b72;
+    --line: rgba(58, 44, 29, 0.12);
+    --line-strong: rgba(58, 44, 29, 0.22);
+    --danger: #cc5e3d;
+    --danger-soft: rgba(204, 94, 61, 0.1);
+    --teal: #0e6e76;
+    --teal-soft: rgba(14, 110, 118, 0.1);
+    --amber: #9c6c18;
+    --amber-soft: rgba(156, 108, 24, 0.12);
+    --good: #2d7756;
+    --good-soft: rgba(45, 119, 86, 0.12);
+    --shadow: 0 20px 60px rgba(40, 27, 17, 0.09);
+    --shadow-strong: 0 30px 90px rgba(33, 22, 16, 0.16);
+    --radius-xl: 28px;
+    --radius-lg: 22px;
+    --radius-md: 16px;
+    --radius-sm: 12px;
+    --ui: "Inter", "Segoe UI", sans-serif;
+    --display: "Iowan Old Style", "Palatino Linotype", Georgia, serif;
+    --mono: "JetBrains Mono", "SFMono-Regular", ui-monospace, monospace;
+  }
+
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    width: 100%;
+    height: 100%;
+    background:
+      radial-gradient(circle at top right, rgba(204, 94, 61, 0.08), transparent 20%),
+      radial-gradient(circle at bottom left, rgba(14, 110, 118, 0.08), transparent 18%),
+      linear-gradient(180deg, #faf7f1 0%, #f0eade 100%);
+    color: var(--ink);
+    font-family: var(--ui);
+  }
+
+  button { font: inherit; cursor: pointer; }
+
+  .app {
+    width: 100%;
+    min-height: 100%;
+    padding: 18px;
+    display: grid;
+    gap: 14px;
+  }
+
+  .topbar,
+  .switcher,
+  .concept,
+  .ambient-card,
+  .incident-item,
+  .metric-chip,
+  .hero,
+  .action,
+  .split-card,
+  .flow-node,
+  .evidence-card,
+  .chat-card,
+  .small-card {
+    border: 1px solid var(--line);
+    border-radius: var(--radius-lg);
+  }
+
+  .topbar,
+  .switcher,
+  .concept {
+    background: var(--panel);
+    box-shadow: var(--shadow);
+    backdrop-filter: blur(16px);
+  }
+
+  .topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 18px;
+  }
+
+  .topbar-left,
+  .topbar-right {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 800;
+    letter-spacing: -0.03em;
+  }
+
+  .pulse {
+    width: 8px;
+    height: 8px;
+    border-radius: 999px;
+    background: var(--danger);
+    box-shadow: 0 0 0 0 rgba(204, 94, 61, 0.44);
+    animation: pulse 1.8s infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(204, 94, 61, 0.44); }
+    60% { box-shadow: 0 0 0 8px rgba(204, 94, 61, 0); }
+  }
+
+  .mini-label {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    color: var(--ink-3);
+    font-weight: 700;
+  }
+
+  .mini-value {
+    font-size: 13px;
+    font-weight: 700;
+  }
+
+  .switcher {
+    display: flex;
+    gap: 10px;
+    padding: 10px;
+    flex-wrap: wrap;
+  }
+
+  .switcher button {
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    padding: 10px 14px;
+    background: rgba(255,255,255,0.6);
+    color: var(--ink-2);
+    font-weight: 700;
+  }
+
+  .switcher button.active {
+    background: var(--danger-soft);
+    color: var(--danger);
+    border-color: rgba(204,94,61,0.24);
+  }
+
+  .concept {
+    display: none;
+    padding: 14px;
+  }
+
+  .concept.active { display: block; }
+
+  .concept-head {
+    display: grid;
+    gap: 6px;
+    margin-bottom: 14px;
+  }
+
+  .concept-title {
+    font-family: var(--display);
+    font-size: 32px;
+    line-height: 1;
+    letter-spacing: -0.05em;
+  }
+
+  .concept-sub {
+    color: var(--ink-2);
+    font-size: 13px;
+    line-height: 1.5;
+    max-width: 76ch;
+  }
+
+  .board {
+    min-height: 850px;
+    border-radius: var(--radius-xl);
+    overflow: hidden;
+    border: 1px solid rgba(58, 44, 29, 0.08);
+    background:
+      radial-gradient(circle at top left, rgba(204,94,61,0.06), transparent 18%),
+      radial-gradient(circle at bottom right, rgba(14,110,118,0.06), transparent 16%),
+      linear-gradient(180deg, rgba(255,255,255,0.75), rgba(248,242,234,0.86));
+  }
+
+  .board-grid {
+    width: 100%;
+    height: 100%;
+    display: grid;
+    gap: 12px;
+    padding: 12px;
+  }
+
+  .board-grid.a {
+    grid-template-columns: 240px 1fr 300px;
+  }
+
+  .board-grid.b {
+    grid-template-columns: 290px 1fr;
+  }
+
+  .board-grid.c {
+    grid-template-columns: 220px 1fr 340px;
+  }
+
+  .stack {
+    display: grid;
+    gap: 12px;
+    min-width: 0;
+    min-height: 0;
+  }
+
+  .ambient-card,
+  .small-card {
+    background: rgba(255,255,255,0.7);
+    padding: 14px;
+  }
+
+  .ambient-card .display {
+    font-family: var(--display);
+    font-size: 28px;
+    line-height: 0.98;
+    letter-spacing: -0.05em;
+    margin: 8px 0 14px;
+  }
+
+  .trace-river,
+  .feed-list,
+  .incident-list,
+  .evidence-list,
+  .chat-list {
+    display: grid;
+    gap: 8px;
+  }
+
+  .river {
+    height: 14px;
+    border-radius: 999px;
+    background: rgba(14,110,118,0.1);
+    overflow: hidden;
+    position: relative;
+  }
+
+  .river span {
+    position: absolute;
+    inset: 0 auto 0 0;
+    border-radius: 999px;
+    background: linear-gradient(90deg, rgba(14,110,118,0.92), rgba(14,110,118,0.36));
+  }
+
+  .river.hot {
+    background: rgba(204,94,61,0.1);
+  }
+
+  .river.hot span {
+    background: linear-gradient(90deg, rgba(204,94,61,0.95), rgba(204,94,61,0.48));
+  }
+
+  .incident-item {
+    background: rgba(255,255,255,0.74);
+    padding: 12px;
+    text-align: left;
+  }
+
+  .incident-item.active {
+    border-color: rgba(204,94,61,0.26);
+    background: linear-gradient(180deg, rgba(204,94,61,0.09), rgba(255,255,255,0.82));
+  }
+
+  .incident-item strong {
+    display: block;
+    font-size: 13px;
+    margin-bottom: 6px;
+  }
+
+  .incident-item p {
+    margin: 0;
+    font-size: 12px;
+    line-height: 1.45;
+    color: var(--ink-2);
+  }
+
+  .metric-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 10px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 700;
+    background: rgba(255,255,255,0.72);
+  }
+
+  .metric-chip.good { background: var(--good-soft); color: var(--good); }
+  .metric-chip.warn { background: var(--amber-soft); color: var(--amber); }
+  .metric-chip.bad { background: var(--danger-soft); color: var(--danger); }
+
+  .workspace {
+    position: relative;
+    min-height: 0;
+    border-radius: var(--radius-xl);
+    padding: 14px;
+    box-shadow: var(--shadow-strong);
+  }
+
+  .workspace.light {
+    background: rgba(255, 251, 246, 0.97);
+  }
+
+  .workspace.ink {
+    background:
+      radial-gradient(circle at top right, rgba(204,94,61,0.12), transparent 18%),
+      linear-gradient(180deg, #181411 0%, #221914 100%);
+    color: #fbf6ef;
+    border-color: rgba(255,255,255,0.08);
+  }
+
+  .workspace.ink .mini-label,
+  .workspace.ink .muted,
+  .workspace.ink .small-copy,
+  .workspace.ink .card-copy,
+  .workspace.ink .panel-copy,
+  .workspace.ink .chipline,
+  .workspace.ink .chat-note { color: rgba(251, 246, 239, 0.7); }
+
+  .workspace.ink .hero,
+  .workspace.ink .action,
+  .workspace.ink .split-card,
+  .workspace.ink .flow-node,
+  .workspace.ink .evidence-card,
+  .workspace.ink .chat-card,
+  .workspace.ink .small-card {
+    background: rgba(255,255,255,0.04);
+    border-color: rgba(255,255,255,0.08);
+  }
+
+  .workspace-grid {
+    display: grid;
+    gap: 12px;
+    min-height: 100%;
+  }
+
+  .workspace-grid.a {
+    grid-template-columns: 1.2fr 0.95fr;
+    grid-template-rows: auto auto auto 1fr;
+  }
+
+  .workspace-grid.b {
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: auto auto 1fr;
+  }
+
+  .workspace-grid.c {
+    grid-template-columns: 1.25fr 0.85fr;
+    grid-template-rows: auto auto 1fr;
+  }
+
+  .hero {
+    padding: 18px;
+    display: grid;
+    gap: 10px;
+  }
+
+  .hero.a-span,
+  .hero.b-span,
+  .hero.c-span {
+    grid-column: 1 / -1;
+  }
+
+  .hero-title {
+    font-family: var(--display);
+    font-size: 40px;
+    line-height: 0.96;
+    letter-spacing: -0.06em;
+    max-width: 16ch;
+  }
+
+  .chipline {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    color: var(--ink-2);
+    font-size: 12px;
+  }
+
+  .action {
+    padding: 16px;
+    display: grid;
+    gap: 12px;
+    border-color: rgba(204,94,61,0.22);
+    background: linear-gradient(180deg, rgba(204,94,61,0.08), rgba(255,255,255,0.78));
+  }
+
+  .workspace.ink .action {
+    background: linear-gradient(180deg, rgba(204,94,61,0.18), rgba(255,255,255,0.04));
+  }
+
+  .action-head {
+    font-size: 22px;
+    font-weight: 800;
+    line-height: 1.1;
+    letter-spacing: -0.03em;
+    max-width: 22ch;
+  }
+
+  .action-rows,
+  .summary-rows {
+    display: grid;
+    gap: 8px;
+  }
+
+  .row {
+    display: grid;
+    grid-template-columns: 74px 1fr;
+    gap: 10px;
+    align-items: start;
+    padding-top: 8px;
+    border-top: 1px solid rgba(58,44,29,0.08);
+  }
+
+  .workspace.ink .row {
+    border-top-color: rgba(255,255,255,0.08);
+  }
+
+  .row strong {
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+
+  .split-grid {
+    display: grid;
+    gap: 12px;
+  }
+
+  .split-grid.two { grid-template-columns: 1fr 1fr; }
+  .split-grid.stack { grid-template-columns: 1fr; }
+
+  .split-card {
+    padding: 14px;
+    display: grid;
+    gap: 10px;
+  }
+
+  .split-card.recovery {
+    border-color: rgba(45,119,86,0.22);
+  }
+
+  .split-card.cause {
+    border-color: rgba(14,110,118,0.18);
+  }
+
+  .card-main {
+    font-size: 18px;
+    line-height: 1.18;
+    font-weight: 800;
+    letter-spacing: -0.03em;
+  }
+
+  .small-copy,
+  .card-copy,
+  .panel-copy,
+  .chat-note {
+    font-size: 12px;
+    line-height: 1.45;
+    color: var(--ink-2);
+  }
+
+  .focus-strip {
+    display: grid;
+    gap: 10px;
+  }
+
+  .focus-strip.columns-3 { grid-template-columns: repeat(3, 1fr); }
+  .focus-strip.columns-4 { grid-template-columns: repeat(4, 1fr); }
+
+  .focus-button {
+    text-align: left;
+    padding: 14px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-md);
+    background: rgba(255,255,255,0.72);
+    display: grid;
+    gap: 8px;
+  }
+
+  .focus-button.active {
+    border-color: rgba(204,94,61,0.28);
+    background: linear-gradient(180deg, rgba(204,94,61,0.08), rgba(255,255,255,0.84));
+  }
+
+  .workspace.ink .focus-button {
+    background: rgba(255,255,255,0.04);
+    border-color: rgba(255,255,255,0.08);
+  }
+
+  .workspace.ink .focus-button.active {
+    background: linear-gradient(180deg, rgba(204,94,61,0.16), rgba(255,255,255,0.05));
+    border-color: rgba(204,94,61,0.28);
+  }
+
+  .focus-button .title {
+    font-size: 14px;
+    font-weight: 800;
+    line-height: 1.24;
+  }
+
+  .flow {
+    display: grid;
+    gap: 10px;
+  }
+
+  .flow.inline {
+    grid-template-columns: repeat(3, 1fr);
+    align-items: stretch;
+  }
+
+  .flow.vertical {
+    grid-template-columns: 1fr;
+  }
+
+  .flow-node {
+    padding: 14px;
+    display: grid;
+    gap: 6px;
+    background: rgba(255,255,255,0.72);
+  }
+
+  .flow-node.recovery { border-left: 4px solid var(--good); }
+  .flow-node.cause { border-left: 4px solid var(--danger); }
+  .flow-node.spread { border-left: 4px solid var(--teal); }
+  .flow-node.impact { border-left: 4px solid var(--amber); }
+
+  .flow-node .title {
+    font-size: 15px;
+    font-weight: 800;
+    line-height: 1.22;
+  }
+
+  .evidence-grid {
+    display: grid;
+    gap: 12px;
+    min-height: 0;
+  }
+
+  .evidence-grid.two { grid-template-columns: 1.1fr 0.9fr; }
+  .evidence-grid.stack { grid-template-columns: 1fr; }
+
+  .evidence-card {
+    padding: 14px;
+    display: grid;
+    gap: 10px;
+    min-height: 0;
+  }
+
+  .evidence-list {
+    min-height: 0;
+  }
+
+  .evidence-row {
+    padding: 12px;
+    border-radius: var(--radius-sm);
+    border: 1px solid rgba(58,44,29,0.08);
+    background: rgba(255,255,255,0.78);
+  }
+
+  .workspace.ink .evidence-row {
+    background: rgba(255,255,255,0.05);
+    border-color: rgba(255,255,255,0.08);
+  }
+
+  .evidence-row.hot {
+    border-color: rgba(204,94,61,0.28);
+    background: linear-gradient(180deg, rgba(204,94,61,0.1), rgba(255,255,255,0.84));
+  }
+
+  .workspace.ink .evidence-row.hot {
+    background: linear-gradient(180deg, rgba(204,94,61,0.18), rgba(255,255,255,0.05));
+  }
+
+  .evidence-row strong {
+    display: block;
+    font-size: 13px;
+    margin-bottom: 4px;
+  }
+
+  .evidence-meta {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--ink-3);
+    margin-bottom: 6px;
+  }
+
+  .chat-card {
+    padding: 14px;
+    display: grid;
+    gap: 10px;
+  }
+
+  .chat-opener {
+    padding: 12px;
+    border-radius: var(--radius-md);
+    background: rgba(14,110,118,0.08);
+    color: var(--ink-2);
+    font-size: 13px;
+    line-height: 1.45;
+  }
+
+  .workspace.ink .chat-opener {
+    background: rgba(14,110,118,0.16);
+    color: rgba(251,246,239,0.82);
+  }
+
+  .chat-list .bubble {
+    padding: 10px 12px;
+    border-radius: var(--radius-md);
+    font-size: 12px;
+    line-height: 1.45;
+  }
+
+  .bubble.user {
+    justify-self: end;
+    background: rgba(14,110,118,0.1);
+    color: var(--teal);
+  }
+
+  .bubble.ai {
+    background: rgba(255,255,255,0.72);
+    color: var(--ink-2);
+  }
+
+  .workspace.ink .bubble.ai {
+    background: rgba(255,255,255,0.05);
+    color: rgba(251,246,239,0.8);
+  }
+
+  .prompt-row {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .prompt-row span {
+    padding: 8px 10px;
+    border-radius: 999px;
+    background: rgba(14,110,118,0.08);
+    color: var(--teal);
+    font-size: 11px;
+    font-weight: 700;
+  }
+
+  .workspace.ink .prompt-row span {
+    background: rgba(14,110,118,0.16);
+    color: #8bd7de;
+  }
+
+  @media (max-width: 1100px) {
+    .board-grid.a,
+    .board-grid.b,
+    .board-grid.c,
+    .workspace-grid.a,
+    .workspace-grid.b,
+    .workspace-grid.c,
+    .split-grid.two,
+    .focus-strip.columns-4,
+    .focus-strip.columns-3,
+    .flow.inline,
+    .evidence-grid.two {
+      grid-template-columns: 1fr;
+    }
+    .hero-title { font-size: 32px; }
+  }
+</style>
+</head>
+<body>
+  <div class="app">
+    <div class="topbar">
+      <div class="topbar-left">
+        <div class="brand"><span class="pulse"></span><span>3amoncall</span></div>
+        <div>
+          <div class="mini-label">Prompt</div>
+          <div class="mini-value">small-team act-first reliability console</div>
+        </div>
+      </div>
+      <div class="topbar-right">
+        <div>
+          <div class="mini-label">Target</div>
+          <div class="mini-value">ambient normal mode + dramatic incident workspace</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="switcher">
+      <button class="active" data-target="concept-a">A. Signal Canvas</button>
+      <button data-target="concept-b">B. Command Deck</button>
+      <button data-target="concept-c">C. Field Guide</button>
+    </div>
+
+    <section class="concept active" id="concept-a">
+      <div class="concept-head">
+        <div class="concept-title">A. Signal Canvas</div>
+        <div class="concept-sub">平常時は生きた signal surface を保ちつつ、incident が起きると大きな response canvas が前に立つ案。いちばん ambient -> dramatic の差が強い。</div>
+      </div>
+      <div class="board">
+        <div class="board-grid a">
+          <div class="stack">
+            <div class="ambient-card">
+              <div class="mini-label">Open incidents</div>
+              <div class="incident-list">
+                <button class="incident-item active">
+                  <strong>validation-web / checkout</strong>
+                  <p>checkout が失敗中。payment dependency の 429 と local retry が連鎖。</p>
+                </button>
+                <div class="incident-item">
+                  <strong>content edge cache</strong>
+                  <p>stale cache 波及の兆候あり。まだ customer path は持ちこたえている。</p>
+                </div>
+              </div>
+            </div>
+            <div class="small-card">
+              <div class="mini-label">Posture</div>
+              <div class="prompt-row">
+                <span>checkout unstable</span>
+                <span>catalog healthy</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="stack">
+            <div class="ambient-card">
+              <div class="mini-label">Live surface</div>
+              <div class="display">Healthy systems should feel alive before anything breaks.</div>
+              <div class="trace-river">
+                <div class="river"><span style="width:58%"></span></div>
+                <div class="river"><span style="width:62%"></span></div>
+                <div class="river hot"><span style="width:86%"></span></div>
+                <div class="river hot"><span style="width:92%"></span></div>
+              </div>
+            </div>
+            <div class="ambient-card">
+              <div class="mini-label">Live feed</div>
+              <div class="evidence-list">
+                <div class="evidence-row"><strong>payment_429_total climbs</strong><div class="panel-copy">dependency side pressure becomes visible</div></div>
+                <div class="evidence-row"><strong>retry_attempts_total accelerates</strong><div class="panel-copy">shared worker pool likely amplifying the failure</div></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="workspace light">
+            <div class="workspace-grid a">
+              <div class="hero a-span">
+                <div class="mini-label">What broke</div>
+                <div class="hero-title">Checkout is failing and the first move is to stop the retry storm.</div>
+                <div class="chipline">
+                  <span class="metric-chip bad">customer-facing</span>
+                  <span class="metric-chip warn">payment dependency</span>
+                  <span class="metric-chip bad">504 spreading</span>
+                </div>
+              </div>
+
+              <div class="action">
+                <div class="mini-label">Take this action first</div>
+                <div class="action-head">Disable fixed retries on the payment path before doing anything else.</div>
+                <div class="action-rows">
+                  <div class="row"><strong>Policy</strong><div>reduce blast radius first</div></div>
+                  <div class="row"><strong>Operate</strong><div>stop retry recycling in the shared worker pool</div></div>
+                  <div class="row"><strong>Steps</strong><div>flip retry off, hold, then watch queue and 504 growth</div></div>
+                </div>
+              </div>
+
+              <div class="split-grid stack">
+                <div class="split-card recovery">
+                  <div class="mini-label">Recovery</div>
+                  <div class="card-main">Look here first after you act.</div>
+                  <div class="summary-rows">
+                    <div class="row"><strong>Watch</strong><div>retry pressure should stop climbing</div></div>
+                    <div class="row"><strong>Means</strong><div>the local amplification loop is broken</div></div>
+                    <div class="row"><strong>Signal</strong><div><code>retry_attempts_total</code>, <code>queue_depth</code>, <code>504 rate</code></div></div>
+                  </div>
+                </div>
+                <div class="split-card cause">
+                  <div class="mini-label">Cause</div>
+                  <div class="card-main">Payment provider rate limiting amplified by fixed local retries.</div>
+                  <div class="card-copy">Strong enough to act. Still show uncertainty elsewhere, not here.</div>
+                </div>
+              </div>
+
+              <div class="focus-strip columns-4 a-span">
+                <button class="focus-button active">
+                  <div class="mini-label">Recovery</div>
+                  <div class="title">Bias the evidence toward post-action confirmation.</div>
+                </button>
+                <button class="focus-button">
+                  <div class="mini-label">Cause</div>
+                  <div class="title">Show the strongest proof path for the diagnosis.</div>
+                </button>
+                <button class="focus-button">
+                  <div class="mini-label">Metrics</div>
+                  <div class="title">Metrics are the dominant signal family.</div>
+                </button>
+                <button class="focus-button">
+                  <div class="mini-label">Logs</div>
+                  <div class="title">Logs stay present but clearly secondary.</div>
+                </button>
+              </div>
+
+              <div class="flow inline a-span">
+                <div class="flow-node cause">
+                  <div class="mini-label">Cause</div>
+                  <div class="title">provider begins rate limiting</div>
+                  <div class="panel-copy">429 starts here</div>
+                </div>
+                <div class="flow-node spread">
+                  <div class="mini-label">Spread</div>
+                  <div class="title">fixed retries recycle failing work</div>
+                  <div class="panel-copy">shared pool gets consumed</div>
+                </div>
+                <div class="flow-node impact">
+                  <div class="mini-label">Impact</div>
+                  <div class="title">checkout 504 reaches users</div>
+                  <div class="panel-copy">customer path becomes unstable</div>
+                </div>
+              </div>
+
+              <div class="evidence-grid two a-span">
+                <div class="evidence-card">
+                  <div class="mini-label">Recovery-biased evidence</div>
+                  <div class="evidence-list">
+                    <div class="evidence-row hot">
+                      <strong>retry_attempts_total</strong>
+                      <div class="evidence-meta">261 total / plateau expected</div>
+                      <div class="panel-copy">best first post-action check</div>
+                    </div>
+                    <div class="evidence-row hot">
+                      <strong>queue_depth</strong>
+                      <div class="evidence-meta">128 / flatten expected</div>
+                      <div class="panel-copy">confirms the loop is no longer feeding the pool</div>
+                    </div>
+                  </div>
+                </div>
+                <div class="chat-card">
+                  <div class="mini-label">Copilot</div>
+                  <div class="chat-opener">I can explain why these are the right signals to watch, or what would make this recommendation weaker.</div>
+                  <div class="chat-list">
+                    <div class="bubble user">What do I look at first after flipping the flag?</div>
+                    <div class="bubble ai">Start with retry attempts and queue depth. If they do not ease, re-check the diagnosis before touching anything else.</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="concept" id="concept-b">
+      <div class="concept-head">
+        <div class="concept-title">B. Command Deck</div>
+        <div class="concept-sub">もっと command-center 寄り。ambient 面は軽く残しつつ、incident を開いた瞬間に action / recovery / cause が一直線で読める案。いちばん operational。</div>
+      </div>
+      <div class="board">
+        <div class="board-grid b">
+          <div class="stack">
+            <div class="ambient-card">
+              <div class="mini-label">Incident stack</div>
+              <div class="incident-list">
+                <button class="incident-item active">
+                  <strong>validation-web / payment cascade</strong>
+                  <p>one clear first action, three clear watch points</p>
+                </button>
+                <div class="incident-item">
+                  <strong>edge cache drift</strong>
+                  <p>watch-only for now</p>
+                </div>
+              </div>
+            </div>
+            <div class="ambient-card">
+              <div class="mini-label">Signal glance</div>
+              <div class="trace-river">
+                <div class="river hot"><span style="width:88%"></span></div>
+                <div class="river hot"><span style="width:76%"></span></div>
+                <div class="river"><span style="width:42%"></span></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="workspace ink">
+            <div class="workspace-grid b">
+              <div class="hero b-span">
+                <div class="mini-label">Command</div>
+                <div class="hero-title">Stop retries now. Then watch whether pressure actually breaks.</div>
+                <div class="chipline">
+                  <span class="metric-chip bad">one action only</span>
+                  <span class="metric-chip warn">trust but verify</span>
+                  <span class="metric-chip good">chat nearby</span>
+                </div>
+              </div>
+
+              <div class="action">
+                <div class="mini-label">Action</div>
+                <div class="action-head">Disable retry behavior on the payment dependency path.</div>
+                <div class="action-rows">
+                  <div class="row"><strong>Policy</strong><div>cut the amplifier before diagnosing deeper</div></div>
+                  <div class="row"><strong>Operate</strong><div>stop retry-enabled workers from recycling failed requests</div></div>
+                  <div class="row"><strong>Steps</strong><div>flip the control, hold steady, then monitor only the three watch items</div></div>
+                </div>
+              </div>
+
+              <div class="split-grid stack">
+                <div class="split-card recovery">
+                  <div class="mini-label">Recovery</div>
+                  <div class="card-main">Three watch points, no more.</div>
+                  <div class="summary-rows">
+                    <div class="row"><strong>1</strong><div>retry attempts stop rising</div></div>
+                    <div class="row"><strong>2</strong><div>queue depth flattens</div></div>
+                    <div class="row"><strong>3</strong><div>checkout 504 growth slows next</div></div>
+                  </div>
+                </div>
+                <div class="split-card cause">
+                  <div class="mini-label">Cause</div>
+                  <div class="card-main">Dependency 429 is primary. Local fixed retries make it dangerous.</div>
+                </div>
+              </div>
+
+              <div class="flow vertical">
+                <div class="flow-node recovery">
+                  <div class="mini-label">Recovery map</div>
+                  <div class="title">act -> watch -> decide again</div>
+                  <div class="panel-copy">the workspace is built around this loop</div>
+                </div>
+                <div class="flow-node cause">
+                  <div class="mini-label">Cause chain</div>
+                  <div class="title">provider 429 -> retry loop -> worker saturation</div>
+                </div>
+                <div class="flow-node impact">
+                  <div class="mini-label">Impact</div>
+                  <div class="title">checkout 504 reaches users</div>
+                </div>
+              </div>
+
+              <div class="evidence-card">
+                <div class="mini-label">Focused evidence</div>
+                <div class="evidence-list">
+                  <div class="evidence-row hot">
+                    <strong>retry_attempts_total</strong>
+                    <div class="evidence-meta">dominant metric</div>
+                    <div class="panel-copy">strongest action-validation surface</div>
+                  </div>
+                  <div class="evidence-row hot">
+                    <strong>payment_429_total</strong>
+                    <div class="evidence-meta">dominant cause metric</div>
+                    <div class="panel-copy">strongest cause surface</div>
+                  </div>
+                  <div class="evidence-row">
+                    <strong>payment spans</strong>
+                    <div class="evidence-meta">secondary trace evidence</div>
+                    <div class="panel-copy">use after the metric story is clear</div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="chat-card">
+                <div class="mini-label">Copilot</div>
+                <div class="chat-opener">If you do not trust this action, push on the uncertainty first. The chat should be your first escape hatch, not the last one.</div>
+                <div class="prompt-row">
+                  <span>What would make this wrong?</span>
+                  <span>Why these three watch items?</span>
+                  <span>What if retries are already off?</span>
+                </div>
+                <div class="chat-list">
+                  <div class="bubble ai">If retries are already off, the queue should not keep accelerating from local amplification. In that case, re-check dependency and worker limits before touching rollout state.</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="concept" id="concept-c">
+      <div class="concept-head">
+        <div class="concept-title">C. Field Guide</div>
+        <div class="concept-sub">もっと editorial。incident を「読む」のではなく、「手引きとして進む」案。情報は整理されるが、command 感は A/B より少し弱い。</div>
+      </div>
+      <div class="board">
+        <div class="board-grid c">
+          <div class="stack">
+            <div class="ambient-card">
+              <div class="mini-label">Open incidents</div>
+              <div class="incident-list">
+                <button class="incident-item active">
+                  <strong>checkout pressure</strong>
+                  <p>active response guide available</p>
+                </button>
+                <div class="incident-item">
+                  <strong>cdn stale cache</strong>
+                  <p>monitor only</p>
+                </div>
+              </div>
+            </div>
+            <div class="small-card">
+              <div class="mini-label">Ambient health</div>
+              <div class="prompt-row">
+                <span>flowing traces</span>
+                <span>quiet logs</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="workspace light">
+            <div class="workspace-grid c">
+              <div class="hero c-span">
+                <div class="mini-label">Field guide</div>
+                <div class="hero-title">A calm guide for taking one safe first move.</div>
+                <div class="chipline">
+                  <span class="metric-chip bad">what broke</span>
+                  <span class="metric-chip bad">what to do</span>
+                  <span class="metric-chip warn">what to question</span>
+                </div>
+              </div>
+
+              <div class="split-grid stack">
+                <div class="split-card recovery">
+                  <div class="mini-label">Recovery first</div>
+                  <div class="card-main">Know what “better” looks like before you touch the system.</div>
+                  <div class="summary-rows">
+                    <div class="row"><strong>Look</strong><div>retry pressure, queue shape, then 504 growth</div></div>
+                    <div class="row"><strong>Read</strong><div>in that order, not all at once</div></div>
+                  </div>
+                </div>
+                <div class="split-card cause">
+                  <div class="mini-label">Cause next</div>
+                  <div class="card-main">The most likely root is external quota pressure amplified by local retry design.</div>
+                </div>
+              </div>
+
+              <div class="action">
+                <div class="mini-label">Action</div>
+                <div class="action-head">Disable fixed retries on the payment path.</div>
+                <div class="action-rows">
+                  <div class="row"><strong>Why</strong><div>it shortens blast radius faster than a broad restart or rollout rollback</div></div>
+                  <div class="row"><strong>Do not</strong><div>restart blindly while the worker pool is still saturated</div></div>
+                </div>
+              </div>
+
+              <div class="focus-strip columns-3 c-span">
+                <button class="focus-button active">
+                  <div class="mini-label">Evidence</div>
+                  <div class="title">2 to 3 proof cards first, raw data second.</div>
+                </button>
+                <button class="focus-button">
+                  <div class="mini-label">Components</div>
+                  <div class="title">show cause, spread, and impact as one chain</div>
+                </button>
+                <button class="focus-button">
+                  <div class="mini-label">Chat</div>
+                  <div class="title">explain what the visible evidence means</div>
+                </button>
+              </div>
+
+              <div class="evidence-grid two c-span">
+                <div class="evidence-card">
+                  <div class="mini-label">Proof cards</div>
+                  <div class="evidence-list">
+                    <div class="evidence-row hot">
+                      <strong>provider 429 spike</strong>
+                      <div class="panel-copy">first break in the story</div>
+                    </div>
+                    <div class="evidence-row hot">
+                      <strong>retry amplification</strong>
+                      <div class="panel-copy">local design flaw that turns upstream pressure into wider failure</div>
+                    </div>
+                    <div class="evidence-row">
+                      <strong>queue flattening watch</strong>
+                      <div class="panel-copy">best near-term sign that the action worked</div>
+                    </div>
+                  </div>
+                </div>
+                <div class="chat-card">
+                  <div class="mini-label">Copilot</div>
+                  <div class="chat-opener">Ask what the visible proof means, not where to look. The UI should already make that obvious.</div>
+                  <div class="chat-list">
+                    <div class="bubble user">Why is queue depth more important than logs after the change?</div>
+                    <div class="bubble ai">Because queue depth changes sooner than the visible 504 rate. It tells you whether the pressure source is actually easing before the user impact fully catches up.</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="stack">
+            <div class="ambient-card">
+              <div class="mini-label">Visual chain</div>
+              <div class="flow vertical">
+                <div class="flow-node cause">
+                  <div class="title">payment provider 429</div>
+                </div>
+                <div class="flow-node spread">
+                  <div class="title">fixed retries flood shared workers</div>
+                </div>
+                <div class="flow-node impact">
+                  <div class="title">checkout failure reaches users</div>
+                </div>
+              </div>
+            </div>
+            <div class="ambient-card">
+              <div class="mini-label">Signal emphasis</div>
+              <div class="trace-river">
+                <div class="river hot"><span style="width:84%"></span></div>
+                <div class="river"><span style="width:48%"></span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+<script>
+  const buttons = document.querySelectorAll(".switcher button");
+  const concepts = document.querySelectorAll(".concept");
+
+  buttons.forEach((button) => {
+    button.addEventListener("click", () => {
+      buttons.forEach((b) => b.classList.toggle("active", b === button));
+      concepts.forEach((concept) => concept.classList.toggle("active", concept.id === button.dataset.target));
+    });
+  });
+</script>
+</body>
+</html>

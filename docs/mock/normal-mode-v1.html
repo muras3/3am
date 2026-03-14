@@ -1,0 +1,575 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#FAFAF8">
+<title>3amoncall — Normal Mode + Incident Transition (low-fi)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+button { cursor: pointer; background: none; border: none; font: inherit; }
+
+:root {
+  --bg: #FAFAF8; --panel: #FFFFFF; --panel-2: #F5F5F2; --panel-3: #EEEEE8;
+  --ink: #1A1A1A; --ink-2: #4A4A48; --ink-3: #6F6F68;
+  --line: rgba(26,26,26,0.14); --line-strong: rgba(26,26,26,0.24);
+  --accent: #E85D3A; --accent-soft: rgba(232,93,58,0.08); --accent-text: #C34425;
+  --teal: #0D7377; --teal-soft: rgba(13,115,119,0.08);
+  --amber: #B8860B; --amber-soft: rgba(184,134,11,0.08);
+  --good: #2E7D52; --good-soft: rgba(46,125,82,0.08);
+  --font: 'DM Sans', system-ui, sans-serif;
+  --mono: 'JetBrains Mono', ui-monospace, monospace;
+  --radius: 6px; --radius-sm: 4px; --radius-xs: 2px;
+  --fs-xxs: 10px; --fs-xs: 11px; --fs-sm: 12px;
+  --fs-md: 13px; --fs-lg: 16px; --fs-xl: 20px;
+}
+
+html, body { height: 100%; overflow: hidden; }
+body {
+  font-family: var(--font); background: var(--bg); color: var(--ink);
+  font-size: var(--fs-md); line-height: 1.35;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ─── App Shell ────────────────────────────────────────── */
+.app { width: 100%; height: 100vh; display: grid; grid-template-rows: 46px 1fr; overflow: hidden; }
+
+/* ─── Top Bar (shared — transforms on incident) ────────── */
+.topbar {
+  display: flex; align-items: center; gap: 14px;
+  padding: 0 16px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+  z-index: 10;
+  transition: background 0.4s;
+}
+.topbar-logo {
+  font-size: var(--fs-md); font-weight: 700; letter-spacing: -0.03em;
+  display: flex; align-items: center; gap: 6px; flex-shrink: 0;
+}
+.pulse-dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  transition: background 0.4s, opacity 0.4s;
+}
+.topbar-sep { width: 1px; height: 20px; background: var(--line); flex-shrink: 0; }
+.topbar-right { margin-left: auto; display: flex; align-items: center; gap: 12px; }
+.topbar-ts { font-family: var(--mono); font-size: var(--fs-xs); color: var(--ink-3); font-variant-numeric: tabular-nums; }
+
+/* Normal mode: green dot, calm */
+.mode-normal .pulse-dot { background: var(--good); opacity: 0.6; }
+.mode-normal .topbar-status { display: none; }
+.mode-normal .topbar-incident-ctx { display: none; }
+
+/* Incident mode: red pulse, urgent */
+.mode-incident .pulse-dot {
+  background: var(--accent); opacity: 1;
+  animation: pulse-glow 2s ease-in-out infinite;
+}
+.topbar-incident-ctx {
+  display: flex; align-items: center; gap: 10px;
+  font-size: var(--fs-md); font-weight: 600;
+  transition: opacity 0.3s;
+}
+.mode-normal .topbar-incident-ctx { opacity: 0; pointer-events: none; display: flex; }
+.mode-incident .topbar-incident-ctx { opacity: 1; }
+.inc-id-top { font-family: var(--mono); font-size: var(--fs-xs); color: var(--ink-3); font-weight: 400; }
+.critical-badge {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 2px 8px; border-radius: var(--radius-sm);
+  background: var(--accent-soft); border: 1px solid rgba(232,93,58,0.25);
+  color: var(--accent-text); font-size: var(--fs-xs); font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.04em;
+}
+.active-timer {
+  display: flex; align-items: center; gap: 5px;
+  padding: 3px 8px; border-radius: var(--radius-sm);
+  background: var(--accent-soft); border: 1px solid rgba(232,93,58,0.18);
+  transition: opacity 0.3s;
+}
+.mode-normal .active-timer { opacity: 0; }
+.mode-incident .active-timer { opacity: 1; }
+.timer-label { font-size: var(--fs-xxs); text-transform: uppercase; letter-spacing: 0.06em; color: var(--accent-text); font-weight: 700; }
+.timer-val { font-family: var(--mono); font-size: var(--fs-xs); font-weight: 600; color: var(--accent-text); font-variant-numeric: tabular-nums; }
+
+/* ─── Main Grid ────────────────────────────────────────── */
+.main-grid {
+  display: grid;
+  height: 100%; min-height: 0; overflow: hidden;
+  transition: grid-template-columns 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+}
+/* Normal: 2 columns (no right rail) */
+.mode-normal .main-grid { grid-template-columns: 180px 1fr 0px; }
+/* Incident: 3 columns */
+.mode-incident .main-grid { grid-template-columns: 180px 1fr 220px; }
+
+/* ─── Left Rail ────────────────────────────────────────── */
+.left-rail {
+  border-right: 1px solid var(--line); background: var(--panel);
+  display: flex; flex-direction: column; overflow-y: auto;
+}
+.rail-header {
+  padding: 12px 14px 8px;
+  font-size: var(--fs-xxs); font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.07em; color: var(--ink-3);
+  flex-shrink: 0;
+}
+/* Service items (normal mode) */
+.svc-item {
+  padding: 9px 14px; border-bottom: 1px solid var(--line);
+  transition: opacity 0.3s, max-height 0.4s;
+  overflow: hidden;
+}
+.svc-name { font-size: var(--fs-sm); font-weight: 600; display: flex; align-items: center; justify-content: space-between; }
+.svc-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+.svc-detail { font-family: var(--mono); font-size: var(--fs-xxs); color: var(--ink-3); margin-top: 2px; }
+/* In incident mode: services fade, incidents appear */
+.mode-incident .svc-item { opacity: 0.3; max-height: 20px; }
+.mode-normal .svc-item { opacity: 1; max-height: 80px; }
+
+/* Incident items (incident mode) */
+.inc-item {
+  padding: 9px 14px; border-bottom: 1px solid var(--line);
+  transition: opacity 0.3s, max-height 0.4s;
+  overflow: hidden;
+}
+.inc-item.active { border-left: 2px solid var(--accent); padding-left: 12px; background: var(--accent-soft); }
+.inc-name { font-size: var(--fs-sm); font-weight: 600; display: flex; align-items: center; justify-content: space-between; }
+.inc-route { font-family: var(--mono); font-size: var(--fs-xxs); color: var(--ink-3); margin-top: 2px; }
+.inc-age { font-size: var(--fs-xxs); color: var(--ink-3); margin-top: 2px; }
+.sev-badge { font-size: var(--fs-xxs); font-weight: 700; text-transform: uppercase; padding: 1px 5px; border-radius: var(--radius-xs); }
+.sev-critical { background: var(--accent-soft); color: var(--accent-text); }
+.mode-normal .inc-item { opacity: 0; max-height: 0; padding: 0 14px; border: none; }
+.mode-incident .inc-item { opacity: 1; max-height: 100px; }
+
+.rail-footer {
+  margin-top: auto; padding: 10px 14px; border-top: 1px solid var(--line);
+  font-size: var(--fs-xxs); color: var(--ink-3);
+}
+.rail-footer-row { display: flex; justify-content: space-between; padding: 2px 0; }
+.rail-footer-row strong { color: var(--ink-2); font-weight: 600; }
+/* Footer text swaps */
+.footer-normal, .footer-incident { transition: opacity 0.3s; }
+.mode-normal .footer-incident { display: none; }
+.mode-incident .footer-normal { display: none; }
+
+/* ─── Center: Normal Mode (Ambient Surface) ────────────── */
+.center-normal {
+  overflow-y: auto; min-height: 0;
+  padding: 24px 32px;
+  display: flex; flex-direction: column; gap: 20px;
+  background: var(--bg);
+  transition: opacity 0.4s, transform 0.4s;
+}
+.mode-incident .center-normal { opacity: 0; position: absolute; pointer-events: none; transform: scale(0.97); }
+.mode-normal .center-normal { opacity: 1; position: relative; transform: scale(1); }
+
+/* Ambient header */
+.ambient-header {
+  display: flex; align-items: center; justify-content: space-between;
+}
+.ambient-title { font-size: var(--fs-xl); font-weight: 700; letter-spacing: -0.03em; color: var(--ink); }
+.ambient-status {
+  display: flex; align-items: center; gap: 6px;
+  font-size: var(--fs-xs); font-weight: 600; color: var(--good);
+}
+.ambient-status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--good); }
+
+/* Service health cards */
+.svc-health-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.svc-card {
+  padding: 14px 16px; border: 1px solid var(--line); border-radius: var(--radius);
+  background: var(--panel);
+}
+.svc-card-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.svc-card-name { font-size: var(--fs-sm); font-weight: 600; }
+.svc-card-status { font-size: var(--fs-xxs); font-weight: 700; text-transform: uppercase; padding: 2px 6px; border-radius: var(--radius-xs); background: var(--good-soft); color: var(--good); }
+.svc-card-metrics { display: flex; gap: 16px; }
+.svc-metric { display: flex; flex-direction: column; gap: 1px; }
+.svc-metric-label { font-size: var(--fs-xxs); color: var(--ink-3); }
+.svc-metric-value { font-family: var(--mono); font-size: var(--fs-sm); font-weight: 600; font-variant-numeric: tabular-nums; }
+/* Sparkline placeholder */
+.sparkline { height: 24px; margin-top: 8px; border-radius: var(--radius-xs); overflow: hidden; position: relative; }
+.sparkline-line { position: absolute; bottom: 0; left: 0; right: 0; height: 100%; }
+.sparkline svg { width: 100%; height: 100%; }
+
+/* Activity stream */
+.activity-section {}
+.section-label {
+  font-size: var(--fs-xxs); font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.07em; color: var(--ink-3); margin-bottom: 8px;
+}
+.activity-stream {
+  border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel);
+  overflow: hidden;
+}
+.activity-row {
+  display: grid; grid-template-columns: 90px 100px 40px 1fr 70px;
+  padding: 6px 14px; border-bottom: 1px solid var(--line);
+  font-size: var(--fs-xs); align-items: center;
+}
+.activity-row:last-child { border-bottom: none; }
+.act-time { font-family: var(--mono); color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.act-svc { font-weight: 600; }
+.act-code { font-family: var(--mono); font-weight: 600; }
+.act-code-ok { color: var(--good); }
+.act-route { font-family: var(--mono); color: var(--ink-2); }
+.act-dur { font-family: var(--mono); color: var(--ink-3); text-align: right; font-variant-numeric: tabular-nums; }
+
+/* ─── Center: Incident Mode (Workspace placeholder) ────── */
+.center-incident {
+  overflow-y: auto; min-height: 0;
+  padding: 16px 24px;
+  display: flex; flex-direction: column; gap: 14px;
+  background: var(--bg);
+  transition: opacity 0.4s, transform 0.4s;
+}
+.center-incident > * { flex-shrink: 0; }
+.mode-normal .center-incident { opacity: 0; position: absolute; pointer-events: none; transform: translateY(20px); }
+.mode-incident .center-incident { opacity: 1; position: relative; transform: translateY(0); }
+
+/* Placeholder blocks for incident workspace sections */
+.ws-block {
+  border: 1px solid var(--line); border-radius: var(--radius);
+  background: var(--panel); padding: 14px 16px;
+}
+.ws-block-label {
+  font-size: var(--fs-xxs); font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.07em; margin-bottom: 6px;
+  display: flex; align-items: center; gap: 6px;
+}
+.ws-block-label::before { content: ''; width: 12px; height: 2px; border-radius: 1px; flex-shrink: 0; }
+.ws-block-content { font-size: var(--fs-sm); color: var(--ink-2); line-height: 1.5; }
+/* Action block */
+.ws-action { border-left: 3px solid var(--accent); background: linear-gradient(135deg, rgba(232,93,58,0.07) 0%, rgba(232,93,58,0.02) 100%); }
+.ws-action .ws-block-label { color: var(--accent-text); }
+.ws-action .ws-block-label::before { background: var(--accent); }
+/* Recovery block */
+.ws-recovery { border-top: 2px solid var(--good); }
+.ws-recovery .ws-block-label { color: var(--good); }
+.ws-recovery .ws-block-label::before { background: var(--good); }
+/* Cause block */
+.ws-cause { border-left: 2px solid var(--teal); }
+.ws-cause .ws-block-label { color: var(--teal); }
+.ws-cause .ws-block-label::before { background: var(--teal); }
+/* Evidence block */
+.ws-evidence .ws-block-label { color: var(--ink-3); }
+.ws-evidence .ws-block-label::before { background: var(--ink-3); }
+
+.ws-headline { font-size: var(--fs-xl); font-weight: 800; letter-spacing: -0.03em; margin-bottom: 6px; }
+.ws-chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.ws-chip {
+  font-family: var(--mono); font-size: var(--fs-xxs); font-weight: 700;
+  padding: 3px 9px; border-radius: var(--radius-sm);
+  border: 1px solid rgba(232,93,58,0.25); color: var(--accent-text); background: var(--accent-soft);
+}
+
+/* ─── Right Rail (incident only) ───────────────────────── */
+.right-rail {
+  border-left: 1px solid var(--line); background: var(--panel);
+  display: flex; flex-direction: column; overflow: hidden;
+  transition: opacity 0.4s;
+}
+.mode-normal .right-rail { opacity: 0; }
+.mode-incident .right-rail { opacity: 1; }
+.copilot-header {
+  padding: 12px 14px 10px; border-bottom: 1px solid var(--line); flex-shrink: 0;
+}
+.copilot-title {
+  font-size: var(--fs-xs); font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.06em; color: var(--ink-3);
+}
+.copilot-placeholder {
+  flex: 1; padding: 14px;
+  display: flex; flex-direction: column; gap: 8px;
+}
+.cp-card {
+  padding: 8px 10px; border: 1px solid var(--line); border-radius: var(--radius);
+  background: var(--panel-2);
+}
+.cp-card-label { font-size: var(--fs-xxs); font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-3); margin-bottom: 3px; }
+.cp-card-text { font-size: var(--fs-xs); color: var(--ink-2); line-height: 1.4; }
+.chat-placeholder {
+  margin-top: auto; padding: 10px 14px; border-top: 1px solid var(--line);
+}
+.chat-bubble-ai {
+  font-size: var(--fs-xs); padding: 7px 10px; border-radius: var(--radius-sm);
+  background: var(--panel-2); border: 1px solid var(--line); color: var(--ink);
+  line-height: 1.5; margin-bottom: 8px;
+}
+.chat-input-placeholder {
+  border: 1px solid var(--line); border-radius: var(--radius-sm);
+  padding: 6px 10px; font-size: var(--fs-xs); color: var(--ink-3);
+  background: var(--bg);
+}
+
+/* ─── Simulate Button (dev control) ────────────────────── */
+.sim-control {
+  position: fixed; bottom: 16px; right: 16px; z-index: 200;
+  display: flex; gap: 8px;
+}
+.sim-btn {
+  padding: 8px 16px; border-radius: var(--radius);
+  font-size: var(--fs-sm); font-weight: 700;
+  border: 1px solid var(--line-strong);
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.sim-btn-incident { background: var(--accent); color: white; border-color: var(--accent); }
+.sim-btn-incident:hover { background: var(--accent-text); }
+.sim-btn-normal { background: var(--panel); color: var(--ink); }
+.sim-btn-normal:hover { background: var(--panel-2); }
+.mode-incident .sim-btn-incident { display: none; }
+.mode-normal .sim-btn-normal { display: none; }
+
+/* ─── Animations ───────────────────────────────────────── */
+@keyframes pulse-glow {
+  0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(232,93,58,0.5); }
+  50% { opacity: 0.7; box-shadow: 0 0 0 4px rgba(232,93,58,0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+}
+</style>
+</head>
+<body>
+<div class="app mode-normal" id="app">
+
+  <!-- Top Bar (shared shell — transforms on incident) -->
+  <header class="topbar">
+    <div class="topbar-logo">
+      <span class="pulse-dot"></span>
+      3amoncall
+    </div>
+    <div class="topbar-sep"></div>
+    <!-- Incident context (hidden in normal mode, appears on incident) -->
+    <div class="topbar-incident-ctx">
+      checkout-service
+      <span class="inc-id-top">inc_e15e747d</span>
+      <span class="critical-badge">Critical</span>
+    </div>
+    <div class="topbar-right">
+      <span class="topbar-ts">05:24:15&nbsp;UTC</span>
+      <div class="topbar-sep"></div>
+      <div class="active-timer">
+        <span class="timer-label">Active</span>
+        <span style="font-size:var(--fs-xxs);color:var(--accent-text);opacity:0.5;">&middot;</span>
+        <span class="timer-val">18m</span>
+      </div>
+    </div>
+  </header>
+
+  <div class="main-grid">
+
+    <!-- Left Rail (shared — content transitions) -->
+    <aside class="left-rail">
+      <!-- Normal mode header -->
+      <div class="rail-header">Services</div>
+
+      <!-- Service items (normal mode — fade in incident mode) -->
+      <div class="svc-item">
+        <div class="svc-name">checkout-service <span class="svc-dot" style="background:var(--good);"></span></div>
+        <div class="svc-detail">120&nbsp;req/s &middot; p95 142ms</div>
+      </div>
+      <div class="svc-item">
+        <div class="svc-name">auth-service <span class="svc-dot" style="background:var(--good);"></span></div>
+        <div class="svc-detail">45&nbsp;req/s &middot; p95 23ms</div>
+      </div>
+      <div class="svc-item">
+        <div class="svc-name">image-resize <span class="svc-dot" style="background:var(--good);"></span></div>
+        <div class="svc-detail">12&nbsp;req/s &middot; p95 892ms</div>
+      </div>
+
+      <!-- Incident items (hidden in normal mode — appear in incident mode) -->
+      <div class="inc-item active">
+        <div class="inc-name">checkout-service <span class="sev-badge sev-critical">crit</span></div>
+        <div class="inc-route">/api/checkout</div>
+        <div class="inc-age">18m ago &middot; open</div>
+      </div>
+
+      <div class="rail-footer">
+        <div class="footer-normal">
+          <div class="rail-footer-row"><span>Services</span><strong>3&nbsp;monitored</strong></div>
+          <div class="rail-footer-row"><span>Status</span><strong style="color:var(--good);">All healthy</strong></div>
+        </div>
+        <div class="footer-incident">
+          <div class="rail-footer-row"><span>Open now</span><strong>1&nbsp;incident</strong></div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- ═══ Center: Normal Mode (Ambient Observability Surface) ═══ -->
+    <!--
+      §9: "ambient で editorial な observability surface"
+      Not a dense dashboard. Data flows calmly. Service state-feel.
+    -->
+    <div class="center-normal">
+
+      <div class="ambient-header">
+        <div class="ambient-title">Good morning</div>
+        <div class="ambient-status">
+          <span class="ambient-status-dot"></span>
+          All services healthy
+        </div>
+      </div>
+
+      <!-- Service health cards — calm, not dense -->
+      <div class="svc-health-grid">
+        <div class="svc-card">
+          <div class="svc-card-header">
+            <span class="svc-card-name">checkout-service</span>
+            <span class="svc-card-status">Healthy</span>
+          </div>
+          <div class="svc-card-metrics">
+            <div class="svc-metric"><span class="svc-metric-label">Requests</span><span class="svc-metric-value">120/s</span></div>
+            <div class="svc-metric"><span class="svc-metric-label">P95</span><span class="svc-metric-value">142ms</span></div>
+            <div class="svc-metric"><span class="svc-metric-label">Errors</span><span class="svc-metric-value" style="color:var(--good);">0.1%</span></div>
+          </div>
+          <div class="sparkline">
+            <svg viewBox="0 0 200 24" preserveAspectRatio="none">
+              <polyline fill="none" stroke="var(--good)" stroke-width="1.5" opacity="0.5" points="0,20 20,18 40,19 60,17 80,18 100,16 120,17 140,15 160,16 180,14 200,15"/>
+            </svg>
+          </div>
+        </div>
+        <div class="svc-card">
+          <div class="svc-card-header">
+            <span class="svc-card-name">auth-service</span>
+            <span class="svc-card-status">Healthy</span>
+          </div>
+          <div class="svc-card-metrics">
+            <div class="svc-metric"><span class="svc-metric-label">Requests</span><span class="svc-metric-value">45/s</span></div>
+            <div class="svc-metric"><span class="svc-metric-label">P95</span><span class="svc-metric-value">23ms</span></div>
+            <div class="svc-metric"><span class="svc-metric-label">Errors</span><span class="svc-metric-value" style="color:var(--good);">0%</span></div>
+          </div>
+          <div class="sparkline">
+            <svg viewBox="0 0 200 24" preserveAspectRatio="none">
+              <polyline fill="none" stroke="var(--good)" stroke-width="1.5" opacity="0.5" points="0,18 20,17 40,18 60,16 80,17 100,15 120,16 140,14 160,15 180,13 200,14"/>
+            </svg>
+          </div>
+        </div>
+        <div class="svc-card">
+          <div class="svc-card-header">
+            <span class="svc-card-name">image-resize</span>
+            <span class="svc-card-status">Healthy</span>
+          </div>
+          <div class="svc-card-metrics">
+            <div class="svc-metric"><span class="svc-metric-label">Requests</span><span class="svc-metric-value">12/s</span></div>
+            <div class="svc-metric"><span class="svc-metric-label">P95</span><span class="svc-metric-value">892ms</span></div>
+            <div class="svc-metric"><span class="svc-metric-label">Errors</span><span class="svc-metric-value" style="color:var(--good);">0.3%</span></div>
+          </div>
+          <div class="sparkline">
+            <svg viewBox="0 0 200 24" preserveAspectRatio="none">
+              <polyline fill="none" stroke="var(--good)" stroke-width="1.5" opacity="0.5" points="0,16 20,18 40,15 60,17 80,14 100,16 120,13 140,15 160,12 180,14 200,13"/>
+            </svg>
+          </div>
+        </div>
+      </div>
+
+      <!-- Recent activity stream — traces flowing calmly -->
+      <div class="activity-section">
+        <div class="section-label">Recent Activity</div>
+        <div class="activity-stream">
+          <div class="activity-row"><span class="act-time">05:24:14</span><span class="act-svc">checkout</span><span class="act-code act-code-ok">200</span><span class="act-route">POST /checkout</span><span class="act-dur">142ms</span></div>
+          <div class="activity-row"><span class="act-time">05:24:13</span><span class="act-svc">auth</span><span class="act-code act-code-ok">200</span><span class="act-route">GET /auth/token</span><span class="act-dur">23ms</span></div>
+          <div class="activity-row"><span class="act-time">05:24:12</span><span class="act-svc">checkout</span><span class="act-code act-code-ok">200</span><span class="act-route">POST /checkout</span><span class="act-dur">138ms</span></div>
+          <div class="activity-row"><span class="act-time">05:24:11</span><span class="act-svc">image</span><span class="act-code act-code-ok">200</span><span class="act-route">POST /upload</span><span class="act-dur">892ms</span></div>
+          <div class="activity-row"><span class="act-time">05:24:10</span><span class="act-svc">auth</span><span class="act-code act-code-ok">200</span><span class="act-route">GET /auth/verify</span><span class="act-dur">18ms</span></div>
+          <div class="activity-row"><span class="act-time">05:24:09</span><span class="act-svc">checkout</span><span class="act-code act-code-ok">200</span><span class="act-route">POST /checkout</span><span class="act-dur">155ms</span></div>
+          <div class="activity-row"><span class="act-time">05:24:08</span><span class="act-svc">checkout</span><span class="act-code act-code-ok">200</span><span class="act-route">GET /cart</span><span class="act-dur">34ms</span></div>
+          <div class="activity-row"><span class="act-time">05:24:07</span><span class="act-svc">auth</span><span class="act-code act-code-ok">200</span><span class="act-route">POST /auth/refresh</span><span class="act-dur">41ms</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══ Center: Incident Mode (Workspace — low-fi blocks) ═══ -->
+    <!--
+      §10: "平常時画面の上に incident workspace が dramatic に立ち上がる"
+      These are placeholder blocks representing v4 structure.
+    -->
+    <div class="center-incident">
+
+      <!-- 1. What Broke -->
+      <div>
+        <div class="ws-headline">Stripe Rate Limits Cascading into Checkout Failure</div>
+        <div class="ws-chips">
+          <span class="ws-chip">212&nbsp;span errors</span>
+          <span class="ws-chip">&minus;96&nbsp;req/s</span>
+          <span class="ws-chip" style="border-color:rgba(184,134,11,0.25);color:var(--amber);background:var(--amber-soft);">Stripe&nbsp;429s</span>
+        </div>
+      </div>
+
+      <!-- 2. Action -->
+      <div class="ws-block ws-action">
+        <div class="ws-block-label">Immediate Action</div>
+        <div class="ws-block-content">
+          <strong>Policy:</strong> Shed non-critical Stripe calls to protect checkout<br>
+          <strong>Operate:</strong> STRIPE_CIRCUIT_OPEN=true &rarr; redeploy<br>
+          <strong>Steps:</strong> Set env var &rarr; Redeploy &rarr; Watch Recovery Signal
+        </div>
+      </div>
+
+      <!-- 3. Recovery -->
+      <div class="ws-block ws-recovery">
+        <div class="ws-block-label">Recovery Signal</div>
+        <div class="ws-block-content">
+          Orders completing normally &middot; Stripe accepting requests &middot; Checkout responding fast
+        </div>
+      </div>
+
+      <!-- 4. Cause -->
+      <div class="ws-block ws-cause">
+        <div class="ws-block-label">Why This Happened</div>
+        <div class="ws-block-content">
+          Stripe 429 &rarr; No circuit breaker &rarr; 94% order failure
+        </div>
+      </div>
+
+      <!-- 5. Evidence -->
+      <div class="ws-block ws-evidence">
+        <div class="ws-block-label">Evidence</div>
+        <div class="ws-block-content">
+          18&nbsp;spans &middot; 6&nbsp;metrics &middot; 34&nbsp;logs &middot; 6&nbsp;platform &mdash; Open Evidence Studio
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Right Rail (incident only — AI Copilot) -->
+    <aside class="right-rail">
+      <div class="copilot-header">
+        <span class="copilot-title">AI Copilot</span>
+      </div>
+      <div class="copilot-placeholder">
+        <div class="cp-card">
+          <div class="cp-card-label">Uncertainty</div>
+          <div class="cp-card-text">Cannot confirm whether Stripe acknowledged the issue.</div>
+        </div>
+        <div class="cp-card">
+          <div class="cp-card-label">Confidence</div>
+          <div class="cp-card-text" style="font-family:var(--mono);font-size:var(--fs-lg);font-weight:600;color:var(--teal);">87%</div>
+        </div>
+      </div>
+      <div class="chat-placeholder">
+        <div class="chat-bubble-ai">Circuit breaker deployment is the fastest recovery path.</div>
+        <div class="chat-input-placeholder">Ask about this incident&hellip;</div>
+      </div>
+    </aside>
+
+  </div>
+</div>
+
+<!-- Dev control: simulate incident -->
+<div class="sim-control">
+  <button class="sim-btn sim-btn-incident" onclick="setMode('incident')">Simulate Incident</button>
+  <button class="sim-btn sim-btn-normal" onclick="setMode('normal')">Back to Normal</button>
+</div>
+
+<script>
+function setMode(mode) {
+  var app = document.getElementById('app');
+  app.className = 'app mode-' + mode;
+}
+</script>
+</body>
+</html>

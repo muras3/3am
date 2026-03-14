@@ -1,0 +1,1234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>3amoncall — Incident Console (main-board-v2)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* ─── Reset ─────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+button { cursor: pointer; background: none; border: none; font: inherit; }
+input  { font: inherit; }
+ol     { list-style: none; }
+
+/* ─── Design Tokens ─────────────────────────────────────────── */
+:root {
+  --bg:           #FAFAF8;
+  --panel:        #FFFFFF;
+  --panel-2:      #F5F5F2;
+  --panel-3:      #EEEEE8;
+  --ink:          #1A1A1A;
+  --ink-2:        #4A4A48;
+  --ink-3:        #6F6F68;
+  --line:         rgba(26,26,26,0.14);
+  --line-strong:  rgba(26,26,26,0.24);
+  --accent:       #E85D3A;
+  --accent-soft:  rgba(232,93,58,0.08);
+  --accent-text:  #C34425;
+  --teal:         #0D7377;
+  --teal-soft:    rgba(13,115,119,0.08);
+  --amber:        #B8860B;
+  --amber-soft:   rgba(184,134,11,0.08);
+  --good:         #2E7D52;
+  --good-soft:    rgba(46,125,82,0.08);
+  --font:         'DM Sans', system-ui, sans-serif;
+  --mono:         'JetBrains Mono', ui-monospace, monospace;
+  --radius:       6px;
+  --radius-sm:    4px;
+  --radius-xs:    2px;
+  --fs-xxs: 10px; --fs-xs: 11px; --fs-sm: 12px;
+  --fs-md:  13px; --fs-lg: 16px; --fs-xl: 20px;
+  --lh-tight: 1.2; --lh-ui: 1.35; --lh-read: 1.5;
+}
+
+/* ─── Base ───────────────────────────────────────────────────── */
+html, body { height: 100%; overflow: hidden; }
+body {
+  font-family: var(--font);
+  background: var(--bg);
+  color: var(--ink);
+  font-size: var(--fs-md);
+  line-height: var(--lh-ui);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ─── App Shell ──────────────────────────────────────────────── */
+.app {
+  width: 100%; height: 100vh;
+  display: grid;
+  grid-template-rows: 46px 1fr;
+  overflow: hidden;
+}
+
+/* ─── Top Bar ────────────────────────────────────────────────── */
+.topbar {
+  display: flex; align-items: center; gap: 14px;
+  padding: 0 16px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+  box-shadow: inset 0 -1px 0 rgba(255,255,255,0.7);
+  z-index: 10;
+}
+.topbar-logo {
+  font-size: 14px; font-weight: 700; letter-spacing: -0.03em;
+  color: var(--ink);
+  display: flex; align-items: center; gap: 6px;
+  flex-shrink: 0;
+}
+.pulse-dot {
+  display: inline-block;
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--accent);
+  animation: pulse-glow 2s ease-in-out infinite;
+}
+.topbar-sep { width: 1px; height: 20px; background: var(--line); flex-shrink: 0; }
+.topbar-incident {
+  display: flex; align-items: center; gap: 10px;
+  font-size: var(--fs-md); font-weight: 600;
+}
+.topbar-incident .inc-id {
+  font-family: var(--mono); font-size: var(--fs-xs);
+  color: var(--ink-3); font-weight: 400;
+}
+.critical-badge {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 2px 8px; border-radius: var(--radius-sm);
+  background: var(--accent-soft);
+  border: 1px solid rgba(232,93,58,0.25);
+  color: var(--accent-text);
+  font-size: var(--fs-xs); font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.04em;
+}
+.critical-badge .pulse-dot {
+  width: 5px; height: 5px;
+  animation-duration: 1.4s;
+}
+.topbar-right {
+  margin-left: auto;
+  display: flex; align-items: center; gap: 12px;
+}
+/* Merged active pill — "ACTIVE · 18m" single element */
+.active-timer {
+  display: flex; align-items: center; gap: 5px;
+  padding: 3px 8px; border-radius: var(--radius-sm);
+  background: var(--accent-soft);
+  border: 1px solid rgba(232,93,58,0.18);
+}
+.active-timer-label {
+  font-size: var(--fs-xxs); text-transform: uppercase;
+  letter-spacing: 0.06em; color: var(--accent-text); font-weight: 700;
+}
+.active-timer-sep {
+  font-size: var(--fs-xxs); color: var(--accent-text); opacity: 0.5;
+}
+.active-timer-val {
+  font-family: var(--mono); font-size: var(--fs-xs);
+  font-weight: 600; color: var(--accent-text);
+  font-variant-numeric: tabular-nums;
+}
+.topbar-ts {
+  font-family: var(--mono); font-size: var(--fs-xs); color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ─── Main 3-column grid ─────────────────────────────────────── */
+.main-grid {
+  display: grid;
+  grid-template-columns: 180px 1fr 220px;
+  height: 100%; min-height: 0;
+  overflow: hidden;
+}
+
+/* ─── Left Rail ──────────────────────────────────────────────── */
+.left-rail {
+  border-right: 1px solid var(--line);
+  background: var(--panel);
+  display: flex; flex-direction: column;
+  overflow-y: auto;
+}
+.rail-header {
+  padding: 12px 14px 8px;
+  font-size: var(--fs-xxs); font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.07em;
+  color: var(--ink-3); flex-shrink: 0;
+}
+.incident-item {
+  padding: 9px 14px;
+  border-bottom: 1px solid var(--line);
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.incident-item:hover { background: var(--panel-2); }
+.incident-item.active {
+  border-left: 2px solid var(--accent);
+  padding-left: 12px;
+  background: var(--accent-soft);
+}
+.incident-item.resolved { opacity: 0.45; }
+.inc-name {
+  font-size: var(--fs-sm); font-weight: 600; color: var(--ink);
+  display: flex; align-items: center; justify-content: space-between;
+}
+.sev-badge {
+  font-size: var(--fs-xxs); font-weight: 700; text-transform: uppercase;
+  padding: 1px 5px; border-radius: var(--radius-xs);
+}
+.sev-critical { background: var(--accent-soft); color: var(--accent-text); }
+.sev-high     { background: var(--amber-soft);  color: var(--amber); }
+.sev-medium   { background: var(--panel-2);     color: var(--ink-3); }
+.inc-route {
+  font-size: var(--fs-xxs); color: var(--ink-3); margin-top: 2px;
+  font-family: var(--mono);
+}
+.inc-age { font-size: var(--fs-xxs); color: var(--ink-3); margin-top: 2px; }
+.rail-footer {
+  margin-top: auto; padding: 10px 14px;
+  border-top: 1px solid var(--line);
+  font-size: var(--fs-xxs); color: var(--ink-3);
+}
+.rail-footer-row {
+  display: flex; justify-content: space-between; padding: 2px 0;
+}
+.rail-footer-row strong { color: var(--ink-2); font-weight: 600; }
+
+/* ─── Center Board ───────────────────────────────────────────── */
+.center-board {
+  overflow-y: auto;
+  padding: 20px 28px;
+  display: flex; flex-direction: column; gap: 18px;
+  background: var(--bg);
+}
+
+/* ─── 1. Immediate Action — THE HERO (now FIRST) ────────────── */
+.section-action {
+  padding: 18px 20px;
+  border-radius: var(--radius);
+  background: linear-gradient(135deg, rgba(232,93,58,0.07) 0%, rgba(232,93,58,0.02) 100%);
+  border: 1px solid rgba(232,93,58,0.2);
+  border-left: 3px solid var(--accent);
+  animation: fade-in 0.3s ease both;
+  flex-shrink: 0;
+}
+.action-eyebrow {
+  font-size: var(--fs-xxs); font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.07em;
+  color: var(--accent-text); margin-bottom: 12px;
+  display: flex; align-items: center; gap: 7px;
+}
+.action-eyebrow::before {
+  content: '';
+  width: 16px; height: 2px; background: var(--accent);
+  border-radius: 1px; flex-shrink: 0;
+}
+/* Preflight warning — operator check moved here */
+.preflight-warning {
+  display: flex; align-items: flex-start; gap: 7px;
+  padding: 7px 10px;
+  background: var(--amber-soft);
+  border: 1px solid rgba(184,134,11,0.22);
+  border-radius: var(--radius-sm);
+  margin-bottom: 12px;
+}
+.preflight-icon {
+  font-size: var(--fs-sm); color: var(--amber); flex-shrink: 0; line-height: 1.3;
+}
+.preflight-text {
+  font-size: var(--fs-xs); color: var(--amber); line-height: 1.4; font-weight: 500;
+}
+.action-layer-label {
+  font-size: var(--fs-xxs); font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.08em;
+  color: var(--ink-3); margin-bottom: 4px;
+}
+.action-policy { margin-bottom: 14px; }
+.action-policy-text {
+  font-size: var(--fs-lg); font-weight: 700;
+  color: var(--ink); line-height: 1.25;
+  letter-spacing: -0.02em;
+}
+.action-operate { margin-bottom: 14px; }
+.operate-box {
+  display: flex; align-items: flex-start; justify-content: space-between; gap: 10px;
+  padding: 10px 14px;
+  background: var(--ink);
+  border-radius: var(--radius-sm);
+  margin-top: 4px;
+}
+.operate-cmd-wrap { flex: 1; }
+.operate-cmd {
+  font-family: var(--mono); font-size: var(--fs-sm);
+  color: rgba(255,255,255,0.85);
+  font-weight: 500; letter-spacing: 0.01em;
+  display: block; line-height: 1.5;
+}
+.operate-cmd .var-hi { color: var(--amber); font-weight: 600; }
+.operate-cmd-comment {
+  font-family: var(--mono); font-size: var(--fs-xs);
+  color: rgba(255,255,255,0.38); display: block;
+  margin-top: 3px; line-height: 1.5;
+}
+.copy-btn {
+  flex-shrink: 0;
+  padding: 4px 10px;
+  border: 1px solid rgba(255,255,255,0.15);
+  border-radius: var(--radius-xs);
+  color: rgba(255,255,255,0.55);
+  font-size: var(--fs-xxs); font-weight: 700;
+  letter-spacing: 0.05em; text-transform: uppercase;
+  transition: background 0.15s, color 0.15s;
+  font-family: var(--font);
+  margin-top: 1px;
+}
+.copy-btn:hover { background: rgba(255,255,255,0.1); color: rgba(255,255,255,0.85); }
+.steps-list {
+  margin-top: 4px;
+  display: flex; flex-direction: column; gap: 5px;
+  counter-reset: step;
+}
+.action-step {
+  display: flex; align-items: baseline; gap: 9px;
+  font-size: var(--fs-sm); color: var(--ink-2); line-height: 1.4;
+  counter-increment: step;
+  font-variant-numeric: tabular-nums;
+}
+.action-step::before {
+  content: counter(step);
+  flex-shrink: 0;
+  width: 18px; height: 18px;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(232,93,58,0.1);
+  border: 1px solid rgba(232,93,58,0.22);
+  border-radius: 50%;
+  font-size: var(--fs-xxs); font-weight: 700; color: var(--accent-text);
+}
+.do-not-section {
+  margin-top: 14px; padding-top: 12px;
+  border-top: 1px solid rgba(232,93,58,0.12);
+  display: flex; flex-direction: column; gap: 4px;
+}
+.do-not-label {
+  font-size: var(--fs-xxs); font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.07em;
+  color: var(--ink-3); margin-bottom: 2px;
+}
+.do-not-item {
+  display: flex; align-items: flex-start; gap: 7px;
+  font-size: var(--fs-xs); color: var(--ink-2); line-height: 1.4;
+  font-weight: 500;
+}
+.do-not-mark {
+  flex-shrink: 0; font-size: var(--fs-xxs); color: var(--accent-text);
+  font-weight: 700; margin-top: 1px;
+  background: var(--accent-soft); border-radius: var(--radius-xs);
+  padding: 1px 4px;
+}
+
+/* ─── 2. What Happened ──────────────────────────────────────── */
+.section-what {
+  animation: fade-in 0.35s ease 0.05s both;
+}
+.board-headline {
+  font-size: var(--fs-xl); font-weight: 800;
+  letter-spacing: -0.03em; line-height: 1.2;
+  color: var(--ink);
+  margin-bottom: 10px;
+}
+.impact-chips {
+  display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px;
+}
+.chip {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 3px 9px; border-radius: var(--radius-sm);
+  font-size: var(--fs-xxs); font-weight: 700; letter-spacing: 0.02em;
+  font-family: var(--mono);
+  border: 1px solid var(--line);
+  background: var(--panel);
+  font-variant-numeric: tabular-nums;
+}
+.chip::before {
+  content: ''; display: block;
+  width: 4px; height: 4px; border-radius: 50%;
+  flex-shrink: 0;
+}
+.chip-critical {
+  border-color: rgba(232,93,58,0.25); color: var(--accent-text);
+  background: var(--accent-soft);
+}
+.chip-critical::before { background: var(--accent); }
+.chip-external {
+  border-color: rgba(184,134,11,0.25); color: var(--amber);
+  background: var(--amber-soft);
+}
+.chip-external::before { background: var(--amber); }
+.chip-revenue {
+  border-color: rgba(184,134,11,0.25); color: var(--amber);
+  background: var(--amber-soft);
+  font-weight: 700;
+}
+.chip-revenue::before { background: var(--amber); }
+.what-bullets {
+  padding-top: 12px; border-top: 1px solid var(--line);
+  display: flex; flex-direction: column; gap: 5px;
+}
+.what-bullet {
+  display: flex; align-items: baseline; gap: 8px;
+  font-size: var(--fs-sm); color: var(--ink-2); line-height: 1.4;
+  font-variant-numeric: tabular-nums;
+}
+.what-bullet::before {
+  content: '•'; color: var(--accent); font-weight: 700;
+  flex-shrink: 0; font-size: var(--fs-xxs); position: relative; top: -1px;
+}
+.what-bullet strong { color: var(--ink); font-weight: 600; }
+.mono-val {
+  font-family: var(--mono); font-size: var(--fs-xs);
+  background: var(--panel-3); padding: 1px 4px;
+  border-radius: var(--radius-xs); color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ─── 3. Why This Action — Causal Chain ────────────────────── */
+.section-chain {
+  animation: fade-in 0.4s ease 0.15s both;
+}
+.section-label {
+  font-size: var(--fs-xxs); font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.07em;
+  color: var(--ink-3); margin-bottom: 12px;
+}
+.chain-flow {
+  display: flex; align-items: stretch; gap: 0;
+}
+.chain-step {
+  flex: 1;
+  padding: 10px 12px 10px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--panel);
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.chain-step:hover {
+  border-color: var(--line-strong);
+  box-shadow: 0 2px 8px rgba(26,26,26,0.06);
+}
+.step-tag {
+  font-size: var(--fs-xxs); font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.07em;
+  margin-bottom: 4px;
+}
+.step-main {
+  font-size: var(--fs-sm); font-weight: 700; line-height: 1.3; color: var(--ink);
+}
+.step-detail {
+  font-size: var(--fs-xs); color: var(--ink-3); margin-top: 3px; line-height: 1.35;
+  font-variant-numeric: tabular-nums;
+}
+.chain-step[data-type="external"] { border-left: 2px solid var(--amber); }
+.chain-step[data-type="external"] .step-tag { color: var(--amber); }
+.chain-step[data-type="system"]   { border-left: 2px solid var(--teal); }
+.chain-step[data-type="system"]   .step-tag { color: var(--teal); }
+.chain-step[data-type="incident"] { border-left: 2px solid var(--accent); }
+.chain-step[data-type="incident"] .step-tag { color: var(--accent-text); }
+.chain-step[data-type="impact"]   {
+  border-left: 2px solid var(--accent);
+  border-top: 1px solid rgba(232,93,58,0.2);
+  border-right: 1px solid rgba(232,93,58,0.2);
+  border-bottom: 1px solid rgba(232,93,58,0.2);
+}
+.chain-step[data-type="impact"] .step-tag { color: var(--accent-text); }
+.chain-connector {
+  width: 28px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+}
+.chain-connector svg { overflow: visible; }
+.chain-connector line {
+  stroke: var(--ink-3); stroke-width: 1.5;
+  stroke-dasharray: 4 5;
+  animation: flow 1.5s linear infinite;
+}
+.chain-connector polygon { fill: var(--ink-3); }
+
+/* ─── 4. Bottom 2-col Grid ───────────────────────────────────── */
+.bottom-grid {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr;
+  gap: 12px;
+  animation: fade-in 0.45s ease 0.2s both;
+}
+.bottom-card {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+  background: var(--panel);
+  display: flex; flex-direction: column;
+}
+.card-title {
+  font-size: var(--fs-xxs); font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.07em;
+  color: var(--ink-3); margin-bottom: 10px;
+  flex-shrink: 0;
+}
+/* Mitigation Watch card gets subtle accent accent border to signal "live" */
+.bottom-card.watch-card {
+  border-top: 2px solid var(--accent);
+}
+/* Mitigation Watch rows */
+.watch-row {
+  display: grid; grid-template-columns: 1fr auto;
+  gap: 4px; align-items: start;
+  padding: 6px 0; border-bottom: 1px solid var(--line);
+}
+.watch-row:last-of-type { border-bottom: none; }
+.watch-row-left { display: flex; flex-direction: column; gap: 2px; }
+.watch-row-label { font-size: var(--fs-sm); font-weight: 600; color: var(--ink); line-height: 1.2; }
+.watch-row-value {
+  font-family: var(--mono); font-size: var(--fs-xs); color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+  display: flex; align-items: center; gap: 5px;
+}
+.val-current { color: var(--accent-text); font-weight: 600; }
+.val-target  { color: var(--ink-3); }
+/* Trend indicators */
+.trend {
+  font-size: var(--fs-xs); font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}
+.trend-down   { color: var(--accent); }  /* falling — bad for success rate */
+.trend-stable { color: var(--amber); }   /* stable at bad level */
+.trend-worse  { color: var(--accent); }  /* worsening latency */
+.watch-status {
+  font-size: var(--fs-xxs); font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em;
+  padding: 2px 6px; border-radius: var(--radius-xs);
+  align-self: flex-start; margin-top: 3px; flex-shrink: 0;
+}
+.ws-alert { background: var(--accent-soft); color: var(--accent-text); }
+.ws-watch { background: var(--amber-soft);  color: var(--amber); }
+.ws-ok    { background: var(--good-soft);   color: var(--good); }
+/* Evidence preview */
+.ep-row {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 5px 0; font-size: var(--fs-xs);
+  border-bottom: 1px solid var(--line);
+}
+.ep-row:last-of-type { border-bottom: none; }
+.ep-label { font-weight: 600; color: var(--ink); }
+.ep-count {
+  font-family: var(--mono); font-size: var(--fs-xxs); color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+}
+.ep-count.has-data { color: var(--teal); font-weight: 600; }
+.ep-empty-hint {
+  margin-top: 6px; padding: 6px 8px;
+  background: var(--panel-2); border-radius: var(--radius-sm);
+  border: 1px solid var(--line);
+  font-size: var(--fs-xxs); color: var(--ink-3); line-height: 1.4;
+}
+.ep-empty-hint strong { color: var(--ink-2); }
+.btn-evidence {
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+  width: 100%; margin-top: 12px;
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  background: linear-gradient(180deg, rgba(26,26,26,0.9) 0%, var(--ink) 100%);
+  color: rgba(255,255,255,0.92);
+  font-size: var(--fs-xs); font-weight: 600;
+  transition: background 0.15s, transform 0.1s;
+  border: 1px solid rgba(255,255,255,0.06);
+}
+.btn-evidence:hover  { background: linear-gradient(180deg, rgba(51,51,51,0.95) 0%, rgba(34,34,34,0.95) 100%); }
+.btn-evidence:active { transform: scale(0.98); }
+.btn-evidence .dot {
+  width: 5px; height: 5px; border-radius: 50%;
+  background: var(--accent);
+}
+
+/* ─── Right Rail ─────────────────────────────────────────────── */
+.right-rail {
+  border-left: 1px solid var(--line);
+  background: var(--panel);
+  display: flex; flex-direction: column;
+  overflow: hidden;
+}
+.copilot-header {
+  padding: 12px 14px 10px;
+  border-bottom: 1px solid var(--line);
+  flex-shrink: 0;
+}
+.copilot-header-row {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 8px;
+}
+.copilot-title {
+  font-size: var(--fs-xs); font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-3);
+}
+/* Tooltip wrapper */
+.tooltip-wrap {
+  position: relative; display: inline-flex; align-items: center;
+}
+.tooltip-wrap .tooltip-text {
+  visibility: hidden; opacity: 0;
+  position: absolute; right: 0; top: calc(100% + 6px);
+  width: 180px;
+  background: var(--ink); color: rgba(255,255,255,0.88);
+  font-size: var(--fs-xxs); line-height: 1.4;
+  padding: 6px 8px; border-radius: var(--radius-sm);
+  z-index: 20; pointer-events: none;
+  transition: opacity 0.15s;
+  font-weight: 400; letter-spacing: 0;
+  text-transform: none;
+}
+.tooltip-wrap:hover .tooltip-text {
+  visibility: visible; opacity: 1;
+}
+.grounded-badge {
+  font-size: var(--fs-xxs); font-weight: 600; color: var(--teal);
+  padding: 2px 6px; border-radius: var(--radius-xs);
+  background: var(--teal-soft);
+  border: 1px solid rgba(13,115,119,0.15);
+  cursor: default;
+}
+.confidence-block {
+  display: flex; align-items: baseline; gap: 8px; margin-bottom: 6px;
+}
+.confidence-num {
+  font-family: var(--mono); font-size: var(--fs-xl); font-weight: 600;
+  color: var(--teal); line-height: 1; letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+.confidence-meta { display: flex; flex-direction: column; gap: 1px; }
+.confidence-label {
+  font-size: var(--fs-xxs); font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-3);
+}
+.confidence-signals { font-size: var(--fs-xxs); color: var(--ink-3); }
+.confidence-bar-wrap {
+  height: 3px; background: var(--panel-3);
+  border-radius: 2px; overflow: hidden;
+}
+.confidence-bar {
+  height: 100%; width: 0; background: var(--teal);
+  border-radius: 2px;
+  transition: width 1s cubic-bezier(0.25, 1, 0.5, 1);
+}
+.copilot-cards {
+  padding: 10px 14px;
+  display: flex; flex-direction: column; gap: 8px;
+  border-bottom: 1px solid var(--line);
+  flex-shrink: 0;
+}
+.copilot-card {
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel-2);
+}
+.cc-label {
+  font-size: var(--fs-xxs); font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.06em;
+  color: var(--ink-3); margin-bottom: 3px;
+}
+.cc-text { font-size: var(--fs-xs); color: var(--ink-2); line-height: 1.4; }
+.copilot-chat {
+  flex: 1; display: flex; flex-direction: column;
+  min-height: 0; overflow: hidden;
+}
+.chat-messages {
+  flex: 1; overflow-y: auto;
+  padding: 10px 14px;
+  display: flex; flex-direction: column; gap: 8px;
+}
+.chat-bubble {
+  font-size: var(--fs-xs); line-height: 1.5;
+  padding: 7px 10px; border-radius: var(--radius-sm);
+  max-width: 100%;
+}
+.chat-bubble-assistant {
+  background: var(--panel-2); color: var(--ink);
+  border: 1px solid var(--line); align-self: flex-start;
+}
+.chat-bubble-user {
+  background: var(--teal-soft); color: var(--teal);
+  border: 1px solid rgba(13,115,119,0.15);
+  align-self: flex-end; text-align: right;
+}
+.copilot-footer {
+  padding: 10px 14px;
+  border-top: 1px solid var(--line);
+  flex-shrink: 0;
+}
+.ask-label {
+  font-size: var(--fs-xxs); font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.06em;
+  color: var(--ink-3); margin-bottom: 6px;
+}
+.ask-chips { display: flex; flex-direction: column; gap: 4px; margin-bottom: 8px; }
+.ask-chip {
+  font-size: var(--fs-xs); color: var(--teal);
+  padding: 5px 8px;
+  border: 1px solid rgba(13,115,119,0.15);
+  border-radius: var(--radius-sm);
+  background: var(--teal-soft);
+  cursor: pointer;
+  transition: background 0.15s;
+  text-align: left; line-height: 1.3;
+}
+.ask-chip:hover { background: rgba(13,115,119,0.14); }
+.chat-input-row {
+  display: flex; align-items: center; gap: 6px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 5px 8px;
+  background: var(--bg);
+}
+.chat-input-field {
+  flex: 1; font-size: var(--fs-xs); color: var(--ink);
+  background: transparent; border: none; outline: none;
+  font-family: inherit;
+}
+.chat-input-field::placeholder { color: var(--ink-3); }
+.send-btn {
+  font-size: var(--fs-xxs); font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.05em;
+  color: var(--teal);
+  padding: 4px 8px; border-radius: var(--radius-xs);
+  transition: background 0.15s;
+}
+.send-btn:hover { background: var(--teal-soft); }
+
+/* ─── Animations ─────────────────────────────────────────────── */
+@keyframes pulse-glow {
+  0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(232,93,58,0.5); }
+  50%       { opacity: 0.7; box-shadow: 0 0 0 4px rgba(232,93,58,0); }
+}
+@keyframes flow {
+  from { stroke-dashoffset: 0; }
+  to   { stroke-dashoffset: -18; }
+}
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ─── Evidence Studio Overlay ─────────────────────────────────── */
+.overlay {
+  position: fixed; inset: 0;
+  background: rgba(26,26,26,0.35);
+  backdrop-filter: blur(2px);
+  display: none; align-items: center; justify-content: center;
+  z-index: 100;
+}
+.overlay.open { display: flex; }
+.evidence-modal {
+  width: min(1100px, calc(100vw - 40px));
+  height: calc(100vh - 80px); max-height: 720px;
+  background: var(--bg);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  display: flex; flex-direction: column;
+  animation: fade-in 0.22s ease both;
+  overflow: hidden;
+}
+.modal-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--line);
+  flex-shrink: 0;
+}
+.modal-eyebrow {
+  font-size: var(--fs-xxs); font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.07em; color: var(--ink-3);
+}
+.modal-title {
+  font-size: var(--fs-lg); font-weight: 700; color: var(--ink); margin-top: 2px;
+}
+.btn-close {
+  padding: 6px 14px; border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  font-size: var(--fs-xs); font-weight: 600; color: var(--ink-2);
+  background: var(--panel); transition: background 0.15s;
+}
+.btn-close:hover { background: var(--panel-2); }
+/* Improved empty state with guidance */
+.modal-empty {
+  flex: 1; display: flex; align-items: center; justify-content: center;
+  flex-direction: column; gap: 10px; padding: 40px;
+}
+.modal-empty-icon {
+  font-size: 2rem; opacity: 0.2; user-select: none;
+}
+.modal-empty-label {
+  font-size: var(--fs-md); font-weight: 600; color: var(--ink-3);
+}
+.modal-empty-reason {
+  font-size: var(--fs-sm); color: var(--ink-3); text-align: center; max-width: 360px; line-height: 1.5;
+}
+.modal-empty-action {
+  margin-top: 4px;
+  display: flex; flex-direction: column; gap: 6px; align-items: center;
+}
+.modal-empty-action-item {
+  font-size: var(--fs-xs); color: var(--ink-2); line-height: 1.4; text-align: center;
+  padding: 6px 14px; border: 1px solid var(--line);
+  border-radius: var(--radius-sm); background: var(--panel);
+  max-width: 380px;
+}
+.modal-empty-action-item strong { color: var(--teal); font-weight: 600; }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- ══ Top Bar ═════════════════════════════════════════════════ -->
+  <header class="topbar">
+    <div class="topbar-logo">
+      <span class="pulse-dot" aria-label="Live — active incident"></span>
+      3amoncall
+    </div>
+    <div class="topbar-sep"></div>
+    <div class="topbar-incident">
+      <span class="inc-id">inc_e15e747d</span>
+      checkout-service
+    </div>
+    <div class="critical-badge">
+      <span class="pulse-dot" aria-hidden="true"></span>
+      Critical
+    </div>
+    <div class="topbar-right">
+      <span class="topbar-ts">05:24:15 UTC</span>
+      <div class="topbar-sep"></div>
+      <!-- Merged: "ACTIVE · 18m" — no duplicate -->
+      <div class="active-timer" aria-label="Incident active for 18 minutes">
+        <span class="active-timer-label">Active</span>
+        <span class="active-timer-sep">·</span>
+        <span class="active-timer-val">18m</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- ══ Main 3-column Grid ═════════════════════════════════════ -->
+  <div class="main-grid">
+
+    <!-- ── Left Rail ──────────────────────────────────────────── -->
+    <aside class="left-rail">
+      <div class="rail-header">Open Incidents</div>
+
+      <div class="incident-item active">
+        <div class="inc-name">
+          checkout-service
+          <span class="sev-badge sev-critical">crit</span>
+        </div>
+        <div class="inc-route">/api/checkout</div>
+        <div class="inc-age">18m ago · open</div>
+      </div>
+
+      <div class="incident-item">
+        <div class="inc-name">
+          auth-service
+          <span class="sev-badge sev-high">high</span>
+        </div>
+        <div class="inc-route">/api/auth/token</div>
+        <div class="inc-age">2h ago · open</div>
+      </div>
+
+      <div class="incident-item resolved">
+        <div class="inc-name">
+          image-resize
+          <span class="sev-badge sev-medium">med</span>
+        </div>
+        <div class="inc-route">/api/upload</div>
+        <div class="inc-age">yesterday · resolved</div>
+      </div>
+
+      <div class="rail-footer">
+        <div class="rail-footer-row">
+          <span>Open now</span>
+          <strong>2 incidents</strong>
+        </div>
+        <div class="rail-footer-row">
+          <span>Last 24h</span>
+          <strong>3 total</strong>
+        </div>
+      </div>
+    </aside>
+
+    <!-- ── Center Board ───────────────────────────────────────── -->
+    <!-- SECTION ORDER (v2): 1. Immediate Action  2. What Happened  3. Why This Action  4. Bottom 2-col -->
+    <main class="center-board">
+
+      <!-- 1 · Immediate Action — THE HERO (moved first) -->
+      <section class="section-action" aria-label="Immediate Action">
+        <div class="action-eyebrow">Immediate Action</div>
+
+        <!-- Preflight warning — moved from right rail Operator Check -->
+        <div class="preflight-warning" role="alert">
+          <span class="preflight-icon" aria-hidden="true">⚠</span>
+          <span class="preflight-text">
+            <strong>Preflight:</strong> Verify <code style="font-family: var(--mono); font-size: var(--fs-xxs); background: rgba(184,134,11,0.15); padding: 1px 4px; border-radius: 2px;">STRIPE_CIRCUIT_OPEN</code> is not already set before deploying.
+          </span>
+        </div>
+
+        <div class="action-policy">
+          <div class="action-layer-label">Policy</div>
+          <div class="action-policy-text">
+            Shed non-critical Stripe calls immediately to protect checkout path.
+          </div>
+        </div>
+
+        <div class="action-operate">
+          <div class="action-layer-label">Operate</div>
+          <div class="operate-box">
+            <div class="operate-cmd-wrap">
+              <span class="operate-cmd">
+                <span class="var-hi">STRIPE_CIRCUIT_OPEN</span>=true &rarr; redeploy checkout-service
+              </span>
+              <span class="operate-cmd-comment"># Vercel: Dashboard &rarr; checkout-service &rarr; Settings &rarr; Env Vars</span>
+              <span class="operate-cmd-comment"># Railway: railway variables set STRIPE_CIRCUIT_OPEN=true</span>
+            </div>
+            <button class="copy-btn" id="copy-btn" aria-label="Copy command to clipboard">Copy</button>
+          </div>
+        </div>
+
+        <div class="action-steps">
+          <div class="action-layer-label">Steps</div>
+          <ol class="steps-list">
+            <li class="action-step">
+              Set <span class="mono-val">STRIPE_CIRCUIT_OPEN=true</span> in checkout-service env via your platform dashboard
+            </li>
+            <li class="action-step">
+              Redeploy checkout-service
+              <span style="color: var(--ink-3);">(ETA ~2 min)</span>
+            </li>
+            <li class="action-step">
+              Verify order success rate recovers in Mitigation Watch below
+            </li>
+          </ol>
+        </div>
+
+        <div class="do-not-section" aria-label="Do not do these things">
+          <div class="do-not-label">Do not</div>
+          <div class="do-not-item">
+            <span class="do-not-mark" aria-hidden="true">✕</span>
+            Do not restart the database — it is unrelated to this incident and will delay recovery.
+          </div>
+          <div class="do-not-item">
+            <span class="do-not-mark" aria-hidden="true">✕</span>
+            Do not scale checkout-service replicas — the bottleneck is Stripe rate limits, not instance capacity.
+          </div>
+        </div>
+      </section>
+
+      <!-- 2 · What Happened -->
+      <section class="section-what" aria-label="What Happened">
+        <div class="board-headline">
+          Stripe Rate Limits Cascading into Checkout Failure
+        </div>
+        <div class="impact-chips" aria-label="Impact summary">
+          <span class="chip chip-critical">212 span errors</span>
+          <span class="chip chip-critical">−96 req/s</span>
+          <span class="chip chip-external">Stripe 429s</span>
+          <!-- Revenue impact chip moved here from causal chain Impact card -->
+          <span class="chip chip-revenue">~$2.1k/hr</span>
+        </div>
+        <div class="what-bullets">
+          <div class="what-bullet">
+            Stripe API rejecting requests with <span class="mono-val">HTTP 429</span> since
+            <span class="mono-val">05:06 UTC</span>
+          </div>
+          <div class="what-bullet">
+            <strong>checkout-service has no circuit breaker</strong> — all checkout requests now fail
+          </div>
+          <div class="what-bullet">
+            Order completion rate dropped <strong>94%</strong> in last 15 minutes
+          </div>
+        </div>
+      </section>
+
+      <!-- 3 · Why This Action — Causal Chain -->
+      <section class="section-chain" aria-label="Causal chain">
+        <div class="section-label">Why This Action</div>
+        <div class="chain-flow">
+          <div class="chain-step" data-type="external">
+            <div class="step-tag">External</div>
+            <div class="step-main">Stripe API &rarr; HTTP 429</div>
+            <div class="step-detail">Rate limited since 05:06 UTC &middot; 847/min</div>
+          </div>
+          <div class="chain-connector" aria-hidden="true">
+            <svg width="28" height="12" viewBox="0 0 28 12">
+              <line x1="0" y1="6" x2="22" y2="6"/>
+              <polygon points="20,2 28,6 20,10"/>
+            </svg>
+          </div>
+          <div class="chain-step" data-type="system">
+            <div class="step-tag">System</div>
+            <div class="step-main">No circuit breaker</div>
+            <div class="step-detail">Requests flood Stripe &middot; no retry limit</div>
+          </div>
+          <div class="chain-connector" aria-hidden="true">
+            <svg width="28" height="12" viewBox="0 0 28 12">
+              <line x1="0" y1="6" x2="22" y2="6"/>
+              <polygon points="20,2 28,6 20,10"/>
+            </svg>
+          </div>
+          <div class="chain-step" data-type="incident">
+            <div class="step-tag">Incident</div>
+            <div class="step-main">94% order failure rate</div>
+            <div class="step-detail">212 span errors &middot; &minus;96 req/s throughput</div>
+          </div>
+          <div class="chain-connector" aria-hidden="true">
+            <svg width="28" height="12" viewBox="0 0 28 12">
+              <line x1="0" y1="6" x2="22" y2="6"/>
+              <polygon points="20,2 28,6 20,10"/>
+            </svg>
+          </div>
+          <div class="chain-step" data-type="impact">
+            <div class="step-tag">Impact</div>
+            <div class="step-main">Revenue &amp; customers</div>
+            <div class="step-detail">Customers see checkout failures</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 4 · Bottom 2-col Grid (Impact & Timeline removed) -->
+      <div class="bottom-grid">
+
+        <!-- Mitigation Watch — weighted 1.2fr, top accent border -->
+        <div class="bottom-card watch-card" aria-label="Mitigation Watch">
+          <div class="card-title">Mitigation Watch</div>
+
+          <div class="watch-row">
+            <div class="watch-row-left">
+              <div class="watch-row-label">Order success rate</div>
+              <div class="watch-row-value">
+                <span class="val-current">6%</span>
+                <span class="trend trend-down" aria-label="trend: still falling">↓</span>
+                <span class="val-target">target &gt;90%</span>
+              </div>
+            </div>
+            <span class="watch-status ws-alert">alert</span>
+          </div>
+
+          <div class="watch-row">
+            <div class="watch-row-left">
+              <div class="watch-row-label">Stripe 429 rate</div>
+              <div class="watch-row-value">
+                <span class="val-current">847/min</span>
+                <span class="trend trend-stable" aria-label="trend: stable">→</span>
+                <span class="val-target">&lt;10/min</span>
+              </div>
+            </div>
+            <span class="watch-status ws-watch">watch</span>
+          </div>
+
+          <div class="watch-row">
+            <div class="watch-row-left">
+              <div class="watch-row-label">Checkout latency p95</div>
+              <div class="watch-row-value">
+                <span class="val-current">8.2s</span>
+                <span class="trend trend-worse" aria-label="trend: worsening">↑</span>
+                <span class="val-target">&lt;500ms</span>
+              </div>
+            </div>
+            <span class="watch-status ws-alert">alert</span>
+          </div>
+        </div>
+
+        <!-- Evidence Preview -->
+        <div class="bottom-card" aria-label="Evidence Preview">
+          <div class="card-title">Evidence Preview</div>
+
+          <div class="ep-row">
+            <span class="ep-label">Traces</span>
+            <span class="ep-count has-data">18 spans</span>
+          </div>
+          <div class="ep-row">
+            <span class="ep-label">Metrics</span>
+            <span class="ep-count has-data">6 metrics</span>
+          </div>
+          <div class="ep-row">
+            <span class="ep-label">Logs</span>
+            <span class="ep-count has-data">34 entries</span>
+          </div>
+          <div class="ep-row">
+            <span class="ep-label">Platform</span>
+            <span class="ep-count">0 entries</span>
+          </div>
+          <div class="ep-empty-hint">
+            <strong>Platform logs:</strong> No entries collected. Ensure the receiver is configured with a platform event endpoint.
+          </div>
+
+          <button class="btn-evidence" id="open-studio-btn" aria-label="Open Evidence Studio for this incident">
+            <span class="dot" aria-hidden="true"></span>
+            Open Evidence Studio
+          </button>
+        </div>
+
+      </div><!-- /bottom-grid -->
+
+    </main><!-- /center-board -->
+
+    <!-- ── Right Rail: AI Copilot ─────────────────────────────── -->
+    <aside class="right-rail" aria-label="AI Copilot">
+
+      <div class="copilot-header">
+        <div class="copilot-header-row">
+          <span class="copilot-title">AI Copilot</span>
+          <div class="tooltip-wrap">
+            <span class="grounded-badge" tabindex="0" aria-describedby="grounded-tooltip">grounded</span>
+            <div class="tooltip-text" id="grounded-tooltip" role="tooltip">
+              Analysis grounded in telemetry signals from this incident
+            </div>
+          </div>
+        </div>
+        <div class="confidence-block">
+          <span class="confidence-num" aria-label="87% confidence">87%</span>
+          <div class="confidence-meta">
+            <span class="confidence-label">Confidence</span>
+            <span class="confidence-signals">Based on 4 signals</span>
+          </div>
+        </div>
+        <div class="confidence-bar-wrap" role="progressbar" aria-valuenow="87" aria-valuemin="0" aria-valuemax="100" aria-label="Confidence 87%">
+          <div class="confidence-bar" id="confidence-bar"></div>
+        </div>
+      </div>
+
+      <div class="copilot-cards">
+        <div class="copilot-card">
+          <div class="cc-label">Uncertainty</div>
+          <div class="cc-text">Cannot confirm whether Stripe acknowledged the issue or if this is account-specific throttling.</div>
+        </div>
+        <!-- Operator Check remains in right rail as secondary reference — primary moved to preflight in action card -->
+        <div class="copilot-card">
+          <div class="cc-label">Competing Hypothesis</div>
+          <div class="cc-text">Account-level Stripe throttling vs. shared rate limit pool. Check your Stripe dashboard for quota warnings.</div>
+        </div>
+      </div>
+
+      <div class="copilot-chat">
+        <div class="chat-messages" id="chat-messages" aria-live="polite" aria-label="AI Copilot conversation">
+          <div class="chat-bubble chat-bubble-assistant">
+            Circuit breaker deployment is the fastest recovery path. Want me to walk through the Stripe rate limit signals?
+          </div>
+        </div>
+
+        <div class="copilot-footer">
+          <div class="ask-label">Ask About</div>
+          <div class="ask-chips">
+            <button class="ask-chip" onclick="quickAsk('Could this still be deploy-related?')">Could this still be deploy-related?</button>
+            <button class="ask-chip" onclick="quickAsk('What tells us the action worked?')">What tells us the action worked?</button>
+            <button class="ask-chip" onclick="quickAsk('What competing hypothesis remains?')">What competing hypothesis remains?</button>
+          </div>
+          <div class="chat-input-row">
+            <input
+              class="chat-input-field"
+              id="chat-input"
+              type="text"
+              placeholder="Ask about this incident&#x2026;"
+              onkeydown="if(event.key==='Enter') sendChat()"
+              aria-label="Ask a question about this incident"
+            />
+            <button class="send-btn" onclick="sendChat()" aria-label="Send message">Send</button>
+          </div>
+        </div>
+      </div>
+
+    </aside>
+
+  </div><!-- /main-grid -->
+</div><!-- /app -->
+
+<!-- ══ Evidence Studio Overlay ══════════════════════════════════ -->
+<div class="overlay" id="overlay" onclick="if(event.target===this) closeOverlay()" role="dialog" aria-modal="true" aria-label="Evidence Studio">
+  <div class="evidence-modal">
+    <div class="modal-header">
+      <div>
+        <div class="modal-eyebrow">Evidence Studio</div>
+        <div class="modal-title">inc_e15e747d &middot; checkout-service</div>
+      </div>
+      <button class="btn-close" onclick="closeOverlay()" aria-label="Close Evidence Studio">Close</button>
+    </div>
+    <!-- Improved empty state with reason + next action -->
+    <div class="modal-empty" role="status">
+      <div class="modal-empty-icon" aria-hidden="true">&#9672;</div>
+      <div class="modal-empty-label">Evidence collecting&hellip;</div>
+      <div class="modal-empty-reason">
+        Full telemetry views (Metrics, Traces, Logs, Platform Logs) are rendered in the React app. This static mock shows the empty state.
+      </div>
+      <div class="modal-empty-action">
+        <div class="modal-empty-action-item">
+          <strong>Next:</strong> Run the receiver locally and open <code style="font-family: var(--mono); font-size: var(--fs-xxs);">/incidents/:id/evidence</code> to see live data
+        </div>
+        <div class="modal-empty-action-item">
+          If no evidence appears, verify the OTel collector is forwarding to the receiver endpoint
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ─── Evidence Studio overlay ──────────────────────────────────
+document.getElementById('open-studio-btn').addEventListener('click', function() {
+  document.getElementById('overlay').classList.add('open');
+});
+function closeOverlay() {
+  document.getElementById('overlay').classList.remove('open');
+}
+
+// ─── Copy button ──────────────────────────────────────────────
+document.getElementById('copy-btn').addEventListener('click', function() {
+  if (navigator.clipboard) {
+    navigator.clipboard.writeText('STRIPE_CIRCUIT_OPEN=true');
+  }
+  this.textContent = '✓ Copied';
+  setTimeout(() => { this.textContent = 'Copy'; }, 1200);
+});
+
+// ─── Confidence bar animate on load ───────────────────────────
+window.addEventListener('DOMContentLoaded', function() {
+  setTimeout(function() {
+    document.getElementById('confidence-bar').style.width = '87%';
+  }, 300);
+});
+
+// ─── Chat simulation ──────────────────────────────────────────
+var canned = {
+  'Could this still be deploy-related?':
+    'Unlikely — the error pattern starts with Stripe 429s, not an internal restart. No deployments in the last 2 hours match this timeline.',
+  'What tells us the action worked?':
+    'Watch for Stripe 429 rate dropping below 10/min within 2 minutes of deploy, then order success rate recovering above 90% over 5 minutes.',
+  'What competing hypothesis remains?':
+    'Account-level Stripe throttling is the main alternative — check your Stripe dashboard for rate limit quota warnings. Also worth ruling out a sudden traffic spike.'
+};
+
+function appendBubble(text, role) {
+  var el = document.createElement('div');
+  el.className = 'chat-bubble chat-bubble-' + role;
+  el.textContent = text;
+  var msgs = document.getElementById('chat-messages');
+  msgs.appendChild(el);
+  msgs.scrollTop = msgs.scrollHeight;
+}
+
+function quickAsk(text) {
+  appendBubble(text, 'user');
+  setTimeout(function() {
+    var reply = canned[text] || 'Good question — that requires digging deeper into the evidence. Open Evidence Studio to review the raw spans.';
+    appendBubble(reply, 'assistant');
+  }, 400);
+}
+
+function sendChat() {
+  var input = document.getElementById('chat-input');
+  var text = input.value.trim();
+  if (!text) return;
+  input.value = '';
+  quickAsk(text);
+}
+</script>
+</body>
+</html>
