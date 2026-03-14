@@ -117,7 +117,9 @@ esac
 log "Starting validation stack (remaining services)${COMPOSE_PROFILE:+ (profile: $COMPOSE_PROFILE)}..."
 cd "$SCRIPT_DIR"
 if [[ -n "$COMPOSE_PROFILE" ]]; then
-  RECEIVER_ENDPOINT="$RECEIVER_ENDPOINT" docker compose --profile "$COMPOSE_PROFILE" up -d --wait
+  # Start profile-specific services but scale scenario-runner to 0 to prevent it from
+  # auto-running a scenario (which would put web workers in an active state before our reset).
+  RECEIVER_ENDPOINT="$RECEIVER_ENDPOINT" docker compose --profile "$COMPOSE_PROFILE" up -d --wait --scale scenario-runner=0
 else
   RECEIVER_ENDPOINT="$RECEIVER_ENDPOINT" docker compose up -d --wait otel-collector postgres mock-stripe web loadgen
 fi

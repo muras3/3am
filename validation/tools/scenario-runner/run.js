@@ -19,6 +19,8 @@ const migrationRunnerUrl = process.env.MIGRATION_RUNNER_URL || "http://migration
 const cdnBaseUrl = process.env.CDN_BASE_URL || "http://mock-cdn:3001";
 const sendgridAdminUrl = process.env.SENDGRID_ADMIN_URL || "http://mock-sendgrid:6001";
 const webV2BaseUrl = process.env.WEB_V2_BASE_URL || "http://web-v2:3000";
+const receiverEndpoint = process.env.RECEIVER_ENDPOINT || "";
+const receiverAuthToken = process.env.RECEIVER_AUTH_TOKEN || "";
 
 function requestJson(method, urlString, body) {
   const url = new URL(urlString);
@@ -75,6 +77,47 @@ async function waitForHealth(urlString, label) {
     await sleep(1000);
   }
   throw new Error(`timed out waiting for ${label}`);
+}
+
+async function sendPlatformEventToReceiver(event) {
+  if (!receiverEndpoint) {
+    process.stdout.write("[platform-events] RECEIVER_ENDPOINT not set, skipping\n");
+    return;
+  }
+  const url = `${receiverEndpoint}/v1/platform-events`;
+  const payload = JSON.stringify({ events: [event] });
+  const urlObj = new URL(url);
+  return new Promise((resolve) => {
+    const headers = {
+      "Content-Type": "application/json",
+      "Content-Length": Buffer.byteLength(payload),
+    };
+    if (receiverAuthToken) headers["Authorization"] = `Bearer ${receiverAuthToken}`;
+    const lib = urlObj.protocol === "https:" ? require("https") : http;
+    const req = lib.request(
+      {
+        method: "POST",
+        hostname: urlObj.hostname,
+        port: urlObj.port || (urlObj.protocol === "https:" ? 443 : 80),
+        path: urlObj.pathname,
+        headers,
+      },
+      (res) => {
+        let data = "";
+        res.on("data", (chunk) => { data += chunk; });
+        res.on("end", () => {
+          process.stdout.write(`[platform-events] POST ${url} → ${res.statusCode} ${data.slice(0, 200)}\n`);
+          resolve();
+        });
+      }
+    );
+    req.on("error", (err) => {
+      process.stderr.write(`[platform-events] POST failed: ${err.message}\n`);
+      resolve();
+    });
+    req.write(payload);
+    req.end();
+  });
 }
 
 async function postJsonOrThrow(urlString, body, label) {
@@ -363,8 +406,9 @@ async function main() {
     await waitForHealth(`${webV2BaseUrl}/health`, "web-v2");
   }
 
-  await postJsonOrThrow(`${webBaseUrl}/__admin/reset`, { runId }, "reset web state");
   await postJsonOrThrow(`${loadgenControlUrl}/__admin/reset`, undefined, "reset loadgen");
+  await sleep(300); // let in-flight requests drain before resetting web worker pool
+  await postJsonOrThrow(`${webBaseUrl}/__admin/reset`, { runId }, "reset web state");
   await postJsonOrThrow(`${stripeAdminUrl}/reset`, undefined, "reset mock-stripe");
   if (isMigrationScenario) {
     await postJsonOrThrow(`${migrationRunnerUrl}/__admin/reset`, undefined, "reset migration-runner");
@@ -446,6 +490,17 @@ async function main() {
       target: "mock-sendgrid",
       action: endpoint,
       body
+    });
+    await sendPlatformEventToReceiver({
+      eventType: "config_change",
+      timestamp: firstSymptomOracle,
+      environment: "validation",
+      description: "SendGrid API key rotated: key_v1 revoked, key_v2 active on new deployment",
+      service: "mock-sendgrid",
+      details: {
+        revoked_key_prefix: "key_v1",
+        scenario: "secrets_rotation_partial_propagation",
+      },
     });
   } else {
     const faultAction = scenario.fault_injection.action || {};
