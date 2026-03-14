@@ -31,10 +31,10 @@ async function handleOrder(res, orderId, ctx) {
         await sleep(15);
         const order = state.orders.get(orderId);
         if (!order) {
-          span.setAttributes({ "http.status_code": 404 });
+          span.setAttributes({ "http.response.status_code": 404 });
           return { statusCode: 404, payload: { error: "order not found", orderId } };
         }
-        span.setAttributes({ "http.status_code": 200 });
+        span.setAttributes({ "http.response.status_code": 200 });
         return { statusCode: 200, payload: order };
       }, config.orderTimeoutMs);
       histograms.orderDuration.record(Date.now() - startedAt, runAttrs({ route: "/orders/:id" }));

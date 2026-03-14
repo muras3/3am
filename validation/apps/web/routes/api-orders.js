@@ -99,7 +99,7 @@ async function handleApiOrders(req, res, ctx) {
         }, config.checkoutTimeoutMs || 30000);
 
         histograms.orderDuration.record(Date.now() - startedAt, runAttrs({ route: "/api/orders" }));
-        span.setAttributes({ "http.status_code": result.statusCode });
+        span.setAttributes({ "http.response.status_code": result.statusCode });
         sendJson(res, result.statusCode, {
           ...result.payload,
           durationMs: Date.now() - startedAt

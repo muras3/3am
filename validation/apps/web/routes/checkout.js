@@ -30,7 +30,7 @@ async function handleCheckout(req, res, body, ctx) {
           log("info", "checkout completed", { orderId, queueWaitMs, paymentAttempts: payment.attempt });
           span.setAttributes({
             "payment.attempts": payment.attempt,
-            "http.status_code": 200
+            "http.response.status_code": 200
           });
           return { statusCode: 200, payload: order };
         }
@@ -41,7 +41,7 @@ async function handleCheckout(req, res, body, ctx) {
         log("error", "checkout failed after retries", { orderId, queueWaitMs, paymentAttempts: payment.attempt });
         span.setAttributes({
           "payment.attempts": payment.attempt,
-          "http.status_code": 504
+          "http.response.status_code": 504
         });
         span.setStatus({ code: SpanStatusCode.ERROR, message: "payment retries exhausted" });
         return {
