@@ -56,6 +56,7 @@ function handleNotificationsSend(req, res, ctx) {
         });
 
         span.setAttributes({
+          "peer.service": "sendgrid",
           "http.response.status_code": response.statusCode,
           "deployment.id": deploymentId,
           "sendgrid.key_revoked": response.statusCode === 401
