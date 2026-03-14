@@ -1410,6 +1410,24 @@ describe("Formation: dependency-based incident grouping (OC-1 to OC-6)", () => {
     expect(items[0].packet.scope.primaryService).toBe("checkout-service");
   });
 
+  // OC-11: INTERNAL 429 spans (OTel SDK version quirk: SERVER reported as INTERNAL) do not trigger
+  it("OC-11: INTERNAL span (kind=1) returning 429 does not create an incident", async () => {
+    // Some OTel SDK versions export SERVER spans as kind=1 (INTERNAL) instead of kind=2 (SERVER).
+    // The 429 non-trigger rule must apply to INTERNAL spans as well.
+    const result = await postTraces(app, makeSpanPayload({
+      serviceName: "mock-stripe",
+      httpStatusCode: 429,
+      spanStatusCode: 2,  // instrumentation may set ERROR alongside 429
+      spanKind: 1,        // INTERNAL — mislabeled SERVER due to OTel SDK quirk
+    }));
+
+    expect(result.status).toBe("ok");
+    expect(result.incidentId).toBeUndefined();
+
+    const { items } = await getIncidents(app);
+    expect(items).toHaveLength(0);
+  });
+
   // OC-10: SERVER 429-only batch appends anomalous signals to existing incident (evidence retention)
   it("OC-10: SERVER 429-only batch appends signals to matching existing incident without creating a new one", async () => {
     // Step 1: create an incident with a trigger span (SERVER 500, no peerService)

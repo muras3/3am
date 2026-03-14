@@ -182,6 +182,7 @@ services:
       # Receiver running on host machine. Override with RECEIVER_ENDPOINT env var.
       # On Linux: use host gateway IP instead of host.docker.internal.
       RECEIVER_ENDPOINT: "${RECEIVER_ENDPOINT:-http://host.docker.internal:4319}"
+      RECEIVER_AUTH_TOKEN: "${RECEIVER_AUTH_TOKEN:-}"
     volumes:
       - ./otel/collector-config.yaml:/etc/otelcol/config.yaml:ro
       - ./out/collector:/var/lib/otel

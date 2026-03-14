@@ -278,14 +278,23 @@ describe('isIncidentTrigger', () => {
     expect(isIncidentTrigger({ ...base, httpStatusCode: 429, spanStatusCode: 2, spanKind: 2 })).toBe(false)
   })
 
-  // ── Non-SERVER 429 IS a trigger ───────────────────────────────────────────
+  // ── INTERNAL 429 is also NOT a trigger (OTel SDK quirk: SERVER exported as INTERNAL) ──────
+
+  it('returns false for INTERNAL span (kind=1) with HTTP 429', () => {
+    // Some OTel SDK versions export SERVER spans as INTERNAL due to API vs OTLP enum offset.
+    // Mock-stripe is a known case: tracer.startActiveSpan("stripe.charge", { kind: SpanKind.SERVER })
+    // results in kind=1 in the exported protobuf. Apply the same conservative rule as SERVER 429.
+    expect(isIncidentTrigger({ ...base, httpStatusCode: 429, spanKind: 1 })).toBe(false)
+  })
+
+  it('returns false for INTERNAL span (kind=1) with HTTP 429 even when spanStatus=ERROR', () => {
+    expect(isIncidentTrigger({ ...base, httpStatusCode: 429, spanStatusCode: 2, spanKind: 1 })).toBe(false)
+  })
+
+  // ── Non-SERVER/INTERNAL 429 IS a trigger ──────────────────────────────────
 
   it('returns true for CLIENT span (kind=3) with HTTP 429 — being rate-limited by upstream', () => {
     expect(isIncidentTrigger({ ...base, httpStatusCode: 429, spanKind: 3 })).toBe(true)
-  })
-
-  it('returns true for INTERNAL span (kind=1) with HTTP 429', () => {
-    expect(isIncidentTrigger({ ...base, httpStatusCode: 429, spanKind: 1 })).toBe(true)
   })
 
   it('returns true for HTTP 429 when spanKind is absent — backward compatible safe default', () => {
