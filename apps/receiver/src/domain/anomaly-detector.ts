@@ -19,14 +19,11 @@ const SLOW_SPAN_THRESHOLD_MS = 5000
 // OTel span kind value for server-side spans (https://opentelemetry.io/docs/specs/otel/trace/api/#spankind)
 const SPAN_KIND_SERVER = 2
 
-// HTTP status codes with special anomaly trigger semantics
-const HTTP_RATE_LIMITED = 429
-
 export function isAnomalous(span: ExtractedSpan): boolean {
   if (span.httpStatusCode !== undefined && span.httpStatusCode >= 500) {
     return true
   }
-  if (span.httpStatusCode === HTTP_RATE_LIMITED) {
+  if (span.httpStatusCode === 429) {
     return true
   }
   if (span.spanStatusCode === 2) {
@@ -65,10 +62,18 @@ export function isAnomalous(span: ExtractedSpan): boolean {
  * and may be attached to an existing incident's rawState; they just cannot start a new one.
  */
 export function isIncidentTrigger(span: ExtractedSpan): boolean {
-  // SERVER 429 is deliberate rate-limiting — not a failure that should open an incident.
-  // This takes precedence over spanStatus=ERROR which the instrumentation may also set.
-  if (span.httpStatusCode === 429 && span.spanKind === SPAN_KIND_SERVER) {
-    return false
+  if (span.spanKind === SPAN_KIND_SERVER) {
+    if (span.httpStatusCode !== undefined) {
+      // HTTP server span: httpStatusCode is the authoritative signal.
+      // 4xx responses (incl. 429 rate-limiting) are deliberate decisions, not failures.
+      return span.httpStatusCode >= 500
+    }
+    // Non-HTTP server span (gRPC, messaging, etc.): use span status and other signals.
+    return (
+      span.spanStatusCode === 2 ||
+      span.durationMs > SLOW_SPAN_THRESHOLD_MS ||
+      span.exceptionCount > 0
+    )
   }
   return isAnomalous(span)
 }
