@@ -1,4 +1,4 @@
-const { SpanStatusCode } = require("@opentelemetry/api");
+const { SpanKind, SpanStatusCode } = require("@opentelemetry/api");
 
 async function handleCheckout(req, res, body, ctx) {
   const { state, config, counters, histograms, enqueueWork, callPayment, sendJson, log, runAttrs } = ctx;
@@ -7,7 +7,7 @@ async function handleCheckout(req, res, body, ctx) {
   counters.checkoutRequestCounter.add(1, runAttrs({ route: "/checkout" }));
   const orderId = `ord_${String(state.nextOrderId++).padStart(6, "0")}`;
   const startedAt = Date.now();
-  return ctx.tracer.startActiveSpan("checkout.request", async (span) => {
+  return ctx.tracer.startActiveSpan("checkout.request", { kind: SpanKind.SERVER }, async (span) => {
     span.setAttributes({
       "app.route": "/checkout",
       "app.order_id": orderId,

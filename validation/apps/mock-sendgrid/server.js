@@ -1,7 +1,7 @@
 const http = require("http");
 const fs = require("fs");
 const { URL } = require("url");
-const { trace, SpanStatusCode } = require("@opentelemetry/api");
+const { trace, SpanKind, SpanStatusCode } = require("@opentelemetry/api");
 const { logs } = require("@opentelemetry/api-logs");
 const { NodeSDK } = require("@opentelemetry/sdk-node");
 const { BatchLogRecordProcessor } = require("@opentelemetry/sdk-logs");
@@ -127,7 +127,7 @@ async function main() {
     }
 
     if (req.method === "POST" && url.pathname === "/v3/mail/send") {
-      await tracer.startActiveSpan("sendgrid.send", async (span) => {
+      await tracer.startActiveSpan("sendgrid.send", { kind: SpanKind.SERVER }, async (span) => {
         try {
           const authHeader = req.headers["authorization"] || "";
           const key = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";

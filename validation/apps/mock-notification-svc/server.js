@@ -1,7 +1,7 @@
 const http = require("http");
 const fs = require("fs");
 const { URL } = require("url");
-const { trace, SpanStatusCode } = require("@opentelemetry/api");
+const { trace, SpanKind, SpanStatusCode } = require("@opentelemetry/api");
 const { logs } = require("@opentelemetry/api-logs");
 const { NodeSDK } = require("@opentelemetry/sdk-node");
 const { BatchLogRecordProcessor } = require("@opentelemetry/sdk-logs");
@@ -131,7 +131,7 @@ async function main() {
         return;
       }
 
-      await tracer.startActiveSpan("notification.call", async (span) => {
+      await tracer.startActiveSpan("notification.call", { kind: SpanKind.SERVER }, async (span) => {
         const actualWait = state.mode === "slow" ? state.slowLatencyMs : state.latencyMs;
         span.setAttributes({
           "notification.latency_ms": actualWait,

@@ -2,7 +2,7 @@ const http = require("http");
 const net = require("net");
 const fs = require("fs");
 const { URL } = require("url");
-const { trace, metrics, SpanStatusCode } = require("@opentelemetry/api");
+const { trace, metrics, SpanKind, SpanStatusCode } = require("@opentelemetry/api");
 const { logs } = require("@opentelemetry/api-logs");
 const { OTLPLogExporter } = require("@opentelemetry/exporter-logs-otlp-http");
 const { NodeSDK } = require("@opentelemetry/sdk-node");
@@ -232,7 +232,7 @@ function requestJson(method, urlString, body) {
 }
 
 async function callPayment(orderId) {
-  return tracer.startActiveSpan("payment.charge", async (span) => {
+  return tracer.startActiveSpan("payment.charge", { kind: SpanKind.CLIENT }, async (span) => {
     let attempt = 0;
     try {
       for (;;) {
