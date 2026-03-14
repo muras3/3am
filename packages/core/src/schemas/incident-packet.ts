@@ -39,11 +39,26 @@ export const RepresentativeTraceSchema = z.object({
 
 export type RepresentativeTrace = z.infer<typeof RepresentativeTraceSchema>;
 
+export const PlatformEventSchema = z.object({
+  eventType: z.enum(["deploy", "config_change", "provider_incident", "scaling_event"]),
+  timestamp: z.string(),
+  environment: z.string(),
+  description: z.string(),
+  service: z.string().optional(),
+  deploymentId: z.string().optional(),
+  releaseVersion: z.string().optional(),
+  provider: z.string().optional(),
+  eventId: z.string().optional(),
+  details: z.record(z.string(), z.unknown()).optional(),
+}).strict();
+
+export type PlatformEvent = z.infer<typeof PlatformEventSchema>;
+
 const EvidenceSchema = z.object({
   changedMetrics: z.array(z.unknown()),   // Phase C: typed when metric ingest is implemented
   representativeTraces: z.array(RepresentativeTraceSchema),
   relevantLogs: z.array(z.unknown()),     // Phase C: typed when log ingest is implemented
-  platformEvents: z.array(z.unknown()),   // Phase C: typed when platform-events is implemented
+  platformEvents: z.array(PlatformEventSchema),
 }).strict();
 
 const PointersSchema = z.object({

@@ -1,4 +1,5 @@
 .mcp.json
+.claude/
 .worktrees/
 node_modules/
 dist/
@@ -7,13 +8,24 @@ bundle/
 *.tsbuildinfo
 test-results/
 playwright-report/
+.DS_Store
 
 # CodeQL
 codeql_*.db/
 
 # Staging env (contains real auth token — never commit)
+validation/.env
 validation/.env.staging
 .vercel
 
 # Staging reports (local screenshots/notes — not for OSS)
 validation/reports/
+
+# Local debug artifacts
+apps/console/.tmp-*
+
+# Misgenerated local outputs in diagnosis src
+packages/diagnosis/src/*.js
+packages/diagnosis/src/*.js.map
+packages/diagnosis/src/*.d.ts
+packages/diagnosis/src/*.d.ts.map

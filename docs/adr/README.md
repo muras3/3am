@@ -28,3 +28,8 @@
 - [0024-storage-implementation-with-drizzle.md](/Users/murase/project/3amoncall/docs/adr/0024-storage-implementation-with-drizzle.md)
 - [0025-phase1-performance-and-responsiveness-guardrails.md](/Users/murase/project/3amoncall/docs/adr/0025-phase1-performance-and-responsiveness-guardrails.md)
 - [0026-monorepo-package-structure.md](/Users/murase/project/3amoncall/docs/adr/0026-monorepo-package-structure.md)
+- [0027-ai-copilot-chat-contract.md](/Users/murase/project/3amoncall/docs/adr/0027-ai-copilot-chat-contract.md)
+- [0028-receiver-serves-console.md](/Users/murase/project/3amoncall/docs/adr/0028-receiver-serves-console.md)
+- [0029-ambient-read-model.md](/Users/murase/project/3amoncall/docs/adr/0029-ambient-read-model.md)
+- [0030-incident-state-and-packet-rebuild.md](/Users/murase/project/3amoncall/docs/adr/0030-incident-state-and-packet-rebuild.md)
+- [0031-platform-event-contract.md](/Users/murase/project/3amoncall/docs/adr/0031-platform-event-contract.md)

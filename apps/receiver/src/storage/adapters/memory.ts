@@ -1,4 +1,4 @@
-import type { IncidentPacket, DiagnosisResult, ThinEvent } from "@3amoncall/core";
+import type { IncidentPacket, DiagnosisResult, PlatformEvent, ThinEvent } from "@3amoncall/core";
 import type { ExtractedSpan } from "../../domain/anomaly-detector.js";
 import type { AnomalousSignal, Incident, IncidentPage, IncidentRawState, StorageDriver } from "../interface.js";
 import { createEmptyRawState, mergeEvidenceIntoPacket } from "../interface.js";
@@ -72,6 +72,12 @@ export class MemoryAdapter implements StorageDriver {
     const incident = this.incidents.get(incidentId);
     if (!incident) return;
     incident.rawState.anomalousSignals.push(...signals);
+  }
+
+  async appendPlatformEvents(incidentId: string, events: PlatformEvent[]): Promise<void> {
+    const incident = this.incidents.get(incidentId);
+    if (!incident) return;
+    incident.rawState.platformEvents.push(...events);
   }
 
   async getRawState(incidentId: string): Promise<IncidentRawState | null> {

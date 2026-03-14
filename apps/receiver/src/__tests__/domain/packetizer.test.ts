@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest'
-import { IncidentPacketSchema } from '@3amoncall/core'
+import { IncidentPacketSchema, type PlatformEvent } from '@3amoncall/core'
 import {
   buildAnomalousSignals,
+  buildPlatformLogRef,
   createPacket,
   rebuildPacket,
   selectPrimaryService,
@@ -257,12 +258,10 @@ describe('rebuildPacket', () => {
     const evidence = {
       changedMetrics: [{ name: 'p99', value: 2000 }],
       relevantLogs: [{ message: 'error log' }],
-      platformEvents: [{ type: 'deploy' }],
     }
     const packet = rebuildPacket('inc_1', 'pkt_1', '2023-11-14T22:13:20.000Z', rawState, evidence)
     expect(packet.evidence.changedMetrics).toEqual(evidence.changedMetrics)
     expect(packet.evidence.relevantLogs).toEqual(evidence.relevantLogs)
-    expect(packet.evidence.platformEvents).toEqual(evidence.platformEvents)
   })
 
   it('existingEvidence defaults to empty arrays when not provided', () => {
@@ -360,6 +359,35 @@ describe('rebuildPacket', () => {
     expect(JSON.stringify(p1)).toBe(JSON.stringify(p2))
   })
 
+  it('derives platformEvents and platformLogRefs from rawState deterministically', () => {
+    const deployEvent: PlatformEvent = {
+      eventType: 'deploy',
+      timestamp: '2023-11-14T22:13:21.000Z',
+      environment: 'production',
+      description: 'checkout deploy',
+      service: 'api-service',
+    }
+    const providerEvent: PlatformEvent = {
+      eventType: 'provider_incident',
+      timestamp: '2023-11-14T22:13:22.000Z',
+      environment: 'production',
+      description: 'stripe degraded',
+      provider: 'stripe',
+      eventId: 'evt_provider_1',
+    }
+
+    const packet = rebuildPacket('inc_1', 'pkt_1', '2023-11-14T22:13:20.000Z', {
+      ...rawState,
+      platformEvents: [deployEvent, providerEvent],
+    })
+
+    expect(packet.evidence.platformEvents).toEqual([deployEvent, providerEvent])
+    expect(packet.pointers.platformLogRefs).toEqual([
+      '2023-11-14T22:13:21.000Z:deploy:api-service',
+      'evt_provider_1',
+    ])
+  })
+
   it('representativeTraces capped at 10 spans', () => {
     // Use 15 spans across distinct service:route keys so route diversity cap
     // does not apply — the only cap that matters is MAX_REPRESENTATIVE_TRACES (10).
@@ -380,6 +408,27 @@ describe('rebuildPacket', () => {
   })
 })
 
+describe('buildPlatformLogRef', () => {
+  it('uses eventId when available', () => {
+    expect(buildPlatformLogRef({
+      eventType: 'provider_incident',
+      timestamp: '2023-11-14T22:13:20.000Z',
+      environment: 'production',
+      description: 'stripe degraded',
+      eventId: 'evt_platform_1',
+    })).toBe('evt_platform_1')
+  })
+
+  it('falls back to deterministic composite key', () => {
+    expect(buildPlatformLogRef({
+      eventType: 'scaling_event',
+      timestamp: '2023-11-14T22:13:20.000Z',
+      environment: 'production',
+      description: 'autoscaled',
+      provider: 'kubernetes',
+    })).toBe('2023-11-14T22:13:20.000Z:scaling_event:kubernetes')
+  })
+})
 // =============================================================================
 // 2a. Top anomaly guarantee tests
 // =============================================================================

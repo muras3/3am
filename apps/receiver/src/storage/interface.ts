@@ -1,4 +1,4 @@
-import type { IncidentPacket, DiagnosisResult, ThinEvent } from "@3amoncall/core";
+import type { IncidentPacket, DiagnosisResult, PlatformEvent, ThinEvent } from "@3amoncall/core";
 import type { ExtractedSpan } from "../domain/anomaly-detector.js";
 
 export interface AnomalousSignal {
@@ -13,7 +13,7 @@ export interface IncidentRawState {
   anomalousSignals: AnomalousSignal[];
   metricEvidence: unknown[];    // Plan 6 で typed 化
   logEvidence: unknown[];       // Plan 6 で typed 化
-  platformEvents: unknown[];    // Plan 5 で活性化
+  platformEvents: PlatformEvent[];
 }
 
 export function createEmptyRawState(): IncidentRawState {
@@ -81,6 +81,8 @@ export interface StorageDriver {
   appendSpans(incidentId: string, spans: ExtractedSpan[]): Promise<void>;
 
   appendAnomalousSignals(incidentId: string, signals: AnomalousSignal[]): Promise<void>;
+
+  appendPlatformEvents(incidentId: string, events: PlatformEvent[]): Promise<void>;
 
   getRawState(incidentId: string): Promise<IncidentRawState | null>;
 
