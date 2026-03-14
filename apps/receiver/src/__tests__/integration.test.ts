@@ -1409,4 +1409,41 @@ describe("Formation: dependency-based incident grouping (OC-1 to OC-6)", () => {
     expect(items).toHaveLength(1);
     expect(items[0].packet.scope.primaryService).toBe("checkout-service");
   });
+
+  // OC-10: SERVER 429-only batch appends anomalous signals to existing incident (evidence retention)
+  it("OC-10: SERVER 429-only batch appends signals to matching existing incident without creating a new one", async () => {
+    // Step 1: create an incident with a trigger span (SERVER 500, no peerService)
+    const r1 = await postTraces(app, makeSpanPayload({
+      serviceName: "api-service",
+      httpStatusCode: 500,
+      spanStatusCode: 2,
+      startTimeUnixNano: "1741392000000000000",
+    }));
+    const incidentId = r1.incidentId!;
+    expect(incidentId).toBeDefined();
+
+    const rawStateBefore = await storage.getRawState(incidentId);
+    const signalCountBefore = rawStateBefore?.anomalousSignals.length ?? 0;
+    expect(signalCountBefore).toBeGreaterThan(0); // sanity: initial trigger appended signals
+
+    // Step 2: POST a SERVER 429-only batch (same service+env, within window).
+    // isIncidentTrigger returns false (no new incident), but isAnomalous returns true
+    // (429 is an anomalous signal that should be retained as evidence).
+    const r2 = await postTraces(app, makeSpanPayload({
+      serviceName: "api-service",
+      httpStatusCode: 429,
+      spanStatusCode: 2,
+      spanKind: 2, // SERVER
+      startTimeUnixNano: "1741392060000000000", // 1 min later, within 5-min window
+    }));
+
+    // No new incident
+    expect(r2.incidentId).toBeUndefined();
+    const { items } = await getIncidents(app);
+    expect(items).toHaveLength(1);
+
+    // The 429 signal must be appended to the existing incident's rawState
+    const rawStateAfter = await storage.getRawState(incidentId);
+    expect(rawStateAfter?.anomalousSignals.length).toBeGreaterThan(signalCountBefore);
+  });
 });

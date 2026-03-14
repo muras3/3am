@@ -7,6 +7,7 @@ import type { StorageDriver } from "../storage/interface.js";
 import type { SpanBuffer } from "../ambient/span-buffer.js";
 import {
   extractSpans,
+  isAnomalous,
   isIncidentTrigger,
 } from "../domain/anomaly-detector.js";
 import {
@@ -109,12 +110,13 @@ export function createIngestRouter(storage: StorageDriver, spanBuffer?: SpanBuff
     const spans = extractSpans(body);
     spans.forEach((span) => spanBuffer?.push({ ...span, ingestedAt: Date.now() }));
 
-    // Filter to incident-trigger-eligible spans only (span-kind-aware rule table).
-    // isIncidentTrigger excludes e.g. SERVER 429 spans (deliberate rate-limiting)
-    // which are anomalous evidence but should not open a new incident.
+    // signalSpans: all anomalous spans (isAnomalous) — for evidence/signal recording.
+    // triggerSpans: subset eligible to open a new incident (isIncidentTrigger) —
+    //   e.g. SERVER 429 is anomalous evidence but must not open a new incident.
     // Sorted by (startTimeMs asc, serviceName asc) for deterministic primaryService
     // selection — same algorithm as Plan 3 selectPrimaryService().
-    const anomalousSpans = spans
+    const signalSpans = spans.filter(isAnomalous);
+    const triggerSpans = signalSpans
       .filter(isIncidentTrigger)
       .sort((a, b) =>
         a.startTimeMs !== b.startTimeMs
@@ -122,12 +124,16 @@ export function createIngestRouter(storage: StorageDriver, spanBuffer?: SpanBuff
           : a.serviceName.localeCompare(b.serviceName),
       );
 
-    if (anomalousSpans.length === 0) {
+    if (signalSpans.length === 0) {
       return c.json({ status: "ok" });
     }
 
-    const formationKey = buildFormationKey(anomalousSpans);
-    const signalTimeMs = anomalousSpans[0].startTimeMs;
+    // Formation key and signal time: use triggerSpans when available (preserves
+    // existing behavior for new-incident creation); fall back to signalSpans for
+    // evidence-only batches that have no trigger-eligible spans (e.g. SERVER 429).
+    const anchorSpans = triggerSpans.length > 0 ? triggerSpans : signalSpans;
+    const formationKey = buildFormationKey(anchorSpans);
+    const signalTimeMs = anchorSpans[0].startTimeMs;
 
     // Find existing open incident for this formation key within window.
     // Phase C: paginate through all pages (cursor loop) so matches are not
@@ -137,12 +143,22 @@ export function createIngestRouter(storage: StorageDriver, spanBuffer?: SpanBuff
       shouldAttachToIncident(formationKey, incident, signalTimeMs),
     );
 
+    // Evidence-only path: anomalous signals but no trigger-eligible spans.
+    // Append to existing incident as evidence; do not create a new incident.
+    if (triggerSpans.length === 0) {
+      if (existing) {
+        await storage.appendSpans(existing.incidentId, spans);
+        await storage.appendAnomalousSignals(existing.incidentId, buildAnomalousSignals(signalSpans));
+      }
+      return c.json({ status: "ok" });
+    }
+
     const isNew = !existing;
     const incidentId = existing ? existing.incidentId : "inc_" + randomUUID();
     // Use signal time (not server clock) so formation window is anchored to telemetry
     const openedAt = existing
       ? existing.openedAt
-      : new Date(anomalousSpans[0].startTimeMs).toISOString();
+      : new Date(triggerSpans[0].startTimeMs).toISOString();
 
     if (isNew) {
       // Pass all spans (not just anomalous) so the packet captures the full
@@ -153,8 +169,9 @@ export function createIngestRouter(storage: StorageDriver, spanBuffer?: SpanBuff
       await storage.createIncident(packet);
       // ADR 0030: save all spans and anomalous signals to raw state so future
       // rebuilds have the complete incident history as their single source of truth.
+      // signalSpans (isAnomalous) is used for evidence — broader than triggerSpans.
       await storage.appendSpans(incidentId, spans);
-      await storage.appendAnomalousSignals(incidentId, buildAnomalousSignals(anomalousSpans));
+      await storage.appendAnomalousSignals(incidentId, buildAnomalousSignals(signalSpans));
       const thinEvent = {
         event_id: "evt_" + randomUUID(),
         event_type: "incident.created" as const,
@@ -172,7 +189,7 @@ export function createIngestRouter(storage: StorageDriver, spanBuffer?: SpanBuff
     // rebuild the packet so later signals are reflected in the canonical view.
     // packetId is stable across rebuilds (thin event reference remains valid).
     await storage.appendSpans(incidentId, spans);
-    await storage.appendAnomalousSignals(incidentId, buildAnomalousSignals(anomalousSpans));
+    await storage.appendAnomalousSignals(incidentId, buildAnomalousSignals(signalSpans));
     const rawState = await storage.getRawState(incidentId);
     if (rawState !== null) {
       const generation = (existing.packet.generation ?? 1) + 1;
