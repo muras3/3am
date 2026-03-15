@@ -14,3 +14,7 @@ services:
       # No fallback — .env.staging must provide both values explicitly.
       RECEIVER_ENDPOINT: "${RECEIVER_ENDPOINT}"
       RECEIVER_AUTH_TOKEN: "${RECEIVER_AUTH_TOKEN}"
+  scenario-runner:
+    environment:
+      RECEIVER_ENDPOINT: "${RECEIVER_ENDPOINT}"
+      RECEIVER_AUTH_TOKEN: "${RECEIVER_AUTH_TOKEN}"

@@ -10,7 +10,10 @@
     "dev": "turbo dev"
   },
   "devDependencies": {
-    "turbo": "^2.x"
+    "turbo": "^2.x",
+    "@3amoncall/diagnosis": "workspace:*",
+    "@3amoncall/core": "workspace:*",
+    "tsx": "^4.0.0"
   },
   "pnpm": {
     "onlyBuiltDependencies": [

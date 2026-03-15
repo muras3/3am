@@ -11,6 +11,15 @@ importers:
 
   .:
     devDependencies:
+      '@3amoncall/core':
+        specifier: workspace:*
+        version: link:packages/core
+      '@3amoncall/diagnosis':
+        specifier: workspace:*
+        version: link:packages/diagnosis
+      tsx:
+        specifier: ^4.0.0
+        version: 4.21.0
       turbo:
         specifier: ^2.x
         version: 2.8.14

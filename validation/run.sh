@@ -47,7 +47,7 @@ cleanup() {
 trap cleanup EXIT
 
 # ── 1. Prereqs ────────────────────────────────────────────────────────────────
-if [[ -z "${ANTHROPIC_API_KEY:-}" ]]; then
+if [[ -z "${ANTHROPIC_API_KEY:-}" && "${USE_CLAUDE_CLI:-0}" != "1" ]]; then
   log "ANTHROPIC_API_KEY not set — LLM diagnosis will be skipped"
 fi
 
@@ -144,10 +144,12 @@ if [[ "$INCIDENT_COUNT" -eq 0 ]]; then
 fi
 
 # ── 6. LLM Diagnosis ─────────────────────────────────────────────────────────
-if [[ -n "${ANTHROPIC_API_KEY:-}" ]]; then
+if [[ -n "${ANTHROPIC_API_KEY:-}" || "${USE_CLAUDE_CLI:-0}" == "1" ]]; then
   log "Running LLM diagnosis (max $MAX_DIAGNOSES call(s))..."
   cd "$REPO_ROOT"
+  USE_CLAUDE_CLI="${USE_CLAUDE_CLI:-0}" \
   MAX_DIAGNOSES="$MAX_DIAGNOSES" \
+  DIAGNOSIS_MODEL="${DIAGNOSIS_MODEL:-claude-sonnet-4-6}" \
     RECEIVER_BASE_URL="$RECEIVER_BASE_URL" \
     npx tsx "$SCRIPT_DIR/tools/local-diagnose.ts"
 else
