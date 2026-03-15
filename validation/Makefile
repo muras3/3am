@@ -16,16 +16,19 @@
 # Legacy railway shortcuts (same as railway-*):
 #   make up / make run SCENARIO=<id> / make down
 
-SCENARIO  ?= third_party_api_rate_limit_cascade
-DB        ?= 0
-DIAGNOSE  ?= 0
-FAST_MODE ?= 1
+SCENARIO        ?= third_party_api_rate_limit_cascade
+DB              ?= 0
+DIAGNOSE        ?= 0
+FAST_MODE       ?= 1
+USE_CLAUDE_CLI  ?= 0
+DIAGNOSIS_MODEL ?= claude-sonnet-4-6
+MAX_DIAGNOSES   ?= 1
 
 COMPOSE_FILES := -f docker-compose.yml -f docker-compose.staging.yml
 ENV_FILE      ?= .env.staging
 DC            := docker compose $(COMPOSE_FILES) --env-file $(ENV_FILE)
 
-.PHONY: local railway railway-up railway-run railway-down up run down ps logs check-env help
+.PHONY: local railway railway-up railway-run railway-down railway-diagnose up run down ps logs check-env help
 
 # ── Local ────────────────────────────────────────────────────────────────────
 
@@ -33,6 +36,9 @@ local:
 	@cd .. && \
 	  $(if $(filter 1,$(DB)),DATABASE_URL=postgres://validation:validation@localhost:5432/validation) \
 	  $(if $(filter 1,$(DIAGNOSE)),ANTHROPIC_API_KEY=$(ANTHROPIC_API_KEY)) \
+	  USE_CLAUDE_CLI=$(USE_CLAUDE_CLI) \
+	  DIAGNOSIS_MODEL=$(DIAGNOSIS_MODEL) \
+	  MAX_DIAGNOSES=$(MAX_DIAGNOSES) \
 	  FAST_MODE=$(FAST_MODE) bash validation/run.sh $(SCENARIO)
 
 # ── Railway ──────────────────────────────────────────────────────────────────
@@ -47,6 +53,18 @@ railway-run: check-env
 
 railway-down:
 	@[ -f $(ENV_FILE) ] && $(DC) down || docker compose down
+
+# Run diagnosis against Railway receiver using CLI (no API charges)
+# Prerequisite: make railway must have completed (incident must exist on Railway)
+railway-diagnose: check-env
+	@export $$(grep -v '^#' $(ENV_FILE) | xargs) && \
+	  cd .. && \
+	  RECEIVER_BASE_URL=$$RECEIVER_ENDPOINT \
+	  RECEIVER_AUTH_TOKEN=$$RECEIVER_AUTH_TOKEN \
+	  USE_CLAUDE_CLI=$(USE_CLAUDE_CLI) \
+	  DIAGNOSIS_MODEL=$(DIAGNOSIS_MODEL) \
+	  MAX_DIAGNOSES=$(MAX_DIAGNOSES) \
+	  npx tsx validation/tools/local-diagnose.ts
 
 # Legacy aliases (backward compat)
 up: railway-up
@@ -79,7 +97,10 @@ help:
 	@echo "Local testing (receiver on host):"
 	@echo "  make local                          run scenario with MemoryAdapter"
 	@echo "  make local DB=1                     + Postgres persistence"
-	@echo "  make local DIAGNOSE=1               + LLM diagnosis"
+	@echo "  make local DIAGNOSE=1               + LLM diagnosis (API key)"
+	@echo "  make local DIAGNOSE=1 USE_CLAUDE_CLI=1              Max plan (no charge)"
+	@echo "  make local DIAGNOSE=1 USE_CLAUDE_CLI=1 DIAGNOSIS_MODEL=claude-opus-4-6"
+	@echo "  make local DIAGNOSE=1 USE_CLAUDE_CLI=1 DIAGNOSIS_MODEL=gpt-5.4"
 	@echo "  make local SCENARIO=<id>            specific scenario"
 	@echo ""
 	@echo "Railway staging:"
@@ -88,6 +109,9 @@ help:
 	@echo "  make railway-run                    run scenario"
 	@echo "  make railway-run SCENARIO=<id>      specific scenario"
 	@echo "  make railway-down                   tear down"
+	@echo "  make railway-diagnose USE_CLAUDE_CLI=1              diagnose Railway incident via CLI"
+	@echo "  make railway-diagnose USE_CLAUDE_CLI=1 DIAGNOSIS_MODEL=claude-opus-4-6"
+	@echo "  make railway-diagnose USE_CLAUDE_CLI=1 DIAGNOSIS_MODEL=gpt-5.4"
 	@echo ""
 	@echo "Utilities:"
 	@echo "  make check-env                      verify .env.staging"

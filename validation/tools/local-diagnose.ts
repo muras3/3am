@@ -10,13 +10,17 @@
  * Environment variables:
  *   RECEIVER_BASE_URL   - Default: http://localhost:4319
  *   RECEIVER_AUTH_TOKEN - Bearer token (omit if ALLOW_INSECURE_DEV_MODE=true)
- *   ANTHROPIC_API_KEY   - Required for LLM calls
+ *   ANTHROPIC_API_KEY   - Required for LLM calls (not needed when USE_CLAUDE_CLI=1)
+ *   USE_CLAUDE_CLI      - Set to "1" to use claude/codex CLI instead of Anthropic SDK
  *   MAX_DIAGNOSES       - Hard limit on LLM calls (default: 1)
  *   POLL_INTERVAL_MS    - Polling interval in ms (default: 5000)
  *   POLL_ROUNDS         - Max polling rounds before exit (default: 12)
  *   DIAGNOSIS_MODEL     - Model to use (default: claude-sonnet-4-6)
+ *                         claude-* → claude --print (Max plan, no API charge)
+ *                         gpt-*   → codex exec    (OpenAI subscription)
  */
-import { diagnose } from "@3amoncall/diagnosis";
+import { spawnSync } from "child_process";
+import { diagnose, buildPrompt, parseResult } from "@3amoncall/diagnosis";
 import type { IncidentPacket, DiagnosisResult } from "@3amoncall/core";
 
 const BASE_URL = process.env["RECEIVER_BASE_URL"] ?? "http://localhost:4319";
@@ -24,6 +28,7 @@ const MAX_DIAGNOSES = Number(process.env["MAX_DIAGNOSES"] ?? "1");
 const POLL_INTERVAL_MS = Number(process.env["POLL_INTERVAL_MS"] ?? "5000");
 const POLL_ROUNDS = Number(process.env["POLL_ROUNDS"] ?? "12");
 const MODEL = process.env["DIAGNOSIS_MODEL"] ?? "claude-sonnet-4-6";
+const USE_CLAUDE_CLI = process.env["USE_CLAUDE_CLI"] === "1";
 
 interface Incident {
   incidentId: string;
@@ -57,6 +62,49 @@ async function postDiagnosis(incidentId: string, result: DiagnosisResult): Promi
   }
 }
 
+/**
+ * Calls the appropriate CLI backend based on model prefix.
+ * claude-* → claude --print (Max plan)
+ * gpt-*    → codex exec     (OpenAI subscription)
+ */
+function callCli(prompt: string, model: string): string {
+  if (model.startsWith("claude-")) {
+    const proc = spawnSync("claude", ["--print", "--model", model], {
+      input: prompt,
+      encoding: "utf8",
+      timeout: 120_000,
+    });
+    if (proc.status !== 0) {
+      throw new Error(`claude --print failed (exit ${proc.status}): ${proc.stderr}`);
+    }
+    return proc.stdout;
+  }
+  // OpenAI via codex CLI (e.g. gpt-5.4)
+  const proc = spawnSync("codex", ["exec", "-c", `model="${model}"`], {
+    input: prompt,
+    encoding: "utf8",
+    timeout: 300_000,
+  });
+  if (proc.status !== 0) {
+    throw new Error(`codex exec failed (exit ${proc.status}): ${proc.stderr}`);
+  }
+  return proc.stdout;
+}
+
+async function diagnoseSingle(incident: Incident): Promise<DiagnosisResult> {
+  if (USE_CLAUDE_CLI) {
+    const prompt = buildPrompt(incident.packet);
+    const raw = callCli(prompt, MODEL);
+    return parseResult(raw, {
+      incidentId: incident.incidentId,
+      packetId: incident.packet.packetId,
+      model: `cli/${MODEL}`,
+      promptVersion: "v5",
+    });
+  }
+  return diagnose(incident.packet, { model: MODEL });
+}
+
 async function runDiagnoses(
   diagnosisCount: number,
 ): Promise<{ count: number; hadPending: boolean }> {
@@ -77,7 +125,7 @@ async function runDiagnoses(
       `[local-diagnose] diagnosing ${incident.incidentId} (call ${diagnosisCount + 1}/${MAX_DIAGNOSES})`,
     );
     try {
-      const result = await diagnose(incident.packet, { model: MODEL });
+      const result = await diagnoseSingle(incident);
       await postDiagnosis(incident.incidentId, result);
       console.log(
         `[local-diagnose] ✓ ${incident.incidentId} — ${result.summary.what_happened.slice(0, 80)}…`,
@@ -91,12 +139,13 @@ async function runDiagnoses(
 }
 
 async function main() {
-  if (!process.env["ANTHROPIC_API_KEY"]) {
+  if (!USE_CLAUDE_CLI && !process.env["ANTHROPIC_API_KEY"]) {
     console.error("[local-diagnose] ANTHROPIC_API_KEY is not set");
     process.exit(1);
   }
+  const backend = USE_CLAUDE_CLI ? `cli/${MODEL}` : `sdk/${MODEL}`;
   console.log(
-    `[local-diagnose] starting — base=${BASE_URL} model=${MODEL} maxCalls=${MAX_DIAGNOSES}`,
+    `[local-diagnose] starting — base=${BASE_URL} backend=${backend} maxCalls=${MAX_DIAGNOSES}`,
   );
 
   let diagnosisCount = 0;
