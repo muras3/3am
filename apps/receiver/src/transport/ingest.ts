@@ -10,7 +10,7 @@ import type { SpanBuffer } from "../ambient/span-buffer.js";
 import {
   extractSpans,
   isAnomalous,
-  isIncidentTrigger,
+  selectIncidentTriggerSpans,
 } from "../domain/anomaly-detector.js";
 import {
   buildFormationKey,
@@ -166,8 +166,7 @@ export function createIngestRouter(storage: StorageDriver, spanBuffer?: SpanBuff
     // Sorted by (startTimeMs asc, serviceName asc) for deterministic primaryService
     // selection — same algorithm as Plan 3 selectPrimaryService().
     const signalSpans = spans.filter(isAnomalous);
-    const triggerSpans = signalSpans
-      .filter(isIncidentTrigger)
+    const triggerSpans = selectIncidentTriggerSpans(signalSpans)
       .sort((a, b) =>
         a.startTimeMs !== b.startTimeMs
           ? a.startTimeMs - b.startTimeMs
@@ -215,7 +214,7 @@ export function createIngestRouter(storage: StorageDriver, spanBuffer?: SpanBuff
       // incident-scoped evidence bundle per ADR 0016/0018 (affectedServices,
       // representativeTraces, traceRefs include healthy sibling spans).
       // triggerSignals is computed inside createPacket by re-filtering isAnomalous.
-      const packet = createPacket(incidentId, openedAt, spans);
+      const packet = createPacket(incidentId, openedAt, spans, formationKey.primaryService);
       await storage.createIncident(packet);
       // ADR 0030: save all spans and anomalous signals to raw state so future
       // rebuilds have the complete incident history as their single source of truth.

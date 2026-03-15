@@ -5,6 +5,7 @@ import protobuf from "protobufjs";
 import { MemoryAdapter } from "../storage/adapters/memory.js";
 import { createApp } from "../index.js";
 import { MAX_REPRESENTATIVE_TRACES } from "../domain/packetizer.js";
+import { secretsRotationReplayPayload } from "./fixtures/scenarios/06-secrets-rotation-replay.js";
 
 // ── Protobuf encode helpers ────────────────────────────────────────────────────
 const _require = createRequire(import.meta.url);
@@ -1406,6 +1407,49 @@ function makeSpanPayload(opts: {
   };
 }
 
+function makeBatchPayload(serviceName: string, spans: Array<{
+  traceId: string;
+  spanId: string;
+  startTimeUnixNano: string;
+  httpStatusCode: number;
+  spanStatusCode: number;
+  spanKind?: number;
+  peerService?: string;
+}>): { resourceSpans: object[] } {
+  return {
+    resourceSpans: [
+      {
+        resource: {
+          attributes: [
+            { key: "service.name", value: { stringValue: serviceName } },
+            { key: "deployment.environment.name", value: { stringValue: "production" } },
+          ],
+        },
+        scopeSpans: [
+          {
+            spans: spans.map((span) => ({
+              traceId: span.traceId,
+              spanId: span.spanId,
+              name: span.spanId,
+              ...(span.spanKind !== undefined ? { kind: span.spanKind } : {}),
+              startTimeUnixNano: span.startTimeUnixNano,
+              endTimeUnixNano: String(BigInt(span.startTimeUnixNano) + BigInt(500_000_000)),
+              status: { code: span.spanStatusCode },
+              attributes: [
+                { key: "http.route", value: { stringValue: "/notifications/send" } },
+                { key: "http.response.status_code", value: { intValue: span.httpStatusCode } },
+                ...(span.peerService
+                  ? [{ key: "peer.service", value: { stringValue: span.peerService } }]
+                  : []),
+              ],
+            })),
+          },
+        ],
+      },
+    ],
+  };
+}
+
 async function postTraces(
   app: ReturnType<typeof createApp>,
   payload: object,
@@ -1623,6 +1667,114 @@ describe("Formation: dependency-based incident grouping (OC-1 to OC-6)", () => {
     expect(items).toHaveLength(0);
   });
 
+  it("OC-12: repeated dependency 401 spans create an incident for the calling service", async () => {
+    const result = await postTraces(
+      app,
+      makeBatchPayload("validation-web", [
+        {
+          traceId: "dep401-trace-1",
+          spanId: "dep401-span-1",
+          startTimeUnixNano: "1741392000000000000",
+          httpStatusCode: 401,
+          spanStatusCode: 2,
+          spanKind: 1,
+          peerService: "sendgrid",
+        },
+        {
+          traceId: "dep401-trace-2",
+          spanId: "dep401-span-2",
+          startTimeUnixNano: "1741392001000000000",
+          httpStatusCode: 401,
+          spanStatusCode: 2,
+          spanKind: 1,
+          peerService: "sendgrid",
+        },
+      ]),
+    );
+
+    expect(result.incidentId).toBeDefined();
+
+    const incident = await (await app.request(`/api/incidents/${result.incidentId}`)).json() as {
+      packet: {
+        scope: { primaryService: string; affectedDependencies: string[] };
+        evidence: { representativeTraces: Array<{ httpStatusCode?: number; serviceName: string }> };
+      };
+    };
+
+    expect(incident.packet.scope.primaryService).toBe("validation-web");
+    expect(incident.packet.scope.affectedDependencies).toContain("sendgrid");
+    expect(
+      incident.packet.evidence.representativeTraces.some(
+        (trace) => trace.serviceName === "validation-web" && trace.httpStatusCode === 401,
+      ),
+    ).toBe(true);
+  });
+
+  it("OC-13: dependency 401 does not trigger on a single occurrence", async () => {
+    const result = await postTraces(
+      app,
+      makeBatchPayload("validation-web", [
+        {
+          traceId: "dep401-single-trace",
+          spanId: "dep401-single-span",
+          startTimeUnixNano: "1741392000000000000",
+          httpStatusCode: 401,
+          spanStatusCode: 2,
+          spanKind: 1,
+          peerService: "sendgrid",
+        },
+      ]),
+    );
+
+    expect(result.incidentId).toBeUndefined();
+    const { items } = await getIncidents(app);
+    expect(items).toHaveLength(0);
+  });
+
+  it("OC-14: dependency auth failure outranks unknown_service spans for incident subject", async () => {
+    const payload = {
+      resourceSpans: [
+        makeBatchPayload("unknown_service:node", [
+          {
+            traceId: "unknown-trace-1",
+            spanId: "unknown-span-1",
+            startTimeUnixNano: "1741391999000000000",
+            httpStatusCode: 200,
+            spanStatusCode: 2,
+            spanKind: 1,
+          },
+        ]).resourceSpans[0],
+        makeBatchPayload("validation-web", [
+          {
+            traceId: "dep401-trace-3",
+            spanId: "dep401-span-3",
+            startTimeUnixNano: "1741392000000000000",
+            httpStatusCode: 401,
+            spanStatusCode: 2,
+            spanKind: 1,
+            peerService: "sendgrid",
+          },
+          {
+            traceId: "dep401-trace-4",
+            spanId: "dep401-span-4",
+            startTimeUnixNano: "1741392000500000000",
+            httpStatusCode: 401,
+            spanStatusCode: 2,
+            spanKind: 1,
+            peerService: "sendgrid",
+          },
+        ]).resourceSpans[0],
+      ],
+    };
+
+    const result = await postTraces(app, payload);
+    const incident = await (await app.request(`/api/incidents/${result.incidentId}`)).json() as {
+      packet: { scope: { primaryService: string } };
+    };
+
+    expect(incident.packet.scope.primaryService).toBe("validation-web");
+  });
+
   // OC-10: SERVER 429-only batch appends anomalous signals to existing incident (evidence retention)
   it("OC-10: SERVER 429-only batch appends signals to matching existing incident without creating a new one", async () => {
     // Step 1: create an incident with a trigger span (SERVER 500, no peerService)
@@ -1658,6 +1810,42 @@ describe("Formation: dependency-based incident grouping (OC-1 to OC-6)", () => {
     // The 429 signal must be appended to the existing incident's rawState
     const rawStateAfter = await storage.getRawState(incidentId);
     expect(rawStateAfter?.anomalousSignals.length).toBeGreaterThan(signalCountBefore);
+  });
+
+  it("OC-15: replayed secrets rotation traces form an incident around validation-web and sendgrid", async () => {
+    for (const batch of secretsRotationReplayPayload) {
+      await postTraces(app, batch);
+    }
+
+    const { items } = await getIncidents(app);
+    const incident = items.find((item) => item.packet.scope.affectedDependencies.includes("sendgrid"));
+
+    expect(incident).toBeDefined();
+    expect(incident?.packet.scope.primaryService).toBe("validation-web");
+
+    const incidentDetail = await (await app.request(`/api/incidents/${incident!.incidentId}`)).json() as {
+      packet: {
+        triggerSignals: Array<{ signal: string; entity: string }>;
+        scope: { primaryService: string; affectedDependencies: string[] };
+        evidence: { representativeTraces: Array<{ serviceName: string; httpStatusCode?: number; spanStatusCode: number }> };
+      };
+    };
+
+    expect(incidentDetail.packet.scope.primaryService).toBe("validation-web");
+    expect(incidentDetail.packet.scope.affectedDependencies).toContain("sendgrid");
+    expect(
+      incidentDetail.packet.triggerSignals.some(
+        (signal) => signal.entity === "validation-web" && signal.signal === "http_401",
+      ),
+    ).toBe(true);
+    expect(
+      incidentDetail.packet.evidence.representativeTraces.some(
+        (trace) =>
+          trace.serviceName === "validation-web" &&
+          trace.httpStatusCode === 401 &&
+          trace.spanStatusCode === 2,
+      ),
+    ).toBe(true);
   });
 });
 

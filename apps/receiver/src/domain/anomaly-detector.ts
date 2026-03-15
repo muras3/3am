@@ -15,12 +15,20 @@ export type ExtractedSpan = {
 
 // Spans slower than this threshold are considered anomalous (ADR 0023)
 export const SLOW_SPAN_THRESHOLD_MS = 5000
+export const DEPENDENCY_AUTH_FAILURE_CODES = new Set([401, 403])
+export const DEPENDENCY_AUTH_FAILURE_MIN_REPETITIONS = 2
+export const DEPENDENCY_AUTH_FAILURE_WINDOW_MS = 60 * 1000
 
 // OTel span kind values (https://opentelemetry.io/docs/specs/otel/trace/api/#spankind)
 // NOTE: Some OTel SDK versions export SERVER spans as INTERNAL (kind=1) due to
 // a 0-based API enum vs 1-based OTLP protobuf enum mapping discrepancy.
 const SPAN_KIND_SERVER = 2
 const SPAN_KIND_INTERNAL = 1
+
+function normalizeDependency(raw: string | undefined): string | undefined {
+  if (!raw || raw.trim() === '') return undefined
+  return raw.trim().toLowerCase()
+}
 
 export function isAnomalous(span: ExtractedSpan): boolean {
   if (span.httpStatusCode !== undefined && span.httpStatusCode >= 500) {
@@ -82,6 +90,77 @@ export function isIncidentTrigger(span: ExtractedSpan): boolean {
     )
   }
   return isAnomalous(span)
+}
+
+export function isDependencyAuthFailure(span: ExtractedSpan): boolean {
+  const dependency = normalizeDependency(span.peerService)
+  return (
+    dependency !== undefined &&
+    span.httpStatusCode !== undefined &&
+    DEPENDENCY_AUTH_FAILURE_CODES.has(span.httpStatusCode) &&
+    span.spanStatusCode === 2
+  )
+}
+
+function hasShortWindowRepetition(spans: ExtractedSpan[]): boolean {
+  if (spans.length < DEPENDENCY_AUTH_FAILURE_MIN_REPETITIONS) return false
+
+  const sorted = spans
+    .slice()
+    .sort((a, b) => a.startTimeMs - b.startTimeMs)
+
+  for (let left = 0; left < sorted.length; left++) {
+    let right = left
+    while (
+      right < sorted.length &&
+      sorted[right].startTimeMs - sorted[left].startTimeMs <= DEPENDENCY_AUTH_FAILURE_WINDOW_MS
+    ) {
+      right += 1
+    }
+    if (right - left >= DEPENDENCY_AUTH_FAILURE_MIN_REPETITIONS) {
+      return true
+    }
+  }
+
+  return false
+}
+
+export function selectIncidentTriggerSpans(spans: ExtractedSpan[]): ExtractedSpan[] {
+  const triggerKeys = new Set<string>()
+
+  for (const span of spans) {
+    if (isIncidentTrigger(span)) {
+      triggerKeys.add(`${span.traceId}:${span.spanId}`)
+    }
+  }
+
+  const dependencyAuthGroups = new Map<string, ExtractedSpan[]>()
+  for (const span of spans) {
+    if (!isDependencyAuthFailure(span)) continue
+    const dependency = normalizeDependency(span.peerService)
+    if (dependency === undefined || span.httpStatusCode === undefined) continue
+    const key = [
+      span.environment,
+      span.serviceName,
+      dependency,
+      String(span.httpStatusCode),
+    ].join('|')
+    const existing = dependencyAuthGroups.get(key)
+    if (existing) {
+      existing.push(span)
+    } else {
+      dependencyAuthGroups.set(key, [span])
+    }
+  }
+
+  for (const group of dependencyAuthGroups.values()) {
+    if (!hasShortWindowRepetition(group)) continue
+    for (const span of group) {
+      triggerKeys.add(`${span.traceId}:${span.spanId}`)
+    }
+  }
+
+  return spans.filter((span) => triggerKeys.has(`${span.traceId}:${span.spanId}`))
 }
 
 import { isRecord, nanoToMs } from './otlp-utils.js'
