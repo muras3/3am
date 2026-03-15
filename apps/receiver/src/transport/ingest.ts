@@ -270,18 +270,16 @@ export function createIngestRouter(storage: StorageDriver, spanBuffer?: SpanBuff
       // TODO Phase C: paginate through all pages (cursor loop) so matches are not
       // missed when there are >100 open incidents (same gap as /v1/traces path).
       const page = await storage.listIncidents({ limit: 100 });
-      // NOTE: appendEvidence calls are parallelized across incidents.
-      // Each call is a read-modify-write (2 DB round-trips); concurrent writes to
-      // the same incident may cause lost updates if two metric/log batches arrive
-      // simultaneously — under OTel Collector batch-processor concurrency this can
-      // happen in practice and may silently discard evidence entries.
-      // Acceptable in Phase 1 (Phase C: replace with atomic JSONB append).
-      // Connection pool size (10) bounds effective concurrency for Postgres.
+      // TODO Plan 6 Task 5: migrate to appendRawEvidence
+      // NOTE: appendEvidence was removed in Plan 6 / B-4. This call site needs to be
+      // migrated to storage.appendRawEvidence(incident.incidentId, { metricEvidence: matching })
+      // after extractMetricEvidence returns typed ChangedMetric[].
       await Promise.all(
         page.items.flatMap((incident) => {
           const matching = evidences.filter((e) => shouldAttachEvidence(e, incident));
           return matching.length > 0
-            ? [storage.appendEvidence(incident.incidentId, { changedMetrics: matching })]
+            // TODO Plan 6 Task 5: migrate to appendRawEvidence
+            ? [storage.appendRawEvidence(incident.incidentId, { metricEvidence: matching as import("@3amoncall/core").ChangedMetric[] })]
             : [];
         }),
       );
@@ -308,7 +306,8 @@ export function createIngestRouter(storage: StorageDriver, spanBuffer?: SpanBuff
         page.items.flatMap((incident) => {
           const matching = evidences.filter((e) => shouldAttachEvidence(e, incident));
           return matching.length > 0
-            ? [storage.appendEvidence(incident.incidentId, { relevantLogs: matching })]
+            // TODO Plan 6 Task 5: migrate to appendRawEvidence
+            ? [storage.appendRawEvidence(incident.incidentId, { logEvidence: matching as import("@3amoncall/core").RelevantLog[] })]
             : [];
         }),
       );

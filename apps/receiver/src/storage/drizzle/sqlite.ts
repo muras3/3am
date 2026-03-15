@@ -11,10 +11,10 @@ import { drizzle } from "drizzle-orm/better-sqlite3";
 import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import { eq, desc, lt, and } from "drizzle-orm";
 import { sql } from "drizzle-orm";
-import type { IncidentPacket, DiagnosisResult, PlatformEvent, ThinEvent } from "@3amoncall/core";
+import type { IncidentPacket, DiagnosisResult, PlatformEvent, ThinEvent, ChangedMetric, RelevantLog } from "@3amoncall/core";
 import type { ExtractedSpan } from "../../domain/anomaly-detector.js";
 import type { AnomalousSignal, Incident, IncidentPage, IncidentRawState, StorageDriver } from "../interface.js";
-import { createEmptyRawState, mergeEvidenceIntoPacket } from "../interface.js";
+import { createEmptyRawState } from "../interface.js";
 import { incidents, thinEvents } from "./schema.js";
 
 type Schema = { incidents: typeof incidents; thinEvents: typeof thinEvents };
@@ -114,17 +114,21 @@ export class SQLiteAdapter implements StorageDriver {
       .where(eq(incidents.incidentId, id));
   }
 
-  async appendEvidence(
-    id: string,
-    update: { changedMetrics?: unknown[]; relevantLogs?: unknown[] },
+  async appendRawEvidence(
+    incidentId: string,
+    update: { metricEvidence?: ChangedMetric[]; logEvidence?: RelevantLog[] },
   ): Promise<void> {
-    const incident = await this.getIncident(id);
+    const incident = await this.getIncident(incidentId);
     if (!incident) return;
-    const newPacket = mergeEvidenceIntoPacket(incident.packet, update);
+    const rawState: IncidentRawState = {
+      ...incident.rawState,
+      metricEvidence: [...incident.rawState.metricEvidence, ...(update.metricEvidence ?? [])],
+      logEvidence: [...incident.rawState.logEvidence, ...(update.logEvidence ?? [])],
+    };
     await this.db
       .update(incidents)
-      .set({ packet: JSON.stringify(newPacket), updatedAt: new Date().toISOString() })
-      .where(eq(incidents.incidentId, id));
+      .set({ rawState: JSON.stringify(rawState), updatedAt: new Date().toISOString() })
+      .where(eq(incidents.incidentId, incidentId));
   }
 
   async listIncidents(opts: { limit: number; cursor?: string }): Promise<IncidentPage> {

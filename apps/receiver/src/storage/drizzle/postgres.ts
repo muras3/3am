@@ -9,10 +9,10 @@ import { drizzle } from "drizzle-orm/postgres-js";
 import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import { eq, desc, lt, and, sql as drizzleSql, count } from "drizzle-orm";
 import { pgTable, text, timestamp, serial, jsonb } from "drizzle-orm/pg-core";
-import type { IncidentPacket, DiagnosisResult, PlatformEvent, ThinEvent } from "@3amoncall/core";
+import type { IncidentPacket, DiagnosisResult, PlatformEvent, ThinEvent, ChangedMetric, RelevantLog } from "@3amoncall/core";
 import type { ExtractedSpan } from "../../domain/anomaly-detector.js";
 import type { AnomalousSignal, Incident, IncidentPage, IncidentRawState, StorageDriver } from "../interface.js";
-import { createEmptyRawState, mergeEvidenceIntoPacket } from "../interface.js";
+import { createEmptyRawState } from "../interface.js";
 
 // ── Postgres-specific table definitions (JSONB, timestamptz) ─────────────────
 
@@ -142,17 +142,21 @@ export class PostgresAdapter implements StorageDriver {
       .where(eq(pgIncidents.incidentId, id));
   }
 
-  async appendEvidence(
-    id: string,
-    update: { changedMetrics?: unknown[]; relevantLogs?: unknown[] },
+  async appendRawEvidence(
+    incidentId: string,
+    update: { metricEvidence?: ChangedMetric[]; logEvidence?: RelevantLog[] },
   ): Promise<void> {
-    const incident = await this.getIncident(id);
+    const incident = await this.getIncident(incidentId);
     if (!incident) return;
-    const newPacket = mergeEvidenceIntoPacket(incident.packet, update);
+    const rawState: IncidentRawState = {
+      ...incident.rawState,
+      metricEvidence: [...incident.rawState.metricEvidence, ...(update.metricEvidence ?? [])],
+      logEvidence: [...incident.rawState.logEvidence, ...(update.logEvidence ?? [])],
+    };
     await this.db
       .update(pgIncidents)
-      .set({ packet: newPacket, updatedAt: new Date() })
-      .where(eq(pgIncidents.incidentId, id));
+      .set({ rawState, updatedAt: new Date() })
+      .where(eq(pgIncidents.incidentId, incidentId));
   }
 
   async listIncidents(opts: { limit: number; cursor?: string }): Promise<IncidentPage> {

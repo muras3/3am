@@ -1,7 +1,7 @@
-import type { IncidentPacket, DiagnosisResult, PlatformEvent, ThinEvent } from "@3amoncall/core";
+import type { IncidentPacket, DiagnosisResult, PlatformEvent, ThinEvent, ChangedMetric, RelevantLog } from "@3amoncall/core";
 import type { ExtractedSpan } from "../../domain/anomaly-detector.js";
 import type { AnomalousSignal, Incident, IncidentPage, IncidentRawState, StorageDriver } from "../interface.js";
-import { createEmptyRawState, mergeEvidenceIntoPacket } from "../interface.js";
+import { createEmptyRawState } from "../interface.js";
 
 export class MemoryAdapter implements StorageDriver {
   private incidents: Map<string, Incident> = new Map();
@@ -50,16 +50,14 @@ export class MemoryAdapter implements StorageDriver {
     });
   }
 
-  async appendEvidence(
+  async appendRawEvidence(
     id: string,
-    update: { changedMetrics?: unknown[]; relevantLogs?: unknown[] },
+    update: { metricEvidence?: ChangedMetric[]; logEvidence?: RelevantLog[] },
   ): Promise<void> {
     const incident = this.incidents.get(id);
     if (!incident) return;
-    this.incidents.set(id, {
-      ...incident,
-      packet: mergeEvidenceIntoPacket(incident.packet, update),
-    });
+    if (update.metricEvidence) incident.rawState.metricEvidence.push(...update.metricEvidence);
+    if (update.logEvidence) incident.rawState.logEvidence.push(...update.logEvidence);
   }
 
   async appendSpans(incidentId: string, spans: ExtractedSpan[]): Promise<void> {
