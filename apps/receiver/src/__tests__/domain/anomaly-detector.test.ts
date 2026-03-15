@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest'
-import { isAnomalous, isIncidentTrigger, extractSpans, type ExtractedSpan } from '../../domain/anomaly-detector.js'
+import {
+  extractSpans,
+  isAnomalous,
+  isIncidentTrigger,
+  selectIncidentTriggerSpans,
+  type ExtractedSpan,
+} from '../../domain/anomaly-detector.js'
 
 describe('isAnomalous', () => {
   it('returns false for HTTP 200 span with spanStatusCode=1 (ok)', () => {
@@ -323,5 +329,48 @@ describe('isIncidentTrigger', () => {
 
   it('returns false for normal healthy span', () => {
     expect(isIncidentTrigger({ ...base, httpStatusCode: 200 })).toBe(false)
+  })
+})
+
+describe('selectIncidentTriggerSpans', () => {
+  const base: ExtractedSpan = {
+    traceId: 'trace1',
+    spanId: 'span1',
+    serviceName: 'validation-web',
+    environment: 'production',
+    httpStatusCode: 401,
+    spanStatusCode: 2,
+    durationMs: 100,
+    startTimeMs: 1700000000000,
+    exceptionCount: 0,
+    spanKind: 1,
+    peerService: 'sendgrid',
+  }
+
+  it('treats repeated dependency 401 spans as incident triggers', () => {
+    const spans = [
+      { ...base, traceId: 'trace-1', spanId: 'span-1', startTimeMs: 1700000000000 },
+      { ...base, traceId: 'trace-2', spanId: 'span-2', startTimeMs: 1700000001000 },
+    ]
+
+    expect(selectIncidentTriggerSpans(spans)).toEqual(spans)
+  })
+
+  it('does not treat a single dependency auth failure as an incident trigger', () => {
+    expect(selectIncidentTriggerSpans([base])).toEqual([])
+  })
+
+  it('keeps SERVER 429 as a non-trigger', () => {
+    const span = {
+      ...base,
+      traceId: 'trace-429',
+      spanId: 'span-429',
+      serviceName: 'mock-sendgrid',
+      peerService: undefined,
+      httpStatusCode: 429,
+      spanKind: 2,
+    }
+
+    expect(selectIncidentTriggerSpans([span])).toEqual([])
   })
 })

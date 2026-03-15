@@ -386,8 +386,9 @@ export function createPacket(
   incidentId: string,
   openedAt: string,
   spans: ExtractedSpan[],
+  primaryService?: string,
 ): IncidentPacket {
-  const primaryService = selectPrimaryService(spans)
+  const resolvedPrimaryService = primaryService ?? selectPrimaryService(spans)
   const rawState: IncidentRawState = {
     spans,
     anomalousSignals: buildAnomalousSignals(spans.filter(isAnomalous)),
@@ -396,5 +397,5 @@ export function createPacket(
     platformEvents: [],
   }
   const packetId = randomUUID()
-  return rebuildPacket(incidentId, packetId, openedAt, rawState, undefined, 1, primaryService)
+  return rebuildPacket(incidentId, packetId, openedAt, rawState, undefined, 1, resolvedPrimaryService)
 }
