@@ -16,7 +16,7 @@ import { rebuildPacket, buildAnomalousSignals } from "../domain/packetizer.js";
 import { isAnomalous } from "../domain/anomaly-detector.js";
 import type { ExtractedSpan } from "../domain/anomaly-detector.js";
 import type { IncidentRawState } from "../storage/interface.js";
-import type { IncidentPacket } from "@3amoncall/core";
+import type { ChangedMetric, IncidentPacket, RelevantLog } from "@3amoncall/core";
 
 // ── Shared OTLP JSON payloads ─────────────────────────────────────────────────
 
@@ -736,5 +736,153 @@ describe("Gate 5: Performance — rebuild under time budget", () => {
     const elapsedMs = performance.now() - t;
 
     expect(elapsedMs).toBeLessThan(500);
+  });
+});
+
+// ── Plan 6 / B-4 + B-5: rawState-derived evidence and pointers ────────────────
+
+/** Minimal valid span for constructing rawState (needed so window/scope don't fail) */
+function makeMinimalSpan(overrides?: Partial<ExtractedSpan>): ExtractedSpan {
+  return {
+    traceId: "trace-plan6",
+    spanId: "span-plan6",
+    serviceName: "web",
+    environment: "production",
+    httpRoute: "/api/test",
+    httpStatusCode: 500,
+    spanStatusCode: 2,
+    durationMs: 500,
+    startTimeMs: 1741392000000,
+    peerService: undefined,
+    exceptionCount: 0,
+    ...overrides,
+  };
+}
+
+/** Build a minimal IncidentRawState with the given overrides */
+function makeRawStateWithEvidence(
+  opts: {
+    metricEvidence?: ChangedMetric[];
+    logEvidence?: RelevantLog[];
+  } = {},
+): IncidentRawState {
+  const span = makeMinimalSpan();
+  return {
+    spans: [span],
+    anomalousSignals: buildAnomalousSignals([span]),
+    metricEvidence: opts.metricEvidence ?? [],
+    logEvidence: opts.logEvidence ?? [],
+    platformEvents: [],
+  };
+}
+
+function makeSampleMetric(name: string, service = "web"): ChangedMetric {
+  return {
+    name,
+    service,
+    environment: "production",
+    startTimeMs: 1741392000000,
+    summary: { count: 10, sum: 500, min: 1, max: 99 },
+  };
+}
+
+function makeSampleLog(service = "web", timestamp = "2025-03-07T16:00:00.000Z"): RelevantLog {
+  return {
+    service,
+    environment: "production",
+    timestamp,
+    startTimeMs: 1741392000000,
+    severity: "ERROR",
+    body: "checkout failed",
+    attributes: {},
+  };
+}
+
+describe("rebuildPacket — rawState-derived evidence (Plan 6)", () => {
+  it("derives changedMetrics from rawState.metricEvidence", () => {
+    const metric = makeSampleMetric("http.server.request.duration");
+    const rawState = makeRawStateWithEvidence({ metricEvidence: [metric] });
+
+    const packet = rebuildPacket("inc_test", "pkt_test", "2025-03-07T16:00:00.000Z", rawState);
+
+    expect(packet.evidence.changedMetrics).toHaveLength(1);
+    expect(packet.evidence.changedMetrics[0]).toEqual(metric);
+  });
+
+  it("derives relevantLogs from rawState.logEvidence", () => {
+    const log = makeSampleLog();
+    const rawState = makeRawStateWithEvidence({ logEvidence: [log] });
+
+    const packet = rebuildPacket("inc_test", "pkt_test", "2025-03-07T16:00:00.000Z", rawState);
+
+    expect(packet.evidence.relevantLogs).toHaveLength(1);
+    expect(packet.evidence.relevantLogs[0]).toEqual(log);
+  });
+
+  it("populates pointers.metricRefs with unique metric names", () => {
+    // Two metrics with the same name should produce only one ref
+    const m1 = makeSampleMetric("http.server.request.duration", "web");
+    const m2 = makeSampleMetric("http.server.request.duration", "api");  // duplicate name
+    const m3 = makeSampleMetric("db.query.duration", "web");
+    const rawState = makeRawStateWithEvidence({ metricEvidence: [m1, m2, m3] });
+
+    const packet = rebuildPacket("inc_test", "pkt_test", "2025-03-07T16:00:00.000Z", rawState);
+
+    expect(packet.pointers.metricRefs).toEqual(
+      expect.arrayContaining(["http.server.request.duration", "db.query.duration"]),
+    );
+    expect(packet.pointers.metricRefs).toHaveLength(2);  // duplicates deduped
+  });
+
+  it("populates pointers.logRefs with unique service:timestamp keys", () => {
+    const t1 = "2025-03-07T16:00:00.000Z";
+    const t2 = "2025-03-07T16:01:00.000Z";
+    const l1 = makeSampleLog("web", t1);
+    const l2 = makeSampleLog("web", t1);   // duplicate key
+    const l3 = makeSampleLog("web", t2);   // different timestamp
+    const l4 = makeSampleLog("api", t1);   // different service
+    const rawState = makeRawStateWithEvidence({ logEvidence: [l1, l2, l3, l4] });
+
+    const packet = rebuildPacket("inc_test", "pkt_test", "2025-03-07T16:00:00.000Z", rawState);
+
+    expect(packet.pointers.logRefs).toHaveLength(3);  // l1/l2 deduped → web:t1, web:t2, api:t1
+    expect(packet.pointers.logRefs).toEqual(
+      expect.arrayContaining([`web:${t1}`, `web:${t2}`, `api:${t1}`]),
+    );
+  });
+
+  it("ignores existingEvidence parameter — rawState is sole source", () => {
+    const rawState = makeRawStateWithEvidence({
+      metricEvidence: [makeSampleMetric("http.server.request.duration")],
+      logEvidence: [makeSampleLog()],
+    });
+
+    // Pass stale existingEvidence as the deprecated 5th argument
+    const staleEvidence = {
+      changedMetrics: [{ name: "stale.metric", service: "stale", environment: "staging", startTimeMs: 0, summary: {} }],
+      relevantLogs: [{ service: "stale", environment: "staging", timestamp: "2000-01-01T00:00:00.000Z", startTimeMs: 0, severity: "WARN", body: "stale log", attributes: {} }],
+    };
+
+    const packet = rebuildPacket("inc_test", "pkt_test", "2025-03-07T16:00:00.000Z", rawState, staleEvidence);
+
+    // Stale data must NOT appear
+    const metricNames = packet.evidence.changedMetrics.map((m) => m.name);
+    expect(metricNames).not.toContain("stale.metric");
+    expect(metricNames).toContain("http.server.request.duration");
+
+    const logBodies = packet.evidence.relevantLogs.map((l) => l.body);
+    expect(logBodies).not.toContain("stale log");
+    expect(logBodies).toContain("checkout failed");
+  });
+
+  it("empty rawState evidence produces empty arrays in packet and pointers", () => {
+    const rawState = makeRawStateWithEvidence();  // no metric/log evidence
+
+    const packet = rebuildPacket("inc_test", "pkt_test", "2025-03-07T16:00:00.000Z", rawState);
+
+    expect(packet.evidence.changedMetrics).toEqual([]);
+    expect(packet.evidence.relevantLogs).toEqual([]);
+    expect(packet.pointers.metricRefs).toEqual([]);
+    expect(packet.pointers.logRefs).toEqual([]);
   });
 });
