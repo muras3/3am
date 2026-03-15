@@ -115,6 +115,59 @@ function compareByScore(a: ExtractedSpan, b: ExtractedSpan): number {
 }
 
 // ---------------------------------------------------------------------------
+// Signal severity derivation
+// ---------------------------------------------------------------------------
+
+/**
+ * Derive a severity level for an incident based on the anomalous signals,
+ * log evidence, and the number of affected services.
+ *
+ * Scoring rules:
+ *  - Signal types are deduplicated (Set-based, not count-based)
+ *  - http_5xx signals add 4 pts each
+ *  - http_429 adds 3 pts
+ *  - exception / span_error each add 2 pts
+ *  - slow_span adds 1 pt
+ *  - FATAL log adds 3 pts; ERROR log adds 1 pt
+ *  - >2 affected services adds 2 pts; exactly 2 adds 1 pt
+ *
+ * Thresholds: ≥6 → critical, ≥3 → high, ≥1 → medium, 0 → low
+ */
+export function deriveSignalSeverity(
+  anomalousSignals: AnomalousSignal[],
+  logEvidence: RelevantLog[],
+  affectedServicesCount: number,
+): "critical" | "high" | "medium" | "low" {
+  let score = 0
+
+  // Deduplicate signal types (Set-based, not count-based)
+  const signalTypes = new Set(anomalousSignals.map((s) => s.signal))
+
+  // Span-derived signals
+  for (const sig of signalTypes) {
+    if (sig.startsWith("http_5")) score += 4
+    else if (sig === "http_429") score += 3
+    else if (sig === "exception") score += 2
+    else if (sig === "span_error") score += 2
+    else if (sig === "slow_span") score += 1
+  }
+
+  // Log-derived signals (check by severity string)
+  const logSeverities = new Set(logEvidence.map((l) => l.severity.toUpperCase()))
+  if (logSeverities.has("FATAL")) score += 3
+  if (logSeverities.has("ERROR")) score += 1
+
+  // Breadth indicator
+  if (affectedServicesCount > 2) score += 2
+  else if (affectedServicesCount === 2) score += 1
+
+  if (score >= 6) return "critical"
+  if (score >= 3) return "high"
+  if (score >= 1) return "medium"
+  return "low"
+}
+
+// ---------------------------------------------------------------------------
 // 2-stage representative traces selection
 // ---------------------------------------------------------------------------
 
@@ -319,6 +372,7 @@ export function rebuildPacket(
   // MAX_CROSS_SERVICE_MERGE guard (see formation.ts).
   const affectedServices = [...new Set(spans.map((s) => s.serviceName))]
   const affectedRoutes = [...new Set(spans.flatMap((s) => (s.httpRoute ? [s.httpRoute] : [])))]
+  const signalSeverity = deriveSignalSeverity(anomalousSignals, logEvidence, affectedServices.length)
   const affectedDependencies = [
     ...new Set(
       spans.flatMap((s) => {
@@ -361,6 +415,7 @@ export function rebuildPacket(
     openedAt,
     status: "open",
     generation: generation ?? 1,
+    signalSeverity,
     window: {
       start: new Date(windowStart).toISOString(),
       detect: new Date(windowDetect).toISOString(),
