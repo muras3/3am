@@ -146,9 +146,14 @@ function selectBestIncidentForPlatformEvent(
  * Shared across all ingest routes that mutate rawState (traces, metrics, logs, platform-events).
  */
 async function fetchAndRebuild(storage: StorageDriver, incident: Incident): Promise<void> {
-  const rawState = await storage.getRawState(incident.incidentId);
-  if (rawState === null) return;
-  const generation = (incident.packet.generation ?? 1) + 1;
+  // Re-read both rawState and current generation to avoid stale snapshots
+  // when concurrent batches race through appendRawEvidence + rebuild.
+  const [rawState, fresh] = await Promise.all([
+    storage.getRawState(incident.incidentId),
+    storage.getIncident(incident.incidentId),
+  ]);
+  if (rawState === null || fresh === null) return;
+  const generation = (fresh.packet.generation ?? 1) + 1;
   const rebuiltPacket = rebuildPacket(
     incident.incidentId,
     incident.packet.packetId,

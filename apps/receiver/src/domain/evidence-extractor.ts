@@ -34,7 +34,7 @@ function getResourceAttrs(entry: Record<string, unknown>): unknown {
 }
 
 /** Compress a histogram datapoint: keep count/sum/min/max, drop buckets. */
-function compressHistogramDatapoint(dp: Record<string, unknown>): unknown {
+function compressHistogramDatapoint(dp: Record<string, unknown>): Record<string, unknown> {
   return {
     ...(dp['count'] !== undefined ? { count: dp['count'] } : {}),
     ...(dp['sum'] !== undefined ? { sum: dp['sum'] } : {}),
@@ -44,7 +44,7 @@ function compressHistogramDatapoint(dp: Record<string, unknown>): unknown {
 }
 
 /** Compress a gauge/sum datapoint: keep asDouble or asInt. */
-function compressNumberDatapoint(dp: Record<string, unknown>): unknown {
+function compressNumberDatapoint(dp: Record<string, unknown>): Record<string, unknown> {
   if (dp['asDouble'] !== undefined) return { asDouble: dp['asDouble'] }
   if (dp['asInt'] !== undefined) return { asInt: dp['asInt'] }
   return {}
@@ -85,7 +85,7 @@ export function extractMetricEvidence(body: unknown): ChangedMetric[] {
 
         // Determine first datapoint and startTimeMs
         let firstDp: Record<string, unknown> | null = null
-        let summary: unknown = {}
+        let summary: Record<string, unknown> = {}
 
         // histogram
         const hist = metric['histogram']

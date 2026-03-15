@@ -61,7 +61,7 @@ export const ChangedMetricSchema = z.object({
   service: z.string(),
   environment: z.string(),
   startTimeMs: z.number(),
-  summary: z.unknown(),  // histogram/gauge/sum compressed shape — heterogeneous by metric type
+  summary: z.record(z.string(), z.unknown()),  // histogram/gauge/sum compressed shape — heterogeneous by metric type
 }).strict();
 
 export type ChangedMetric = z.infer<typeof ChangedMetricSchema>;
