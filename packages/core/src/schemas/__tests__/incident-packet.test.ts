@@ -103,6 +103,25 @@ describe("IncidentPacketSchema", () => {
     }
   });
 
+  it("accepts valid signalSeverity enum values", () => {
+    for (const level of ["critical", "high", "medium", "low"]) {
+      const result = IncidentPacketSchema.parse({ ...minimalValidPacket, signalSeverity: level });
+      expect(result.signalSeverity).toBe(level);
+    }
+  });
+
+  it("rejects invalid signalSeverity values", () => {
+    expect(() =>
+      IncidentPacketSchema.parse({ ...minimalValidPacket, signalSeverity: "extreme" })
+    ).toThrow(ZodError);
+  });
+
+  it("rejects old severity field via .strict()", () => {
+    expect(() =>
+      IncidentPacketSchema.parse({ ...minimalValidPacket, severity: "critical" })
+    ).toThrow(ZodError);
+  });
+
   it("rejects invalid data with ZodError", () => {
     expect(() => IncidentPacketSchema.parse(null)).toThrow(ZodError);
     expect(() => IncidentPacketSchema.parse({ schemaVersion: "incident-packet/v1alpha1" })).toThrow(ZodError);

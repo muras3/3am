@@ -108,7 +108,8 @@ export const IncidentPacketSchema = z.object({
   incidentId: z.string(),
   openedAt: z.string(),
   status: z.enum(["open", "closed"]).optional(),
-  severity: z.string().optional(),
+  /** Observed signal severity — deterministically derived from anomalous signals, not business impact. */
+  signalSeverity: z.enum(["critical", "high", "medium", "low"]).optional(),
   generation: z.number().optional(),
   window: WindowSchema,
   scope: ScopeSchema,
