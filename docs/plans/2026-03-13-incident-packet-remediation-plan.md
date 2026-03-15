@@ -277,7 +277,9 @@ DB-backed に持つ方向を基本とする。
 
 ### B-4 Evidence schema is too loose
 
-- Status: `open`
+- Status: `done`
+- Completed: 2026-03-15 (Plan 6 / feat/plan6-typed-evidence)
+- Resolution: ChangedMetricSchema + RelevantLogSchema (.strict()) replaced unknown[] in EvidenceSchema. appendEvidence → appendRawEvidence, rawState is sole source for evidence derivation via rebuildPacket.
 - Problem:
   - metrics/logs/platform events が `unknown[]`
 - Locations:
@@ -306,7 +308,9 @@ DB-backed に持つ方向を基本とする。
 
 ### B-5 Retrieval layer is mostly empty
 
-- Status: `open`
+- Status: `done`
+- Completed: 2026-03-15 (Plan 6 / feat/plan6-typed-evidence)
+- Resolution: rebuildPacket now populates metricRefs (unique metric names from rawState.metricEvidence) and logRefs (unique service:timestamp keys from rawState.logEvidence). All 4 pointer types (traceRefs, metricRefs, logRefs, platformLogRefs) are now populated from rawState.
 - Problem:
   - traceRefs 以外が空で retrieval layer が成立していない
 - Locations:
@@ -528,6 +532,66 @@ DB-backed に持つ方向を基本とする。
 - packet-to-ground-truth comparison notes
 - diagnosis result vs ground truth comparison
 - failures / mismatches list
+
+## Residual Concerns (2026-03-15 verification)
+
+以下は latest `develop` を使った scenario verification で確認された、
+この plan 上まだ残しておくべき懸念事項である。
+
+### R-1 Proper packet quality is improved, but duplicate noisy incidents can still appear
+
+- Observation:
+  - `secrets_rotation_partial_propagation` replay では、
+    proper incident として
+    - `primaryService = validation-web`
+    - `affectedDependencies = ["sendgrid"]`
+    - `triggerSignals` に `http_401`
+    - `relevantLogs` に `sendgrid auth failure`
+    を持つ packet が形成された
+  - 一方で同じ replay から、別 incident として
+    `primaryService = unknown_service:node`
+    の noisy packet も形成された
+- Why this matters:
+  - proper packet 単体の品質は改善したが、
+    operator から見た incident list のノイズはまだ残っている
+  - diagnosis runner が「pending の先頭 incident」を処理する場合、
+    noisy incident を先に診断してしまう
+- Follow-up:
+  - `unknown_service:node` 系 incident の split / suppress / lower-priority treatment を
+    formation policy か verification gate で整理する
+  - complete 判定は「proper packet が作れる」だけでなく、
+    operator を誤誘導する duplicate/noisy incident が許容範囲内であることも見る
+
+### R-2 Plan 5 is implemented in product code, but was not re-verified in the manual replay path
+
+- Observation:
+  - product code では `/v1/platform-events` ingest, typed packet schema, raw-state attach,
+    `platformLogRefs` 生成まで入っている
+  - ただし 2026-03-15 の manual replay では traces / metrics / logs だけを replay し、
+    platform event ingest までは再実行していない
+- Why this matters:
+  - latest `develop` 上で proper packet が良くなっていても、
+    platform facts の end-to-end verification は別途必要
+- Follow-up:
+  - scenario 4 の platform event path を含む replay / local run を再度実行し、
+    packet と UI の両方で `platformEvents` を確認する
+
+### R-3 Diagnosis backend operability remains environment-sensitive
+
+- Observation:
+  - `claude --print` backend は local environment で認証エラーになりうる
+  - `codex exec` backend では diagnosis 自体は実行できた
+  - ただし diagnosis runner は incident selector を持たず、
+    pending の先頭 incident を処理する
+- Why this matters:
+  - packet quality の検証と diagnosis quality の検証が、
+    CLI auth state や incident ordering の影響を受ける
+- Follow-up:
+  - verification 用には
+    - stable CLI backend
+    - target incident selection
+    を持つ診断フローを別途用意する
+  - complete 判定では「正しい packet を diagnosis に渡せたか」を明示的に確認する
 
 ### Quality bar
 
