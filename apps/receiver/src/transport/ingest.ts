@@ -247,7 +247,7 @@ export function createIngestRouter(storage: StorageDriver, spanBuffer?: SpanBuff
         existing.packet.packetId,
         existing.openedAt,
         rawState,
-        existing.packet.evidence,
+        undefined,
         generation,
         existing.packet.scope.primaryService,
       );
@@ -267,20 +267,30 @@ export function createIngestRouter(storage: StorageDriver, spanBuffer?: SpanBuff
     // resourceMetrics gracefully (returns []), keeping protobuf and JSON paths symmetric.
     const evidences = extractMetricEvidence(body);
     if (evidences.length > 0) {
-      // TODO Phase C: paginate through all pages (cursor loop) so matches are not
-      // missed when there are >100 open incidents (same gap as /v1/traces path).
       const page = await storage.listIncidents({ limit: 100 });
-      // TODO Plan 6 Task 5: migrate to appendRawEvidence
-      // NOTE: appendEvidence was removed in Plan 6 / B-4. This call site needs to be
-      // migrated to storage.appendRawEvidence(incident.incidentId, { metricEvidence: matching })
-      // after extractMetricEvidence returns typed ChangedMetric[].
+      // Plan 6 / B-4: append to rawState then rebuild so packet.evidence is derived.
+      // Race/concurrency trade-off: concurrent batches may cause lost updates under
+      // OTel Collector batch-processor concurrency — acceptable in Phase 1.
       await Promise.all(
         page.items.flatMap((incident) => {
           const matching = evidences.filter((e) => shouldAttachEvidence(e, incident));
-          return matching.length > 0
-            // TODO Plan 6 Task 5: migrate to appendRawEvidence
-            ? [storage.appendRawEvidence(incident.incidentId, { metricEvidence: matching as import("@3amoncall/core").ChangedMetric[] })]
-            : [];
+          if (matching.length === 0) return [];
+          return [(async () => {
+            await storage.appendRawEvidence(incident.incidentId, { metricEvidence: matching });
+            const rawState = await storage.getRawState(incident.incidentId);
+            if (rawState === null) return;
+            const generation = (incident.packet.generation ?? 1) + 1;
+            const rebuiltPacket = rebuildPacket(
+              incident.incidentId,
+              incident.packet.packetId,
+              incident.openedAt,
+              rawState,
+              undefined,
+              generation,
+              incident.packet.scope.primaryService,
+            );
+            await storage.createIncident(rebuiltPacket);
+          })()];
         }),
       );
     }
@@ -299,16 +309,28 @@ export function createIngestRouter(storage: StorageDriver, spanBuffer?: SpanBuff
     // resourceLogs gracefully (returns []), keeping protobuf and JSON paths symmetric.
     const evidences = extractLogEvidence(body);
     if (evidences.length > 0) {
-      // TODO Phase C: paginate (same gap as /v1/metrics and /v1/traces paths).
       const page = await storage.listIncidents({ limit: 100 });
-      // Same race/concurrency trade-off as /v1/metrics — see comment above.
+      // Same appendRawEvidence + rebuild pattern as /v1/metrics.
       await Promise.all(
         page.items.flatMap((incident) => {
           const matching = evidences.filter((e) => shouldAttachEvidence(e, incident));
-          return matching.length > 0
-            // TODO Plan 6 Task 5: migrate to appendRawEvidence
-            ? [storage.appendRawEvidence(incident.incidentId, { logEvidence: matching as import("@3amoncall/core").RelevantLog[] })]
-            : [];
+          if (matching.length === 0) return [];
+          return [(async () => {
+            await storage.appendRawEvidence(incident.incidentId, { logEvidence: matching });
+            const rawState = await storage.getRawState(incident.incidentId);
+            if (rawState === null) return;
+            const generation = (incident.packet.generation ?? 1) + 1;
+            const rebuiltPacket = rebuildPacket(
+              incident.incidentId,
+              incident.packet.packetId,
+              incident.openedAt,
+              rawState,
+              undefined,
+              generation,
+              incident.packet.scope.primaryService,
+            );
+            await storage.createIncident(rebuiltPacket);
+          })()];
         }),
       );
     }
@@ -367,7 +389,7 @@ export function createIngestRouter(storage: StorageDriver, spanBuffer?: SpanBuff
         incident.packet.packetId,
         incident.openedAt,
         rawState,
-        incident.packet.evidence,
+        undefined,
         (incident.packet.generation ?? 1) + 1,
         incident.packet.scope.primaryService,
       );

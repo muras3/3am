@@ -254,14 +254,15 @@ describe('rebuildPacket', () => {
     expect(packet.scope.primaryService).toBe('checkout-api')
   })
 
-  it('existingEvidence is preserved in output', () => {
-    const evidence = {
+  it('existingEvidence parameter is ignored — rawState is sole source (Plan 6)', () => {
+    const staleEvidence = {
       changedMetrics: [{ name: 'p99', value: 2000 }],
       relevantLogs: [{ message: 'error log' }],
     }
-    const packet = rebuildPacket('inc_1', 'pkt_1', '2023-11-14T22:13:20.000Z', rawState, evidence)
-    expect(packet.evidence.changedMetrics).toEqual(evidence.changedMetrics)
-    expect(packet.evidence.relevantLogs).toEqual(evidence.relevantLogs)
+    const packet = rebuildPacket('inc_1', 'pkt_1', '2023-11-14T22:13:20.000Z', rawState, staleEvidence)
+    // rawState has no metric/log evidence, so packet should have empty arrays
+    expect(packet.evidence.changedMetrics).toEqual([])
+    expect(packet.evidence.relevantLogs).toEqual([])
   })
 
   it('existingEvidence defaults to empty arrays when not provided', () => {

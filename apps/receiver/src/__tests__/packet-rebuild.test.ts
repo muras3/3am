@@ -346,42 +346,31 @@ describe("Gate 2: SSOT — raw state drives rebuild", () => {
     expect(p1.packetId).toBe(p2.packetId);
   });
 
-  it("metrics evidence attaches via appendEvidence (Plan 1 traditional path)", async () => {
-    const { app } = setupApp();
-
-    const res1 = await postTraces(app, makeErrorBatch1());
-    const { incidentId } = (await res1.json()) as { incidentId: string };
-
-    // Post metrics to trigger appendEvidence
-    await app.request("/v1/metrics", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(makeMetricsBatch()),
-    });
-
-    const incident = (await (await app.request(`/api/incidents/${incidentId}`)).json()) as {
-      packet: { evidence: { changedMetrics: unknown[] } };
-    };
-    expect(incident.packet.evidence.changedMetrics.length).toBeGreaterThan(0);
-  });
-
-  it("rawState.metricEvidence remains empty (Plan 1 — not migrated to rawState yet)", async () => {
+  it("metrics evidence flows through rawState and rebuilds packet (Plan 6)", async () => {
     const { app, storage } = setupApp();
 
     const res1 = await postTraces(app, makeErrorBatch1());
     const { incidentId } = (await res1.json()) as { incidentId: string };
 
-    // Post metrics
+    // Post metrics — now goes to rawState + rebuild
     await app.request("/v1/metrics", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(makeMetricsBatch()),
     });
 
-    // Metrics should NOT flow into rawState (Plan 6 future work)
+    // rawState.metricEvidence should be populated (Plan 6 migration)
     const rawState = await storage.getRawState(incidentId);
     expect(rawState).not.toBeNull();
-    expect(rawState!.metricEvidence).toHaveLength(0);
+    expect(rawState!.metricEvidence.length).toBeGreaterThan(0);
+
+    // packet.evidence.changedMetrics should be derived from rawState via rebuild
+    const incident = (await (await app.request(`/api/incidents/${incidentId}`)).json()) as {
+      packet: { evidence: { changedMetrics: unknown[] }; pointers: { metricRefs: string[] } };
+    };
+    expect(incident.packet.evidence.changedMetrics.length).toBeGreaterThan(0);
+    // B-5: pointers.metricRefs should also be populated
+    expect(incident.packet.pointers.metricRefs.length).toBeGreaterThan(0);
   });
 });
 
