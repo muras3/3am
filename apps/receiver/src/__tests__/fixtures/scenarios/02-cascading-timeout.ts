@@ -11,7 +11,7 @@ export const packet: IncidentPacket = {
   incidentId: "inc_scenario_02",
   openedAt: "2026-03-09T05:00:00Z",
   status: "open",
-  severity: "critical",
+  signalSeverity: "critical",
   window: {
     start: "2026-03-09T04:55:00Z",
     detect: "2026-03-09T05:00:00Z",
