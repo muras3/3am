@@ -141,6 +141,30 @@ function selectBestIncidentForPlatformEvent(
     })[0];
 }
 
+/**
+ * Fetch rawState, rebuild the incident packet, and persist it.
+ * Shared across all ingest routes that mutate rawState (traces, metrics, logs, platform-events).
+ */
+async function fetchAndRebuild(storage: StorageDriver, incident: Incident): Promise<void> {
+  // Re-read both rawState and current generation to avoid stale snapshots
+  // when concurrent batches race through appendRawEvidence + rebuild.
+  const [rawState, fresh] = await Promise.all([
+    storage.getRawState(incident.incidentId),
+    storage.getIncident(incident.incidentId),
+  ]);
+  if (rawState === null || fresh === null) return;
+  const generation = (fresh.packet.generation ?? 1) + 1;
+  const rebuiltPacket = rebuildPacket(
+    incident.incidentId,
+    incident.packet.packetId,
+    incident.openedAt,
+    rawState,
+    generation,
+    incident.packet.scope.primaryService,
+  );
+  await storage.createIncident(rebuiltPacket);
+}
+
 export function createIngestRouter(storage: StorageDriver, spanBuffer?: SpanBuffer): Hono {
   const app = new Hono();
 
@@ -239,20 +263,7 @@ export function createIngestRouter(storage: StorageDriver, spanBuffer?: SpanBuff
     // packetId is stable across rebuilds (thin event reference remains valid).
     await storage.appendSpans(incidentId, spans);
     await storage.appendAnomalousSignals(incidentId, buildAnomalousSignals(signalSpans));
-    const rawState = await storage.getRawState(incidentId);
-    if (rawState !== null) {
-      const generation = (existing.packet.generation ?? 1) + 1;
-      const rebuiltPacket = rebuildPacket(
-        incidentId,
-        existing.packet.packetId,
-        existing.openedAt,
-        rawState,
-        existing.packet.evidence,
-        generation,
-        existing.packet.scope.primaryService,
-      );
-      await storage.createIncident(rebuiltPacket);
-    }
+    await fetchAndRebuild(storage, existing);
     return c.json({ status: "ok", incidentId, packetId: existing.packet.packetId });
   });
 
@@ -267,22 +278,18 @@ export function createIngestRouter(storage: StorageDriver, spanBuffer?: SpanBuff
     // resourceMetrics gracefully (returns []), keeping protobuf and JSON paths symmetric.
     const evidences = extractMetricEvidence(body);
     if (evidences.length > 0) {
-      // TODO Phase C: paginate through all pages (cursor loop) so matches are not
-      // missed when there are >100 open incidents (same gap as /v1/traces path).
       const page = await storage.listIncidents({ limit: 100 });
-      // NOTE: appendEvidence calls are parallelized across incidents.
-      // Each call is a read-modify-write (2 DB round-trips); concurrent writes to
-      // the same incident may cause lost updates if two metric/log batches arrive
-      // simultaneously — under OTel Collector batch-processor concurrency this can
-      // happen in practice and may silently discard evidence entries.
-      // Acceptable in Phase 1 (Phase C: replace with atomic JSONB append).
-      // Connection pool size (10) bounds effective concurrency for Postgres.
+      // Plan 6 / B-4: append to rawState then rebuild so packet.evidence is derived.
+      // Race/concurrency trade-off: concurrent batches may cause lost updates under
+      // OTel Collector batch-processor concurrency — acceptable in Phase 1.
       await Promise.all(
         page.items.flatMap((incident) => {
           const matching = evidences.filter((e) => shouldAttachEvidence(e, incident));
-          return matching.length > 0
-            ? [storage.appendEvidence(incident.incidentId, { changedMetrics: matching })]
-            : [];
+          if (matching.length === 0) return [];
+          return [(async () => {
+            await storage.appendRawEvidence(incident.incidentId, { metricEvidence: matching });
+            await fetchAndRebuild(storage, incident);
+          })()];
         }),
       );
     }
@@ -301,15 +308,16 @@ export function createIngestRouter(storage: StorageDriver, spanBuffer?: SpanBuff
     // resourceLogs gracefully (returns []), keeping protobuf and JSON paths symmetric.
     const evidences = extractLogEvidence(body);
     if (evidences.length > 0) {
-      // TODO Phase C: paginate (same gap as /v1/metrics and /v1/traces paths).
       const page = await storage.listIncidents({ limit: 100 });
-      // Same race/concurrency trade-off as /v1/metrics — see comment above.
+      // Same appendRawEvidence + rebuild pattern as /v1/metrics.
       await Promise.all(
         page.items.flatMap((incident) => {
           const matching = evidences.filter((e) => shouldAttachEvidence(e, incident));
-          return matching.length > 0
-            ? [storage.appendEvidence(incident.incidentId, { relevantLogs: matching })]
-            : [];
+          if (matching.length === 0) return [];
+          return [(async () => {
+            await storage.appendRawEvidence(incident.incidentId, { logEvidence: matching });
+            await fetchAndRebuild(storage, incident);
+          })()];
         }),
       );
     }
@@ -360,19 +368,7 @@ export function createIngestRouter(storage: StorageDriver, spanBuffer?: SpanBuff
       if (!incident) continue;
 
       await storage.appendPlatformEvents(incidentId, events);
-      const rawState = await storage.getRawState(incidentId);
-      if (rawState === null) continue;
-
-      const rebuiltPacket = rebuildPacket(
-        incidentId,
-        incident.packet.packetId,
-        incident.openedAt,
-        rawState,
-        incident.packet.evidence,
-        (incident.packet.generation ?? 1) + 1,
-        incident.packet.scope.primaryService,
-      );
-      await storage.createIncident(rebuiltPacket);
+      await fetchAndRebuild(storage, incident);
     }
 
     return c.json({ status: "ok" });

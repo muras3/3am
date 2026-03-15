@@ -16,7 +16,7 @@ import { rebuildPacket, buildAnomalousSignals } from "../domain/packetizer.js";
 import { isAnomalous } from "../domain/anomaly-detector.js";
 import type { ExtractedSpan } from "../domain/anomaly-detector.js";
 import type { IncidentRawState } from "../storage/interface.js";
-import type { IncidentPacket } from "@3amoncall/core";
+import type { ChangedMetric, IncidentPacket, RelevantLog } from "@3amoncall/core";
 
 // ── Shared OTLP JSON payloads ─────────────────────────────────────────────────
 
@@ -346,42 +346,31 @@ describe("Gate 2: SSOT — raw state drives rebuild", () => {
     expect(p1.packetId).toBe(p2.packetId);
   });
 
-  it("metrics evidence attaches via appendEvidence (Plan 1 traditional path)", async () => {
-    const { app } = setupApp();
-
-    const res1 = await postTraces(app, makeErrorBatch1());
-    const { incidentId } = (await res1.json()) as { incidentId: string };
-
-    // Post metrics to trigger appendEvidence
-    await app.request("/v1/metrics", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(makeMetricsBatch()),
-    });
-
-    const incident = (await (await app.request(`/api/incidents/${incidentId}`)).json()) as {
-      packet: { evidence: { changedMetrics: unknown[] } };
-    };
-    expect(incident.packet.evidence.changedMetrics.length).toBeGreaterThan(0);
-  });
-
-  it("rawState.metricEvidence remains empty (Plan 1 — not migrated to rawState yet)", async () => {
+  it("metrics evidence flows through rawState and rebuilds packet (Plan 6)", async () => {
     const { app, storage } = setupApp();
 
     const res1 = await postTraces(app, makeErrorBatch1());
     const { incidentId } = (await res1.json()) as { incidentId: string };
 
-    // Post metrics
+    // Post metrics — now goes to rawState + rebuild
     await app.request("/v1/metrics", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(makeMetricsBatch()),
     });
 
-    // Metrics should NOT flow into rawState (Plan 6 future work)
+    // rawState.metricEvidence should be populated (Plan 6 migration)
     const rawState = await storage.getRawState(incidentId);
     expect(rawState).not.toBeNull();
-    expect(rawState!.metricEvidence).toHaveLength(0);
+    expect(rawState!.metricEvidence.length).toBeGreaterThan(0);
+
+    // packet.evidence.changedMetrics should be derived from rawState via rebuild
+    const incident = (await (await app.request(`/api/incidents/${incidentId}`)).json()) as {
+      packet: { evidence: { changedMetrics: unknown[] }; pointers: { metricRefs: string[] } };
+    };
+    expect(incident.packet.evidence.changedMetrics.length).toBeGreaterThan(0);
+    // B-5: pointers.metricRefs should also be populated
+    expect(incident.packet.pointers.metricRefs.length).toBeGreaterThan(0);
   });
 });
 
@@ -736,5 +725,129 @@ describe("Gate 5: Performance — rebuild under time budget", () => {
     const elapsedMs = performance.now() - t;
 
     expect(elapsedMs).toBeLessThan(500);
+  });
+});
+
+// ── Plan 6 / B-4 + B-5: rawState-derived evidence and pointers ────────────────
+
+/** Minimal valid span for constructing rawState (needed so window/scope don't fail) */
+function makeMinimalSpan(overrides?: Partial<ExtractedSpan>): ExtractedSpan {
+  return {
+    traceId: "trace-plan6",
+    spanId: "span-plan6",
+    serviceName: "web",
+    environment: "production",
+    httpRoute: "/api/test",
+    httpStatusCode: 500,
+    spanStatusCode: 2,
+    durationMs: 500,
+    startTimeMs: 1741392000000,
+    peerService: undefined,
+    exceptionCount: 0,
+    ...overrides,
+  };
+}
+
+/** Build a minimal IncidentRawState with the given overrides */
+function makeRawStateWithEvidence(
+  opts: {
+    metricEvidence?: ChangedMetric[];
+    logEvidence?: RelevantLog[];
+  } = {},
+): IncidentRawState {
+  const span = makeMinimalSpan();
+  return {
+    spans: [span],
+    anomalousSignals: buildAnomalousSignals([span]),
+    metricEvidence: opts.metricEvidence ?? [],
+    logEvidence: opts.logEvidence ?? [],
+    platformEvents: [],
+  };
+}
+
+function makeSampleMetric(name: string, service = "web"): ChangedMetric {
+  return {
+    name,
+    service,
+    environment: "production",
+    startTimeMs: 1741392000000,
+    summary: { count: 10, sum: 500, min: 1, max: 99 },
+  };
+}
+
+function makeSampleLog(service = "web", timestamp = "2025-03-07T16:00:00.000Z"): RelevantLog {
+  return {
+    service,
+    environment: "production",
+    timestamp,
+    startTimeMs: 1741392000000,
+    severity: "ERROR",
+    body: "checkout failed",
+    attributes: {},
+  };
+}
+
+describe("rebuildPacket — rawState-derived evidence (Plan 6)", () => {
+  it("derives changedMetrics from rawState.metricEvidence", () => {
+    const metric = makeSampleMetric("http.server.request.duration");
+    const rawState = makeRawStateWithEvidence({ metricEvidence: [metric] });
+
+    const packet = rebuildPacket("inc_test", "pkt_test", "2025-03-07T16:00:00.000Z", rawState);
+
+    expect(packet.evidence.changedMetrics).toHaveLength(1);
+    expect(packet.evidence.changedMetrics[0]).toEqual(metric);
+  });
+
+  it("derives relevantLogs from rawState.logEvidence", () => {
+    const log = makeSampleLog();
+    const rawState = makeRawStateWithEvidence({ logEvidence: [log] });
+
+    const packet = rebuildPacket("inc_test", "pkt_test", "2025-03-07T16:00:00.000Z", rawState);
+
+    expect(packet.evidence.relevantLogs).toHaveLength(1);
+    expect(packet.evidence.relevantLogs[0]).toEqual(log);
+  });
+
+  it("populates pointers.metricRefs with unique metric names", () => {
+    // Two metrics with the same name should produce only one ref
+    const m1 = makeSampleMetric("http.server.request.duration", "web");
+    const m2 = makeSampleMetric("http.server.request.duration", "api");  // duplicate name
+    const m3 = makeSampleMetric("db.query.duration", "web");
+    const rawState = makeRawStateWithEvidence({ metricEvidence: [m1, m2, m3] });
+
+    const packet = rebuildPacket("inc_test", "pkt_test", "2025-03-07T16:00:00.000Z", rawState);
+
+    expect(packet.pointers.metricRefs).toEqual(
+      expect.arrayContaining(["http.server.request.duration", "db.query.duration"]),
+    );
+    expect(packet.pointers.metricRefs).toHaveLength(2);  // duplicates deduped
+  });
+
+  it("populates pointers.logRefs with unique service:timestamp keys", () => {
+    const t1 = "2025-03-07T16:00:00.000Z";
+    const t2 = "2025-03-07T16:01:00.000Z";
+    const l1 = makeSampleLog("web", t1);
+    const l2 = makeSampleLog("web", t1);   // duplicate key
+    const l3 = makeSampleLog("web", t2);   // different timestamp
+    const l4 = makeSampleLog("api", t1);   // different service
+    const rawState = makeRawStateWithEvidence({ logEvidence: [l1, l2, l3, l4] });
+
+    const packet = rebuildPacket("inc_test", "pkt_test", "2025-03-07T16:00:00.000Z", rawState);
+
+    expect(packet.pointers.logRefs).toHaveLength(3);  // l1/l2 deduped → web:t1, web:t2, api:t1
+    expect(packet.pointers.logRefs).toEqual(
+      expect.arrayContaining([`web:${t1}`, `web:${t2}`, `api:${t1}`]),
+    );
+  });
+
+  it("empty rawState evidence produces empty arrays in packet and pointers", () => {
+    const rawState = makeRawStateWithEvidence();  // no metric/log evidence
+
+    const packet = rebuildPacket("inc_test", "pkt_test", "2025-03-07T16:00:00.000Z", rawState);
+
+    expect(packet.evidence.changedMetrics).toEqual([]);
+    expect(packet.evidence.relevantLogs).toEqual([]);
+    expect(packet.pointers.metricRefs).toEqual([]);
+    expect(packet.pointers.logRefs).toEqual([]);
   });
 });

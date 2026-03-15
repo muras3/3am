@@ -54,10 +54,34 @@ export const PlatformEventSchema = z.object({
 
 export type PlatformEvent = z.infer<typeof PlatformEventSchema>;
 
+// Plan 6 / B-4: typed evidence schemas.
+// Shapes match evidence-extractor.ts MetricEvidence/LogEvidence exactly.
+export const ChangedMetricSchema = z.object({
+  name: z.string(),
+  service: z.string(),
+  environment: z.string(),
+  startTimeMs: z.number(),
+  summary: z.record(z.string(), z.unknown()),  // histogram/gauge/sum compressed shape — heterogeneous by metric type
+}).strict();
+
+export type ChangedMetric = z.infer<typeof ChangedMetricSchema>;
+
+export const RelevantLogSchema = z.object({
+  service: z.string(),
+  environment: z.string(),
+  timestamp: z.string(),
+  startTimeMs: z.number(),
+  severity: z.string(),
+  body: z.string(),
+  attributes: z.record(z.string(), z.unknown()),
+}).strict();
+
+export type RelevantLog = z.infer<typeof RelevantLogSchema>;
+
 const EvidenceSchema = z.object({
-  changedMetrics: z.array(z.unknown()),   // Phase C: typed when metric ingest is implemented
+  changedMetrics: z.array(ChangedMetricSchema),
   representativeTraces: z.array(RepresentativeTraceSchema),
-  relevantLogs: z.array(z.unknown()),     // Phase C: typed when log ingest is implemented
+  relevantLogs: z.array(RelevantLogSchema),
   platformEvents: z.array(PlatformEventSchema),
 }).strict();
 

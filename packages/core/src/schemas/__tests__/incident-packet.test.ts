@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { ZodError } from "zod";
-import { IncidentPacketSchema, PlatformEventSchema } from "../incident-packet.js";
+import { IncidentPacketSchema, PlatformEventSchema, ChangedMetricSchema, RelevantLogSchema } from "../incident-packet.js";
 
 const minimalValidPacket = {
   schemaVersion: "incident-packet/v1alpha1",
@@ -185,6 +185,61 @@ describe("IncidentPacketSchema", () => {
     };
 
     expect(() => IncidentPacketSchema.parse(withBadPlatformEvent)).toThrow(ZodError);
+  });
+});
+
+describe("ChangedMetricSchema", () => {
+  it("accepts a valid metric evidence entry", () => {
+    const valid = {
+      name: "http.server.duration",
+      service: "validation-web",
+      environment: "staging",
+      startTimeMs: 1710500000000,
+      summary: { count: 42, sum: 1234.5, min: 10, max: 500 },
+    };
+    expect(ChangedMetricSchema.parse(valid)).toEqual(valid);
+  });
+
+  it("rejects entry missing required fields", () => {
+    expect(() => ChangedMetricSchema.parse({ name: "x" })).toThrow(ZodError);
+  });
+
+  it("rejects unknown fields (.strict())", () => {
+    expect(() =>
+      ChangedMetricSchema.parse({
+        name: "x", service: "s", environment: "e", startTimeMs: 1, summary: {},
+        extraField: true,
+      }),
+    ).toThrow(ZodError);
+  });
+});
+
+describe("RelevantLogSchema", () => {
+  it("accepts a valid log evidence entry", () => {
+    const valid = {
+      service: "validation-web",
+      environment: "staging",
+      timestamp: "2026-03-15T00:00:00.000Z",
+      startTimeMs: 1710500000000,
+      severity: "ERROR",
+      body: "sendgrid auth failed",
+      attributes: { "error.type": "AuthenticationError" },
+    };
+    expect(RelevantLogSchema.parse(valid)).toEqual(valid);
+  });
+
+  it("rejects entry missing required fields", () => {
+    expect(() => RelevantLogSchema.parse({ severity: "ERROR" })).toThrow(ZodError);
+  });
+
+  it("rejects unknown fields (.strict())", () => {
+    expect(() =>
+      RelevantLogSchema.parse({
+        service: "s", environment: "e", timestamp: "t", startTimeMs: 1,
+        severity: "ERROR", body: "b", attributes: {},
+        extraField: true,
+      }),
+    ).toThrow(ZodError);
   });
 });
 

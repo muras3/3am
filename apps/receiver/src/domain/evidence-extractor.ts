@@ -12,34 +12,10 @@
  * NOTE: no dedup; duplicates are acceptable (batch re-sends treated as repeated signals)
  */
 
+import type { ChangedMetric, RelevantLog } from '@3amoncall/core'
 import type { Incident } from '../storage/interface.js'
 import { FORMATION_WINDOW_MS } from './formation.js'
 import { isRecord, isArray, nanoToMs, getStringAttr } from './otlp-utils.js'
-
-// ── Types ──────────────────────────────────────────────────────────────────
-
-export type MetricEvidence = {
-  name: string
-  service: string
-  environment: string
-  startTimeMs: number
-  /** Compressed datapoint:
-   *  - histogram → { count, sum, min, max } (bucketCounts/explicitBounds excluded)
-   *  - gauge/sum → { asDouble } or { asInt }
-   */
-  summary: unknown
-}
-
-export type LogEvidence = {
-  service: string
-  environment: string
-  timestamp: string  // ISO string
-  startTimeMs: number  // numeric epoch ms for evidence matching (= timestamp as number)
-  severity: string   // "WARN" | "ERROR" | "FATAL" | "UNKNOWN"
-  /** body.stringValue as-is; non-string body is JSON.stringify'd */
-  body: string
-  attributes: Record<string, unknown>
-}
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -58,7 +34,7 @@ function getResourceAttrs(entry: Record<string, unknown>): unknown {
 }
 
 /** Compress a histogram datapoint: keep count/sum/min/max, drop buckets. */
-function compressHistogramDatapoint(dp: Record<string, unknown>): unknown {
+function compressHistogramDatapoint(dp: Record<string, unknown>): Record<string, unknown> {
   return {
     ...(dp['count'] !== undefined ? { count: dp['count'] } : {}),
     ...(dp['sum'] !== undefined ? { sum: dp['sum'] } : {}),
@@ -68,7 +44,7 @@ function compressHistogramDatapoint(dp: Record<string, unknown>): unknown {
 }
 
 /** Compress a gauge/sum datapoint: keep asDouble or asInt. */
-function compressNumberDatapoint(dp: Record<string, unknown>): unknown {
+function compressNumberDatapoint(dp: Record<string, unknown>): Record<string, unknown> {
   if (dp['asDouble'] !== undefined) return { asDouble: dp['asDouble'] }
   if (dp['asInt'] !== undefined) return { asInt: dp['asInt'] }
   return {}
@@ -78,14 +54,14 @@ function compressNumberDatapoint(dp: Record<string, unknown>): unknown {
 
 /**
  * Extract metric evidence entries from a decoded OTLP ExportMetricsServiceRequest body.
- * Returns one MetricEvidence per (metric name × resource).
+ * Returns one ChangedMetric per (metric name × resource).
  */
-export function extractMetricEvidence(body: unknown): MetricEvidence[] {
+export function extractMetricEvidence(body: unknown): ChangedMetric[] {
   if (!isRecord(body)) return []
   const resourceMetrics = body['resourceMetrics']
   if (!isArray(resourceMetrics)) return []
 
-  const results: MetricEvidence[] = []
+  const results: ChangedMetric[] = []
 
   for (const rm of resourceMetrics) {
     if (!isRecord(rm)) continue
@@ -109,7 +85,7 @@ export function extractMetricEvidence(body: unknown): MetricEvidence[] {
 
         // Determine first datapoint and startTimeMs
         let firstDp: Record<string, unknown> | null = null
-        let summary: unknown = {}
+        let summary: Record<string, unknown> = {}
 
         // histogram
         const hist = metric['histogram']
@@ -155,12 +131,12 @@ export function extractMetricEvidence(body: unknown): MetricEvidence[] {
  * Extract log evidence entries from a decoded OTLP ExportLogsServiceRequest body.
  * Only includes log records with severityNumber >= 13 (WARN and above).
  */
-export function extractLogEvidence(body: unknown): LogEvidence[] {
+export function extractLogEvidence(body: unknown): RelevantLog[] {
   if (!isRecord(body)) return []
   const resourceLogs = body['resourceLogs']
   if (!isArray(resourceLogs)) return []
 
-  const results: LogEvidence[] = []
+  const results: RelevantLog[] = []
 
   for (const rl of resourceLogs) {
     if (!isRecord(rl)) continue

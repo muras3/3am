@@ -1,4 +1,4 @@
-import type { IncidentPacket, DiagnosisResult, PlatformEvent, ThinEvent } from "@3amoncall/core";
+import type { IncidentPacket, DiagnosisResult, PlatformEvent, ThinEvent, ChangedMetric, RelevantLog } from "@3amoncall/core";
 import type { ExtractedSpan } from "../domain/anomaly-detector.js";
 
 export interface AnomalousSignal {
@@ -11,30 +11,13 @@ export interface AnomalousSignal {
 export interface IncidentRawState {
   spans: ExtractedSpan[];
   anomalousSignals: AnomalousSignal[];
-  metricEvidence: unknown[];    // Plan 6 で typed 化
-  logEvidence: unknown[];       // Plan 6 で typed 化
+  metricEvidence: ChangedMetric[];
+  logEvidence: RelevantLog[];
   platformEvents: PlatformEvent[];
 }
 
 export function createEmptyRawState(): IncidentRawState {
   return { spans: [], anomalousSignals: [], metricEvidence: [], logEvidence: [], platformEvents: [] }
-}
-
-/** Merge new evidence entries into an existing incident packet. */
-export function mergeEvidenceIntoPacket(
-  packet: IncidentPacket,
-  update: { changedMetrics?: unknown[]; relevantLogs?: unknown[] },
-): IncidentPacket {
-  // ?? [] guards against missing fields in rows stored by an older schema version.
-  const ev = packet.evidence;
-  return {
-    ...packet,
-    evidence: {
-      ...ev,
-      changedMetrics: [...(ev.changedMetrics ?? []), ...(update.changedMetrics ?? [])],
-      relevantLogs: [...(ev.relevantLogs ?? []), ...(update.relevantLogs ?? [])],
-    },
-  };
 }
 
 export interface Incident {
@@ -70,12 +53,12 @@ export interface StorageDriver {
   deleteExpiredIncidents(before: Date): Promise<void>;
 
   /**
-   * Append evidence entries to an existing incident's packet.
+   * Append typed evidence entries to an existing incident's rawState.
    * Unknown incidentId is a no-op (does not throw).
    */
-  appendEvidence(
+  appendRawEvidence(
     incidentId: string,
-    update: { changedMetrics?: unknown[]; relevantLogs?: unknown[] },
+    update: { metricEvidence?: ChangedMetric[]; logEvidence?: RelevantLog[] },
   ): Promise<void>;
 
   appendSpans(incidentId: string, spans: ExtractedSpan[]): Promise<void>;

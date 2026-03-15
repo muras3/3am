@@ -39,7 +39,7 @@
  */
 
 import { randomUUID } from "crypto"
-import type { IncidentPacket, PlatformEvent } from "@3amoncall/core"
+import type { IncidentPacket, PlatformEvent, ChangedMetric, RelevantLog } from "@3amoncall/core"
 import { type ExtractedSpan, isAnomalous, SLOW_SPAN_THRESHOLD_MS } from "./anomaly-detector.js"
 import { normalizeDependency } from "./formation.js"
 import type { AnomalousSignal, IncidentRawState } from "../storage/interface.js"
@@ -298,11 +298,10 @@ export function rebuildPacket(
   packetId: string,
   openedAt: string,
   rawState: IncidentRawState,
-  existingEvidence?: { changedMetrics?: unknown[]; relevantLogs?: unknown[] },
   generation?: number,
   primaryService?: string,
 ): IncidentPacket {
-  const { spans, anomalousSignals, platformEvents } = rawState
+  const { spans, anomalousSignals, platformEvents, metricEvidence, logEvidence } = rawState
 
   // window
   const windowStart = Math.min(...spans.map((s) => s.startTimeMs))
@@ -347,6 +346,14 @@ export function rebuildPacket(
   const traceRefs = [...new Set(spans.map((s) => s.traceId))]
   const platformLogRefs = platformEvents.map(buildPlatformLogRef)
 
+  // evidence — all derived from rawState (Plan 6 / B-4)
+  const changedMetrics: ChangedMetric[] = metricEvidence
+  const relevantLogs: RelevantLog[] = logEvidence
+
+  // pointers — populated from rawState (Plan 6 / B-5)
+  const metricRefs = [...new Set(metricEvidence.map((m) => m.name))]
+  const logRefs = [...new Set(logEvidence.map((l) => `${l.service}:${l.timestamp}`))]
+
   return {
     schemaVersion: "incident-packet/v1alpha1",
     packetId,
@@ -368,15 +375,15 @@ export function rebuildPacket(
     },
     triggerSignals,
     evidence: {
-      changedMetrics: existingEvidence?.changedMetrics ?? [],
+      changedMetrics,
       representativeTraces,
-      relevantLogs: existingEvidence?.relevantLogs ?? [],
+      relevantLogs,
       platformEvents,
     },
     pointers: {
       traceRefs,
-      logRefs: [],
-      metricRefs: [],
+      logRefs,
+      metricRefs,
       platformLogRefs,
     },
   }
@@ -397,5 +404,5 @@ export function createPacket(
     platformEvents: [],
   }
   const packetId = randomUUID()
-  return rebuildPacket(incidentId, packetId, openedAt, rawState, undefined, 1, resolvedPrimaryService)
+  return rebuildPacket(incidentId, packetId, openedAt, rawState, 1, resolvedPrimaryService)
 }
