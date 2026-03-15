@@ -298,7 +298,6 @@ export function rebuildPacket(
   packetId: string,
   openedAt: string,
   rawState: IncidentRawState,
-  _existingEvidence?: unknown,  // DEPRECATED — ignored, rawState is sole source (Plan 6)
   generation?: number,
   primaryService?: string,
 ): IncidentPacket {
@@ -405,5 +404,5 @@ export function createPacket(
     platformEvents: [],
   }
   const packetId = randomUUID()
-  return rebuildPacket(incidentId, packetId, openedAt, rawState, undefined, 1, resolvedPrimaryService)
+  return rebuildPacket(incidentId, packetId, openedAt, rawState, 1, resolvedPrimaryService)
 }

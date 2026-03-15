@@ -233,7 +233,7 @@ describe('rebuildPacket', () => {
   })
 
   it('generation counter is stored in packet', () => {
-    const packet = rebuildPacket('inc_1', 'pkt_1', '2023-11-14T22:13:20.000Z', rawState, undefined, 3)
+    const packet = rebuildPacket('inc_1', 'pkt_1', '2023-11-14T22:13:20.000Z', rawState, 3)
     expect(packet.generation).toBe(3)
   })
 
@@ -246,7 +246,6 @@ describe('rebuildPacket', () => {
         makeSpan({ serviceName: 'checkout-api', spanId: 'span-a', startTimeMs: 1700000000000, httpStatusCode: 500, spanStatusCode: 2 }),
         makeSpan({ serviceName: 'billing-worker', spanId: 'span-b', startTimeMs: 1699999999000, httpStatusCode: 503, spanStatusCode: 2 }),
       ]),
-      undefined,
       2,
       'checkout-api',
     )
@@ -254,18 +253,7 @@ describe('rebuildPacket', () => {
     expect(packet.scope.primaryService).toBe('checkout-api')
   })
 
-  it('existingEvidence parameter is ignored — rawState is sole source (Plan 6)', () => {
-    const staleEvidence = {
-      changedMetrics: [{ name: 'p99', value: 2000 }],
-      relevantLogs: [{ message: 'error log' }],
-    }
-    const packet = rebuildPacket('inc_1', 'pkt_1', '2023-11-14T22:13:20.000Z', rawState, staleEvidence)
-    // rawState has no metric/log evidence, so packet should have empty arrays
-    expect(packet.evidence.changedMetrics).toEqual([])
-    expect(packet.evidence.relevantLogs).toEqual([])
-  })
-
-  it('existingEvidence defaults to empty arrays when not provided', () => {
+  it('evidence is derived solely from rawState (Plan 6)', () => {
     const packet = rebuildPacket('inc_1', 'pkt_1', '2023-11-14T22:13:20.000Z', rawState)
     expect(packet.evidence.changedMetrics).toEqual([])
     expect(packet.evidence.relevantLogs).toEqual([])
@@ -355,8 +343,8 @@ describe('rebuildPacket', () => {
   })
 
   it('idempotency: same raw state → identical packet JSON', () => {
-    const p1 = rebuildPacket('inc_1', 'pkt_1', '2023-11-14T22:13:20.000Z', rawState, undefined, 2)
-    const p2 = rebuildPacket('inc_1', 'pkt_1', '2023-11-14T22:13:20.000Z', rawState, undefined, 2)
+    const p1 = rebuildPacket('inc_1', 'pkt_1', '2023-11-14T22:13:20.000Z', rawState, 2)
+    const p2 = rebuildPacket('inc_1', 'pkt_1', '2023-11-14T22:13:20.000Z', rawState, 2)
     expect(JSON.stringify(p1)).toBe(JSON.stringify(p2))
   })
 
@@ -904,8 +892,8 @@ describe('2-stage selection: determinism', () => {
 
   it('same span set processed twice → identical representativeTraces', () => {
     const raw = makeRawState(deterministicSpans)
-    const p1 = rebuildPacket('inc_1', 'pkt_1', '2023-11-14T22:13:20.000Z', raw, undefined, 1)
-    const p2 = rebuildPacket('inc_1', 'pkt_1', '2023-11-14T22:13:20.000Z', raw, undefined, 1)
+    const p1 = rebuildPacket('inc_1', 'pkt_1', '2023-11-14T22:13:20.000Z', raw, 1)
+    const p2 = rebuildPacket('inc_1', 'pkt_1', '2023-11-14T22:13:20.000Z', raw, 1)
     expect(JSON.stringify(p1.evidence.representativeTraces))
       .toBe(JSON.stringify(p2.evidence.representativeTraces))
   })
@@ -914,8 +902,8 @@ describe('2-stage selection: determinism', () => {
     const shuffled = [...deterministicSpans].reverse()
     const raw1 = makeRawState(deterministicSpans)
     const raw2 = makeRawState(shuffled)
-    const p1 = rebuildPacket('inc_1', 'pkt_1', '2023-11-14T22:13:20.000Z', raw1, undefined, 1)
-    const p2 = rebuildPacket('inc_1', 'pkt_1', '2023-11-14T22:13:20.000Z', raw2, undefined, 1)
+    const p1 = rebuildPacket('inc_1', 'pkt_1', '2023-11-14T22:13:20.000Z', raw1, 1)
+    const p2 = rebuildPacket('inc_1', 'pkt_1', '2023-11-14T22:13:20.000Z', raw2, 1)
     expect(JSON.stringify(p1.evidence.representativeTraces))
       .toBe(JSON.stringify(p2.evidence.representativeTraces))
   })
@@ -932,14 +920,14 @@ describe('2-stage selection: determinism', () => {
     // Run multiple times with different input orders
     for (const order of [tiedSpans, [...tiedSpans].reverse(), [tiedSpans[2], tiedSpans[0], tiedSpans[1]]]) {
       const rawVariant = makeRawState(order)
-      const p = rebuildPacket('inc_1', 'pkt_1', '2023-11-14T22:13:20.000Z', rawVariant, undefined, 1)
+      const p = rebuildPacket('inc_1', 'pkt_1', '2023-11-14T22:13:20.000Z', rawVariant, 1)
       const firstTrace = (p.evidence.representativeTraces as Array<{ traceId: string }>)[0]
       // 'aaa'+'aaa' is lex smallest → should be first
       expect(firstTrace.traceId).toBe('aaa')
     }
 
     // Verify output matches the canonical sorted version
-    const p = rebuildPacket('inc_1', 'pkt_1', '2023-11-14T22:13:20.000Z', raw, undefined, 1)
+    const p = rebuildPacket('inc_1', 'pkt_1', '2023-11-14T22:13:20.000Z', raw, 1)
     const traces = p.evidence.representativeTraces as Array<{ traceId: string }>
     expect(traces[0].traceId).toBe('aaa')
     expect(traces[1].traceId).toBe('mmm')

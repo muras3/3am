@@ -141,6 +141,25 @@ function selectBestIncidentForPlatformEvent(
     })[0];
 }
 
+/**
+ * Fetch rawState, rebuild the incident packet, and persist it.
+ * Shared across all ingest routes that mutate rawState (traces, metrics, logs, platform-events).
+ */
+async function fetchAndRebuild(storage: StorageDriver, incident: Incident): Promise<void> {
+  const rawState = await storage.getRawState(incident.incidentId);
+  if (rawState === null) return;
+  const generation = (incident.packet.generation ?? 1) + 1;
+  const rebuiltPacket = rebuildPacket(
+    incident.incidentId,
+    incident.packet.packetId,
+    incident.openedAt,
+    rawState,
+    generation,
+    incident.packet.scope.primaryService,
+  );
+  await storage.createIncident(rebuiltPacket);
+}
+
 export function createIngestRouter(storage: StorageDriver, spanBuffer?: SpanBuffer): Hono {
   const app = new Hono();
 
@@ -239,20 +258,7 @@ export function createIngestRouter(storage: StorageDriver, spanBuffer?: SpanBuff
     // packetId is stable across rebuilds (thin event reference remains valid).
     await storage.appendSpans(incidentId, spans);
     await storage.appendAnomalousSignals(incidentId, buildAnomalousSignals(signalSpans));
-    const rawState = await storage.getRawState(incidentId);
-    if (rawState !== null) {
-      const generation = (existing.packet.generation ?? 1) + 1;
-      const rebuiltPacket = rebuildPacket(
-        incidentId,
-        existing.packet.packetId,
-        existing.openedAt,
-        rawState,
-        undefined,
-        generation,
-        existing.packet.scope.primaryService,
-      );
-      await storage.createIncident(rebuiltPacket);
-    }
+    await fetchAndRebuild(storage, existing);
     return c.json({ status: "ok", incidentId, packetId: existing.packet.packetId });
   });
 
@@ -277,19 +283,7 @@ export function createIngestRouter(storage: StorageDriver, spanBuffer?: SpanBuff
           if (matching.length === 0) return [];
           return [(async () => {
             await storage.appendRawEvidence(incident.incidentId, { metricEvidence: matching });
-            const rawState = await storage.getRawState(incident.incidentId);
-            if (rawState === null) return;
-            const generation = (incident.packet.generation ?? 1) + 1;
-            const rebuiltPacket = rebuildPacket(
-              incident.incidentId,
-              incident.packet.packetId,
-              incident.openedAt,
-              rawState,
-              undefined,
-              generation,
-              incident.packet.scope.primaryService,
-            );
-            await storage.createIncident(rebuiltPacket);
+            await fetchAndRebuild(storage, incident);
           })()];
         }),
       );
@@ -317,19 +311,7 @@ export function createIngestRouter(storage: StorageDriver, spanBuffer?: SpanBuff
           if (matching.length === 0) return [];
           return [(async () => {
             await storage.appendRawEvidence(incident.incidentId, { logEvidence: matching });
-            const rawState = await storage.getRawState(incident.incidentId);
-            if (rawState === null) return;
-            const generation = (incident.packet.generation ?? 1) + 1;
-            const rebuiltPacket = rebuildPacket(
-              incident.incidentId,
-              incident.packet.packetId,
-              incident.openedAt,
-              rawState,
-              undefined,
-              generation,
-              incident.packet.scope.primaryService,
-            );
-            await storage.createIncident(rebuiltPacket);
+            await fetchAndRebuild(storage, incident);
           })()];
         }),
       );
@@ -381,19 +363,7 @@ export function createIngestRouter(storage: StorageDriver, spanBuffer?: SpanBuff
       if (!incident) continue;
 
       await storage.appendPlatformEvents(incidentId, events);
-      const rawState = await storage.getRawState(incidentId);
-      if (rawState === null) continue;
-
-      const rebuiltPacket = rebuildPacket(
-        incidentId,
-        incident.packet.packetId,
-        incident.openedAt,
-        rawState,
-        undefined,
-        (incident.packet.generation ?? 1) + 1,
-        incident.packet.scope.primaryService,
-      );
-      await storage.createIncident(rebuiltPacket);
+      await fetchAndRebuild(storage, incident);
     }
 
     return c.json({ status: "ok" });

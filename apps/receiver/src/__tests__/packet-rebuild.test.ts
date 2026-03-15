@@ -840,30 +840,6 @@ describe("rebuildPacket — rawState-derived evidence (Plan 6)", () => {
     );
   });
 
-  it("ignores existingEvidence parameter — rawState is sole source", () => {
-    const rawState = makeRawStateWithEvidence({
-      metricEvidence: [makeSampleMetric("http.server.request.duration")],
-      logEvidence: [makeSampleLog()],
-    });
-
-    // Pass stale existingEvidence as the deprecated 5th argument
-    const staleEvidence = {
-      changedMetrics: [{ name: "stale.metric", service: "stale", environment: "staging", startTimeMs: 0, summary: {} }],
-      relevantLogs: [{ service: "stale", environment: "staging", timestamp: "2000-01-01T00:00:00.000Z", startTimeMs: 0, severity: "WARN", body: "stale log", attributes: {} }],
-    };
-
-    const packet = rebuildPacket("inc_test", "pkt_test", "2025-03-07T16:00:00.000Z", rawState, staleEvidence);
-
-    // Stale data must NOT appear
-    const metricNames = packet.evidence.changedMetrics.map((m) => m.name);
-    expect(metricNames).not.toContain("stale.metric");
-    expect(metricNames).toContain("http.server.request.duration");
-
-    const logBodies = packet.evidence.relevantLogs.map((l) => l.body);
-    expect(logBodies).not.toContain("stale log");
-    expect(logBodies).toContain("checkout failed");
-  });
-
   it("empty rawState evidence produces empty arrays in packet and pointers", () => {
     const rawState = makeRawStateWithEvidence();  // no metric/log evidence
 
