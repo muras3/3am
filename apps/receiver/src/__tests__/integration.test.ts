@@ -1,11 +1,11 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { gzipSync } from "node:zlib";
 import protobuf from "protobufjs";
 import { MemoryAdapter } from "../storage/adapters/memory.js";
 import { createApp } from "../index.js";
 import { MAX_REPRESENTATIVE_TRACES } from "../domain/packetizer.js";
+import { secretsRotationReplayPayload } from "./fixtures/scenarios/06-secrets-rotation-replay.js";
 
 // ── Protobuf encode helpers ────────────────────────────────────────────────────
 const _require = createRequire(import.meta.url);
@@ -1813,14 +1813,7 @@ describe("Formation: dependency-based incident grouping (OC-1 to OC-6)", () => {
   });
 
   it("OC-15: replayed secrets rotation traces form an incident around validation-web and sendgrid", async () => {
-    const replayPayload = JSON.parse(
-      readFileSync(
-        "/Users/murase/project/3amoncall/validation/out/runs/2026-03-15T01-46-05-054Z-secrets_rotation_partial_propagation/traces.json",
-        "utf8",
-      ),
-    ) as Array<object>;
-
-    for (const batch of replayPayload) {
+    for (const batch of secretsRotationReplayPayload) {
       await postTraces(app, batch);
     }
 
