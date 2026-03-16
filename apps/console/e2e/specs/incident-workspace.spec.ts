@@ -44,7 +44,7 @@ test.describe("Phase 1 product definition gate", () => {
 
   test("Evidence Studio shows proof cards before tabs", async ({ page }) => {
     await page.click("[data-testid='open-evidence-studio']");
-    await expect(page.locator(".evidence-modal")).toBeVisible();
+    await expect(page.locator(".es-app")).toBeVisible();
     // proof-cards must be visible in the initial viewport (above the tab bar)
     // without any scrolling required
     await expect(page.locator("[data-testid='proof-cards']")).toBeVisible();

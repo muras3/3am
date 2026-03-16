@@ -11,6 +11,9 @@ export type ExtractedSpan = {
   startTimeMs: number
   exceptionCount: number  // number of exception events in this span
   peerService?: string    // peer.service attribute (ADR 0023 required dependency id)
+  parentSpanId?: string   // parent span for APM waterfall tree
+  spanName?: string       // OTLP span.name (operation name)
+  httpMethod?: string     // http.request.method attribute
 }
 
 // Spans slower than this threshold are considered anomalous (ADR 0023)
@@ -243,6 +246,10 @@ export function extractSpans(payload: unknown): ExtractedSpan[] {
         const events = Array.isArray(s['events']) ? (s['events'] as unknown[]) : []
         const exceptionCount = events.filter((e) => isRecord(e) && e['name'] === 'exception').length
 
+        const parentSpanId = (typeof s['parentSpanId'] === 'string' && s['parentSpanId'] !== '') ? s['parentSpanId'] : undefined
+        const spanName = typeof s['name'] === 'string' ? s['name'] : undefined
+        const httpMethod = getAttr(attrs, 'http.request.method')
+
         result.push({
           traceId,
           spanId,
@@ -256,6 +263,9 @@ export function extractSpans(payload: unknown): ExtractedSpan[] {
           startTimeMs,
           exceptionCount,
           peerService,
+          parentSpanId,
+          spanName,
+          httpMethod,
         })
       }
     }

@@ -1,69 +1,159 @@
-import type { Incident } from "../../api/types.js";
+import type { ExtractedSpan, RepresentativeTrace } from "../../api/types.js";
+import { buildTraceGroups } from "../../lib/viewmodels/index.js";
 import { EmptyView } from "./EmptyView.js";
 
 interface Props {
-  incident: Incident;
+  rawSpans: ExtractedSpan[];
+  packetTraces: RepresentativeTrace[];
+  onSpanSelect: (span: ExtractedSpan) => void;
 }
 
-function barColor(spanStatusCode: number, httpStatusCode?: number): string {
-  if (spanStatusCode === 2) return "var(--accent)";
-  if (httpStatusCode === 429) return "var(--amber)";
-  return "var(--teal)";
+function barClass(span: ExtractedSpan): string {
+  if (span.spanStatusCode === 2) return "wf-bar-error";
+  if (span.httpStatusCode === 429) return "wf-bar-429";
+  if (span.peerService) return "wf-bar-system";
+  return "wf-bar-ok";
 }
 
-export function TracesView({ incident }: Props) {
-  const traces = incident.packet.evidence.representativeTraces;
-  if (traces.length === 0) return <EmptyView label="trace" />;
+function httpStatusColor(code: number | undefined): string {
+  if (!code) return "";
+  if (code >= 500) return "var(--accent)";
+  if (code >= 400) return "var(--amber)";
+  return "";
+}
 
-  const maxDurationMs = Math.max(...traces.map((t) => t.durationMs));
+function spanLabel(span: ExtractedSpan): string {
+  return span.spanName ?? span.httpRoute ?? span.spanId.slice(0, 10);
+}
+
+interface TraceGroupCardProps {
+  traceId: string;
+  method?: string;
+  route?: string;
+  rootStatus: number;
+  totalDurationMs: number;
+  spanCount: number;
+  traceStartMs: number;
+  orderedSpans: Array<{ span: ExtractedSpan; depth: number; isAiSelected: boolean }>;
+  onSpanSelect: (span: ExtractedSpan) => void;
+}
+
+function TraceGroupCard({
+  traceId,
+  method,
+  route,
+  rootStatus,
+  totalDurationMs,
+  spanCount,
+  traceStartMs,
+  orderedSpans,
+  onSpanSelect,
+}: TraceGroupCardProps) {
+  const statusColor =
+    rootStatus >= 500
+      ? "var(--accent)"
+      : rootStatus >= 400
+        ? "var(--amber)"
+        : "var(--good)";
 
   return (
-    <>
-      <div className="waterfall">
-        {traces.map((t) => (
-          <div key={t.spanId} className="wf-row">
-            <span
-              style={{
-                display: "inline-block",
-                width: "12px",
-                height: "12px",
-                borderRadius: "50%",
-                background: barColor(t.spanStatusCode, t.httpStatusCode),
-                flexShrink: 0,
-              }}
-            />
-            <span>{t.serviceName}</span>
+    <div className="trace-group" data-testid="trace-group">
+      <div className="tg-header">
+        {method && <span className="tg-method">{method}</span>}
+        <span className="tg-route">{route ?? traceId.slice(0, 12)}</span>
+        <span className="tg-id" title={traceId}>{traceId.slice(0, 8)}…</span>
+        <span className="tg-status" style={{ color: statusColor }}>
+          {rootStatus}
+        </span>
+        <span className="tg-dur">{totalDurationMs}ms</span>
+        <span className="tg-count">{spanCount} spans</span>
+      </div>
+
+      <div className="wf-ruler" aria-hidden="true">
+        <span>0</span>
+        <span>{Math.round(totalDurationMs / 2)}ms</span>
+        <span>{totalDurationMs}ms</span>
+      </div>
+
+      {orderedSpans.map(({ span, depth, isAiSelected }, idx) => {
+        const leftPct =
+          totalDurationMs > 0
+            ? ((span.startTimeMs - traceStartMs) / totalDurationMs) * 100
+            : 0;
+        const widthPct =
+          totalDurationMs > 0
+            ? Math.max(1, (span.durationMs / totalDurationMs) * 100)
+            : 1;
+
+        return (
+          <div
+            key={span.spanId}
+            className={`wf-row${isAiSelected ? " highlighted" : ""}`}
+            data-testid="span-row"
+            onClick={() => onSpanSelect(span)}
+          >
             <div
-              className="wf-bar"
-              style={{
-                width: `${(t.durationMs / maxDurationMs) * 100}%`,
-                background: barColor(t.spanStatusCode, t.httpStatusCode),
-              }}
-            />
-            <span>{t.durationMs}ms</span>
-          </div>
-        ))}
-      </div>
-      <div className="trace-attrs">
-        <div className="trace-attrs-head">
-          <span>Span ID</span>
-          <span>Service</span>
-          <span>Details</span>
-        </div>
-        {traces.map((t) => (
-          <div key={t.spanId} className="trace-attrs-row">
-            <div className="ta-span">
-              {t.spanId.length > 12 ? `${t.spanId.slice(0, 12)}…` : t.spanId}
+              className="wf-span-name"
+              style={{ paddingLeft: `${depth * 12 + 8}px` }}
+            >
+              <span
+                className="svc-dot"
+                style={{ background: span.spanStatusCode === 2 ? "var(--accent)" : "var(--teal)" }}
+              />
+              <span>{spanLabel(span)}</span>
+              {span.spanStatusCode === 2 && (
+                <span className="err-badge">ERR</span>
+              )}
+              {span.httpStatusCode != null && (
+                <span
+                  className="err-badge"
+                  style={{ color: httpStatusColor(span.httpStatusCode), borderColor: httpStatusColor(span.httpStatusCode) }}
+                >
+                  {span.httpStatusCode}
+                </span>
+              )}
             </div>
-            <div className="ta-svc">{t.serviceName}</div>
-            <div className="ta-attrs">
-              {t.durationMs}ms
-              {t.httpStatusCode != null ? ` · HTTP ${t.httpStatusCode}` : ""}
-              {` · status ${t.spanStatusCode}`}
+            <div className="wf-bar-area">
+              <div
+                className={`wf-bar ${barClass(span)}`}
+                style={{
+                  left: `${leftPct.toFixed(1)}%`,
+                  width: `${widthPct.toFixed(1)}%`,
+                  animationDelay: `${idx * 25}ms`,
+                }}
+              />
             </div>
+            <div className="wf-duration">{span.durationMs}ms</div>
           </div>
-        ))}
-      </div>
-    </>
+        );
+      })}
+    </div>
+  );
+}
+
+export function TracesView({ rawSpans, packetTraces, onSpanSelect }: Props) {
+  const groups = buildTraceGroups(rawSpans, packetTraces);
+
+  if (groups.length === 0) {
+    return <EmptyView label="trace" />;
+  }
+
+  return (
+    <div data-testid="traces-view">
+      {groups.map((group) => (
+        <TraceGroupCard
+          key={group.traceId}
+          traceId={group.traceId}
+          method={group.method}
+          route={group.route}
+          rootStatus={group.rootStatus}
+          totalDurationMs={group.totalDurationMs}
+          spanCount={group.spanCount}
+          traceStartMs={group.traceStartMs}
+          orderedSpans={group.orderedSpans}
+          onSpanSelect={onSpanSelect}
+        />
+      ))}
+    </div>
   );
 }

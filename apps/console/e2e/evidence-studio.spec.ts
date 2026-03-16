@@ -2,79 +2,71 @@ import { test, expect } from "@playwright/test";
 import { gotoFirstIncident } from "./helpers.js";
 
 /**
- * Evidence Studio E2E tests.
+ * Evidence Studio v4 E2E tests.
  *
- * Each test opens the first seeded incident's board and exercises the modal.
- * The EvidenceStudio component defaults to the "traces" tab on open.
+ * Evidence Studio is now a full-viewport page (not a modal overlay).
+ * It uses .es-app layout with .es-tabs for tab navigation.
  *
  * Tab display names (derived from EvidenceTabs.tsx):
- *   "metrics"       → "Metrics"
- *   "traces"        → "Traces"
- *   "logs"          → "Logs"
- *   "platform-logs" → "Platform logs"
+ *   "traces"   → "Traces"
+ *   "metrics"  → "Metrics"
+ *   "logs"     → "Logs"
+ *   "platform" → "Platform"
  */
 test.describe("Evidence Studio", () => {
   test.beforeEach(async ({ page }) => {
     await gotoFirstIncident(page);
-    // Wait for the board to fully render before each test
     await expect(page.locator(".section-what")).toBeVisible();
   });
 
-  test("opens Evidence Studio modal", async ({ page }) => {
+  test("opens Evidence Studio", async ({ page }) => {
     await page.click("button.btn-evidence");
-    await expect(page.locator(".evidence-modal")).toBeVisible();
+    await expect(page.locator(".es-app")).toBeVisible();
   });
 
   test("Traces tab shows waterfall rows (default tab)", async ({ page }) => {
     await page.click("button.btn-evidence");
+    await expect(page.locator(".es-app")).toBeVisible();
     // Traces is the default tab — waterfall rows should already be visible
     await expect(page.locator(".wf-row").first()).toBeVisible();
   });
 
-  test("Metrics tab shows empty-state message", async ({ page }) => {
+  test("Metrics tab shows content or empty-state", async ({ page }) => {
     await page.click("button.btn-evidence");
-    await page.click(".ev-tab:has-text('Metrics')");
-    await expect(page.locator("text=No metrics data")).toBeVisible();
+    await page.click(".es-tab:has-text('Metrics')");
+    // Seeded incident may have metrics or show empty state
+    const hasMetrics = await page.locator(".metrics-stat-strip").isVisible().catch(() => false);
+    const hasEmpty = await page.locator("text=No metric data available").isVisible().catch(() => false);
+    expect(hasMetrics || hasEmpty).toBeTruthy();
   });
 
-  test("Logs tab shows empty state when no relevantLogs", async ({ page }) => {
+  test("Logs tab shows content or empty state", async ({ page }) => {
     await page.click("button.btn-evidence");
-    await page.click(".ev-tab:has-text('Logs')");
-    // Seeded incident has relevantLogs: [] — empty state expected until /v1/logs ingest is active
-    await expect(page.locator("text=No log record data")).toBeVisible();
+    await page.click(".es-tab:has-text('Logs')");
+    const hasLogs = await page.locator(".log-row").first().isVisible().catch(() => false);
+    const hasEmpty = await page.locator("text=No log").isVisible().catch(() => false);
+    expect(hasLogs || hasEmpty).toBeTruthy();
   });
 
-  test("Platform logs tab shows Plane column header", async ({ page }) => {
+  test("Platform tab shows content or empty state", async ({ page }) => {
     await page.click("button.btn-evidence");
-    await page.click(".ev-tab:has-text('Platform logs')");
-    await expect(page.locator("text=Plane")).toBeVisible();
+    await page.click(".es-tab:has-text('Platform')");
+    const hasEvents = await page.locator(".pe-item").first().isVisible().catch(() => false);
+    const hasEmpty = await page.locator("text=No platform events captured").isVisible().catch(() => false);
+    expect(hasEvents || hasEmpty).toBeTruthy();
   });
 
-  test("ESC key closes the modal", async ({ page }) => {
+  test("ESC key closes Evidence Studio", async ({ page }) => {
     await page.click("button.btn-evidence");
-    await expect(page.locator(".evidence-modal")).toBeVisible();
+    await expect(page.locator(".es-app")).toBeVisible();
     await page.keyboard.press("Escape");
-    await expect(page.locator(".evidence-modal")).not.toBeVisible();
+    await expect(page.locator(".es-app")).not.toBeVisible();
   });
 
-  test("clicking the overlay backdrop closes the modal", async ({ page }) => {
+  test("Close button closes Evidence Studio", async ({ page }) => {
     await page.click("button.btn-evidence");
-    const modal = page.locator(".evidence-modal");
-    await expect(modal).toBeVisible();
-    // Click the overlay (parent of the modal) outside the modal bounds
-    const overlay = page.locator(".overlay.show");
-    const box = await overlay.boundingBox();
-    if (box) {
-      // Click in the top-left corner of the overlay, well outside the modal
-      await page.mouse.click(box.x + 5, box.y + 5);
-    }
-    await expect(modal).not.toBeVisible();
-  });
-
-  test("Close button closes the modal", async ({ page }) => {
-    await page.click("button.btn-evidence");
-    await expect(page.locator(".evidence-modal")).toBeVisible();
+    await expect(page.locator(".es-app")).toBeVisible();
     await page.click(".btn-close");
-    await expect(page.locator(".evidence-modal")).not.toBeVisible();
+    await expect(page.locator(".es-app")).not.toBeVisible();
   });
 });

@@ -1,20 +1,29 @@
+import type { TabKey } from "../../lib/viewmodels/index.js";
+
 interface Props {
-  activeTab: string;
-  onTabChange: (tab: string) => void;
+  activeTab: TabKey;
+  onTabChange: (tab: TabKey) => void;
+  tabCounts: Record<TabKey, number>;
 }
 
-const TABS = ["metrics", "traces", "logs", "platform-logs"] as const;
+const TABS: Array<{ key: TabKey; label: string }> = [
+  { key: "traces", label: "Traces" },
+  { key: "metrics", label: "Metrics" },
+  { key: "logs", label: "Logs" },
+  { key: "platform", label: "Platform" },
+];
 
-export function EvidenceTabs({ activeTab, onTabChange }: Props) {
+export function EvidenceTabs({ activeTab, onTabChange, tabCounts }: Props) {
   return (
-    <div className="evidence-tabs">
-      {TABS.map((tab) => (
+    <div className="es-tabs" data-testid="evidence-tabs">
+      {TABS.map(({ key, label }) => (
         <button
-          key={tab}
-          className={`ev-tab${activeTab === tab ? " active" : ""}`}
-          onClick={() => onTabChange(tab)}
+          key={key}
+          className={`es-tab${activeTab === key ? " active" : ""}`}
+          onClick={() => onTabChange(key)}
         >
-          {tab.charAt(0).toUpperCase() + tab.slice(1).replace("-", " ")}
+          {label}
+          <span className="tab-count">({tabCounts[key]})</span>
         </button>
       ))}
     </div>
