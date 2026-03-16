@@ -36,7 +36,7 @@ test.describe("Evidence Studio", () => {
     await page.click(".es-tab:has-text('Metrics')");
     // Seeded incident may have metrics or show empty state
     const hasMetrics = await page.locator(".metrics-stat-strip").isVisible().catch(() => false);
-    const hasEmpty = await page.locator("text=No metric data").isVisible().catch(() => false);
+    const hasEmpty = await page.locator("text=No metric data available").isVisible().catch(() => false);
     expect(hasMetrics || hasEmpty).toBeTruthy();
   });
 
@@ -48,11 +48,11 @@ test.describe("Evidence Studio", () => {
     expect(hasLogs || hasEmpty).toBeTruthy();
   });
 
-  test("Platform Events tab shows content or empty state", async ({ page }) => {
+  test("Platform tab shows content or empty state", async ({ page }) => {
     await page.click("button.btn-evidence");
     await page.click(".es-tab:has-text('Platform')");
     const hasEvents = await page.locator(".pe-item").first().isVisible().catch(() => false);
-    const hasEmpty = await page.locator("text=No platform event data").isVisible().catch(() => false);
+    const hasEmpty = await page.locator("text=No platform events captured").isVisible().catch(() => false);
     expect(hasEvents || hasEmpty).toBeTruthy();
   });
 
