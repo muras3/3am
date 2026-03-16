@@ -115,7 +115,7 @@ function TraceGroupCard({
             </div>
             <div className="wf-bar-area">
               <div
-                className={`wf-bar-fill ${barClass(span)}`}
+                className={`wf-bar ${barClass(span)}`}
                 style={{
                   left: `${leftPct.toFixed(1)}%`,
                   width: `${widthPct.toFixed(1)}%`,
@@ -139,7 +139,7 @@ export function TracesView({ rawSpans, packetTraces, onSpanSelect }: Props) {
   }
 
   return (
-    <div className="es-main" data-testid="traces-view">
+    <div data-testid="traces-view">
       {groups.map((group) => (
         <TraceGroupCard
           key={group.traceId}

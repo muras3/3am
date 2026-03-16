@@ -63,6 +63,7 @@
   display:flex; align-items:center; justify-content:center;
   font-size:14px; flex-shrink:0;
 }
+.pc-icon-accent { background:var(--accent-soft); color:var(--accent-text); }
 .pc-icon-amber { background:var(--amber-soft); color:var(--amber); }
 .pc-icon-teal { background:var(--teal-soft); color:var(--teal); }
 .pc-icon-good { background:var(--good-soft); color:var(--good); }
@@ -75,6 +76,8 @@
   padding:2px 6px; border-radius:var(--radius-xs); flex-shrink:0; margin-top:2px;
 }
 .pc-status-confirmed { background:var(--good-soft); color:var(--good); }
+.pc-status-inferred { background:var(--amber-soft); color:var(--amber); }
+.pc-status-pending { background:var(--panel-3); color:var(--ink-3); }
 .pc-status-emerging { background:var(--amber-soft); color:var(--amber); }
 
 /* ── Tab bar ───────────────────────────────────────────────── */

@@ -124,16 +124,15 @@ export function MetricsView({ rawMetrics, packetMetrics, onMetricSelect }: Props
             className={`stat-card${card.highlighted ? " highlighted" : ""}`}
             data-testid="stat-card"
           >
-            <div className="sc-name">{card.name}</div>
-            <div className="sc-svc">{card.service}</div>
-            <div className="sc-val">{formatValue(card.value)}</div>
+            <div className="sc-label">{card.name}</div>
+            <div className="sc-value">{formatValue(card.value)}</div>
           </div>
         ))}
       </div>
 
       {/* Metrics table */}
       <div className="metrics-table" data-testid="metrics-table">
-        <div className="mt-head">
+        <div className="mt-header">
           <span>Metric</span>
           <span>Service</span>
           <span>Value</span>
@@ -166,9 +165,9 @@ export function MetricsView({ rawMetrics, packetMetrics, onMetricSelect }: Props
             return (
               <div key={s.key} className="mb-row">
                 <div className="mb-label">{s.name}</div>
-                <div className="mb-bar-track">
+                <div className="mb-bar-wrap">
                   <div
-                    className="mb-bar-fill"
+                    className="mb-bar"
                     style={{ width: `${pct.toFixed(1)}%` }}
                   />
                 </div>

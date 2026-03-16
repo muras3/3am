@@ -25,13 +25,13 @@ describe("LogsView", () => {
 
   it("shows ERROR severity class", () => {
     render(<LogsView rawLogs={[testLog1]} packetLogs={[]} />);
-    expect(document.querySelector(".lr-level")).toHaveClass("level-error");
+    expect(document.querySelector(".lr-level")).toHaveClass("lr-error");
     expect(document.querySelector(".lr-level")?.textContent).toBe("ERROR");
   });
 
   it("shows WARN severity class", () => {
     render(<LogsView rawLogs={[testLog2]} packetLogs={[]} />);
-    expect(document.querySelector(".lr-level")).toHaveClass("level-warn");
+    expect(document.querySelector(".lr-level")).toHaveClass("lr-warn");
     expect(document.querySelector(".lr-level")?.textContent).toBe("WARN");
   });
 

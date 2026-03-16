@@ -16,8 +16,9 @@ function formatTime(iso: string): string {
 
 function severityClass(sev: string): string {
   const s = sev.toUpperCase();
-  if (s === "FATAL" || s === "ERROR") return "level-error";
-  return "level-warn";
+  if (s === "FATAL" || s === "ERROR") return "lr-error";
+  if (s === "WARN" || s === "WARNING") return "lr-warn";
+  return "lr-info";
 }
 
 function isHighlighted(log: RelevantLog, packetLogs: RelevantLog[]): boolean {

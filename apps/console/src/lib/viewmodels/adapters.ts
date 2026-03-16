@@ -462,9 +462,8 @@ export function buildEvidenceStudioV4VM(
 ): EvidenceStudioV4VM {
   const dr = incident.diagnosisResult;
 
-  const title = dr
-    ? incident.packet.scope.primaryService
-    : incident.packet.scope.primaryService;
+  const title = dr?.summary?.what_happened
+    ?? `Incident — ${incident.packet.scope.primaryService}`;
 
   const signalSeverity = incident.packet.signalSeverity;
   const severity: EvidenceStudioV4VM["severity"] =
