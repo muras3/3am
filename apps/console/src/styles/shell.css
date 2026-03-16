@@ -642,6 +642,21 @@
   pointer-events: none;
 }
 
+/* ── ErrorBoundary fallback ────────────────────────────────── */
+.error-boundary-fallback {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  height: 100%;
+  padding: 24px;
+}
+.error-boundary-message {
+  font-size: var(--fs-md);
+  color: var(--ink-2);
+}
+
 /* ── Common ────────────────────────────────────────────────── */
 .empty-state {
   display:flex; align-items:center; justify-content:center;

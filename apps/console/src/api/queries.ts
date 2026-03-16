@@ -30,6 +30,7 @@ export const incidentQueries = {
       queryKey: ["incidents"],
       queryFn: () => apiFetch<IncidentPage>("/api/incidents?limit=20"),
       staleTime: 30_000,
+      refetchInterval: 15_000,
     }),
 
   detail: (id: string) =>
@@ -37,6 +38,7 @@ export const incidentQueries = {
       queryKey: ["incidents", id],
       queryFn: () => apiFetch<Incident>(`/api/incidents/${encodeIncidentId(id)}`),
       staleTime: 15_000,
+      refetchInterval: 10_000,
     }),
 };
 
@@ -46,6 +48,7 @@ export const ambientQueries = {
       queryKey: ["ambient", "services"],
       queryFn: () => apiFetch<ServiceSurface[]>("/api/services"),
       staleTime: 15_000,
+      refetchInterval: 30_000,
     }),
 
   activity: (limit = 12) =>
@@ -53,5 +56,6 @@ export const ambientQueries = {
       queryKey: ["ambient", "activity", limit],
       queryFn: () => apiFetch<RecentActivity[]>(`/api/activity?limit=${limit}`),
       staleTime: 10_000,
+      refetchInterval: 15_000,
     }),
 };

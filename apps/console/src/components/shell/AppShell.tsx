@@ -1,4 +1,5 @@
 import { lazy, Suspense, useEffect, useRef } from "react";
+import { ErrorBoundary } from "../common/ErrorBoundary.js";
 import { useSearch } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { TopBar } from "./TopBar.js";
@@ -94,13 +95,15 @@ export function AppShell() {
           inert={incidentInactive}
           data-surface="incident"
         >
-          <Suspense fallback={null}>
-            {currentIncident
-              ? <IncidentBoard incident={currentIncident} />
-              : incidentError
-                ? <ErrorState message={incidentError} />
-                : null}
-          </Suspense>
+          <ErrorBoundary>
+            <Suspense fallback={null}>
+              {currentIncident
+                ? <IncidentBoard incident={currentIncident} />
+                : incidentError
+                  ? <ErrorState message={incidentError} />
+                  : null}
+            </Suspense>
+          </ErrorBoundary>
         </div>
         <RightRail
           incidentId={currentIncidentId ?? ""}
