@@ -330,7 +330,9 @@ DB-backed に持つ方向を基本とする。
 
 ### B-6 severity is optional and usually unset
 
-- Status: `open`
+- Status: `done`
+- Completed: 2026-03-15 (Plan 8 / feat/plan8-signal-severity)
+- Resolution: `severity` renamed to `signalSeverity: z.enum(["critical","high","medium","low"])`. Deterministic derivation in `deriveSignalSeverity()` from anomalousSignals + logEvidence + affectedServices breadth. Business severity interpretation is explicitly left to diagnosis/operator.
 - Problem:
   - severity が canonical identity / observed signal metadata として入っていない
 - Locations:

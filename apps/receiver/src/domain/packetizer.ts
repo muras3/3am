@@ -140,7 +140,6 @@ export function deriveSignalSeverity(
 ): "critical" | "high" | "medium" | "low" {
   let score = 0
 
-  // Deduplicate signal types (Set-based, not count-based)
   const signalTypes = new Set(anomalousSignals.map((s) => s.signal))
 
   // Span-derived signals
