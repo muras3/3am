@@ -1052,6 +1052,11 @@ describe("deriveSignalSeverity", () => {
     expect(deriveSignalSeverity(signals, [], 1)).toBe("high") // score 4, not 12
   })
 
+  it("scores mixed 5xx codes once (http_500 + http_502 = score 4, not 8)", () => {
+    const signals = [makeSignal("http_500"), makeSignal("http_502")]
+    expect(deriveSignalSeverity(signals, [], 1)).toBe("high") // score 4, not 8
+  })
+
   it("counts affectedServices === 2 as +1", () => {
     // slow_span (1) + 2 services (1) = 2 → medium
     expect(deriveSignalSeverity([makeSignal("slow_span")], [], 2)).toBe("medium")

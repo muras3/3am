@@ -124,7 +124,7 @@ function compareByScore(a: ExtractedSpan, b: ExtractedSpan): number {
  *
  * Scoring rules:
  *  - Signal types are deduplicated (Set-based, not count-based)
- *  - http_5xx signals add 4 pts each
+ *  - Any http_5xx signal present adds 4 pts (once, regardless of distinct 5xx codes)
  *  - http_429 adds 3 pts
  *  - exception / span_error each add 2 pts
  *  - slow_span adds 1 pt
@@ -142,14 +142,16 @@ export function deriveSignalSeverity(
 
   const signalTypes = new Set(anomalousSignals.map((s) => s.signal))
 
-  // Span-derived signals
+  // Span-derived signals — 5xx is scored once regardless of how many distinct codes appear
+  let has5xx = false
   for (const sig of signalTypes) {
-    if (sig.startsWith("http_5")) score += 4
+    if (sig.startsWith("http_5")) has5xx = true
     else if (sig === "http_429") score += 3
     else if (sig === "exception") score += 2
     else if (sig === "span_error") score += 2
     else if (sig === "slow_span") score += 1
   }
+  if (has5xx) score += 4
 
   // Log-derived signals (check by severity string)
   const logSeverities = new Set(logEvidence.map((l) => l.severity.toUpperCase()))
