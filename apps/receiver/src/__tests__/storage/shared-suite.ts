@@ -75,6 +75,20 @@ export function makeThinEvent(overrides: Partial<ThinEvent> = {}): ThinEvent {
   };
 }
 
+export function makeSpan(id: string, overrides: Partial<ExtractedSpan> = {}): ExtractedSpan {
+  return {
+    traceId: "trace_test",
+    spanId: id,
+    serviceName: "web",
+    environment: "production",
+    spanStatusCode: 0,
+    durationMs: 100,
+    startTimeMs: 1000,
+    exceptionCount: 0,
+    ...overrides,
+  };
+}
+
 // ── Shared suite ──────────────────────────────────────────────────────────────
 
 export function runStorageSuite(

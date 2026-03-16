@@ -78,6 +78,9 @@ export class PostgresAdapter implements StorageDriver {
     await this.db.execute(drizzleSql`
       CREATE INDEX IF NOT EXISTS idx_incidents_opened_at ON incidents(opened_at DESC)
     `);
+    await this.db.execute(drizzleSql`
+      CREATE INDEX IF NOT EXISTS idx_incidents_packet_id ON incidents((packet->>'packetId'))
+    `);
   }
 
   /** Expose raw SQL execution for tests (e.g. TRUNCATE). */
@@ -146,17 +149,21 @@ export class PostgresAdapter implements StorageDriver {
     incidentId: string,
     update: { metricEvidence?: ChangedMetric[]; logEvidence?: RelevantLog[] },
   ): Promise<void> {
-    const incident = await this.getIncident(incidentId);
-    if (!incident) return;
-    const rawState: IncidentRawState = {
-      ...incident.rawState,
-      metricEvidence: [...incident.rawState.metricEvidence, ...(update.metricEvidence ?? [])],
-      logEvidence: [...incident.rawState.logEvidence, ...(update.logEvidence ?? [])],
-    };
-    await this.db
-      .update(pgIncidents)
-      .set({ rawState, updatedAt: new Date() })
-      .where(eq(pgIncidents.incidentId, incidentId));
+    await this.db.transaction(async (tx) => {
+      const [row] = await tx.select().from(pgIncidents)
+        .where(eq(pgIncidents.incidentId, incidentId))
+        .for("update");
+      if (!row) return;
+      const current = row.rawState ? (row.rawState as IncidentRawState) : createEmptyRawState();
+      const rawState: IncidentRawState = {
+        ...current,
+        metricEvidence: [...current.metricEvidence, ...(update.metricEvidence ?? [])],
+        logEvidence: [...current.logEvidence, ...(update.logEvidence ?? [])],
+      };
+      await tx.update(pgIncidents)
+        .set({ rawState, updatedAt: new Date() })
+        .where(eq(pgIncidents.incidentId, incidentId));
+    });
   }
 
   async listIncidents(opts: { limit: number; cursor?: string }): Promise<IncidentPage> {
@@ -208,39 +215,51 @@ export class PostgresAdapter implements StorageDriver {
   }
 
   async appendSpans(incidentId: string, spans: ExtractedSpan[]): Promise<void> {
-    const incident = await this.getIncident(incidentId);
-    if (!incident) return;
-    const rawState: IncidentRawState = { ...incident.rawState, spans: [...incident.rawState.spans, ...spans] };
-    await this.db
-      .update(pgIncidents)
-      .set({ rawState, updatedAt: new Date() })
-      .where(eq(pgIncidents.incidentId, incidentId));
+    await this.db.transaction(async (tx) => {
+      const [row] = await tx.select().from(pgIncidents)
+        .where(eq(pgIncidents.incidentId, incidentId))
+        .for("update");
+      if (!row) return;
+      const current = row.rawState ? (row.rawState as IncidentRawState) : createEmptyRawState();
+      const rawState: IncidentRawState = { ...current, spans: [...current.spans, ...spans] };
+      await tx.update(pgIncidents)
+        .set({ rawState, updatedAt: new Date() })
+        .where(eq(pgIncidents.incidentId, incidentId));
+    });
   }
 
   async appendAnomalousSignals(incidentId: string, signals: AnomalousSignal[]): Promise<void> {
-    const incident = await this.getIncident(incidentId);
-    if (!incident) return;
-    const rawState: IncidentRawState = {
-      ...incident.rawState,
-      anomalousSignals: [...incident.rawState.anomalousSignals, ...signals],
-    };
-    await this.db
-      .update(pgIncidents)
-      .set({ rawState, updatedAt: new Date() })
-      .where(eq(pgIncidents.incidentId, incidentId));
+    await this.db.transaction(async (tx) => {
+      const [row] = await tx.select().from(pgIncidents)
+        .where(eq(pgIncidents.incidentId, incidentId))
+        .for("update");
+      if (!row) return;
+      const current = row.rawState ? (row.rawState as IncidentRawState) : createEmptyRawState();
+      const rawState: IncidentRawState = {
+        ...current,
+        anomalousSignals: [...current.anomalousSignals, ...signals],
+      };
+      await tx.update(pgIncidents)
+        .set({ rawState, updatedAt: new Date() })
+        .where(eq(pgIncidents.incidentId, incidentId));
+    });
   }
 
   async appendPlatformEvents(incidentId: string, events: PlatformEvent[]): Promise<void> {
-    const incident = await this.getIncident(incidentId);
-    if (!incident) return;
-    const rawState: IncidentRawState = {
-      ...incident.rawState,
-      platformEvents: [...incident.rawState.platformEvents, ...events],
-    };
-    await this.db
-      .update(pgIncidents)
-      .set({ rawState, updatedAt: new Date() })
-      .where(eq(pgIncidents.incidentId, incidentId));
+    await this.db.transaction(async (tx) => {
+      const [row] = await tx.select().from(pgIncidents)
+        .where(eq(pgIncidents.incidentId, incidentId))
+        .for("update");
+      if (!row) return;
+      const current = row.rawState ? (row.rawState as IncidentRawState) : createEmptyRawState();
+      const rawState: IncidentRawState = {
+        ...current,
+        platformEvents: [...current.platformEvents, ...events],
+      };
+      await tx.update(pgIncidents)
+        .set({ rawState, updatedAt: new Date() })
+        .where(eq(pgIncidents.incidentId, incidentId));
+    });
   }
 
   async getRawState(incidentId: string): Promise<IncidentRawState | null> {

@@ -59,6 +59,9 @@ export class SQLiteAdapter implements StorageDriver {
     this.db.run(sql`
       CREATE INDEX IF NOT EXISTS idx_incidents_opened_at ON incidents(opened_at DESC)
     `);
+    this.db.run(sql`
+      CREATE INDEX IF NOT EXISTS idx_incidents_packet_id ON incidents(json_extract(packet, '$.packetId'))
+    `);
   }
 
   private toIncident(row: typeof incidents.$inferSelect): Incident {
@@ -118,17 +121,20 @@ export class SQLiteAdapter implements StorageDriver {
     incidentId: string,
     update: { metricEvidence?: ChangedMetric[]; logEvidence?: RelevantLog[] },
   ): Promise<void> {
-    const incident = await this.getIncident(incidentId);
-    if (!incident) return;
-    const rawState: IncidentRawState = {
-      ...incident.rawState,
-      metricEvidence: [...incident.rawState.metricEvidence, ...(update.metricEvidence ?? [])],
-      logEvidence: [...incident.rawState.logEvidence, ...(update.logEvidence ?? [])],
-    };
-    await this.db
-      .update(incidents)
-      .set({ rawState: JSON.stringify(rawState), updatedAt: new Date().toISOString() })
-      .where(eq(incidents.incidentId, incidentId));
+    this.db.transaction((tx) => {
+      const [row] = tx.select().from(incidents).where(eq(incidents.incidentId, incidentId)).all();
+      if (!row) return;
+      const current = row.rawState ? (JSON.parse(row.rawState) as IncidentRawState) : createEmptyRawState();
+      const rawState: IncidentRawState = {
+        ...current,
+        metricEvidence: [...current.metricEvidence, ...(update.metricEvidence ?? [])],
+        logEvidence: [...current.logEvidence, ...(update.logEvidence ?? [])],
+      };
+      tx.update(incidents)
+        .set({ rawState: JSON.stringify(rawState), updatedAt: new Date().toISOString() })
+        .where(eq(incidents.incidentId, incidentId))
+        .run();
+    });
   }
 
   async listIncidents(opts: { limit: number; cursor?: string }): Promise<IncidentPage> {
@@ -180,39 +186,48 @@ export class SQLiteAdapter implements StorageDriver {
   }
 
   async appendSpans(incidentId: string, spans: ExtractedSpan[]): Promise<void> {
-    const incident = await this.getIncident(incidentId);
-    if (!incident) return;
-    const rawState: IncidentRawState = { ...incident.rawState, spans: [...incident.rawState.spans, ...spans] };
-    await this.db
-      .update(incidents)
-      .set({ rawState: JSON.stringify(rawState), updatedAt: new Date().toISOString() })
-      .where(eq(incidents.incidentId, incidentId));
+    this.db.transaction((tx) => {
+      const [row] = tx.select().from(incidents).where(eq(incidents.incidentId, incidentId)).all();
+      if (!row) return;
+      const current = row.rawState ? (JSON.parse(row.rawState) as IncidentRawState) : createEmptyRawState();
+      const rawState: IncidentRawState = { ...current, spans: [...current.spans, ...spans] };
+      tx.update(incidents)
+        .set({ rawState: JSON.stringify(rawState), updatedAt: new Date().toISOString() })
+        .where(eq(incidents.incidentId, incidentId))
+        .run();
+    });
   }
 
   async appendAnomalousSignals(incidentId: string, signals: AnomalousSignal[]): Promise<void> {
-    const incident = await this.getIncident(incidentId);
-    if (!incident) return;
-    const rawState: IncidentRawState = {
-      ...incident.rawState,
-      anomalousSignals: [...incident.rawState.anomalousSignals, ...signals],
-    };
-    await this.db
-      .update(incidents)
-      .set({ rawState: JSON.stringify(rawState), updatedAt: new Date().toISOString() })
-      .where(eq(incidents.incidentId, incidentId));
+    this.db.transaction((tx) => {
+      const [row] = tx.select().from(incidents).where(eq(incidents.incidentId, incidentId)).all();
+      if (!row) return;
+      const current = row.rawState ? (JSON.parse(row.rawState) as IncidentRawState) : createEmptyRawState();
+      const rawState: IncidentRawState = {
+        ...current,
+        anomalousSignals: [...current.anomalousSignals, ...signals],
+      };
+      tx.update(incidents)
+        .set({ rawState: JSON.stringify(rawState), updatedAt: new Date().toISOString() })
+        .where(eq(incidents.incidentId, incidentId))
+        .run();
+    });
   }
 
   async appendPlatformEvents(incidentId: string, events: PlatformEvent[]): Promise<void> {
-    const incident = await this.getIncident(incidentId);
-    if (!incident) return;
-    const rawState: IncidentRawState = {
-      ...incident.rawState,
-      platformEvents: [...incident.rawState.platformEvents, ...events],
-    };
-    await this.db
-      .update(incidents)
-      .set({ rawState: JSON.stringify(rawState), updatedAt: new Date().toISOString() })
-      .where(eq(incidents.incidentId, incidentId));
+    this.db.transaction((tx) => {
+      const [row] = tx.select().from(incidents).where(eq(incidents.incidentId, incidentId)).all();
+      if (!row) return;
+      const current = row.rawState ? (JSON.parse(row.rawState) as IncidentRawState) : createEmptyRawState();
+      const rawState: IncidentRawState = {
+        ...current,
+        platformEvents: [...current.platformEvents, ...events],
+      };
+      tx.update(incidents)
+        .set({ rawState: JSON.stringify(rawState), updatedAt: new Date().toISOString() })
+        .where(eq(incidents.incidentId, incidentId))
+        .run();
+    });
   }
 
   async getRawState(incidentId: string): Promise<IncidentRawState | null> {
