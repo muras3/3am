@@ -7,7 +7,6 @@ import {
 } from "../../lib/viewmodels/index.js";
 import { WhatHappened } from "./WhatHappened.js";
 import { ImmediateAction } from "./ImmediateAction.js";
-import { MitigationWatch } from "./MitigationWatch.js";
 import { ImpactTimeline } from "./ImpactTimeline.js";
 import { CauseCard } from "./CauseCard.js";
 import { EvidenceEntry } from "./EvidenceEntry.js";
@@ -40,7 +39,6 @@ export function IncidentBoard({ incident }: Props) {
           <ImmediateAction action={vm.action} />
           <CauseCard cause={vm.cause} />
           <div className="bottom-grid">
-            <MitigationWatch recovery={vm.recovery} />
             <ImpactTimeline timeline={vm.timeline} />
             <EvidenceEntry
               evidence={evidenceVM}

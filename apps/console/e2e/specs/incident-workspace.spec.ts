@@ -25,15 +25,14 @@ test.describe("Phase 1 product definition gate", () => {
       "what-broke",
       "action",
       "cause",
-      "mitigation-watch",
       "impact-timeline",
       "evidence",
     ]);
   });
 
-  test("bottom-grid renders 3 cards", async ({ page }) => {
+  test("bottom-grid renders 2 cards", async ({ page }) => {
     const cards = page.locator(".bottom-grid > .bottom-card");
-    await expect(cards).toHaveCount(3);
+    await expect(cards).toHaveCount(2);
   });
 
   test("CauseCard has teal left border", async ({ page }) => {

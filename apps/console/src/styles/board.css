@@ -52,10 +52,10 @@
   line-height: 1.45;
 }
 
-/* ── Bottom 3-column grid ─────────────────────────────────── */
+/* ── Bottom 2-column grid ─────────────────────────────────── */
 .bottom-grid {
   display:grid;
-  grid-template-columns:1fr 1fr 1fr;
+  grid-template-columns:1fr 1fr;
   gap:12px;
 }
 .bottom-card {
