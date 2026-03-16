@@ -78,6 +78,9 @@ export class PostgresAdapter implements StorageDriver {
     await this.db.execute(drizzleSql`
       CREATE INDEX IF NOT EXISTS idx_incidents_opened_at ON incidents(opened_at DESC)
     `);
+    await this.db.execute(drizzleSql`
+      CREATE INDEX IF NOT EXISTS idx_incidents_packet_id ON incidents((packet->>'packetId'))
+    `);
   }
 
   /** Expose raw SQL execution for tests (e.g. TRUNCATE). */

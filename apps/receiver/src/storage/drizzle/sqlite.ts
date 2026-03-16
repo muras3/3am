@@ -59,6 +59,9 @@ export class SQLiteAdapter implements StorageDriver {
     this.db.run(sql`
       CREATE INDEX IF NOT EXISTS idx_incidents_opened_at ON incidents(opened_at DESC)
     `);
+    this.db.run(sql`
+      CREATE INDEX IF NOT EXISTS idx_incidents_packet_id ON incidents(json_extract(packet, '$.packetId'))
+    `);
   }
 
   private toIncident(row: typeof incidents.$inferSelect): Incident {
