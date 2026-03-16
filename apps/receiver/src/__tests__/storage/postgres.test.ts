@@ -10,8 +10,7 @@
 import { describe, it, expect, beforeAll, beforeEach, afterAll } from "vitest";
 import { sql } from "drizzle-orm";
 import { PostgresAdapter } from "../../storage/drizzle/postgres.js";
-import { runStorageSuite, makePacket } from "./shared-suite.js";
-import type { ExtractedSpan } from "../../domain/anomaly-detector.js";
+import { runStorageSuite, makePacket, makeSpan } from "./shared-suite.js";
 
 const DATABASE_URL = process.env["DATABASE_URL"];
 
@@ -43,19 +42,6 @@ if (!DATABASE_URL) {
   // ── Postgres-specific: concurrent append race regression tests ──────────────
 
   describe("PostgresAdapter — concurrent append (race regression)", () => {
-    function makeSpan(id: string): ExtractedSpan {
-      return {
-        traceId: "trace_race",
-        spanId: id,
-        serviceName: "web",
-        environment: "production",
-        spanStatusCode: 0,
-        durationMs: 100,
-        startTimeMs: 1000,
-        exceptionCount: 0,
-      };
-    }
-
     beforeEach(async () => {
       await adapter.execute(
         sql`TRUNCATE TABLE incidents, thin_events RESTART IDENTITY CASCADE`,

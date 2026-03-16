@@ -1,7 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { SQLiteAdapter } from "../../storage/drizzle/sqlite.js";
-import { runStorageSuite, makePacket } from "./shared-suite.js";
-import type { ExtractedSpan } from "../../domain/anomaly-detector.js";
+import { runStorageSuite, makePacket, makeSpan } from "./shared-suite.js";
 
 // Each test gets a fresh in-memory database via the factory function
 runStorageSuite("SQLiteAdapter", () => new SQLiteAdapter(":memory:"));
@@ -9,18 +8,6 @@ runStorageSuite("SQLiteAdapter", () => new SQLiteAdapter(":memory:"));
 // ── SQLite-specific: transaction atomicity smoke tests ────────────────────────
 
 describe("SQLiteAdapter — transaction atomicity", () => {
-  function makeSpan(id: string): ExtractedSpan {
-    return {
-      traceId: "trace_tx",
-      spanId: id,
-      serviceName: "web",
-      environment: "production",
-      spanStatusCode: 0,
-      durationMs: 100,
-      startTimeMs: 1000,
-      exceptionCount: 0,
-    };
-  }
 
   it("appendSpans preserves both batches when called sequentially", async () => {
     const adapter = new SQLiteAdapter(":memory:");
