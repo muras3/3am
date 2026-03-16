@@ -52,7 +52,7 @@ export function LeftRail({ incidents, currentIncidentId, services }: Props) {
               style={{ textDecoration: "none", color: "inherit" }}
             >
               <div className="rail-incident-entry">
-                <span className={`service-dot service-dot--${healthLabel(inc.packet.severity === "critical" ? "critical" : "degraded")}`} aria-hidden="true" />
+                <span className={`service-dot service-dot--${healthLabel(inc.packet.signalSeverity === "critical" ? "critical" : "degraded")}`} aria-hidden="true" />
                 <span className="rail-incident-name">{inc.packet.scope.primaryService}</span>
                 <span className="rail-incident-open">Open</span>
               </div>
@@ -80,7 +80,7 @@ export function LeftRail({ incidents, currentIncidentId, services }: Props) {
               <div className={`incident-item${inc.incidentId === currentIncidentId ? " active" : ""}`}>
                 <div className="name">
                   {inc.packet.scope.primaryService}
-                  <span className={`sev sev-${inc.packet.severity ?? "critical"}`}>
+                  <span className={`sev sev-${inc.packet.signalSeverity ?? "critical"}`}>
                     {inc.status}
                   </span>
                 </div>

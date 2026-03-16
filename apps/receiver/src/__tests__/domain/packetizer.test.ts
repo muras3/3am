@@ -4,6 +4,7 @@ import {
   buildAnomalousSignals,
   buildPlatformLogRef,
   createPacket,
+  deriveSignalSeverity,
   rebuildPacket,
   selectPrimaryService,
   MAX_REPRESENTATIVE_TRACES,
@@ -11,7 +12,7 @@ import {
   MAX_ROUTE_DIVERSITY,
 } from '../../domain/packetizer.js'
 import { isAnomalous, type ExtractedSpan } from '../../domain/anomaly-detector.js'
-import type { IncidentRawState } from '../../storage/interface.js'
+import type { AnomalousSignal, IncidentRawState } from '../../storage/interface.js'
 
 function makeSpan(overrides: Partial<ExtractedSpan> = {}): ExtractedSpan {
   return {
@@ -1000,5 +1001,70 @@ describe('2-stage selection: old slice(0,10) regression gate', () => {
 
     // New algorithm: dep span injected via dependency injection
     expect(traces.some((t) => t.traceId === 'trace-dep-late')).toBe(true)
+  })
+})
+
+// =============================================================================
+// deriveSignalSeverity unit tests
+// =============================================================================
+
+describe("deriveSignalSeverity", () => {
+  function makeSignal(signal: string): AnomalousSignal {
+    return { signal, firstSeenAt: "2026-01-01T00:00:00Z", entity: "web:/api", spanId: "s1" }
+  }
+
+  it("returns low when no signals and no logs", () => {
+    expect(deriveSignalSeverity([], [], 1)).toBe("low")
+  })
+
+  it("returns medium for slow_span only", () => {
+    expect(deriveSignalSeverity([makeSignal("slow_span")], [], 1)).toBe("medium")
+  })
+
+  it("returns high for http_429 alone", () => {
+    expect(deriveSignalSeverity([makeSignal("http_429")], [], 1)).toBe("high")
+  })
+
+  it("returns high for http_500 alone (score 4)", () => {
+    expect(deriveSignalSeverity([makeSignal("http_500")], [], 1)).toBe("high")
+  })
+
+  it("returns critical for http_500 + multi-service (score 4+2=6)", () => {
+    expect(deriveSignalSeverity([makeSignal("http_500")], [], 3)).toBe("critical")
+  })
+
+  it("returns critical for http_500 + FATAL log (score 4+3=7)", () => {
+    const fatalLog = { service: "web", environment: "prod", timestamp: "t", startTimeMs: 1, severity: "FATAL", body: "oom", attributes: {} }
+    expect(deriveSignalSeverity([makeSignal("http_500")], [fatalLog], 1)).toBe("critical")
+  })
+
+  it("returns high for exception + span_error (score 2+2=4)", () => {
+    expect(deriveSignalSeverity([makeSignal("exception"), makeSignal("span_error")], [], 1)).toBe("high")
+  })
+
+  it("returns high for FATAL log alone (score 3)", () => {
+    const fatalLog = { service: "web", environment: "prod", timestamp: "t", startTimeMs: 1, severity: "FATAL", body: "oom", attributes: {} }
+    expect(deriveSignalSeverity([], [fatalLog], 1)).toBe("high")
+  })
+
+  it("deduplicates signal types (multiple http_500 signals count once)", () => {
+    const signals = [makeSignal("http_500"), makeSignal("http_500"), makeSignal("http_500")]
+    expect(deriveSignalSeverity(signals, [], 1)).toBe("high") // score 4, not 12
+  })
+
+  it("scores mixed 5xx codes once (http_500 + http_502 = score 4, not 8)", () => {
+    const signals = [makeSignal("http_500"), makeSignal("http_502")]
+    expect(deriveSignalSeverity(signals, [], 1)).toBe("high") // score 4, not 8
+  })
+
+  it("counts affectedServices === 2 as +1", () => {
+    // slow_span (1) + 2 services (1) = 2 → medium
+    expect(deriveSignalSeverity([makeSignal("slow_span")], [], 2)).toBe("medium")
+  })
+
+  it("counts ERROR log as +1", () => {
+    const errorLog = { service: "web", environment: "prod", timestamp: "t", startTimeMs: 1, severity: "ERROR", body: "fail", attributes: {} }
+    // ERROR (1) alone = medium
+    expect(deriveSignalSeverity([], [errorLog], 1)).toBe("medium")
   })
 })

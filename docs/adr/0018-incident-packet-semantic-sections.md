@@ -28,7 +28,7 @@ incident を incident として識別するための層。
 - `packet_id`
 - `schema_version`
 - `status`
-- `severity`
+- `signalSeverity` (observed signal severity — deterministically derived, not business impact)
 - `opened_at`
 - `window`
 - `scope`

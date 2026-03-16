@@ -463,6 +463,9 @@ describe("Gate 4: Regression — existing behaviour", () => {
     const pkt = (await pktRes.json()) as IncidentPacket;
     expect(pkt.schemaVersion).toBe("incident-packet/v1alpha1");
     expect(pkt.packetId).toBe(packetId);
+    // signalSeverity must be set and be a valid enum value
+    expect(pkt.signalSeverity).toBeDefined();
+    expect(["critical", "high", "medium", "low"]).toContain(pkt.signalSeverity);
   });
 
   it("thin event is saved to storage on incident creation", async () => {
