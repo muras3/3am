@@ -3,7 +3,6 @@ import type { Incident } from "../../api/types.js";
 import {
   buildIncidentWorkspaceVM,
   buildEvidenceEntryVM,
-  buildEvidenceStudioVM,
 } from "../../lib/viewmodels/index.js";
 import { WhatHappened } from "./WhatHappened.js";
 import { ImmediateAction } from "./ImmediateAction.js";
@@ -26,7 +25,6 @@ interface Props {
 export function IncidentBoard({ incident }: Props) {
   const [studioOpen, setStudioOpen] = useState(false);
   const vm = buildIncidentWorkspaceVM(incident);
-  const studioVM = buildEvidenceStudioVM(incident);
 
   // Evidence counts always available from packet — operators inspect raw OTel while LLM runs.
   const evidenceVM = vm?.evidence ?? buildEvidenceEntryVM(incident.packet);
@@ -59,7 +57,6 @@ export function IncidentBoard({ incident }: Props) {
         <Suspense fallback={null}>
           <EvidenceStudio
             incident={incident}
-            studioVM={studioVM}
             onClose={() => setStudioOpen(false)}
           />
         </Suspense>

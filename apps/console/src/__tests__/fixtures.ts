@@ -1,5 +1,12 @@
 import type { Incident } from "../api/types.js";
-import type { DiagnosisResult, IncidentPacket } from "@3amoncall/core";
+import type {
+  DiagnosisResult,
+  IncidentPacket,
+  ExtractedSpan,
+  PlatformEvent,
+  RelevantLog,
+  ChangedMetric,
+} from "@3amoncall/core";
 
 export const testPacket: IncidentPacket = {
   schemaVersion: "incident-packet/v1alpha1",
@@ -139,4 +146,106 @@ export const testIncidentNoDiagnosis: Incident = {
   status: "open",
   openedAt: "2026-03-09T03:00:00Z",
   packet: testPacket,
+};
+
+// ── v4 fixtures ──────────────────────────────────────────────
+
+export const testSpan1: ExtractedSpan = {
+  traceId: "trace_001",
+  spanId: "span_root_001",
+  serviceName: "web",
+  environment: "production",
+  httpRoute: "/checkout",
+  httpMethod: "POST",
+  httpStatusCode: 429,
+  spanStatusCode: 2,
+  spanKind: 2,
+  durationMs: 5200,
+  startTimeMs: 1741485600000,
+  exceptionCount: 1,
+  spanName: "POST /checkout",
+};
+
+export const testSpan2: ExtractedSpan = {
+  traceId: "trace_001",
+  spanId: "span_child_002",
+  parentSpanId: "span_root_001",
+  serviceName: "stripe",
+  environment: "production",
+  httpRoute: "/v1/charges",
+  httpMethod: "POST",
+  httpStatusCode: 429,
+  spanStatusCode: 2,
+  spanKind: 3,
+  durationMs: 5100,
+  startTimeMs: 1741485600050,
+  exceptionCount: 0,
+  peerService: "stripe",
+};
+
+export const testSpan3: ExtractedSpan = {
+  traceId: "trace_002",
+  spanId: "span_root_003",
+  serviceName: "api-gateway",
+  environment: "production",
+  httpRoute: "/api/payments",
+  httpStatusCode: 200,
+  spanStatusCode: 0,
+  durationMs: 120,
+  startTimeMs: 1741485601000,
+  exceptionCount: 0,
+};
+
+export const testPlatformEvent1: PlatformEvent = {
+  eventId: "evt_deploy_001",
+  eventType: "deploy",
+  timestamp: "2026-03-09T02:58:00Z",
+  environment: "production",
+  description: "Deployed web service v1.2.3",
+  service: "web",
+};
+
+export const testPlatformEvent2: PlatformEvent = {
+  eventId: "evt_provider_001",
+  eventType: "provider_incident",
+  timestamp: "2026-03-09T02:59:00Z",
+  environment: "production",
+  description: "Stripe API degraded performance",
+  provider: "stripe",
+};
+
+export const testLog1: RelevantLog = {
+  service: "web",
+  environment: "production",
+  timestamp: "2026-03-09T03:00:12Z",
+  startTimeMs: 1741485612000,
+  severity: "ERROR",
+  body: "Stripe API returned 429 Too Many Requests",
+  attributes: { "http.status_code": 429, "stripe.endpoint": "/v1/charges" },
+};
+
+export const testLog2: RelevantLog = {
+  service: "api-gateway",
+  environment: "production",
+  timestamp: "2026-03-09T03:00:45Z",
+  startTimeMs: 1741485645000,
+  severity: "WARN",
+  body: "Checkout retry storm detected",
+  attributes: {},
+};
+
+export const testMetric1: ChangedMetric = {
+  name: "http_server_request_duration",
+  service: "web",
+  environment: "production",
+  startTimeMs: 1741485600000,
+  summary: { asDouble: 5200.0 },
+};
+
+export const testMetric2: ChangedMetric = {
+  name: "stripe_request_count",
+  service: "web",
+  environment: "production",
+  startTimeMs: 1741485600000,
+  summary: { count: 100, sum: 429 },
 };

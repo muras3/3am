@@ -1,6 +1,17 @@
-export type { IncidentPacket, DiagnosisResult, CausalChainStep } from "@3amoncall/core";
+export type {
+  IncidentPacket,
+  DiagnosisResult,
+  CausalChainStep,
+  ExtractedSpan,
+  AnomalousSignal,
+  IncidentRawState,
+  ChangedMetric,
+  RelevantLog,
+  PlatformEvent,
+  RepresentativeTrace,
+} from "@3amoncall/core";
 
-import type { IncidentPacket, DiagnosisResult } from "@3amoncall/core";
+import type { IncidentPacket, DiagnosisResult, IncidentRawState } from "@3amoncall/core";
 
 export interface Incident {
   incidentId: string;
@@ -9,6 +20,10 @@ export interface Incident {
   closedAt?: string;
   packet: IncidentPacket;
   diagnosisResult?: DiagnosisResult;
+}
+
+export interface IncidentWithRaw extends Incident {
+  rawState: IncidentRawState;
 }
 
 export interface IncidentPage {

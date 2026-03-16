@@ -1,4 +1,69 @@
-import type { CausalChainStep } from "@3amoncall/core";
+import type { CausalChainStep, ExtractedSpan } from "@3amoncall/core";
+
+// ── Evidence Studio v4 ──────────────────────────────────────
+
+export type TabKey = "traces" | "metrics" | "logs" | "platform";
+
+export interface SideNoteVM {
+  title: string;
+  text: string;
+  accent: "accent" | "teal" | "amber" | "good";
+}
+
+export interface SpanDetailVM {
+  spanId: string;
+  spanName?: string;
+  serviceName: string;
+  httpRoute?: string;
+  httpMethod?: string;
+  httpStatusCode?: number;
+  spanStatusCode: number;
+  spanKind?: number;
+  durationMs: number;
+  startTimeMs: number;
+  peerService?: string;
+  exceptionCount: number;
+  parentSpanId?: string;
+  isAiSelected: boolean;
+}
+
+export interface SpanRowVM {
+  span: ExtractedSpan;
+  depth: number;
+  isAiSelected: boolean;
+}
+
+export interface TraceGroupVM {
+  traceId: string;
+  rootSpan: ExtractedSpan;
+  method?: string;
+  route?: string;
+  rootStatus: number;
+  totalDurationMs: number;
+  spanCount: number;
+  orderedSpans: SpanRowVM[];
+  traceStartMs: number;
+}
+
+export interface ProofCardV4VM {
+  id: string;
+  label: string;
+  summary: string;
+  evidence: string;
+  targetTab: TabKey;
+  targetId?: string;
+  icon: string;
+  iconClass: "accent" | "teal" | "amber" | "good";
+  status: "confirmed" | "inferred" | "pending";
+}
+
+export interface EvidenceStudioV4VM {
+  title: string;
+  severity: "critical" | "warning" | "info";
+  proofCards: ProofCardV4VM[];
+  tabCounts: Record<TabKey, number>;
+  sideNotes: SideNoteVM[];
+}
 
 export interface IncidentWorkspaceVM {
   incidentId: string;

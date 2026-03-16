@@ -4,6 +4,7 @@ import { encodeIncidentId } from "../lib/incidentId.js";
 import type {
   Incident,
   IncidentPage,
+  IncidentWithRaw,
   RecentActivity,
   ServiceSurface,
 } from "./types.js";
@@ -39,6 +40,14 @@ export const incidentQueries = {
       queryFn: () => apiFetch<Incident>(`/api/incidents/${encodeIncidentId(id)}`),
       staleTime: 15_000,
       refetchInterval: 10_000,
+    }),
+
+  rawEvidence: (id: string) =>
+    queryOptions({
+      queryKey: ["incidents", id, "raw"],
+      queryFn: () => apiFetch<IncidentWithRaw>(`/api/incidents/${encodeIncidentId(id)}/raw`),
+      staleTime: 30_000,
+      enabled: !!id,
     }),
 };
 
