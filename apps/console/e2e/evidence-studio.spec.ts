@@ -11,7 +11,7 @@ import { gotoFirstIncident } from "./helpers.js";
  *   "traces"   → "Traces"
  *   "metrics"  → "Metrics"
  *   "logs"     → "Logs"
- *   "platform" → "Platform Events"
+ *   "platform" → "Platform"
  */
 test.describe("Evidence Studio", () => {
   test.beforeEach(async ({ page }) => {
@@ -50,7 +50,7 @@ test.describe("Evidence Studio", () => {
 
   test("Platform Events tab shows content or empty state", async ({ page }) => {
     await page.click("button.btn-evidence");
-    await page.click(".es-tab:has-text('Platform Events')");
+    await page.click(".es-tab:has-text('Platform')");
     const hasEvents = await page.locator(".pe-item").first().isVisible().catch(() => false);
     const hasEmpty = await page.locator("text=No platform event data").isVisible().catch(() => false);
     expect(hasEvents || hasEmpty).toBeTruthy();

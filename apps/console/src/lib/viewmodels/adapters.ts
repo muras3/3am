@@ -179,7 +179,7 @@ function buildProofCards(
     : hasLogs
       ? "logs"
       : hasPlatformEvents
-        ? "platform-logs"
+        ? "platform"
         : hasTraces
           ? "traces"
           : "diagnosis";
