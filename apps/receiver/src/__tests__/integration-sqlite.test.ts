@@ -165,9 +165,20 @@ describe("Integration: SQLite full ingest flow", () => {
   });
 
   // Test 5: upsert preserves rawState and diagnosisResult
+  // The payload uses a fixed past timestamp (startTimeUnixNano "1741392000000000000").
+  // shouldAttachToIncident uses signalTimeMs from that span — not wall clock — so
+  // the second POST always falls within the 5-minute FORMATION_WINDOW_MS of the first.
   it("second OTLP POST (upsert) preserves rawState and diagnosisResult", async () => {
     // Step 1: create incident via error span
     const { incidentId } = await postTraces(app);
+
+    // Record initial span count for accumulation assertion
+    const initialRaw = await app.request(`/api/incidents/${incidentId}/raw`);
+    const initialBody = (await initialRaw.json()) as {
+      rawState: { spans: unknown[] };
+    };
+    const initialSpanCount = initialBody.rawState.spans.length;
+    expect(initialSpanCount).toBeGreaterThan(0);
 
     // Step 2: append diagnosis
     const diagnosisFixture = makeDiagnosisFixture(incidentId);
@@ -197,7 +208,8 @@ describe("Integration: SQLite full ingest flow", () => {
       rawState: { spans: unknown[]; anomalousSignals: unknown[] };
       diagnosisResult?: { summary: { what_happened: string } };
     };
-    expect(rawBody.rawState.spans.length).toBeGreaterThan(0);
+    // Spans accumulated (second batch appended, not replaced)
+    expect(rawBody.rawState.spans.length).toBeGreaterThan(initialSpanCount);
     expect(rawBody.rawState.anomalousSignals.length).toBeGreaterThan(0);
 
     // Step 5: verify diagnosisResult preserved through upsert
