@@ -52,18 +52,7 @@ export class PostgresAdapter implements StorageDriver {
 
   /** Run DDL to create tables if they don't exist. Call once at startup. */
   async migrate(): Promise<void> {
-    // Wrap each DDL in try/catch to handle the Postgres race condition where
-    // concurrent CREATE TABLE IF NOT EXISTS hits pg_type_typname_nsp_index (23505).
-    // This is safe: the table already exists, so the error is benign.
-    const safeDDL = async (query: Parameters<typeof this.db.execute>[0]) => {
-      try {
-        await this.db.execute(query);
-      } catch (err: unknown) {
-        const code = (err as { code?: string }).code;
-        if (code !== "23505") throw err;
-      }
-    };
-    await safeDDL(drizzleSql`
+    await this.db.execute(drizzleSql`
       CREATE TABLE IF NOT EXISTS incidents (
         incident_id      TEXT PRIMARY KEY,
         status           TEXT NOT NULL DEFAULT 'open',
@@ -76,7 +65,7 @@ export class PostgresAdapter implements StorageDriver {
         updated_at       TIMESTAMPTZ NOT NULL DEFAULT now()
       )
     `);
-    await safeDDL(drizzleSql`
+    await this.db.execute(drizzleSql`
       CREATE TABLE IF NOT EXISTS thin_events (
         id          SERIAL PRIMARY KEY,
         event_id    TEXT NOT NULL UNIQUE,
@@ -86,10 +75,10 @@ export class PostgresAdapter implements StorageDriver {
         created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
       )
     `);
-    await safeDDL(drizzleSql`
+    await this.db.execute(drizzleSql`
       CREATE INDEX IF NOT EXISTS idx_incidents_opened_at ON incidents(opened_at DESC)
     `);
-    await safeDDL(drizzleSql`
+    await this.db.execute(drizzleSql`
       CREATE INDEX IF NOT EXISTS idx_incidents_packet_id ON incidents((packet->>'packetId'))
     `);
   }
