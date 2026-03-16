@@ -1,5 +1,5 @@
-/* ── Critical layout fix: sections must not shrink ────────── */
-.center-board > * { flex-shrink: 0; }
+/* ── Critical layout fix: incident board sections must not shrink ── */
+.center-incident > * { flex-shrink: 0; }
 
 /* ── Section: What happened ────────────────────────────────── */
 .section-what {

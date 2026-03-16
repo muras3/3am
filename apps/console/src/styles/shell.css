@@ -2,7 +2,7 @@
 .app {
   width:100%; height:100%;
   display:grid;
-  grid-template-rows: 46px 1fr;
+  grid-template-rows: 46px minmax(0, 1fr);
 }
 
 /* ── Topbar ────────────────────────────────────────────────── */
@@ -439,6 +439,65 @@
   font-family: var(--mono);
 }
 
+/* ── Activity stream rows ────────────────────────────────── */
+.activity-stream {
+  display: flex;
+  flex-direction: column;
+}
+.activity-row {
+  display: grid;
+  grid-template-columns: 72px 64px 36px 1fr 48px;
+  gap: 8px;
+  align-items: baseline;
+  padding: 4px 0;
+  font-size: var(--fs-xs);
+  border-bottom: 1px solid var(--line);
+  transition: background 0.1s;
+}
+.activity-row:last-child { border-bottom: none; }
+.activity-row:hover { background: var(--panel-2); }
+.act-time {
+  font-family: var(--mono);
+  font-size: var(--fs-xxs);
+  color: var(--ink-3);
+  white-space: nowrap;
+}
+.act-svc {
+  font-size: var(--fs-xxs);
+  font-weight: 600;
+  color: var(--ink-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.act-code {
+  font-family: var(--mono);
+  font-size: var(--fs-xxs);
+  font-weight: 600;
+  text-align: center;
+  white-space: nowrap;
+}
+.act-code-ok { color: var(--ink-3); }
+.act-code-bad {
+  color: var(--accent-text);
+  background: var(--accent-soft);
+  padding: 1px 4px;
+  border-radius: var(--radius-xs);
+}
+.act-route {
+  color: var(--ink-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.act-dur {
+  font-family: var(--mono);
+  font-size: var(--fs-xxs);
+  color: var(--ink-3);
+  text-align: right;
+  white-space: nowrap;
+}
+
 /* ── Right rail: AI Copilot ────────────────────────────────── */
 .right-rail {
   grid-column: 3;
@@ -535,7 +594,7 @@
   margin-top:8px;
 }
 .chat-input-field {
-  flex:1; font-size:11px; color:var(--ink-1);
+  flex:1; font-size:11px; color:var(--ink);
   background:transparent; border:none; outline:none;
   font-family:inherit;
 }
@@ -564,11 +623,11 @@
   align-self:flex-end; text-align:right;
 }
 .chat-bubble-assistant {
-  background:var(--bg-2); color:var(--ink-1);
+  background:var(--panel-2); color:var(--ink);
   align-self:flex-start;
 }
 .chat-bubble-error {
-  background:#fff0ee; color:var(--accent);
+  background:var(--accent-soft); color:var(--accent);
 }
 .chat-thinking { opacity:0.5; }
 
