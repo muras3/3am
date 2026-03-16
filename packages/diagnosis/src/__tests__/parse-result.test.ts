@@ -72,4 +72,110 @@ describe("parseResult", () => {
     const result = parseResult(raw, meta);
     expect(() => new Date(result.metadata.created_at)).not.toThrow();
   });
+
+  // Output size constraint tests
+  it("throws when causal_chain has 9 steps (max 8)", () => {
+    const step = { type: "system", title: "Step", detail: "detail" };
+    const body = {
+      ...validBody,
+      reasoning: {
+        causal_chain: Array.from({ length: 9 }, () => ({ ...step })),
+      },
+    };
+    expect(() => parseResult(JSON.stringify(body), meta)).toThrow(
+      /causal_chain.*9.*max 8/
+    );
+  });
+
+  it("throws when watch_items has 11 items (max 10)", () => {
+    const item = { label: "Error rate", state: "must drop", status: "watch" };
+    const body = {
+      ...validBody,
+      operator_guidance: {
+        ...validBody.operator_guidance,
+        watch_items: Array.from({ length: 11 }, () => ({ ...item })),
+      },
+    };
+    expect(() => parseResult(JSON.stringify(body), meta)).toThrow(
+      /watch_items.*11.*max 10/
+    );
+  });
+
+  it("throws when operator_checks has 11 items (max 10)", () => {
+    const body = {
+      ...validBody,
+      operator_guidance: {
+        ...validBody.operator_guidance,
+        operator_checks: Array.from({ length: 11 }, () => "Check something"),
+      },
+    };
+    expect(() => parseResult(JSON.stringify(body), meta)).toThrow(
+      /operator_checks.*11.*max 10/
+    );
+  });
+
+  it("throws when summary.what_happened exceeds 2000 chars", () => {
+    const body = {
+      ...validBody,
+      summary: {
+        ...validBody.summary,
+        what_happened: "x".repeat(2001),
+      },
+    };
+    const err = (() => {
+      try {
+        parseResult(JSON.stringify(body), meta);
+      } catch (e) {
+        return e as Error;
+      }
+    })();
+    expect(err).toBeDefined();
+    expect(err!.message).toContain("summary.what_happened");
+    expect(err!.message).toContain("2001");
+  });
+
+  it("throws when causal_chain[].detail exceeds 500 chars", () => {
+    const body = {
+      ...validBody,
+      reasoning: {
+        causal_chain: [
+          { type: "external", title: "Stripe 429", detail: "x".repeat(501) },
+          { type: "system", title: "Retry loop", detail: "amplifies" },
+          { type: "incident", title: "Queue climbs", detail: "overload" },
+          { type: "impact", title: "Checkout 500", detail: "customer visible" },
+        ],
+      },
+    };
+    expect(() => parseResult(JSON.stringify(body), meta)).toThrow(
+      /detail.*501.*max 500/
+    );
+  });
+
+  it("does NOT throw when all fields are exactly at boundary", () => {
+    const step = { type: "system" as const, title: "S", detail: "x".repeat(500) };
+    const item = { label: "L", state: "S", status: "watch" };
+    const body = {
+      summary: {
+        what_happened: "x".repeat(2000),
+        root_cause_hypothesis: "x".repeat(2000),
+      },
+      recommendation: {
+        immediate_action: "x".repeat(2000),
+        action_rationale_short: "x".repeat(2000),
+        do_not: "x".repeat(2000),
+      },
+      reasoning: {
+        causal_chain: Array.from({ length: 8 }, () => ({ ...step })),
+      },
+      operator_guidance: {
+        watch_items: Array.from({ length: 10 }, () => ({ ...item })),
+        operator_checks: Array.from({ length: 10 }, () => "Check something"),
+      },
+      confidence: {
+        confidence_assessment: "x".repeat(2000),
+        uncertainty: "x".repeat(2000),
+      },
+    };
+    expect(() => parseResult(JSON.stringify(body), meta)).not.toThrow();
+  });
 });

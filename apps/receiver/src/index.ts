@@ -2,6 +2,7 @@ import { readFileSync } from "fs";
 import { join } from "path";
 import { Hono } from "hono";
 import { bearerAuth } from "hono/bearer-auth";
+import { cors } from "hono/cors";
 import { serveStatic } from "@hono/node-server/serve-static";
 import type { StorageDriver } from "./storage/interface.js";
 import { MemoryAdapter } from "./storage/adapters/memory.js";
@@ -26,10 +27,20 @@ export interface AppOptions {
 export function createApp(storage?: StorageDriver, options?: AppOptions): Hono {
   const store = storage ?? new MemoryAdapter();
   const app = new Hono();
+  const allowInsecure = process.env["ALLOW_INSECURE_DEV_MODE"] === "true";
+
+  // CORS middleware — must be registered before auth so preflight OPTIONS passes (ADR 0019 v2)
+  const corsOrigin: string | undefined = allowInsecure
+    ? "*"
+    : process.env["CORS_ALLOWED_ORIGIN"];
+  if (corsOrigin) {
+    app.use("/*", cors({ origin: corsOrigin }));
+  }
+  // If corsOrigin is falsy (prod without CORS_ALLOWED_ORIGIN), no CORS header → same-origin only
+
   const authToken = process.env["RECEIVER_AUTH_TOKEN"];
 
   if (!authToken) {
-    const allowInsecure = process.env["ALLOW_INSECURE_DEV_MODE"] === "true";
     if (!allowInsecure) {
       throw new Error(
         "[receiver] RECEIVER_AUTH_TOKEN must be set. " +

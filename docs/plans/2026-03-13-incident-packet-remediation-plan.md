@@ -540,16 +540,26 @@ DB-backed に持つ方向を基本とする。
 以下は latest `develop` を使った scenario verification で確認された、
 この plan 上まだ残しておくべき懸念事項である。
 
+2026-03-16 時点では、`secrets_rotation_partial_propagation` の proper incident packet については
+当初の主目的を満たしたため、incident packet 改善は一旦ここで打ち止めとする。
+以後は「packet の基本品質を壊さずに残課題をどう扱うか」を別トラックで整理する。
+
 ### R-1 Proper packet quality is improved, but duplicate noisy incidents can still appear
 
 - Observation:
-  - `secrets_rotation_partial_propagation` replay では、
+  - `secrets_rotation_partial_propagation` replay / local run では、
     proper incident として
     - `primaryService = validation-web`
     - `affectedDependencies = ["sendgrid"]`
     - `triggerSignals` に `http_401`
     - `relevantLogs` に `sendgrid auth failure`
     を持つ packet が形成された
+  - 同 packet では以下も確認できた
+    - `signalSeverity` が入る
+    - `pointers.metricRefs` と `pointers.logRefs` が空でない
+    - `packet.evidence.changedMetrics == rawState.metricEvidence`
+    - `packet.evidence.relevantLogs == rawState.logEvidence`
+    - 旧 `severity` フィールドは存在しない
   - 一方で同じ replay から、別 incident として
     `primaryService = unknown_service:node`
     の noisy packet も形成された
@@ -558,9 +568,13 @@ DB-backed に持つ方向を基本とする。
     operator から見た incident list のノイズはまだ残っている
   - diagnosis runner が「pending の先頭 incident」を処理する場合、
     noisy incident を先に診断してしまう
+  - 現状の理解では、これは packetizer の主問題というより
+    input telemetry 側で `service.name` が欠けた service から
+    `unknown_service:node` spans が流入していることに強く依存する
 - Follow-up:
-  - `unknown_service:node` 系 incident の split / suppress / lower-priority treatment を
-    formation policy か verification gate で整理する
+  - packet 品質 gate では proper incident の確認と noisy incident の観測を分離して扱う
+  - product gate では `unknown_service:node` 系 incident の split / suppress / lower-priority treatment を
+    formation policy か instrumentation quality gate のどちらで吸収するか整理する
   - complete 判定は「proper packet が作れる」だけでなく、
     operator を誤誘導する duplicate/noisy incident が許容範囲内であることも見る
 
@@ -569,14 +583,19 @@ DB-backed に持つ方向を基本とする。
 - Observation:
   - product code では `/v1/platform-events` ingest, typed packet schema, raw-state attach,
     `platformLogRefs` 生成まで入っている
-  - ただし 2026-03-15 の manual replay では traces / metrics / logs だけを replay し、
+  - ただし 2026-03-16 の local run でも traces / metrics / logs だけを確認し、
     platform event ingest までは再実行していない
+  - さらに、platform facts の投入経路自体が現時点では product / validation の両方で
+   明確に固まっていない
 - Why this matters:
   - latest `develop` 上で proper packet が良くなっていても、
     platform facts の end-to-end verification は別途必要
+  - ただし投入経路が未定のままなら、これは「未検証の重要機能」というより
+    「Phase 1 スコープから削る / 凍結する候補」として扱う方が実態に近い
 - Follow-up:
-  - scenario 4 の platform event path を含む replay / local run を再度実行し、
-    packet と UI の両方で `platformEvents` を確認する
+  - `platformEvents` を残すなら、まず user-facing ingestion contract を定義する
+  - その contract を定義しないなら、packet quality の complete 判定から外し、
+    deferred ないし non-goal として明記する
 
 ### R-3 Diagnosis backend operability remains environment-sensitive
 
@@ -594,6 +613,27 @@ DB-backed に持つ方向を基本とする。
     - target incident selection
     を持つ診断フローを別途用意する
   - complete 判定では「正しい packet を diagnosis に渡せたか」を明示的に確認する
+
+### R-4 User-facing instrumentation prerequisites are defined only in ADR fragments
+
+- Observation:
+  - `service.name`, `deployment.environment.name`, `peer.service` などの minimum requirements 自体は
+    ADR 0023 にある
+  - ただし「実ユーザーが何をどう設定すればよいか」という導入前提は
+    1 枚の user-facing prerequisite document にまとまっていない
+  - `unknown_service:node` noisy incident は、この未整理さがそのまま見えた例でもある
+- Why this matters:
+  - packet 品質が良くても、入力 telemetry が minimum bar を満たさないと
+    operator 体験と diagnosis 安定性は崩れる
+  - validation では見逃せても、実運用導入では無視しにくい
+- Follow-up:
+  - incident packet 改善とは別トラックで、
+    user-facing instrumentation prerequisites を整理する
+  - 少なくとも以下は 1 枚で読めるようにする
+    - required attrs
+    - strongly recommended attrs
+    - `unknown_service:node` を起こす典型設定ミス
+    - platform facts の扱いが in-scope か deferred か
 
 ### Quality bar
 

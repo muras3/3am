@@ -82,6 +82,69 @@ describe("buildPrompt", () => {
     expect(prompt).toContain("Step 7");
   });
 
+  it("truncates platformEvents.details exceeding 1000 chars", () => {
+    const packetWithLargeDetails: IncidentPacket = {
+      ...packet,
+      evidence: {
+        ...packet.evidence,
+        platformEvents: [
+          {
+            eventType: "deploy",
+            timestamp: "2026-03-09T00:00:00Z",
+            environment: "production",
+            description: "deploy v42",
+            details: { payload: "x".repeat(1500) },
+          },
+        ],
+      },
+    };
+    const prompt = buildPrompt(packetWithLargeDetails);
+    expect(prompt).toContain("[truncated]");
+    expect(prompt).not.toContain("x".repeat(1500));
+  });
+
+  it("does not truncate platformEvents.details under 1000 chars", () => {
+    const packetWithShortDetails: IncidentPacket = {
+      ...packet,
+      evidence: {
+        ...packet.evidence,
+        platformEvents: [
+          {
+            eventType: "deploy",
+            timestamp: "2026-03-09T00:00:00Z",
+            environment: "production",
+            description: "deploy v42",
+            details: { key: "short" },
+          },
+        ],
+      },
+    };
+    const prompt = buildPrompt(packetWithShortDetails);
+    expect(prompt).not.toContain("[truncated]");
+    expect(prompt).toContain("key");
+    expect(prompt).toContain("short");
+  });
+
+  it("handles platformEvents without details field", () => {
+    const packetWithoutDetails: IncidentPacket = {
+      ...packet,
+      evidence: {
+        ...packet.evidence,
+        platformEvents: [
+          {
+            eventType: "deploy",
+            timestamp: "2026-03-09T00:00:00Z",
+            environment: "production",
+            description: "deploy v42",
+          },
+        ],
+      },
+    };
+    const prompt = buildPrompt(packetWithoutDetails);
+    expect(prompt).toContain("Platform Events");
+    expect(prompt).not.toContain("[truncated]");
+  });
+
   it("consumes representativeTraces with peerService correctly (diagnosis gate)", () => {
     // Packet with a peerService=stripe span and a HTTP 429 span in representativeTraces
     const packetWithPeer: IncidentPacket = {
