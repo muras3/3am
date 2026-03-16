@@ -75,6 +75,52 @@ describe("buildIncidentWorkspaceVM", () => {
     expect(vm?.evidence.metrics).toBe(testPacket.evidence.changedMetrics.length);
     expect(vm?.evidence.logs).toBe(testPacket.evidence.relevantLogs.length);
   });
+
+  it("maps evidence platformEvents count from packet", () => {
+    const vm = buildIncidentWorkspaceVM(testIncident);
+    expect(vm?.evidence.platformEvents).toBe(
+      testPacket.evidence.platformEvents.length,
+    );
+  });
+
+  it("maps evidence traceCount as unique traceIds", () => {
+    const vm = buildIncidentWorkspaceVM(testIncident);
+    const uniqueTraces = new Set(
+      testPacket.evidence.representativeTraces.map((t) => t.traceId),
+    ).size;
+    expect(vm?.evidence.traceCount).toBe(uniqueTraces);
+  });
+
+  it("builds timeline with events sorted chronologically", () => {
+    const vm = buildIncidentWorkspaceVM(testIncident);
+    expect(vm?.timeline).toBeDefined();
+    const times = vm!.timeline.events.map((e) => e.time);
+    const sorted = [...times].sort();
+    expect(times).toEqual(sorted);
+  });
+
+  it("timeline includes window.start, triggerSignals, and window.detect", () => {
+    const vm = buildIncidentWorkspaceVM(testIncident);
+    const labels = vm!.timeline.events.map((e) => e.label);
+    expect(labels).toContain("Incident window start");
+    expect(labels).toContain("Detected");
+    expect(labels).toContain("HTTP 429");
+    expect(labels).toContain("error_rate > 50%");
+  });
+
+  it("timeline events have HH:mm:ss formatted times", () => {
+    const vm = buildIncidentWorkspaceVM(testIncident);
+    for (const evt of vm!.timeline.events) {
+      expect(evt.time).toMatch(/^\d{2}:\d{2}:\d{2}$/);
+    }
+  });
+
+  it("timeline surface includes routes, primaryService, and dependencies", () => {
+    const vm = buildIncidentWorkspaceVM(testIncident);
+    expect(vm!.timeline.surface).toContain("checkout");
+    expect(vm!.timeline.surface).toContain("web");
+    expect(vm!.timeline.surface).toContain("stripe");
+  });
 });
 
 // ── buildEvidenceStudioVM ────────────────────────────────────────────────────

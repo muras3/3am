@@ -1,13 +1,13 @@
 import { lazy, Suspense, useState } from "react";
 import type { Incident } from "../../api/types.js";
-import type { EvidenceEntryVM } from "../../lib/viewmodels/index.js";
 import {
   buildIncidentWorkspaceVM,
+  buildEvidenceEntryVM,
   buildEvidenceStudioVM,
 } from "../../lib/viewmodels/index.js";
 import { WhatHappened } from "./WhatHappened.js";
 import { ImmediateAction } from "./ImmediateAction.js";
-import { RecoveryCard } from "./RecoveryCard.js";
+import { ImpactTimeline } from "./ImpactTimeline.js";
 import { CauseCard } from "./CauseCard.js";
 import { EvidenceEntry } from "./EvidenceEntry.js";
 import { DiagnosisPending } from "../common/DiagnosisPending.js";
@@ -28,13 +28,8 @@ export function IncidentBoard({ incident }: Props) {
   const vm = buildIncidentWorkspaceVM(incident);
   const studioVM = buildEvidenceStudioVM(incident);
 
-  // EvidenceEntry counts come from the packet directly — always available regardless
-  // of diagnosis state, so operators can inspect raw OTel data while LLM runs.
-  const evidenceVM: EvidenceEntryVM = vm?.evidence ?? {
-    traces: incident.packet.evidence.representativeTraces.length,
-    metrics: incident.packet.evidence.changedMetrics.length,
-    logs: incident.packet.evidence.relevantLogs.length,
-  };
+  // Evidence counts always available from packet — operators inspect raw OTel while LLM runs.
+  const evidenceVM = vm?.evidence ?? buildEvidenceEntryVM(incident.packet);
 
   return (
     <>
@@ -42,16 +37,24 @@ export function IncidentBoard({ incident }: Props) {
         <>
           <WhatHappened headline={vm.headline} chips={vm.chips} />
           <ImmediateAction action={vm.action} />
-          <RecoveryCard recovery={vm.recovery} />
           <CauseCard cause={vm.cause} />
+          <div className="bottom-grid">
+            <ImpactTimeline timeline={vm.timeline} />
+            <EvidenceEntry
+              evidence={evidenceVM}
+              onOpenStudio={() => setStudioOpen(true)}
+            />
+          </div>
         </>
       ) : (
-        <DiagnosisPending />
+        <>
+          <DiagnosisPending />
+          <EvidenceEntry
+            evidence={evidenceVM}
+            onOpenStudio={() => setStudioOpen(true)}
+          />
+        </>
       )}
-      <EvidenceEntry
-        evidence={evidenceVM}
-        onOpenStudio={() => setStudioOpen(true)}
-      />
       {studioOpen && (
         <Suspense fallback={null}>
           <EvidenceStudio

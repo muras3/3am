@@ -24,17 +24,15 @@ test.describe("Phase 1 product definition gate", () => {
     expect(attrs).toEqual([
       "what-broke",
       "action",
-      "recovery",
       "cause",
+      "impact-timeline",
       "evidence",
     ]);
   });
 
-  test("RecoveryCard has green top border", async ({ page }) => {
-    await expect(page.locator(".section-recovery")).toHaveCSS(
-      "border-top-color",
-      "rgb(46, 125, 82)",
-    );
+  test("bottom-grid renders 2 cards", async ({ page }) => {
+    const cards = page.locator(".bottom-grid > .bottom-card");
+    await expect(cards).toHaveCount(2);
   });
 
   test("CauseCard has teal left border", async ({ page }) => {

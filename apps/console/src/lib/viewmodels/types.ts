@@ -8,6 +8,7 @@ export interface IncidentWorkspaceVM {
   recovery: RecoveryVM;
   cause: CauseVM;
   evidence: EvidenceEntryVM;
+  timeline: ImpactTimelineVM;
   copilot: CopilotVM;
 }
 
@@ -35,10 +36,17 @@ export interface CauseVM {
   chain: CausalChainStep[];   // reasoning.causal_chain
 }
 
+export interface ImpactTimelineVM {
+  events: Array<{ time: string; label: string }>;
+  surface: string;
+}
+
 export interface EvidenceEntryVM {
   traces: number;
   metrics: number;
   logs: number;
+  platformEvents: number;
+  traceCount: number;
 }
 
 export interface EvidenceStudioVM {

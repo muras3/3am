@@ -52,40 +52,42 @@
   line-height: 1.45;
 }
 
-/* ── Section: Recovery watch ───────────────────────────────── */
-.section-recovery {
-  padding:12px 14px;
-  border-radius:var(--radius);
+/* ── Bottom 2-column grid ─────────────────────────────────── */
+.bottom-grid {
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:12px;
+}
+.bottom-card {
   border:1px solid var(--line);
-  border-top:2px solid var(--good);
+  border-radius:var(--radius);
+  padding:10px 12px;
   background:var(--panel);
 }
-.section-recovery .card-title {
-  font-size:10px; font-weight:600; text-transform:uppercase; letter-spacing:0.06em;
-  color:var(--ink-3); margin-bottom:8px;
+.bottom-card .card-title {
+  font-size:10px; font-weight:600; text-transform:uppercase;
+  letter-spacing:0.06em; color:var(--ink-3); margin-bottom:8px;
 }
-.recovery-item {
-  padding: 10px 0;
-  border-bottom: 1px solid var(--line);
+
+/* ── Watch rows (Mitigation Watch) ────────────────────────── */
+.watch-row {
+  display:grid;
+  grid-template-columns:60px 1fr auto;
+  gap:4px;
+  align-items:center;
+  padding:3px 0;
+  font-size:11px;
+  border-bottom:1px solid var(--line);
 }
-.recovery-item:last-child { border-bottom: none; }
-.recovery-item-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-}
-.recovery-look {
-  font-size: var(--fs-sm);
-  font-weight: 700;
-  color: var(--ink);
-  line-height: 1.35;
-}
-.recovery-means {
-  margin-top: 4px;
-  font-size: var(--fs-xs);
-  color: var(--ink-2);
-  line-height: 1.5;
+.watch-row:last-child { border-bottom:none; }
+.watch-row .wl { font-weight:600; }
+.watch-row .wv { color:var(--ink-2); }
+
+/* ── Timeline surface footer ──────────────────────────────── */
+.timeline-surface {
+  margin-top:6px;
+  font-size:10px;
+  color:var(--ink-3);
 }
 
 /* ── Section: Cause (causal chain) ────────────────────────── */
@@ -103,18 +105,6 @@
 .cause-hypothesis {
   font-size:var(--fs-sm); color:var(--ink-2); margin-bottom:12px;
   line-height:var(--lh-read);
-}
-
-/* ── Section: Evidence entry ───────────────────────────────── */
-.section-evidence {
-  padding:10px 12px;
-  border:1px solid var(--line);
-  border-radius:var(--radius);
-  background:var(--panel);
-}
-.section-evidence .card-title {
-  font-size:10px; font-weight:600; text-transform:uppercase; letter-spacing:0.06em;
-  color:var(--ink-3); margin-bottom:8px;
 }
 
 /* ── Shared card internals ─────────────────────────────────── */
