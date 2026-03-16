@@ -5,6 +5,7 @@ export type {
   RecoveryVM,
   CauseVM,
   EvidenceEntryVM,
+  ImpactTimelineVM,
   EvidenceStudioVM,
   ProofCardVM,
   ComponentFlowVM,
@@ -13,5 +14,6 @@ export type {
 
 export {
   buildIncidentWorkspaceVM,
+  buildEvidenceEntryVM,
   buildEvidenceStudioVM,
 } from "./adapters.js";

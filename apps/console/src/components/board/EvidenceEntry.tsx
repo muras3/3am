@@ -6,23 +6,36 @@ interface Props {
 }
 
 export function EvidenceEntry({ evidence, onOpenStudio }: Props) {
+  const tracesText =
+    evidence.traceCount > 0
+      ? `${evidence.traceCount} traces, ${evidence.traces} spans`
+      : `${evidence.traces} spans captured`;
+
   return (
-    <section className="section-evidence" data-section="evidence">
-      <div className="card-title">Evidence</div>
+    <div className="bottom-card" data-section="evidence">
+      <div className="card-title">Evidence Preview</div>
       <div className="evidence-preview-row">
         <div className="ep-label">Traces</div>
-        <div className="ep-value">{evidence.traces} spans captured</div>
+        <div className="ep-value">{tracesText}</div>
       </div>
       <div className="evidence-preview-row">
         <div className="ep-label">Metrics</div>
         <div className="ep-value">
-          {evidence.metrics > 0 ? `${evidence.metrics} metrics` : "none"}
+          {evidence.metrics > 0 ? `${evidence.metrics} changed` : "none"}
         </div>
       </div>
       <div className="evidence-preview-row">
         <div className="ep-label">Logs</div>
         <div className="ep-value">
           {evidence.logs > 0 ? `${evidence.logs} entries` : "none"}
+        </div>
+      </div>
+      <div className="evidence-preview-row">
+        <div className="ep-label">Platform</div>
+        <div className="ep-value">
+          {evidence.platformEvents > 0
+            ? `${evidence.platformEvents} events`
+            : "none"}
         </div>
       </div>
       <button
@@ -33,6 +46,6 @@ export function EvidenceEntry({ evidence, onOpenStudio }: Props) {
         <span className="dot" />
         Open Evidence Studio
       </button>
-    </section>
+    </div>
   );
 }

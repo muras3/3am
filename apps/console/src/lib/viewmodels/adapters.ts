@@ -10,6 +10,8 @@ import type { Incident } from "../../api/types.js";
 import type {
   IncidentWorkspaceVM,
   ChipVM,
+  EvidenceEntryVM,
+  ImpactTimelineVM,
   EvidenceStudioVM,
   ProofCardVM,
   ComponentFlowVM,
@@ -41,11 +43,8 @@ export function buildIncidentWorkspaceVM(
       hypothesis: dr.summary.root_cause_hypothesis,
       chain: dr.reasoning.causal_chain,
     },
-    evidence: {
-      traces: packet.evidence.representativeTraces.length,
-      metrics: packet.evidence.changedMetrics.length,
-      logs: packet.evidence.relevantLogs.length,
-    },
+    evidence: buildEvidenceEntryVM(packet),
+    timeline: buildImpactTimelineVM(packet),
     copilot: {
       confidence: dr.confidence.confidence_assessment,
       uncertainty: dr.confidence.uncertainty,
@@ -77,6 +76,52 @@ function humanizeWatchLabel(label: string): string {
     .replace(/_total$/i, "")
     .replace(/_/g, " ")
     .replace(/\b\w/g, (ch) => ch.toUpperCase());
+}
+
+export function buildEvidenceEntryVM(packet: IncidentPacket): EvidenceEntryVM {
+  return {
+    traces: packet.evidence.representativeTraces.length,
+    metrics: packet.evidence.changedMetrics.length,
+    logs: packet.evidence.relevantLogs.length,
+    platformEvents: packet.evidence.platformEvents.length,
+    traceCount: new Set(
+      packet.evidence.representativeTraces.map((t) => t.traceId),
+    ).size,
+  };
+}
+
+function formatTimeUTC(iso: string): string {
+  return new Date(iso).toISOString().slice(11, 19);
+}
+
+function buildImpactTimelineVM(packet: IncidentPacket): ImpactTimelineVM {
+  const raw: Array<{ iso: string; label: string }> = [];
+
+  raw.push({ iso: packet.window.start, label: "Incident window start" });
+  for (const sig of packet.triggerSignals) {
+    raw.push({ iso: sig.firstSeenAt, label: sig.signal });
+  }
+  raw.push({ iso: packet.window.detect, label: "Detected" });
+
+  raw.sort((a, b) => a.iso.localeCompare(b.iso));
+
+  const events = raw.map((r) => ({ time: formatTimeUTC(r.iso), label: r.label }));
+
+  const seen = new Set<string>();
+  const surfaceParts: string[] = [];
+  const addPart = (s: string) => {
+    if (s && !seen.has(s)) { seen.add(s); surfaceParts.push(s); }
+  };
+  for (const route of packet.scope.affectedRoutes) {
+    addPart(route.replace(/^\//, "").split("/")[0] ?? "");
+  }
+  addPart(packet.scope.primaryService);
+  for (const dep of packet.scope.affectedDependencies) {
+    addPart(dep);
+  }
+  const surface = surfaceParts.join(", ");
+
+  return { events, surface };
 }
 
 export function buildEvidenceStudioVM(incident: Incident): EvidenceStudioVM {
