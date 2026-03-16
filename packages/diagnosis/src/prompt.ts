@@ -31,19 +31,26 @@ export function buildPrompt(packet: IncidentPacket): string {
     )
     .join("\n");
 
+  const MAX_METRICS = 20;
+  const MAX_LOGS = 30;
+  const MAX_TRACE_REFS = 20;
+
+  const cappedTraceRefs = pointers.traceRefs.slice(0, MAX_TRACE_REFS);
   const traceRefsSection =
-    pointers.traceRefs.length > 0
-      ? pointers.traceRefs.join(", ")
+    cappedTraceRefs.length > 0
+      ? `${cappedTraceRefs.join(", ")}${pointers.traceRefs.length > MAX_TRACE_REFS ? ` ... and ${pointers.traceRefs.length - MAX_TRACE_REFS} more` : ""}`
       : "(none)";
 
+  const cappedMetrics = evidence.changedMetrics.slice(0, MAX_METRICS);
   const metricsSection =
-    evidence.changedMetrics.length > 0
-      ? `\n### Changed Metrics\n${evidence.changedMetrics.map((m, i) => `  [${i + 1}] ${JSON.stringify(m)}`).join("\n")}`
+    cappedMetrics.length > 0
+      ? `\n### Changed Metrics (${cappedMetrics.length}/${evidence.changedMetrics.length})\n${cappedMetrics.map((m, i) => `  [${i + 1}] ${JSON.stringify(m)}`).join("\n")}`
       : "";
 
+  const cappedLogs = evidence.relevantLogs.slice(0, MAX_LOGS);
   const logsSection =
-    evidence.relevantLogs.length > 0
-      ? `\n### Relevant Logs\n${evidence.relevantLogs.map((l, i) => `  [${i + 1}] ${JSON.stringify(l)}`).join("\n")}`
+    cappedLogs.length > 0
+      ? `\n### Relevant Logs (${cappedLogs.length}/${evidence.relevantLogs.length})\n${cappedLogs.map((l, i) => `  [${i + 1}] ${JSON.stringify(l)}`).join("\n")}`
       : "";
 
   const MAX_DETAILS_LENGTH = 1000;

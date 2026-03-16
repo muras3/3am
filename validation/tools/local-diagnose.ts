@@ -20,6 +20,9 @@
  *                         gpt-*   → codex exec    (OpenAI subscription)
  */
 import { spawnSync } from "child_process";
+import { writeFileSync, unlinkSync } from "fs";
+import { tmpdir } from "os";
+import { join } from "path";
 import { diagnose, buildPrompt, parseResult } from "@3amoncall/diagnosis";
 import type { IncidentPacket, DiagnosisResult } from "@3amoncall/core";
 
@@ -69,15 +72,23 @@ async function postDiagnosis(incidentId: string, result: DiagnosisResult): Promi
  */
 function callCli(prompt: string, model: string): string {
   if (model.startsWith("claude-")) {
-    const proc = spawnSync("claude", ["--print", "--model", model], {
-      input: prompt,
-      encoding: "utf8",
-      timeout: 120_000,
-    });
-    if (proc.status !== 0) {
-      throw new Error(`claude --print failed (exit ${proc.status}): ${proc.stderr}`);
+    // Write prompt to temp file and redirect stdin from it via shell.
+    // spawnSync({ input }) doesn't reliably reach claude --print when
+    // invoked from npx tsx, and -p with $(cat) hits ARG_MAX for large prompts.
+    const tmpFile = join(tmpdir(), `3amoncall-prompt-${Date.now()}.txt`);
+    try {
+      writeFileSync(tmpFile, prompt, "utf8");
+      const proc = spawnSync("sh", ["-c", `claude --print --model "${model}" < "${tmpFile}"`], {
+        encoding: "utf8",
+        timeout: 180_000,
+      });
+      if (proc.status !== 0) {
+        throw new Error(`claude --print failed (exit ${proc.status}): ${proc.stderr}`);
+      }
+      return proc.stdout;
+    } finally {
+      try { unlinkSync(tmpFile); } catch {}
     }
-    return proc.stdout;
   }
   // OpenAI via codex CLI (e.g. gpt-5.4)
   const proc = spawnSync("codex", ["exec", "-c", `model="${model}"`], {
