@@ -30,6 +30,34 @@ function parseArgs(argv: string[]): {
   return { packetPath, callbackUrl, callbackToken };
 }
 
+const RETRYABLE_STATUSES = new Set([429, 502, 503, 529]);
+const MAX_RETRIES = 2; // 3 total attempts
+
+/**
+ * Wraps fetch with retry logic for transient errors.
+ * Retries on network errors or retryable HTTP status codes (429, 502, 503, 529).
+ * Non-retryable status codes (e.g. 400, 401) are returned as-is; caller checks response.ok.
+ * Backoff: 1000 * 2^(attempt-1) ms (1s, 2s).
+ */
+async function fetchWithRetry(url: string, init: RequestInit): Promise<Response> {
+  let lastError: unknown = new Error("fetchWithRetry: no attempts made");
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    if (attempt > 0) {
+      await new Promise((resolve) => setTimeout(resolve, 1000 * Math.pow(2, attempt - 1)));
+    }
+    try {
+      const response = await fetch(url, init);
+      if (!RETRYABLE_STATUSES.has(response.status)) {
+        return response;
+      }
+      lastError = new Error(`HTTP ${response.status}`);
+    } catch (err) {
+      lastError = err;
+    }
+  }
+  throw lastError;
+}
+
 /**
  * Main CLI function. Exported for testability.
  * @param argv - argument array (e.g. process.argv.slice(2))
@@ -92,13 +120,13 @@ export async function run(argv: string[]): Promise<void> {
 
     let response: Response;
     try {
-      response = await fetch(callbackUrl, {
+      response = await fetchWithRetry(callbackUrl, {
         method: "POST",
         headers,
         body: JSON.stringify(result),
       });
     } catch (err) {
-      process.stderr.write(`Error: callback request failed: ${String(err)}\n`);
+      process.stderr.write(`Error: callback request failed after retries: ${String(err)}\n`);
       process.exit(1);
       return;
     }

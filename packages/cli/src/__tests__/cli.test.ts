@@ -248,6 +248,143 @@ describe("CLI run()", () => {
     exitSpy.mockRestore();
   });
 
+  // ---------------------------------------------------------------------------
+  // Callback retry tests
+  // ---------------------------------------------------------------------------
+
+  describe("callback retry", () => {
+    let tmpDirRetry: string;
+
+    beforeEach(() => {
+      tmpDirRetry = join(tmpdir(), `cli-retry-test-${Date.now()}`);
+      mkdirSync(tmpDirRetry, { recursive: true });
+      vi.mocked(diagnose).mockReset();
+      vi.useFakeTimers();
+    });
+
+    afterEach(() => {
+      rmSync(tmpDirRetry, { recursive: true, force: true });
+      vi.restoreAllMocks();
+      vi.useRealTimers();
+    });
+
+    it("retries callback on HTTP 429 then succeeds", async () => {
+      vi.mocked(diagnose).mockResolvedValue(validDiagnosisResult);
+      const packetPath = join(tmpDirRetry, "packet.json");
+      writeFileSync(packetPath, JSON.stringify(validPacket), "utf-8");
+
+      const mockFetch = vi
+        .fn()
+        .mockResolvedValueOnce({ ok: false, status: 429 })
+        .mockResolvedValueOnce({ ok: false, status: 429 })
+        .mockResolvedValueOnce({ ok: true, status: 200 });
+      const originalFetch = globalThis.fetch;
+      globalThis.fetch = mockFetch as typeof fetch;
+
+      const exitSpy = vi.spyOn(process, "exit").mockImplementation((() => {
+        throw new Error("process.exit called unexpectedly");
+      }) as never);
+      const capture = captureStdout();
+
+      try {
+        const promise = run(["--packet", packetPath, "--callback-url", "https://example.com/cb"]);
+        await vi.advanceTimersByTimeAsync(1000); // first backoff
+        await vi.advanceTimersByTimeAsync(2000); // second backoff
+        await promise;
+      } finally {
+        capture.restore();
+        exitSpy.mockRestore();
+        globalThis.fetch = originalFetch;
+      }
+
+      expect(mockFetch).toHaveBeenCalledTimes(3);
+    });
+
+    it("retries callback on network error then succeeds", async () => {
+      vi.mocked(diagnose).mockResolvedValue(validDiagnosisResult);
+      const packetPath = join(tmpDirRetry, "packet.json");
+      writeFileSync(packetPath, JSON.stringify(validPacket), "utf-8");
+
+      const mockFetch = vi
+        .fn()
+        .mockRejectedValueOnce(new Error("ECONNREFUSED"))
+        .mockResolvedValueOnce({ ok: true, status: 200 });
+      const originalFetch = globalThis.fetch;
+      globalThis.fetch = mockFetch as typeof fetch;
+
+      const exitSpy = vi.spyOn(process, "exit").mockImplementation((() => {
+        throw new Error("process.exit called unexpectedly");
+      }) as never);
+      const capture = captureStdout();
+
+      try {
+        const promise = run(["--packet", packetPath, "--callback-url", "https://example.com/cb"]);
+        await vi.advanceTimersByTimeAsync(1000); // first backoff
+        await promise;
+      } finally {
+        capture.restore();
+        exitSpy.mockRestore();
+        globalThis.fetch = originalFetch;
+      }
+
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+    });
+
+    it("does not retry callback on HTTP 400", async () => {
+      vi.mocked(diagnose).mockResolvedValue(validDiagnosisResult);
+      const packetPath = join(tmpDirRetry, "packet.json");
+      writeFileSync(packetPath, JSON.stringify(validPacket), "utf-8");
+
+      const mockFetch = vi.fn().mockResolvedValue({ ok: false, status: 400 });
+      const originalFetch = globalThis.fetch;
+      globalThis.fetch = mockFetch as typeof fetch;
+
+      const exitMock = vi.fn();
+      const exitSpy = vi.spyOn(process, "exit").mockImplementation(exitMock as never);
+      const stderrSpy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+
+      try {
+        const promise = run(["--packet", packetPath, "--callback-url", "https://example.com/cb"]);
+        await promise;
+      } finally {
+        globalThis.fetch = originalFetch;
+        stderrSpy.mockRestore();
+        exitSpy.mockRestore();
+      }
+
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+      expect(exitMock).toHaveBeenCalledWith(1);
+    });
+
+    it("exits 1 after all callback retries exhausted", async () => {
+      vi.mocked(diagnose).mockResolvedValue(validDiagnosisResult);
+      const packetPath = join(tmpDirRetry, "packet.json");
+      writeFileSync(packetPath, JSON.stringify(validPacket), "utf-8");
+
+      const mockFetch = vi.fn().mockResolvedValue({ ok: false, status: 503 });
+      const originalFetch = globalThis.fetch;
+      globalThis.fetch = mockFetch as typeof fetch;
+
+      const exitMock = vi.fn();
+      const exitSpy = vi.spyOn(process, "exit").mockImplementation(exitMock as never);
+      const stderrSpy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+
+      try {
+        const promise = run(["--packet", packetPath, "--callback-url", "https://example.com/cb"]);
+        await vi.advanceTimersByTimeAsync(1000); // first backoff
+        await vi.advanceTimersByTimeAsync(2000); // second backoff
+        await promise;
+      } finally {
+        globalThis.fetch = originalFetch;
+        stderrSpy.mockRestore();
+        exitSpy.mockRestore();
+      }
+
+      expect(mockFetch).toHaveBeenCalledTimes(3);
+      expect(exitMock).toHaveBeenCalledWith(1);
+    });
+  });
+
   // Test 5: missing --packet flag → process.exit(1)
   it("missing --packet flag → calls process.exit(1)", async () => {
     const exitSpy = vi.spyOn(process, "exit").mockImplementation((() => {

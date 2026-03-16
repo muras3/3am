@@ -46,9 +46,22 @@ export function buildPrompt(packet: IncidentPacket): string {
       ? `\n### Relevant Logs\n${evidence.relevantLogs.map((l, i) => `  [${i + 1}] ${JSON.stringify(l)}`).join("\n")}`
       : "";
 
+  const MAX_DETAILS_LENGTH = 1000;
   const eventsSection =
     evidence.platformEvents.length > 0
-      ? `\n### Platform Events\n${evidence.platformEvents.map((e, i) => `  [${i + 1}] ${JSON.stringify(e)}`).join("\n")}`
+      ? `\n### Platform Events\n${evidence.platformEvents
+          .map((e, i) => {
+            if (e.details === undefined) {
+              return `  [${i + 1}] ${JSON.stringify(e)}`;
+            }
+            const { details, ...rest } = e;
+            const detailsStr = JSON.stringify(details);
+            if (detailsStr.length <= MAX_DETAILS_LENGTH) {
+              return `  [${i + 1}] ${JSON.stringify(e)}`;
+            }
+            return `  [${i + 1}] ${JSON.stringify({ ...rest, details: detailsStr.slice(0, MAX_DETAILS_LENGTH) + " [truncated]" })}`;
+          })
+          .join("\n")}`
       : "";
 
   return `You are an expert SRE performing on-call incident diagnosis.

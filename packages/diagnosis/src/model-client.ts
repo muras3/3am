@@ -9,7 +9,7 @@ export async function callModel(
   prompt: string,
   options: ModelOptions,
 ): Promise<string> {
-  const client = new Anthropic();
+  const client = new Anthropic({ timeout: 120_000, maxRetries: 2 });
   const response = await client.messages.create({
     model: options.model,
     max_tokens: options.maxTokens,
