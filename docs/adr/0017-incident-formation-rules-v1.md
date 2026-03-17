@@ -3,6 +3,7 @@
 - Status: Accepted
 - Date: 2026-03-08
 - Updated: 2026-03-13 (dependency キーの具体化、split-first ルール、cross-service merge 上限、peerService normalization を追記)
+- Amended by: [ADR 0033](0033-cross-service-incident-formation-via-trace-propagation.md) (trace-based cross-service merge を追加)
 
 ## Context
 
@@ -82,12 +83,16 @@ MAX_CROSS_SERVICE_MERGE = 3
 
 この制約は Stripe / DB / Redis のような単一巨大 dependency が多数のサービスを巻き込む mega-incident の発生を防ぐ guard としても機能する。
 
+### Trace-based cross-service merge (ADR 0033)
+
+> **Amendment (2026-03-17):** [ADR 0033](0033-cross-service-incident-formation-via-trace-propagation.md) により、上記ルールに加えて **同一 traceId に属する anomalous span が複数 service にまたがる場合の cross-service merge** が追加された。これは primaryService match / dependency match のいずれにも該当しない場合のフォールバックとして機能する。`MAX_CROSS_SERVICE_MERGE` ガードは維持される。
+
 ### 非目標
 
 Phase 1 では、以下は行わない。
 
 - LLM による incident 単位の生成
-- 複雑な service graph 推論による自動相関
+- ~~複雑な service graph 推論による自動相関~~ → ADR 0033 で trace propagation ベースの cross-service merge を導入。ただし永続的な dependency graph の構築は引き続き非目標
 - 完全な root cause 推定を formation layer で行うこと
 
 `incident formation` は incident の箱を作る層であり、最終的な trigger / root cause / causal chain の解釈は LLM が担う。
@@ -114,3 +119,4 @@ Phase 1 では、以下は行わない。
 - [0007-incident-packet-generated-in-receiver.md](/Users/murase/project/3amoncall/docs/adr/0007-incident-packet-generated-in-receiver.md)
 - [0008-problem-grouping-and-packetization-without-llm.md](/Users/murase/project/3amoncall/docs/adr/0008-problem-grouping-and-packetization-without-llm.md)
 - [0016-incident-packet-v1alpha.md](/Users/murase/project/3amoncall/docs/adr/0016-incident-packet-v1alpha.md)
+- [0033-cross-service-incident-formation-via-trace-propagation.md](0033-cross-service-incident-formation-via-trace-propagation.md) — trace-based cross-service merge 拡張
