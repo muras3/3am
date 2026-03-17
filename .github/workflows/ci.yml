@@ -94,8 +94,8 @@ jobs:
         run: pnpm --filter @3amoncall/cli lint
 
       # receiver (PostgresAdapter tests run when DATABASE_URL is set)
-      - name: Test receiver
-        run: pnpm --filter @3amoncall/receiver test
+      - name: Test receiver (with coverage)
+        run: pnpm --filter @3amoncall/receiver test:coverage
         env:
           DATABASE_URL: postgres://receiver:receiver@localhost:5432/receiver
       - name: Typecheck receiver
