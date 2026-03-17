@@ -75,7 +75,17 @@ function computeWindowAndScope(rawState: IncidentRawState) {
   const detectTimeMs = firstAnomalous ? firstAnomalous.startTimeMs : windowStartMs
 
   const environment = spans[0]?.environment ?? 'unknown'
-  const services = [...new Set(spans.map(s => s.serviceName))]
+  // Include both serviceName and peerService (affectedDependencies) in the query scope.
+  // This matches shouldAttachEvidence() which attaches metrics/logs from dependency services
+  // (e.g., stripe) that are in affectedDependencies. Without this, TelemetryStore queries
+  // would miss dependency-originated evidence that rawState path correctly includes.
+  const serviceNames = new Set(spans.map(s => s.serviceName))
+  for (const s of spans) {
+    if (s.peerService !== undefined) {
+      serviceNames.add(s.peerService)
+    }
+  }
+  const services = [...serviceNames]
 
   return {
     windowStartMs,
@@ -208,8 +218,9 @@ export async function rebuildSnapshots(
   ])
 
   // Step 12: Build pointers from snapshot + TelemetryStore data
-  // traceRefs: ALL distinct traceIds from TelemetryStore query (broader than representative), capped
-  const allTraceIds = [...new Set(tsSpans.map(s => s.traceId))]
+  // traceRefs: ALL distinct traceIds from TelemetryStore query (broader than representative), capped.
+  // Sort deterministically so packet diff is stable across adapter implementations and re-runs.
+  const allTraceIds = [...new Set(tsSpans.map(s => s.traceId))].sort()
   const traceRefs = allTraceIds.slice(0, MAX_TRACE_REFS)
 
   // metricRefs: distinct names from selected metrics
