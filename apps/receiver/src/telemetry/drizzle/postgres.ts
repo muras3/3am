@@ -8,7 +8,7 @@ import postgres from "postgres";
 import { drizzle } from "drizzle-orm/postgres-js";
 import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import { and, gte, lte, lt, inArray, eq, sql as drizzleSql } from "drizzle-orm";
-import { pgTable, text, integer, jsonb, uniqueIndex, index } from "drizzle-orm/pg-core";
+import { pgTable, text, integer, bigint, jsonb, uniqueIndex, index } from "drizzle-orm/pg-core";
 import type {
   TelemetryStoreDriver,
   TelemetrySpan,
@@ -31,12 +31,12 @@ const pgTelemetrySpans = pgTable("telemetry_spans", {
   httpRoute: text("http_route"),
   httpStatusCode: integer("http_status_code"),
   spanStatusCode: integer("span_status_code").notNull(),
-  durationMs: integer("duration_ms").notNull(),
-  startTimeMs: integer("start_time_ms").notNull(),
+  durationMs: bigint("duration_ms", { mode: "number" }).notNull(),
+  startTimeMs: bigint("start_time_ms", { mode: "number" }).notNull(),
   peerService: text("peer_service"),
   exceptionCount: integer("exception_count").notNull(),
   attributes: jsonb("attributes").notNull(),
-  ingestedAt: integer("ingested_at").notNull(), // epoch ms
+  ingestedAt: bigint("ingested_at", { mode: "number" }).notNull(), // epoch ms
 }, (table) => [
   uniqueIndex("uq_pg_spans_trace_span").on(table.traceId, table.spanId),
   index("idx_pg_spans_service_ingested").on(table.serviceName, table.ingestedAt),
@@ -46,9 +46,9 @@ const pgTelemetryMetrics = pgTable("telemetry_metrics", {
   service: text("service").notNull(),
   environment: text("environment").notNull(),
   name: text("name").notNull(),
-  startTimeMs: integer("start_time_ms").notNull(),
+  startTimeMs: bigint("start_time_ms", { mode: "number" }).notNull(),
   summary: jsonb("summary").notNull(),
-  ingestedAt: integer("ingested_at").notNull(),
+  ingestedAt: bigint("ingested_at", { mode: "number" }).notNull(),
 }, (table) => [
   uniqueIndex("uq_pg_metrics_service_name_time").on(table.service, table.name, table.startTimeMs),
   index("idx_pg_metrics_ingested").on(table.ingestedAt),
@@ -58,7 +58,7 @@ const pgTelemetryLogs = pgTable("telemetry_logs", {
   service: text("service").notNull(),
   environment: text("environment").notNull(),
   timestamp: text("timestamp").notNull(),
-  startTimeMs: integer("start_time_ms").notNull(),
+  startTimeMs: bigint("start_time_ms", { mode: "number" }).notNull(),
   severity: text("severity").notNull(),
   severityNumber: integer("severity_number").notNull(),
   body: text("body").notNull(),
@@ -66,7 +66,7 @@ const pgTelemetryLogs = pgTable("telemetry_logs", {
   attributes: jsonb("attributes").notNull(),
   traceId: text("trace_id"),
   spanId: text("span_id"),
-  ingestedAt: integer("ingested_at").notNull(),
+  ingestedAt: bigint("ingested_at", { mode: "number" }).notNull(),
 }, (table) => [
   uniqueIndex("uq_pg_logs_service_timestamp_hash").on(table.service, table.timestamp, table.bodyHash),
   index("idx_pg_logs_ingested").on(table.ingestedAt),
@@ -115,12 +115,12 @@ export class PostgresTelemetryAdapter implements TelemetryStoreDriver {
         http_route       TEXT,
         http_status_code INTEGER,
         span_status_code INTEGER NOT NULL,
-        duration_ms      INTEGER NOT NULL,
-        start_time_ms    INTEGER NOT NULL,
+        duration_ms      BIGINT NOT NULL,
+        start_time_ms    BIGINT NOT NULL,
         peer_service     TEXT,
         exception_count  INTEGER NOT NULL,
         attributes       JSONB NOT NULL,
-        ingested_at      INTEGER NOT NULL
+        ingested_at      BIGINT NOT NULL
       )
     `);
     await this.db.execute(drizzleSql`
@@ -137,9 +137,9 @@ export class PostgresTelemetryAdapter implements TelemetryStoreDriver {
         service       TEXT NOT NULL,
         environment   TEXT NOT NULL,
         name          TEXT NOT NULL,
-        start_time_ms INTEGER NOT NULL,
+        start_time_ms BIGINT NOT NULL,
         summary       JSONB NOT NULL,
-        ingested_at   INTEGER NOT NULL
+        ingested_at   BIGINT NOT NULL
       )
     `);
     await this.db.execute(drizzleSql`
@@ -156,7 +156,7 @@ export class PostgresTelemetryAdapter implements TelemetryStoreDriver {
         service         TEXT NOT NULL,
         environment     TEXT NOT NULL,
         timestamp       TEXT NOT NULL,
-        start_time_ms   INTEGER NOT NULL,
+        start_time_ms   BIGINT NOT NULL,
         severity        TEXT NOT NULL,
         severity_number INTEGER NOT NULL,
         body            TEXT NOT NULL,
@@ -164,7 +164,7 @@ export class PostgresTelemetryAdapter implements TelemetryStoreDriver {
         attributes      JSONB NOT NULL,
         trace_id        TEXT,
         span_id         TEXT,
-        ingested_at     INTEGER NOT NULL
+        ingested_at     BIGINT NOT NULL
       )
     `);
     await this.db.execute(drizzleSql`
