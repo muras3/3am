@@ -10,7 +10,7 @@
 import { describe, it, expect, beforeAll, beforeEach, afterAll } from "vitest";
 import { sql } from "drizzle-orm";
 import { PostgresAdapter } from "../../storage/drizzle/postgres.js";
-import { runStorageSuite, makePacket, makeSpan } from "./shared-suite.js";
+import { runStorageSuite, makePacket, makeMembership } from "./shared-suite.js";
 
 const DATABASE_URL = process.env["DATABASE_URL"];
 
@@ -48,26 +48,29 @@ if (!DATABASE_URL) {
       );
     });
 
-    it("concurrent appendSpans does not lose updates (Promise.all)", async () => {
+    it("concurrent appendSpanMembership does not lose updates (Promise.all)", async () => {
       const packet = makePacket({ incidentId: "inc_race_spans", packetId: "pkt_race_spans" });
-      await adapter.createIncident(packet);
+      await adapter.createIncident(packet, makeMembership());
 
-      const batch1 = [makeSpan("span_r1"), makeSpan("span_r2"), makeSpan("span_r3")];
-      const batch2 = [makeSpan("span_r4"), makeSpan("span_r5")];
+      const batch1 = ["trace_001:span_r1", "trace_001:span_r2", "trace_001:span_r3"];
+      const batch2 = ["trace_001:span_r4", "trace_001:span_r5"];
 
       await Promise.all([
-        adapter.appendSpans(packet.incidentId, batch1),
-        adapter.appendSpans(packet.incidentId, batch2),
+        adapter.appendSpanMembership(packet.incidentId, batch1),
+        adapter.appendSpanMembership(packet.incidentId, batch2),
       ]);
 
-      const rawState = await adapter.getRawState(packet.incidentId);
-      expect(rawState).not.toBeNull();
-      expect(rawState!.spans).toHaveLength(batch1.length + batch2.length);
+      const incident = await adapter.getIncident(packet.incidentId);
+      expect(incident).not.toBeNull();
+      // Initial membership has 1 + batch1 (3) + batch2 (2) = 6
+      // (dedup may reduce if any overlap with initial)
+      const allIds = new Set([...makeMembership().spanMembership, ...batch1, ...batch2]);
+      expect(incident!.spanMembership.length).toBe(allIds.size);
     });
 
     it("concurrent appendAnomalousSignals does not lose updates (Promise.all)", async () => {
       const packet = makePacket({ incidentId: "inc_race_signals", packetId: "pkt_race_signals" });
-      await adapter.createIncident(packet);
+      await adapter.createIncident(packet, makeMembership({ anomalousSignals: [] }));
 
       const batch1 = [
         { signal: "http_429", firstSeenAt: "2026-03-09T03:00:00Z", entity: "stripe", spanId: "s1" },
@@ -82,14 +85,14 @@ if (!DATABASE_URL) {
         adapter.appendAnomalousSignals(packet.incidentId, batch2),
       ]);
 
-      const rawState = await adapter.getRawState(packet.incidentId);
-      expect(rawState).not.toBeNull();
-      expect(rawState!.anomalousSignals).toHaveLength(batch1.length + batch2.length);
+      const incident = await adapter.getIncident(packet.incidentId);
+      expect(incident).not.toBeNull();
+      expect(incident!.anomalousSignals).toHaveLength(batch1.length + batch2.length);
     });
 
     it("concurrent appendPlatformEvents does not lose updates (Promise.all)", async () => {
       const packet = makePacket({ incidentId: "inc_race_events", packetId: "pkt_race_events" });
-      await adapter.createIncident(packet);
+      await adapter.createIncident(packet, makeMembership());
 
       const batch1 = [
         { eventType: "deploy" as const, timestamp: "2026-03-09T03:00:00Z", environment: "production", description: "d1" },
@@ -104,36 +107,9 @@ if (!DATABASE_URL) {
         adapter.appendPlatformEvents(packet.incidentId, batch2),
       ]);
 
-      const rawState = await adapter.getRawState(packet.incidentId);
-      expect(rawState).not.toBeNull();
-      expect(rawState!.platformEvents).toHaveLength(batch1.length + batch2.length);
-    });
-
-    it("concurrent appendRawEvidence does not lose updates (Promise.all)", async () => {
-      const packet = makePacket({ incidentId: "inc_race_evidence", packetId: "pkt_race_evidence" });
-      await adapter.createIncident(packet);
-
-      await Promise.all([
-        adapter.appendRawEvidence(packet.incidentId, {
-          metricEvidence: [
-            { name: "m1", service: "s", environment: "e", startTimeMs: 1, summary: {} },
-            { name: "m2", service: "s", environment: "e", startTimeMs: 2, summary: {} },
-          ],
-        }),
-        adapter.appendRawEvidence(packet.incidentId, {
-          metricEvidence: [
-            { name: "m3", service: "s", environment: "e", startTimeMs: 3, summary: {} },
-          ],
-          logEvidence: [
-            { service: "s", environment: "e", timestamp: "t", startTimeMs: 1, severity: "ERROR", body: "b", attributes: {} },
-          ],
-        }),
-      ]);
-
-      const rawState = await adapter.getRawState(packet.incidentId);
-      expect(rawState).not.toBeNull();
-      expect(rawState!.metricEvidence).toHaveLength(3);
-      expect(rawState!.logEvidence).toHaveLength(1);
+      const incident = await adapter.getIncident(packet.incidentId);
+      expect(incident).not.toBeNull();
+      expect(incident!.platformEvents).toHaveLength(batch1.length + batch2.length);
     });
   });
 }

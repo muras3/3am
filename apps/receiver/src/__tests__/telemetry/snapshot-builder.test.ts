@@ -8,6 +8,8 @@
 
 import { describe, it, expect, beforeEach } from 'vitest'
 import { MemoryAdapter } from '../../storage/adapters/memory.js'
+import { createEmptyTelemetryScope } from '../../storage/interface.js'
+import type { InitialMembership } from '../../storage/interface.js'
 import { MemoryTelemetryAdapter } from '../../telemetry/adapters/memory.js'
 import { rebuildSnapshots } from '../../telemetry/snapshot-builder.js'
 import { createPacket, buildAnomalousSignals } from '../../domain/packetizer.js'
@@ -88,6 +90,21 @@ function makeTelemetryLog(overrides: Partial<TelemetryLog> = {}): TelemetryLog {
   }
 }
 
+/**
+ * Helper to create an incident with membership via the new 2-arg createIncident API.
+ */
+async function createTestIncident(
+  storage: MemoryAdapter,
+  incidentId: string,
+  spans: ExtractedSpan[],
+  primaryService = 'web',
+) {
+  const openedAt = new Date(BASE_TIME_MS).toISOString()
+  const { packet, initialMembership } = createPacket(incidentId, openedAt, spans, primaryService)
+  await storage.createIncident(packet, initialMembership)
+  return { packet, initialMembership }
+}
+
 // ── Tests ────────────────────────────────────────────────────────────────────
 
 describe('rebuildSnapshots', () => {
@@ -107,11 +124,7 @@ describe('rebuildSnapshots', () => {
         makeExtractedSpan({ traceId: 'trace002', spanId: 'span002', httpStatusCode: 200, spanStatusCode: 0 }),
       ]
       const incidentId = 'inc_test_001'
-      const openedAt = new Date(BASE_TIME_MS).toISOString()
-      const packet = createPacket(incidentId, openedAt, spans, 'web')
-      await storage.createIncident(packet)
-      await storage.appendSpans(incidentId, spans)
-      await storage.appendAnomalousSignals(incidentId, buildAnomalousSignals(spans.filter(isAnomalous)))
+      await createTestIncident(storage, incidentId, spans)
 
       // 2. Ingest telemetry data to TelemetryStore
       const tsSpans = [
@@ -171,14 +184,10 @@ describe('rebuildSnapshots', () => {
 
     it('respects MAX output sizes when many items are available', async () => {
       const incidentId = 'inc_test_overflow'
-      const openedAt = new Date(BASE_TIME_MS).toISOString()
       const spans: ExtractedSpan[] = [
         makeExtractedSpan({ traceId: 'trigger', spanId: 'trigger_span' }),
       ]
-      const packet = createPacket(incidentId, openedAt, spans, 'web')
-      await storage.createIncident(packet)
-      await storage.appendSpans(incidentId, spans)
-      await storage.appendAnomalousSignals(incidentId, buildAnomalousSignals(spans.filter(isAnomalous)))
+      await createTestIncident(storage, incidentId, spans)
 
       // Ingest many metrics (> MAX_CHANGED_METRICS)
       const manyMetrics: TelemetryMetric[] = Array.from({ length: 30 }, (_, i) =>
@@ -216,12 +225,8 @@ describe('rebuildSnapshots', () => {
 
     it('changedMetrics omit score field (clean packet types)', async () => {
       const incidentId = 'inc_clean_types'
-      const openedAt = new Date(BASE_TIME_MS).toISOString()
       const spans: ExtractedSpan[] = [makeExtractedSpan()]
-      const packet = createPacket(incidentId, openedAt, spans, 'web')
-      await storage.createIncident(packet)
-      await storage.appendSpans(incidentId, spans)
-      await storage.appendAnomalousSignals(incidentId, buildAnomalousSignals(spans.filter(isAnomalous)))
+      await createTestIncident(storage, incidentId, spans)
 
       await telemetryStore.ingestSpans([makeTelemetrySpan()])
       await telemetryStore.ingestMetrics([makeTelemetryMetric()])
@@ -250,14 +255,10 @@ describe('rebuildSnapshots', () => {
   describe('stale avoidance', () => {
     it('picks up newly appended data when called with just incidentId', async () => {
       const incidentId = 'inc_stale_test'
-      const openedAt = new Date(BASE_TIME_MS).toISOString()
 
       // Initial incident with one span
       const span1 = makeExtractedSpan({ traceId: 'trace_old', spanId: 'span_old' })
-      const packet = createPacket(incidentId, openedAt, [span1], 'web')
-      await storage.createIncident(packet)
-      await storage.appendSpans(incidentId, [span1])
-      await storage.appendAnomalousSignals(incidentId, buildAnomalousSignals([span1].filter(isAnomalous)))
+      await createTestIncident(storage, incidentId, [span1])
 
       await telemetryStore.ingestSpans([
         makeTelemetrySpan({ traceId: 'trace_old', spanId: 'span_old' }),
@@ -268,14 +269,20 @@ describe('rebuildSnapshots', () => {
       let updated = await storage.getIncident(incidentId)
       expect(updated!.packet.pointers.traceRefs).toContain('trace_old')
 
-      // Append more spans (simulating another ingest batch)
+      // Append more span membership (simulating another ingest batch)
       const span2 = makeExtractedSpan({
         traceId: 'trace_new',
         spanId: 'span_new',
         startTimeMs: BASE_TIME_MS + 1000,
       })
-      await storage.appendSpans(incidentId, [span2])
+      await storage.appendSpanMembership(incidentId, [`${span2.traceId}:${span2.spanId}`])
       await storage.appendAnomalousSignals(incidentId, buildAnomalousSignals([span2].filter(isAnomalous)))
+      await storage.expandTelemetryScope(incidentId, {
+        windowStartMs: span2.startTimeMs,
+        windowEndMs: span2.startTimeMs + span2.durationMs,
+        memberServices: [span2.serviceName],
+        dependencyServices: [],
+      })
 
       // Ingest new span to TelemetryStore
       await telemetryStore.ingestSpans([
@@ -304,21 +311,27 @@ describe('rebuildSnapshots', () => {
       expect(snapshots.length).toBe(0)
     })
 
-    it('returns early when rawState has no spans', async () => {
-      // Create incident but don't append any spans to rawState
+    it('returns early when spanMembership is empty', async () => {
+      // Create incident with empty spanMembership via direct membership
       const incidentId = 'inc_no_spans'
       const openedAt = new Date(BASE_TIME_MS).toISOString()
-      // Create packet with a minimal span — then rawState will have empty spans
-      // because we are not calling appendSpans
       const span = makeExtractedSpan()
-      const packet = createPacket(incidentId, openedAt, [span], 'web')
-      await storage.createIncident(packet)
-      // Don't call appendSpans — rawState.spans will be empty
+      const { packet } = createPacket(incidentId, openedAt, [span], 'web')
+      // Create with empty membership to simulate no spans attached
+      const emptyMembership: InitialMembership = {
+        telemetryScope: {
+          ...createEmptyTelemetryScope(),
+          // windowStartMs >= windowEndMs triggers early return in rebuildSnapshots
+        },
+        spanMembership: [],
+        anomalousSignals: [],
+      }
+      await storage.createIncident(packet, emptyMembership)
 
-      // Should handle gracefully
+      // Should handle gracefully (windowStartMs >= windowEndMs → early return)
       await rebuildSnapshots(incidentId, telemetryStore, storage)
 
-      // No snapshots because rawState.spans is empty → no window to compute
+      // No snapshots because telemetryScope window is invalid
       const snapshots = await telemetryStore.getSnapshots(incidentId)
       expect(snapshots.length).toBe(0)
     })
@@ -327,7 +340,6 @@ describe('rebuildSnapshots', () => {
   describe('pointers from snapshot', () => {
     it('traceRefs come from TelemetryStore spans (broader than representativeTraces)', async () => {
       const incidentId = 'inc_pointers_test'
-      const openedAt = new Date(BASE_TIME_MS).toISOString()
 
       // Create incident with a few spans
       const incidentSpans: ExtractedSpan[] = Array.from({ length: 3 }, (_, i) =>
@@ -337,12 +349,9 @@ describe('rebuildSnapshots', () => {
           startTimeMs: BASE_TIME_MS + i * 100,
         }),
       )
-      const packet = createPacket(incidentId, openedAt, incidentSpans, 'web')
-      await storage.createIncident(packet)
-      await storage.appendSpans(incidentId, incidentSpans)
-      await storage.appendAnomalousSignals(incidentId, buildAnomalousSignals(incidentSpans.filter(isAnomalous)))
+      await createTestIncident(storage, incidentId, incidentSpans)
 
-      // Ingest MORE spans to TelemetryStore than what's in rawState
+      // Ingest MORE spans to TelemetryStore than what's in spanMembership
       // (simulating spans that arrived before incident detection)
       const allTsSpans: TelemetrySpan[] = Array.from({ length: 15 }, (_, i) =>
         makeTelemetrySpan({
@@ -372,12 +381,8 @@ describe('rebuildSnapshots', () => {
 
     it('metricRefs come from selected metrics (not all ingested)', async () => {
       const incidentId = 'inc_metric_refs'
-      const openedAt = new Date(BASE_TIME_MS).toISOString()
       const spans: ExtractedSpan[] = [makeExtractedSpan()]
-      const packet = createPacket(incidentId, openedAt, spans, 'web')
-      await storage.createIncident(packet)
-      await storage.appendSpans(incidentId, spans)
-      await storage.appendAnomalousSignals(incidentId, buildAnomalousSignals(spans.filter(isAnomalous)))
+      await createTestIncident(storage, incidentId, spans)
 
       await telemetryStore.ingestSpans([makeTelemetrySpan()])
       await telemetryStore.ingestMetrics([
@@ -397,12 +402,8 @@ describe('rebuildSnapshots', () => {
 
     it('logRefs use service:timestamp format from selected logs', async () => {
       const incidentId = 'inc_log_refs'
-      const openedAt = new Date(BASE_TIME_MS).toISOString()
       const spans: ExtractedSpan[] = [makeExtractedSpan()]
-      const packet = createPacket(incidentId, openedAt, spans, 'web')
-      await storage.createIncident(packet)
-      await storage.appendSpans(incidentId, spans)
-      await storage.appendAnomalousSignals(incidentId, buildAnomalousSignals(spans.filter(isAnomalous)))
+      await createTestIncident(storage, incidentId, spans)
 
       await telemetryStore.ingestSpans([makeTelemetrySpan()])
       const logTimestamp = new Date(BASE_TIME_MS).toISOString()
@@ -419,14 +420,10 @@ describe('rebuildSnapshots', () => {
       expect(updated!.packet.pointers.logRefs).toContain(`web:${logTimestamp}`)
     })
 
-    it('platformLogRefs come from rawState platformEvents (unchanged)', async () => {
+    it('platformLogRefs come from incident platformEvents (unchanged)', async () => {
       const incidentId = 'inc_platform_refs'
-      const openedAt = new Date(BASE_TIME_MS).toISOString()
       const spans: ExtractedSpan[] = [makeExtractedSpan()]
-      const packet = createPacket(incidentId, openedAt, spans, 'web')
-      await storage.createIncident(packet)
-      await storage.appendSpans(incidentId, spans)
-      await storage.appendAnomalousSignals(incidentId, buildAnomalousSignals(spans.filter(isAnomalous)))
+      await createTestIncident(storage, incidentId, spans)
 
       // Add platform events
       await storage.appendPlatformEvents(incidentId, [{
@@ -444,7 +441,7 @@ describe('rebuildSnapshots', () => {
       const updated = await storage.getIncident(incidentId)
       expect(updated).not.toBeNull()
 
-      // platformLogRefs should come from rawState
+      // platformLogRefs should come from incident platformEvents
       expect(updated!.packet.pointers.platformLogRefs).toContain('deploy_001')
     })
   })
@@ -452,7 +449,6 @@ describe('rebuildSnapshots', () => {
   describe('multi-service diversity', () => {
     it('selects evidence from multiple services', async () => {
       const incidentId = 'inc_diversity'
-      const openedAt = new Date(BASE_TIME_MS).toISOString()
 
       // Create incident with spans from multiple services
       const spans: ExtractedSpan[] = [
@@ -464,10 +460,7 @@ describe('rebuildSnapshots', () => {
           startTimeMs: BASE_TIME_MS + 100,
         }),
       ]
-      const packet = createPacket(incidentId, openedAt, spans, 'web')
-      await storage.createIncident(packet)
-      await storage.appendSpans(incidentId, spans)
-      await storage.appendAnomalousSignals(incidentId, buildAnomalousSignals(spans.filter(isAnomalous)))
+      await createTestIncident(storage, incidentId, spans)
 
       // Ingest metrics from multiple services
       await telemetryStore.ingestSpans([

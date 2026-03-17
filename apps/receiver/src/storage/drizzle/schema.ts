@@ -16,7 +16,11 @@ export const incidents = sqliteTable("incidents", {
   closedAt: text("closed_at"),
   packet: text("packet").notNull(),           // JSON string of IncidentPacket
   diagnosisResult: text("diagnosis_result"),  // JSON string of DiagnosisResult | null
-  rawState: text("raw_state"),                // JSON string of IncidentRawState | null
+  rawState: text("raw_state"),                // JSON string — kept nullable for lazy migration (DJ-6)
+  telemetryScope: text("telemetry_scope"),    // JSON string of TelemetryScope | null
+  spanMembership: text("span_membership"),    // JSON string of string[] | null
+  anomalousSignals: text("anomalous_signals"),// JSON string of AnomalousSignal[] | null
+  platformEvents: text("platform_events"),    // JSON string of PlatformEvent[] | null
   createdAt: text("created_at").notNull().default(sql`(strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))`),
   updatedAt: text("updated_at").notNull().default(sql`(strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))`),
 });

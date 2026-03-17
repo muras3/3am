@@ -375,26 +375,6 @@ describe("Receiver integration tests", () => {
     expect(body.rawState).toBeUndefined();
   });
 
-  it("GET /api/incidents/:id/raw returns the incident with rawState for debugging", async () => {
-    const traceRes = await app.request("/v1/traces", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(errorSpanPayload),
-    });
-    const traceBody = await traceRes.json() as { incidentId: string };
-    const { incidentId } = traceBody;
-
-    const res = await app.request(`/api/incidents/${incidentId}/raw`);
-    expect(res.status).toBe(200);
-    const body = await res.json() as {
-      incidentId: string;
-      rawState: { spans: unknown[]; anomalousSignals: unknown[] };
-    };
-    expect(body.incidentId).toBe(incidentId);
-    expect(body.rawState.spans.length).toBeGreaterThan(0);
-    expect(body.rawState.anomalousSignals.length).toBeGreaterThan(0);
-  });
-
   // Test 5: GET /api/packets/:packetId → 200, schemaVersion is "incident-packet/v1alpha1"
   it("GET /api/packets/:packetId returns the packet with correct schemaVersion", async () => {
     const traceRes = await app.request("/v1/traces", {
@@ -796,15 +776,12 @@ describe("Receiver integration tests", () => {
         },
         scopeMetrics: [{
           metrics: [{
-            name: "http.server.request.duration",
-            histogram: {
+            name: "http.server.request.error_rate",
+            gauge: {
               dataPoints: [{
                 startTimeUnixNano: BASE_TIME_NS,
                 timeUnixNano: BASE_TIME_NS,
-                count: "42",
-                sum: 1234.5,
-                min: 1.0,
-                max: 99.0,
+                asDouble: 0.85,
               }],
             },
           }],
@@ -1787,8 +1764,8 @@ describe("Formation: dependency-based incident grouping (OC-1 to OC-6)", () => {
     const incidentId = r1.incidentId!;
     expect(incidentId).toBeDefined();
 
-    const rawStateBefore = await storage.getRawState(incidentId);
-    const signalCountBefore = rawStateBefore?.anomalousSignals.length ?? 0;
+    const incidentBefore = await storage.getIncident(incidentId);
+    const signalCountBefore = incidentBefore?.anomalousSignals.length ?? 0;
     expect(signalCountBefore).toBeGreaterThan(0); // sanity: initial trigger appended signals
 
     // Step 2: POST a SERVER 429-only batch (same service+env, within window).
@@ -1807,9 +1784,9 @@ describe("Formation: dependency-based incident grouping (OC-1 to OC-6)", () => {
     const { items } = await getIncidents(app);
     expect(items).toHaveLength(1);
 
-    // The 429 signal must be appended to the existing incident's rawState
-    const rawStateAfter = await storage.getRawState(incidentId);
-    expect(rawStateAfter?.anomalousSignals.length).toBeGreaterThan(signalCountBefore);
+    // The 429 signal must be appended to the existing incident's anomalousSignals
+    const incidentAfter = await storage.getIncident(incidentId);
+    expect(incidentAfter?.anomalousSignals.length).toBeGreaterThan(signalCountBefore);
   });
 
   it("OC-15: replayed secrets rotation traces form an incident around validation-web and sendgrid", async () => {

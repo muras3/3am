@@ -36,14 +36,18 @@ describe("Schema parity: SQLite vs Postgres", () => {
 
   it("SQLite incidents table has expected columns", () => {
     expect(sqliteColumns.incidents).toEqual([
+      "anomalous_signals",
       "closed_at",
       "created_at",
       "diagnosis_result",
       "incident_id",
       "opened_at",
       "packet",
+      "platform_events",
       "raw_state",
+      "span_membership",
       "status",
+      "telemetry_scope",
       "updated_at",
     ]);
   });

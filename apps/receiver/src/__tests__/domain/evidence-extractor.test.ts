@@ -5,6 +5,7 @@ import {
   shouldAttachEvidence,
 } from '../../domain/evidence-extractor.js'
 import type { Incident } from '../../storage/interface.js'
+import { createEmptyTelemetryScope } from '../../storage/interface.js'
 import { FORMATION_WINDOW_MS } from '../../domain/formation.js'
 import { createPacket } from '../../domain/packetizer.js'
 import type { ExtractedSpan } from '../../domain/anomaly-detector.js'
@@ -123,13 +124,24 @@ const BASE_SPAN: ExtractedSpan = {
 }
 
 function makeIncident(): Incident {
-  const packet = createPacket('inc_test', new Date(BASE_TIME_MS).toISOString(), [BASE_SPAN])
+  const { packet } = createPacket('inc_test', new Date(BASE_TIME_MS).toISOString(), [BASE_SPAN])
   return {
     incidentId: 'inc_test',
     status: 'open',
     openedAt: new Date(BASE_TIME_MS).toISOString(),
     packet,
-    rawState: { spans: [], anomalousSignals: [], metricEvidence: [], logEvidence: [], platformEvents: [] },
+    telemetryScope: {
+      ...createEmptyTelemetryScope(),
+      windowStartMs: BASE_TIME_MS,
+      windowEndMs: BASE_TIME_MS + BASE_SPAN.durationMs,
+      detectTimeMs: BASE_TIME_MS,
+      environment: 'production',
+      memberServices: ['svc-a'],
+      dependencyServices: ['stripe'],
+    },
+    spanMembership: [`${BASE_SPAN.traceId}:${BASE_SPAN.spanId}`],
+    anomalousSignals: [],
+    platformEvents: [],
   }
 }
 

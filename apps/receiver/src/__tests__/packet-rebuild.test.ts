@@ -1,8 +1,8 @@
 /**
- * Packet-Rebuild Gate Tests (ADR 0030)
+ * Packet-Rebuild Gate Tests (ADR 0030, updated for ADR 0032)
  *
  * Gate 1: packetId stability across rebuilds
- * Gate 2: raw state is the single source of truth (SSOT)
+ * Gate 2: incident membership accumulates across batches (replaces rawState SSOT)
  * Gate 3: diagnosis path still works after rebuild (needs ANTHROPIC_API_KEY)
  * Gate 4: regression — existing integration behaviour unchanged
  * Gate 5: performance — rebuild completes within time budget
@@ -12,11 +12,7 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { performance } from "node:perf_hooks";
 import { MemoryAdapter } from "../storage/adapters/memory.js";
 import { createApp } from "../index.js";
-import { rebuildPacket, buildAnomalousSignals } from "../domain/packetizer.js";
-import { isAnomalous } from "../domain/anomaly-detector.js";
-import type { ExtractedSpan } from "../domain/anomaly-detector.js";
-import type { IncidentRawState } from "../storage/interface.js";
-import type { ChangedMetric, IncidentPacket, RelevantLog } from "@3amoncall/core";
+import type { IncidentPacket } from "@3amoncall/core";
 
 // ── Shared OTLP JSON payloads ─────────────────────────────────────────────────
 
@@ -137,16 +133,13 @@ function makeMetricsBatch() {
           {
             metrics: [
               {
-                name: "http.server.request.duration",
-                histogram: {
+                name: "http.server.request.error_rate",
+                gauge: {
                   dataPoints: [
                     {
                       startTimeUnixNano: BASE_TIME_NS,
                       timeUnixNano: BASE_TIME_NS,
-                      count: "10",
-                      sum: 500.0,
-                      min: 1.0,
-                      max: 99.0,
+                      asDouble: 0.85,
                     },
                   ],
                 },
@@ -240,39 +233,39 @@ describe("Gate 1: packetId stability", () => {
   });
 });
 
-// ── Gate 2: SSOT — raw state drives rebuild ───────────────────────────────────
+// ── Gate 2: Membership accumulates across batches ─────────────────────────────
 
-describe("Gate 2: SSOT — raw state drives rebuild", () => {
+describe("Gate 2: membership accumulates across batches", () => {
   afterEach(() => {
     delete process.env["ALLOW_INSECURE_DEV_MODE"];
   });
 
-  it("rawState.spans accumulates across batches", async () => {
+  it("spanMembership grows across batches", async () => {
     const { app, storage } = setupApp();
 
     const res1 = await postTraces(app, makeErrorBatch1());
     const { incidentId } = (await res1.json()) as { incidentId: string };
 
     // Batch 1 contributed 1 span
-    const stateAfterBatch1 = await storage.getRawState(incidentId);
-    expect(stateAfterBatch1).not.toBeNull();
-    const spanCountAfterBatch1 = stateAfterBatch1!.spans.length;
-    expect(spanCountAfterBatch1).toBeGreaterThanOrEqual(1);
+    const incidentAfterBatch1 = await storage.getIncident(incidentId);
+    expect(incidentAfterBatch1).not.toBeNull();
+    const membershipCountBatch1 = incidentAfterBatch1!.spanMembership.length;
+    expect(membershipCountBatch1).toBeGreaterThanOrEqual(1);
 
-    // Second batch — attaches, appends more spans
+    // Second batch — attaches, appends more span membership
     await postTraces(app, makeErrorBatch2());
 
-    const stateAfterBatch2 = await storage.getRawState(incidentId);
-    expect(stateAfterBatch2).not.toBeNull();
-    // Span count must be greater than after batch 1
-    expect(stateAfterBatch2!.spans.length).toBeGreaterThan(spanCountAfterBatch1);
+    const incidentAfterBatch2 = await storage.getIncident(incidentId);
+    expect(incidentAfterBatch2).not.toBeNull();
+    // Span membership must grow
+    expect(incidentAfterBatch2!.spanMembership.length).toBeGreaterThan(membershipCountBatch1);
   });
 
   it("triggerSignals reflect all batches — both http_500 and span_error appear", async () => {
     const { app } = setupApp();
 
     const res1 = await postTraces(app, makeErrorBatch1());
-    const { incidentId, packetId } = (await res1.json()) as { incidentId: string; packetId: string };
+    const { packetId } = (await res1.json()) as { incidentId: string; packetId: string };
 
     // Attach second batch (span_error signal, no httpStatusCode)
     await postTraces(app, makeErrorBatch2());
@@ -283,7 +276,6 @@ describe("Gate 2: SSOT — raw state drives rebuild", () => {
     const signalTypes = pkt.triggerSignals.map((s) => s.signal);
     expect(signalTypes).toContain("http_500");
     expect(signalTypes).toContain("span_error");
-    expect(incidentId).toBeTruthy(); // identity check
   });
 
   it("window.end expands to cover all batches", async () => {
@@ -306,70 +298,25 @@ describe("Gate 2: SSOT — raw state drives rebuild", () => {
     expect(windowEndAfter).toBeGreaterThanOrEqual(windowEndBefore);
   });
 
-  it("rebuild is idempotent — same rawState produces same packet structure", () => {
-    const rawState: IncidentRawState = {
-      spans: [
-        {
-          traceId: "t1",
-          spanId: "s1",
-          serviceName: "web",
-          environment: "production",
-          httpRoute: "/checkout",
-          httpStatusCode: 500,
-          spanStatusCode: 2,
-          durationMs: 500,
-          startTimeMs: 1741392000000,
-          peerService: undefined,
-          exceptionCount: 0,
-        },
-      ],
-      anomalousSignals: [
-        {
-          signal: "http_500",
-          firstSeenAt: new Date(1741392000000).toISOString(),
-          entity: "web",
-          spanId: "s1",
-        },
-      ],
-      metricEvidence: [],
-      logEvidence: [],
-      platformEvents: [],
-    };
-
-    const p1 = rebuildPacket("inc_test", "pkt_stable", new Date(1741392000000).toISOString(), rawState);
-    const p2 = rebuildPacket("inc_test", "pkt_stable", new Date(1741392000000).toISOString(), rawState);
-
-    expect(p1.triggerSignals).toEqual(p2.triggerSignals);
-    expect(p1.scope.affectedServices).toEqual(p2.scope.affectedServices);
-    expect(p1.window.start).toBe(p2.window.start);
-    expect(p1.window.end).toBe(p2.window.end);
-    expect(p1.packetId).toBe(p2.packetId);
-  });
-
-  it("metrics evidence flows through rawState and rebuilds packet (Plan 6)", async () => {
-    const { app, storage } = setupApp();
+  it("metrics evidence attaches and flows into packet (Plan 6)", async () => {
+    const { app } = setupApp();
 
     const res1 = await postTraces(app, makeErrorBatch1());
     const { incidentId } = (await res1.json()) as { incidentId: string };
 
-    // Post metrics — now goes to rawState + rebuild
+    // Post metrics — now goes through evidence attachment pipeline
     await app.request("/v1/metrics", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(makeMetricsBatch()),
     });
 
-    // rawState.metricEvidence should be populated (Plan 6 migration)
-    const rawState = await storage.getRawState(incidentId);
-    expect(rawState).not.toBeNull();
-    expect(rawState!.metricEvidence.length).toBeGreaterThan(0);
-
-    // packet.evidence.changedMetrics should be derived from rawState via rebuild
+    // packet.evidence.changedMetrics should be populated
     const incident = (await (await app.request(`/api/incidents/${incidentId}`)).json()) as {
       packet: { evidence: { changedMetrics: unknown[] }; pointers: { metricRefs: string[] } };
     };
     expect(incident.packet.evidence.changedMetrics.length).toBeGreaterThan(0);
-    // B-5: pointers.metricRefs should also be populated
+    // pointers.metricRefs should also be populated
     expect(incident.packet.pointers.metricRefs.length).toBeGreaterThan(0);
   });
 });
@@ -399,7 +346,7 @@ describe("Gate 3: Diagnosis path", () => {
           metadata: { packet_id: string; incident_id: string };
         }>;
       };
-      const { app, storage } = setupApp();
+      const { app } = setupApp();
 
       // Create incident and attach a second batch so rebuild is exercised
       const res1 = await postTraces(app, makeErrorBatch1());
@@ -420,10 +367,6 @@ describe("Gate 3: Diagnosis path", () => {
       expect(result.recommendation.immediate_action).toBeTruthy();
       expect(result.metadata.packet_id).toBe(packetId);
       expect(result.metadata.incident_id).toBe(incidentId);
-
-      // Verify storage still accessible
-      const stateAfter = storage.getRawState(incidentId);
-      expect(stateAfter).not.toBeNull();
     },
   );
 });
@@ -699,158 +642,5 @@ describe("Gate 5: Performance — rebuild under time budget", () => {
     // Average attach time must not balloon relative to the first response
     // (factor-3 budget covers micro-benchmarking variance)
     expect(avgAttachMs).toBeLessThan(Math.max(firstResponseMs * 3, 100));
-  });
-
-  it("rebuildPacket with 500-span rawState completes within 500ms (Gate 5 spec)", () => {
-    // Build a 500-span raw state directly without ingest overhead
-    const spans: ExtractedSpan[] = Array.from({ length: 500 }, (_, i) => ({
-      traceId: `trace${i.toString().padStart(4, "0")}`,
-      spanId: `span${i.toString().padStart(4, "0")}`,
-      serviceName: `service-${i % 5}`,
-      environment: "production",
-      httpStatusCode: i % 10 === 0 ? 500 : 200,
-      spanStatusCode: i % 10 === 0 ? 2 : 1,
-      durationMs: i % 20 === 0 ? 6000 : 100,
-      startTimeMs: 1741392000000 + i * 1000,
-      exceptionCount: 0,
-    }));
-
-    const rawState: IncidentRawState = {
-      spans,
-      anomalousSignals: buildAnomalousSignals(spans.filter(isAnomalous)),
-      metricEvidence: [],
-      logEvidence: [],
-      platformEvents: [],
-    };
-
-    const t = performance.now();
-    rebuildPacket("inc_perf", "pkt_perf", "2025-03-07T16:00:00.000Z", rawState);
-    const elapsedMs = performance.now() - t;
-
-    expect(elapsedMs).toBeLessThan(500);
-  });
-});
-
-// ── Plan 6 / B-4 + B-5: rawState-derived evidence and pointers ────────────────
-
-/** Minimal valid span for constructing rawState (needed so window/scope don't fail) */
-function makeMinimalSpan(overrides?: Partial<ExtractedSpan>): ExtractedSpan {
-  return {
-    traceId: "trace-plan6",
-    spanId: "span-plan6",
-    serviceName: "web",
-    environment: "production",
-    httpRoute: "/api/test",
-    httpStatusCode: 500,
-    spanStatusCode: 2,
-    durationMs: 500,
-    startTimeMs: 1741392000000,
-    peerService: undefined,
-    exceptionCount: 0,
-    ...overrides,
-  };
-}
-
-/** Build a minimal IncidentRawState with the given overrides */
-function makeRawStateWithEvidence(
-  opts: {
-    metricEvidence?: ChangedMetric[];
-    logEvidence?: RelevantLog[];
-  } = {},
-): IncidentRawState {
-  const span = makeMinimalSpan();
-  return {
-    spans: [span],
-    anomalousSignals: buildAnomalousSignals([span]),
-    metricEvidence: opts.metricEvidence ?? [],
-    logEvidence: opts.logEvidence ?? [],
-    platformEvents: [],
-  };
-}
-
-function makeSampleMetric(name: string, service = "web"): ChangedMetric {
-  return {
-    name,
-    service,
-    environment: "production",
-    startTimeMs: 1741392000000,
-    summary: { count: 10, sum: 500, min: 1, max: 99 },
-  };
-}
-
-function makeSampleLog(service = "web", timestamp = "2025-03-07T16:00:00.000Z"): RelevantLog {
-  return {
-    service,
-    environment: "production",
-    timestamp,
-    startTimeMs: 1741392000000,
-    severity: "ERROR",
-    body: "checkout failed",
-    attributes: {},
-  };
-}
-
-describe("rebuildPacket — rawState-derived evidence (Plan 6)", () => {
-  it("derives changedMetrics from rawState.metricEvidence", () => {
-    const metric = makeSampleMetric("http.server.request.duration");
-    const rawState = makeRawStateWithEvidence({ metricEvidence: [metric] });
-
-    const packet = rebuildPacket("inc_test", "pkt_test", "2025-03-07T16:00:00.000Z", rawState);
-
-    expect(packet.evidence.changedMetrics).toHaveLength(1);
-    expect(packet.evidence.changedMetrics[0]).toEqual(metric);
-  });
-
-  it("derives relevantLogs from rawState.logEvidence", () => {
-    const log = makeSampleLog();
-    const rawState = makeRawStateWithEvidence({ logEvidence: [log] });
-
-    const packet = rebuildPacket("inc_test", "pkt_test", "2025-03-07T16:00:00.000Z", rawState);
-
-    expect(packet.evidence.relevantLogs).toHaveLength(1);
-    expect(packet.evidence.relevantLogs[0]).toEqual(log);
-  });
-
-  it("populates pointers.metricRefs with unique metric names", () => {
-    // Two metrics with the same name should produce only one ref
-    const m1 = makeSampleMetric("http.server.request.duration", "web");
-    const m2 = makeSampleMetric("http.server.request.duration", "api");  // duplicate name
-    const m3 = makeSampleMetric("db.query.duration", "web");
-    const rawState = makeRawStateWithEvidence({ metricEvidence: [m1, m2, m3] });
-
-    const packet = rebuildPacket("inc_test", "pkt_test", "2025-03-07T16:00:00.000Z", rawState);
-
-    expect(packet.pointers.metricRefs).toEqual(
-      expect.arrayContaining(["http.server.request.duration", "db.query.duration"]),
-    );
-    expect(packet.pointers.metricRefs).toHaveLength(2);  // duplicates deduped
-  });
-
-  it("populates pointers.logRefs with unique service:timestamp keys", () => {
-    const t1 = "2025-03-07T16:00:00.000Z";
-    const t2 = "2025-03-07T16:01:00.000Z";
-    const l1 = makeSampleLog("web", t1);
-    const l2 = makeSampleLog("web", t1);   // duplicate key
-    const l3 = makeSampleLog("web", t2);   // different timestamp
-    const l4 = makeSampleLog("api", t1);   // different service
-    const rawState = makeRawStateWithEvidence({ logEvidence: [l1, l2, l3, l4] });
-
-    const packet = rebuildPacket("inc_test", "pkt_test", "2025-03-07T16:00:00.000Z", rawState);
-
-    expect(packet.pointers.logRefs).toHaveLength(3);  // l1/l2 deduped → web:t1, web:t2, api:t1
-    expect(packet.pointers.logRefs).toEqual(
-      expect.arrayContaining([`web:${t1}`, `web:${t2}`, `api:${t1}`]),
-    );
-  });
-
-  it("empty rawState evidence produces empty arrays in packet and pointers", () => {
-    const rawState = makeRawStateWithEvidence();  // no metric/log evidence
-
-    const packet = rebuildPacket("inc_test", "pkt_test", "2025-03-07T16:00:00.000Z", rawState);
-
-    expect(packet.evidence.changedMetrics).toEqual([]);
-    expect(packet.evidence.relevantLogs).toEqual([]);
-    expect(packet.pointers.metricRefs).toEqual([]);
-    expect(packet.pointers.logRefs).toEqual([]);
   });
 });

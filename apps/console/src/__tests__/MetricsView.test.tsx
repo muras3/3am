@@ -2,12 +2,12 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, it, expect, vi } from "vitest";
 import { MetricsView } from "../components/evidence/MetricsView.js";
-import { testMetric1, testMetric2 } from "./fixtures.js";
+import { testTelemetryMetric1, testTelemetryMetric2, testMetric1 } from "./fixtures.js";
 
 describe("MetricsView", () => {
   it("renders empty state when no metrics", () => {
     render(
-      <MetricsView rawMetrics={[]} packetMetrics={[]} onMetricSelect={vi.fn()} />,
+      <MetricsView telemetryMetrics={[]} packetMetrics={[]} onMetricSelect={vi.fn()} />,
     );
     expect(
       screen.getByText("No metric data available for this incident."),
@@ -17,7 +17,7 @@ describe("MetricsView", () => {
   it("renders metrics table rows", () => {
     render(
       <MetricsView
-        rawMetrics={[testMetric1, testMetric2]}
+        telemetryMetrics={[testTelemetryMetric1, testTelemetryMetric2]}
         packetMetrics={[]}
         onMetricSelect={vi.fn()}
       />,
@@ -28,7 +28,7 @@ describe("MetricsView", () => {
   it("renders stat cards", () => {
     render(
       <MetricsView
-        rawMetrics={[testMetric1, testMetric2]}
+        telemetryMetrics={[testTelemetryMetric1, testTelemetryMetric2]}
         packetMetrics={[]}
         onMetricSelect={vi.fn()}
       />,
@@ -39,7 +39,7 @@ describe("MetricsView", () => {
   it("highlights rows from packetMetrics", () => {
     render(
       <MetricsView
-        rawMetrics={[testMetric1, testMetric2]}
+        telemetryMetrics={[testTelemetryMetric1, testTelemetryMetric2]}
         packetMetrics={[testMetric1]}
         onMetricSelect={vi.fn()}
       />,
@@ -53,20 +53,20 @@ describe("MetricsView", () => {
     const onMetricSelect = vi.fn();
     render(
       <MetricsView
-        rawMetrics={[testMetric1]}
+        telemetryMetrics={[testTelemetryMetric1]}
         packetMetrics={[]}
         onMetricSelect={onMetricSelect}
       />,
     );
     await user.click(document.querySelector(".mt-row")!);
     expect(onMetricSelect).toHaveBeenCalledOnce();
-    expect(onMetricSelect).toHaveBeenCalledWith(testMetric1);
+    expect(onMetricSelect).toHaveBeenCalledWith(testTelemetryMetric1);
   });
 
   it("renders metric name and service", () => {
     render(
       <MetricsView
-        rawMetrics={[testMetric1]}
+        telemetryMetrics={[testTelemetryMetric1]}
         packetMetrics={[]}
         onMetricSelect={vi.fn()}
       />,

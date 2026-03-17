@@ -2,7 +2,10 @@ import Anthropic from "@anthropic-ai/sdk";
 import { Hono } from "hono";
 import { DiagnosisResultSchema, type DiagnosisResult } from "@3amoncall/core";
 import type { Incident, IncidentPage, StorageDriver } from "../storage/interface.js";
+import { spanMembershipKey } from "../storage/interface.js";
 import type { SpanBuffer } from "../ambient/span-buffer.js";
+import type { TelemetryStoreDriver } from "../telemetry/interface.js";
+import { buildIncidentQueryFilter } from "../telemetry/interface.js";
 import { computeServices, computeActivity } from "../ambient/service-aggregator.js";
 
 const CHAT_MAX_HISTORY = 10;
@@ -15,14 +18,14 @@ interface ChatTurn {
   content: string;
 }
 
-type IncidentResponse = Omit<Incident, "rawState">;
+type IncidentResponse = Omit<Incident, "telemetryScope" | "spanMembership" | "anomalousSignals" | "platformEvents">;
 type IncidentPageResponse = {
   items: IncidentResponse[];
   nextCursor?: string;
 };
 
 function toIncidentResponse(incident: Incident): IncidentResponse {
-  const { rawState: _rawState, ...response } = incident;
+  const { telemetryScope: _ts, spanMembership: _sm, anomalousSignals: _as, platformEvents: _pe, ...response } = incident;
   return response;
 }
 
@@ -74,7 +77,7 @@ function validateChatBody(body: unknown): { message: string; history: ChatTurn[]
   return { message, history: history as ChatTurn[] };
 }
 
-export function createApiRouter(storage: StorageDriver, spanBuffer?: SpanBuffer): Hono {
+export function createApiRouter(storage: StorageDriver, spanBuffer: SpanBuffer | undefined, telemetryStore: TelemetryStoreDriver): Hono {
   const app = new Hono();
 
   app.get("/api/incidents", async (c) => {
@@ -85,15 +88,6 @@ export function createApiRouter(storage: StorageDriver, spanBuffer?: SpanBuffer)
 
     const page = await storage.listIncidents({ limit, cursor });
     return c.json(toIncidentPageResponse(page));
-  });
-
-  app.get("/api/incidents/:id/raw", async (c) => {
-    const id = c.req.param("id");
-    const incident = await storage.getIncident(id);
-    if (incident === null) {
-      return c.json({ error: "not found" }, 404);
-    }
-    return c.json(incident);
   });
 
   app.get("/api/incidents/:id", async (c) => {
@@ -207,6 +201,70 @@ export function createApiRouter(storage: StorageDriver, spanBuffer?: SpanBuffer)
     const rawLimit = limitStr !== undefined ? parseInt(limitStr, 10) : 20;
     const limit = Number.isNaN(rawLimit) ? 20 : Math.min(Math.max(rawLimit, 1), 100);
     return c.json(computeActivity(spanBuffer.getAll(), limit));
+  });
+
+  // ── Telemetry API endpoints (ADR 0032 Step F) ────────────────────────────────
+
+  app.get("/api/incidents/:id/telemetry/spans", async (c) => {
+    const id = c.req.param("id");
+    const incident = await storage.getIncident(id);
+    if (incident === null) {
+      return c.json({ error: "not found" }, 404);
+    }
+
+    const { telemetryScope, spanMembership } = incident;
+    if (telemetryScope.windowStartMs >= telemetryScope.windowEndMs) {
+      return c.json([]);
+    }
+
+    const filter = buildIncidentQueryFilter(telemetryScope);
+    const spans = await telemetryStore.querySpans(filter);
+    // Filter by spanMembership — only return incident-bound spans
+    const membershipSet = new Set(spanMembership);
+    const memberSpans = spans.filter(s => membershipSet.has(spanMembershipKey(s.traceId, s.spanId)));
+    return c.json(memberSpans);
+  });
+
+  app.get("/api/incidents/:id/telemetry/metrics", async (c) => {
+    const id = c.req.param("id");
+    const incident = await storage.getIncident(id);
+    if (incident === null) {
+      return c.json({ error: "not found" }, 404);
+    }
+
+    const { telemetryScope } = incident;
+    if (telemetryScope.windowStartMs >= telemetryScope.windowEndMs) {
+      return c.json([]);
+    }
+
+    const filter = buildIncidentQueryFilter(telemetryScope);
+    const metrics = await telemetryStore.queryMetrics(filter);
+    return c.json(metrics);
+  });
+
+  app.get("/api/incidents/:id/telemetry/logs", async (c) => {
+    const id = c.req.param("id");
+    const incident = await storage.getIncident(id);
+    if (incident === null) {
+      return c.json({ error: "not found" }, 404);
+    }
+
+    const { telemetryScope, spanMembership } = incident;
+    if (telemetryScope.windowStartMs >= telemetryScope.windowEndMs) {
+      return c.json({ correlated: [], contextual: [] });
+    }
+
+    const filter = buildIncidentQueryFilter(telemetryScope);
+    const logs = await telemetryStore.queryLogs(filter);
+
+    // Build trace set from spanMembership for correlation
+    const memberTraceIds = new Set(spanMembership.map(ref => ref.split(":")[0]));
+
+    // Split logs into correlated (traceId matches spanMembership traces) and contextual
+    const correlated = logs.filter(l => l.traceId !== undefined && memberTraceIds.has(l.traceId));
+    const contextual = logs.filter(l => l.traceId === undefined || !memberTraceIds.has(l.traceId));
+
+    return c.json({ correlated, contextual });
   });
 
   return app;

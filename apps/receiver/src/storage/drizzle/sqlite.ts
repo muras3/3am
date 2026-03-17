@@ -11,13 +11,27 @@ import { drizzle } from "drizzle-orm/better-sqlite3";
 import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import { eq, desc, lt, and } from "drizzle-orm";
 import { sql } from "drizzle-orm";
-import type { IncidentPacket, DiagnosisResult, PlatformEvent, ThinEvent, ChangedMetric, RelevantLog } from "@3amoncall/core";
-import type { ExtractedSpan } from "../../domain/anomaly-detector.js";
-import type { AnomalousSignal, Incident, IncidentPage, IncidentRawState, StorageDriver } from "../interface.js";
-import { createEmptyRawState } from "../interface.js";
+import type { IncidentPacket, DiagnosisResult, PlatformEvent, ThinEvent } from "@3amoncall/core";
+import type {
+  AnomalousSignal,
+  Incident,
+  IncidentPage,
+  InitialMembership,
+  StorageDriver,
+  TelemetryScope,
+} from "../interface.js";
+import type { LegacyRawState } from "./lazy-migration.js";
+import {
+  deriveTelemetryScopeFromPacket,
+  deriveSpanMembershipFromRawState,
+  deriveAnomalousSignalsFromRawState,
+  derivePlatformEventsFromRawState,
+} from "./lazy-migration.js";
 import { incidents, thinEvents } from "./schema.js";
 
 type Schema = { incidents: typeof incidents; thinEvents: typeof thinEvents };
+
+// ── SQLiteAdapter ───────────────────────────────────────────────────────────
 
 export class SQLiteAdapter implements StorageDriver {
   private db: BetterSQLite3Database<Schema>;
@@ -35,17 +49,34 @@ export class SQLiteAdapter implements StorageDriver {
   private migrate(): void {
     this.db.run(sql`
       CREATE TABLE IF NOT EXISTS incidents (
-        incident_id     TEXT PRIMARY KEY,
-        status          TEXT NOT NULL DEFAULT 'open',
-        opened_at       TEXT NOT NULL,
-        closed_at       TEXT,
-        packet          TEXT NOT NULL,
-        diagnosis_result TEXT,
-        raw_state       TEXT,
-        created_at      TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
-        updated_at      TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+        incident_id       TEXT PRIMARY KEY,
+        status            TEXT NOT NULL DEFAULT 'open',
+        opened_at         TEXT NOT NULL,
+        closed_at         TEXT,
+        packet            TEXT NOT NULL,
+        diagnosis_result  TEXT,
+        raw_state         TEXT,
+        telemetry_scope   TEXT,
+        span_membership   TEXT,
+        anomalous_signals TEXT,
+        platform_events   TEXT,
+        created_at        TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+        updated_at        TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
       )
     `);
+    // Add new columns to existing tables (SQLite has no IF NOT EXISTS for ADD COLUMN)
+    for (const col of [
+      "telemetry_scope TEXT",
+      "span_membership TEXT",
+      "anomalous_signals TEXT",
+      "platform_events TEXT",
+    ]) {
+      try {
+        this.db.run(sql.raw(`ALTER TABLE incidents ADD COLUMN ${col}`));
+      } catch {
+        // Column already exists — ignore
+      }
+    }
     this.db.run(sql`
       CREATE TABLE IF NOT EXISTS thin_events (
         id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -65,12 +96,26 @@ export class SQLiteAdapter implements StorageDriver {
   }
 
   private toIncident(row: typeof incidents.$inferSelect): Incident {
+    const packet = JSON.parse(row.packet) as IncidentPacket;
+    const rawState = row.rawState ? (JSON.parse(row.rawState) as LegacyRawState) : null;
+
     const incident: Incident = {
       incidentId: row.incidentId,
       status: row.status,
       openedAt: row.openedAt,
-      packet: JSON.parse(row.packet) as IncidentPacket,
-      rawState: row.rawState ? (JSON.parse(row.rawState) as IncidentRawState) : createEmptyRawState(),
+      packet,
+      telemetryScope: row.telemetryScope
+        ? (JSON.parse(row.telemetryScope) as TelemetryScope)
+        : deriveTelemetryScopeFromPacket(packet),
+      spanMembership: row.spanMembership
+        ? (JSON.parse(row.spanMembership) as string[])
+        : deriveSpanMembershipFromRawState(rawState),
+      anomalousSignals: row.anomalousSignals
+        ? (JSON.parse(row.anomalousSignals) as AnomalousSignal[])
+        : deriveAnomalousSignalsFromRawState(rawState),
+      platformEvents: row.platformEvents
+        ? (JSON.parse(row.platformEvents) as PlatformEvent[])
+        : derivePlatformEventsFromRawState(rawState, packet),
     };
     if (row.closedAt) incident.closedAt = row.closedAt;
     if (row.diagnosisResult) {
@@ -79,7 +124,7 @@ export class SQLiteAdapter implements StorageDriver {
     return incident;
   }
 
-  async createIncident(packet: IncidentPacket): Promise<void> {
+  async createIncident(packet: IncidentPacket, membership: InitialMembership): Promise<void> {
     const now = new Date().toISOString();
     await this.db
       .insert(incidents)
@@ -88,14 +133,21 @@ export class SQLiteAdapter implements StorageDriver {
         status: "open",
         openedAt: packet.openedAt,
         packet: JSON.stringify(packet),
-        rawState: JSON.stringify(createEmptyRawState()),
+        telemetryScope: JSON.stringify(membership.telemetryScope),
+        spanMembership: JSON.stringify(membership.spanMembership),
+        anomalousSignals: JSON.stringify(membership.anomalousSignals),
+        platformEvents: JSON.stringify([]),
         createdAt: now,
         updatedAt: now,
       })
-      .onConflictDoUpdate({
-        target: incidents.incidentId,
-        set: { packet: JSON.stringify(packet), updatedAt: now },
-      });
+      .onConflictDoNothing(); // no-op if already exists
+  }
+
+  async updatePacket(incidentId: string, packet: IncidentPacket): Promise<void> {
+    await this.db
+      .update(incidents)
+      .set({ packet: JSON.stringify(packet), updatedAt: new Date().toISOString() })
+      .where(eq(incidents.incidentId, incidentId));
   }
 
   async updateIncidentStatus(id: string, status: "open" | "closed"): Promise<void> {
@@ -117,21 +169,87 @@ export class SQLiteAdapter implements StorageDriver {
       .where(eq(incidents.incidentId, id));
   }
 
-  async appendRawEvidence(
+  async expandTelemetryScope(
     incidentId: string,
-    update: { metricEvidence?: ChangedMetric[]; logEvidence?: RelevantLog[] },
+    expansion: { windowStartMs: number; windowEndMs: number; memberServices: string[]; dependencyServices: string[] },
   ): Promise<void> {
     this.db.transaction((tx) => {
       const [row] = tx.select().from(incidents).where(eq(incidents.incidentId, incidentId)).all();
       if (!row) return;
-      const current = row.rawState ? (JSON.parse(row.rawState) as IncidentRawState) : createEmptyRawState();
-      const rawState: IncidentRawState = {
+      const current = row.telemetryScope
+        ? (JSON.parse(row.telemetryScope) as TelemetryScope)
+        : deriveTelemetryScopeFromPacket(JSON.parse(row.packet) as IncidentPacket);
+      const memberSet = new Set(current.memberServices);
+      for (const s of expansion.memberServices) memberSet.add(s);
+      const depSet = new Set(current.dependencyServices);
+      for (const s of expansion.dependencyServices) depSet.add(s);
+      const updated: TelemetryScope = {
         ...current,
-        metricEvidence: [...current.metricEvidence, ...(update.metricEvidence ?? [])],
-        logEvidence: [...current.logEvidence, ...(update.logEvidence ?? [])],
+        windowStartMs: Math.min(current.windowStartMs, expansion.windowStartMs),
+        windowEndMs: Math.max(current.windowEndMs, expansion.windowEndMs),
+        memberServices: [...memberSet],
+        dependencyServices: [...depSet],
       };
       tx.update(incidents)
-        .set({ rawState: JSON.stringify(rawState), updatedAt: new Date().toISOString() })
+        .set({ telemetryScope: JSON.stringify(updated), updatedAt: new Date().toISOString() })
+        .where(eq(incidents.incidentId, incidentId))
+        .run();
+    });
+  }
+
+  async appendSpanMembership(incidentId: string, spanIds: string[]): Promise<void> {
+    if (spanIds.length === 0) return;
+    this.db.transaction((tx) => {
+      const [row] = tx.select().from(incidents).where(eq(incidents.incidentId, incidentId)).all();
+      if (!row) return;
+      const rawState = row.rawState ? (JSON.parse(row.rawState) as LegacyRawState) : null;
+      const current = row.spanMembership
+        ? (JSON.parse(row.spanMembership) as string[])
+        : deriveSpanMembershipFromRawState(rawState);
+      const existing = new Set(current);
+      const updated = [...current];
+      for (const id of spanIds) {
+        if (!existing.has(id)) {
+          updated.push(id);
+          existing.add(id);
+        }
+      }
+      tx.update(incidents)
+        .set({ spanMembership: JSON.stringify(updated), updatedAt: new Date().toISOString() })
+        .where(eq(incidents.incidentId, incidentId))
+        .run();
+    });
+  }
+
+  async appendAnomalousSignals(incidentId: string, signals: AnomalousSignal[]): Promise<void> {
+    if (signals.length === 0) return;
+    this.db.transaction((tx) => {
+      const [row] = tx.select().from(incidents).where(eq(incidents.incidentId, incidentId)).all();
+      if (!row) return;
+      const rawState = row.rawState ? (JSON.parse(row.rawState) as LegacyRawState) : null;
+      const current = row.anomalousSignals
+        ? (JSON.parse(row.anomalousSignals) as AnomalousSignal[])
+        : deriveAnomalousSignalsFromRawState(rawState);
+      const updated = [...current, ...signals];
+      tx.update(incidents)
+        .set({ anomalousSignals: JSON.stringify(updated), updatedAt: new Date().toISOString() })
+        .where(eq(incidents.incidentId, incidentId))
+        .run();
+    });
+  }
+
+  async appendPlatformEvents(incidentId: string, events: PlatformEvent[]): Promise<void> {
+    if (events.length === 0) return;
+    this.db.transaction((tx) => {
+      const [row] = tx.select().from(incidents).where(eq(incidents.incidentId, incidentId)).all();
+      if (!row) return;
+      const rawState = row.rawState ? (JSON.parse(row.rawState) as LegacyRawState) : null;
+      const current = row.platformEvents
+        ? (JSON.parse(row.platformEvents) as PlatformEvent[])
+        : derivePlatformEventsFromRawState(rawState, JSON.parse(row.packet) as IncidentPacket);
+      const updated = [...current, ...events];
+      tx.update(incidents)
+        .set({ platformEvents: JSON.stringify(updated), updatedAt: new Date().toISOString() })
         .where(eq(incidents.incidentId, incidentId))
         .run();
     });
@@ -146,7 +264,6 @@ export class SQLiteAdapter implements StorageDriver {
       .limit(opts.limit)
       .offset(offset);
 
-    // Count total to determine if there are more results
     const [{ count }] = await this.db
       .select({ count: sql<number>`count(*)` })
       .from(incidents);
@@ -183,56 +300,6 @@ export class SQLiteAdapter implements StorageDriver {
           lt(incidents.openedAt, before.toISOString()),
         ),
       );
-  }
-
-  async appendSpans(incidentId: string, spans: ExtractedSpan[]): Promise<void> {
-    this.db.transaction((tx) => {
-      const [row] = tx.select().from(incidents).where(eq(incidents.incidentId, incidentId)).all();
-      if (!row) return;
-      const current = row.rawState ? (JSON.parse(row.rawState) as IncidentRawState) : createEmptyRawState();
-      const rawState: IncidentRawState = { ...current, spans: [...current.spans, ...spans] };
-      tx.update(incidents)
-        .set({ rawState: JSON.stringify(rawState), updatedAt: new Date().toISOString() })
-        .where(eq(incidents.incidentId, incidentId))
-        .run();
-    });
-  }
-
-  async appendAnomalousSignals(incidentId: string, signals: AnomalousSignal[]): Promise<void> {
-    this.db.transaction((tx) => {
-      const [row] = tx.select().from(incidents).where(eq(incidents.incidentId, incidentId)).all();
-      if (!row) return;
-      const current = row.rawState ? (JSON.parse(row.rawState) as IncidentRawState) : createEmptyRawState();
-      const rawState: IncidentRawState = {
-        ...current,
-        anomalousSignals: [...current.anomalousSignals, ...signals],
-      };
-      tx.update(incidents)
-        .set({ rawState: JSON.stringify(rawState), updatedAt: new Date().toISOString() })
-        .where(eq(incidents.incidentId, incidentId))
-        .run();
-    });
-  }
-
-  async appendPlatformEvents(incidentId: string, events: PlatformEvent[]): Promise<void> {
-    this.db.transaction((tx) => {
-      const [row] = tx.select().from(incidents).where(eq(incidents.incidentId, incidentId)).all();
-      if (!row) return;
-      const current = row.rawState ? (JSON.parse(row.rawState) as IncidentRawState) : createEmptyRawState();
-      const rawState: IncidentRawState = {
-        ...current,
-        platformEvents: [...current.platformEvents, ...events],
-      };
-      tx.update(incidents)
-        .set({ rawState: JSON.stringify(rawState), updatedAt: new Date().toISOString() })
-        .where(eq(incidents.incidentId, incidentId))
-        .run();
-    });
-  }
-
-  async getRawState(incidentId: string): Promise<IncidentRawState | null> {
-    const incident = await this.getIncident(incidentId);
-    return incident ? incident.rawState : null;
   }
 
   async saveThinEvent(event: ThinEvent): Promise<void> {

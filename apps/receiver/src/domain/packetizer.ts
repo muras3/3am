@@ -39,10 +39,11 @@
  */
 
 import { randomUUID } from "crypto"
-import type { IncidentPacket, PlatformEvent, ChangedMetric, RelevantLog } from "@3amoncall/core"
+import type { IncidentPacket, PlatformEvent, RelevantLog } from "@3amoncall/core"
 import { type ExtractedSpan, isAnomalous, SLOW_SPAN_THRESHOLD_MS } from "./anomaly-detector.js"
 import { normalizeDependency } from "./formation.js"
-import type { AnomalousSignal, IncidentRawState } from "../storage/interface.js"
+import type { AnomalousSignal, TelemetryScope, InitialMembership } from "../storage/interface.js"
+import { spanMembershipKey } from "../storage/interface.js"
 import { diversityFill } from "../telemetry/scoring/diversity-fill.js"
 
 // ---------------------------------------------------------------------------
@@ -280,6 +281,23 @@ export function buildAnomalousSignals(anomalousSpans: ExtractedSpan[]): Anomalou
   })
 }
 
+/**
+ * Deduplicate trigger signals by signal+entity key, keeping the earliest firstSeenAt per group.
+ */
+export function deduplicateTriggerSignals(
+  signals: AnomalousSignal[],
+): Array<{ signal: string; firstSeenAt: string; entity: string }> {
+  const groupMap = new Map<string, { signal: string; firstSeenAt: string; entity: string }>()
+  for (const sig of signals) {
+    const key = `${sig.signal}|${sig.entity}`
+    const existing = groupMap.get(key)
+    if (!existing || sig.firstSeenAt < existing.firstSeenAt) {
+      groupMap.set(key, { signal: sig.signal, firstSeenAt: sig.firstSeenAt, entity: sig.entity })
+    }
+  }
+  return [...groupMap.values()]
+}
+
 export function buildPlatformLogRef(event: PlatformEvent): string {
   return event.eventId ?? `${event.timestamp}:${event.eventType}:${event.service ?? event.provider ?? "global"}`
 }
@@ -296,33 +314,34 @@ export function selectPrimaryService(spans: ExtractedSpan[]): string {
   return anomalous[0]?.serviceName ?? spans[0]?.serviceName ?? "unknown"
 }
 
-export function rebuildPacket(
+/**
+ * Create an initial incident packet and membership data from a batch of spans.
+ *
+ * Returns `{ packet, initialMembership }` so the caller can persist both
+ * atomically via `storage.createIncident(packet, initialMembership)`.
+ *
+ * No longer depends on IncidentRawState — builds directly from spans.
+ */
+export function createPacket(
   incidentId: string,
-  packetId: string,
   openedAt: string,
-  rawState: IncidentRawState,
-  generation?: number,
+  spans: ExtractedSpan[],
   primaryService?: string,
-): IncidentPacket {
-  const { spans, anomalousSignals, platformEvents, metricEvidence, logEvidence } = rawState
+): { packet: IncidentPacket; initialMembership: InitialMembership } {
+  const resolvedPrimaryService = primaryService ?? selectPrimaryService(spans)
+  const anomalousSpans = spans.filter(isAnomalous)
+  const anomalousSignals = buildAnomalousSignals(anomalousSpans)
 
   // window
   const windowStart = Math.min(...spans.map((s) => s.startTimeMs))
   const windowEnd = Math.max(...spans.map((s) => s.startTimeMs + s.durationMs))
-  const firstAnomalousSpan = spans.filter(isAnomalous)[0]
+  const firstAnomalousSpan = anomalousSpans[0]
   const windowDetect = firstAnomalousSpan ? firstAnomalousSpan.startTimeMs : windowStart
 
   // scope
   const environment = spans[0]?.environment ?? "unknown"
-  // NOTE: primaryService is immutable after incident creation (ADR 0018 amendment).
-  // Rebuilds preserve the original triggering service instead of recalculating it.
-  const resolvedPrimaryService = primaryService ?? selectPrimaryService(spans)
-  // NOTE: affectedServices always includes primaryService.
-  // shouldAttachToIncident() relies on this guarantee when evaluating the
-  // MAX_CROSS_SERVICE_MERGE guard (see formation.ts).
   const affectedServices = [...new Set(spans.map((s) => s.serviceName))]
   const affectedRoutes = [...new Set(spans.flatMap((s) => (s.httpRoute ? [s.httpRoute] : [])))]
-  const signalSeverity = deriveSignalSeverity(anomalousSignals, logEvidence, affectedServices.length)
   const affectedDependencies = [
     ...new Set(
       spans.flatMap((s) => {
@@ -331,40 +350,25 @@ export function rebuildPacket(
       }),
     ),
   ]
+  const signalSeverity = deriveSignalSeverity(anomalousSignals, [], affectedServices.length)
 
   // triggerSignals: dedup by signal+entity, keep earliest firstSeenAt per group
-  const groupMap = new Map<string, { signal: string; firstSeenAt: string; entity: string }>()
-  for (const sig of anomalousSignals) {
-    const key = `${sig.signal}|${sig.entity}`
-    const existing = groupMap.get(key)
-    if (!existing || sig.firstSeenAt < existing.firstSeenAt) {
-      groupMap.set(key, { signal: sig.signal, firstSeenAt: sig.firstSeenAt, entity: sig.entity })
-    }
-  }
-  const triggerSignals = [...groupMap.values()]
+  const triggerSignals = deduplicateTriggerSignals(anomalousSignals)
 
   // representativeTraces — 2-stage scoring + diversity selection (Plan 4 / B-2)
   const representativeTraces = selectRepresentativeTraces(spans)
 
   // pointers
   const traceRefs = [...new Set(spans.map((s) => s.traceId))]
-  const platformLogRefs = platformEvents.map(buildPlatformLogRef)
 
-  // evidence — all derived from rawState (Plan 6 / B-4)
-  const changedMetrics: ChangedMetric[] = metricEvidence
-  const relevantLogs: RelevantLog[] = logEvidence
-
-  // pointers — populated from rawState (Plan 6 / B-5)
-  const metricRefs = [...new Set(metricEvidence.map((m) => m.name))]
-  const logRefs = [...new Set(logEvidence.map((l) => `${l.service}:${l.timestamp}`))]
-
-  return {
+  const packetId = randomUUID()
+  const packet: IncidentPacket = {
     schemaVersion: "incident-packet/v1alpha1",
     packetId,
     incidentId,
     openedAt,
     status: "open",
-    generation: generation ?? 1,
+    generation: 1,
     signalSeverity,
     window: {
       start: new Date(windowStart).toISOString(),
@@ -380,34 +384,45 @@ export function rebuildPacket(
     },
     triggerSignals,
     evidence: {
-      changedMetrics,
+      changedMetrics: [],
       representativeTraces,
-      relevantLogs,
-      platformEvents,
+      relevantLogs: [],
+      platformEvents: [],
     },
     pointers: {
       traceRefs,
-      logRefs,
-      metricRefs,
-      platformLogRefs,
+      logRefs: [],
+      metricRefs: [],
+      platformLogRefs: [],
     },
   }
-}
 
-export function createPacket(
-  incidentId: string,
-  openedAt: string,
-  spans: ExtractedSpan[],
-  primaryService?: string,
-): IncidentPacket {
-  const resolvedPrimaryService = primaryService ?? selectPrimaryService(spans)
-  const rawState: IncidentRawState = {
-    spans,
-    anomalousSignals: buildAnomalousSignals(spans.filter(isAnomalous)),
-    metricEvidence: [],
-    logEvidence: [],
-    platformEvents: [],
+  // Build initial membership for atomic persistence
+  const spanIds = spans.map((s) => spanMembershipKey(s.traceId, s.spanId))
+  const memberServices = [...new Set(spans.map((s) => s.serviceName))]
+  const dependencyServices = [
+    ...new Set(
+      spans.flatMap((s) => {
+        const dep = normalizeDependency(s.peerService)
+        return dep !== undefined ? [dep] : []
+      }),
+    ),
+  ]
+
+  const telemetryScope: TelemetryScope = {
+    windowStartMs: windowStart,
+    windowEndMs: windowEnd,
+    detectTimeMs: windowDetect,
+    environment,
+    memberServices,
+    dependencyServices,
   }
-  const packetId = randomUUID()
-  return rebuildPacket(incidentId, packetId, openedAt, rawState, 1, resolvedPrimaryService)
+
+  const initialMembership: InitialMembership = {
+    telemetryScope,
+    spanMembership: spanIds,
+    anomalousSignals,
+  }
+
+  return { packet, initialMembership }
 }

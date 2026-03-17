@@ -5,8 +5,8 @@
  * This ensures all adapters satisfy the same behavioural contract.
  */
 import { describe, it, expect, beforeEach } from "vitest";
-import type { StorageDriver, AnomalousSignal } from "../../storage/interface.js";
-import type { ExtractedSpan } from "../../domain/anomaly-detector.js";
+import type { StorageDriver, AnomalousSignal, InitialMembership } from "../../storage/interface.js";
+import { createEmptyTelemetryScope } from "../../storage/interface.js";
 import type { IncidentPacket, DiagnosisResult, PlatformEvent, ThinEvent } from "@3amoncall/core";
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
@@ -38,6 +38,28 @@ export function makePacket(overrides: Partial<IncidentPacket> = {}): IncidentPac
       platformEvents: [],
     },
     pointers: { traceRefs: ["trace_abc"], logRefs: [], metricRefs: [], platformLogRefs: [] },
+    ...overrides,
+  };
+}
+
+export function makeMembership(overrides: Partial<InitialMembership> = {}): InitialMembership {
+  return {
+    telemetryScope: {
+      ...createEmptyTelemetryScope(),
+      windowStartMs: 1741392900000,  // 2026-03-09T02:55:00Z
+      windowEndMs: 1741393500000,    // 2026-03-09T03:05:00Z
+      detectTimeMs: 1741393200000,   // 2026-03-09T03:00:00Z
+      environment: "production",
+      memberServices: ["web"],
+      dependencyServices: ["stripe"],
+    },
+    spanMembership: ["trace_abc:span_001"],
+    anomalousSignals: [{
+      signal: "http_429",
+      firstSeenAt: "2026-03-09T03:00:00Z",
+      entity: "stripe",
+      spanId: "span_001",
+    }],
     ...overrides,
   };
 }
@@ -75,20 +97,6 @@ export function makeThinEvent(overrides: Partial<ThinEvent> = {}): ThinEvent {
   };
 }
 
-export function makeSpan(id: string, overrides: Partial<ExtractedSpan> = {}): ExtractedSpan {
-  return {
-    traceId: "trace_test",
-    spanId: id,
-    serviceName: "web",
-    environment: "production",
-    spanStatusCode: 0,
-    durationMs: 100,
-    startTimeMs: 1000,
-    exceptionCount: 0,
-    ...overrides,
-  };
-}
-
 // ── Shared suite ──────────────────────────────────────────────────────────────
 
 export function runStorageSuite(
@@ -109,7 +117,8 @@ export function runStorageSuite(
 
     it("createIncident stores an incident retrievable by getIncident", async () => {
       const packet = makePacket();
-      await driver.createIncident(packet);
+      const membership = makeMembership();
+      await driver.createIncident(packet, membership);
       const incident = await driver.getIncident(packet.incidentId);
       expect(incident).not.toBeNull();
       expect(incident?.incidentId).toBe(packet.incidentId);
@@ -117,19 +126,21 @@ export function runStorageSuite(
       expect(incident?.openedAt).toBe(packet.openedAt);
     });
 
-    it("createIncident upserts: re-inserting updates packet but preserves diagnosisResult", async () => {
+    it("createIncident is a no-op for existing incidentId — use updatePacket instead", async () => {
       const packet = makePacket();
-      await driver.createIncident(packet);
+      const membership = makeMembership();
+      await driver.createIncident(packet, membership);
       const dr = makeDiagnosis(packet.incidentId, packet.packetId);
       await driver.appendDiagnosis(packet.incidentId, dr);
 
-      // Re-insert with a different packet (e.g. more evidence)
+      // Re-insert with a different packet — should be a no-op
       const updatedPacket = makePacket({ packetId: "pkt_test_001_v2" });
-      await driver.createIncident(updatedPacket);
+      await driver.createIncident(updatedPacket, membership);
 
       const incident = await driver.getIncident(packet.incidentId);
-      // packet must be updated and diagnosisResult must be preserved across upsert
-      expect(incident?.packet.packetId).toBe("pkt_test_001_v2");
+      // Packet should NOT be updated (no-op), original packetId preserved
+      expect(incident?.packet.packetId).toBe("pkt_test_001");
+      // diagnosisResult still preserved
       expect(incident?.diagnosisResult?.summary.what_happened).toBe("Rate limit cascade.");
     });
 
@@ -137,7 +148,7 @@ export function runStorageSuite(
 
     it("getIncidentByPacketId returns incident matching the packetId", async () => {
       const packet = makePacket();
-      await driver.createIncident(packet);
+      await driver.createIncident(packet, makeMembership());
       const found = await driver.getIncidentByPacketId(packet.packetId);
       expect(found?.incidentId).toBe(packet.incidentId);
     });
@@ -156,7 +167,7 @@ export function runStorageSuite(
 
     it("updateIncidentStatus changes status to closed and sets closedAt", async () => {
       const packet = makePacket();
-      await driver.createIncident(packet);
+      await driver.createIncident(packet, makeMembership());
       await driver.updateIncidentStatus(packet.incidentId, "closed");
 
       const incident = await driver.getIncident(packet.incidentId);
@@ -178,7 +189,7 @@ export function runStorageSuite(
 
     it("appendDiagnosis attaches diagnosisResult to incident", async () => {
       const packet = makePacket();
-      await driver.createIncident(packet);
+      await driver.createIncident(packet, makeMembership());
       const dr = makeDiagnosis(packet.incidentId, packet.packetId);
       await driver.appendDiagnosis(packet.incidentId, dr);
 
@@ -192,9 +203,9 @@ export function runStorageSuite(
       const p1 = makePacket({ incidentId: "inc_a", packetId: "pkt_a", openedAt: "2026-03-09T01:00:00Z" });
       const p2 = makePacket({ incidentId: "inc_b", packetId: "pkt_b", openedAt: "2026-03-09T03:00:00Z" });
       const p3 = makePacket({ incidentId: "inc_c", packetId: "pkt_c", openedAt: "2026-03-09T02:00:00Z" });
-      await driver.createIncident(p1);
-      await driver.createIncident(p2);
-      await driver.createIncident(p3);
+      await driver.createIncident(p1, makeMembership());
+      await driver.createIncident(p2, makeMembership());
+      await driver.createIncident(p3, makeMembership());
 
       const page = await driver.listIncidents({ limit: 10 });
       expect(page.items.map((i) => i.incidentId)).toEqual(["inc_b", "inc_c", "inc_a"]);
@@ -208,6 +219,7 @@ export function runStorageSuite(
             packetId: `pkt_page_${i}`,
             openedAt: `2026-03-09T0${i}:00:00Z`,
           }),
+          makeMembership(),
         );
       }
 
@@ -228,8 +240,8 @@ export function runStorageSuite(
     it("deleteExpiredIncidents removes closed incidents older than cutoff", async () => {
       const old = makePacket({ incidentId: "inc_old", packetId: "pkt_old", openedAt: "2020-01-01T00:00:00Z" });
       const recent = makePacket({ incidentId: "inc_recent", packetId: "pkt_recent", openedAt: "2026-03-09T00:00:00Z" });
-      await driver.createIncident(old);
-      await driver.createIncident(recent);
+      await driver.createIncident(old, makeMembership());
+      await driver.createIncident(recent, makeMembership());
       await driver.updateIncidentStatus("inc_old", "closed");
       await driver.updateIncidentStatus("inc_recent", "closed");
 
@@ -241,7 +253,7 @@ export function runStorageSuite(
 
     it("deleteExpiredIncidents does not remove open incidents", async () => {
       const p = makePacket({ incidentId: "inc_open_old", packetId: "pkt_open_old", openedAt: "2020-01-01T00:00:00Z" });
-      await driver.createIncident(p);
+      await driver.createIncident(p, makeMembership());
       // status remains "open"
 
       await driver.deleteExpiredIncidents(new Date("2025-01-01T00:00:00Z"));
@@ -272,110 +284,107 @@ export function runStorageSuite(
       await expect(driver.saveThinEvent(e)).rejects.toThrow();
     });
 
-    // appendRawEvidence ────────────────────────────────────────────────────────
+    // updatePacket ──────────────────────────────────────────────────────────
 
-    it("appendRawEvidence appends metricEvidence to rawState", async () => {
+    it("updatePacket updates packet but preserves compact fields", async () => {
       const packet = makePacket();
-      await driver.createIncident(packet);
-      await driver.appendRawEvidence(packet.incidentId, {
-        metricEvidence: [
-          { name: "http.duration", service: "web", environment: "staging", startTimeMs: 1000, summary: { count: 1 } },
-        ],
+      const membership = makeMembership();
+      await driver.createIncident(packet, membership);
+
+      const newPacket = makePacket({
+        packetId: "pkt_test_001",
+        generation: 2,
       });
-      const rawState = await driver.getRawState(packet.incidentId);
-      expect(rawState!.metricEvidence).toHaveLength(1);
-      expect(rawState!.metricEvidence[0].name).toBe("http.duration");
+      await driver.updatePacket(packet.incidentId, newPacket);
+
+      const incident = await driver.getIncident(packet.incidentId);
+      expect(incident?.packet.generation).toBe(2);
+      // Compact fields preserved
+      expect(incident?.spanMembership).toEqual(membership.spanMembership);
+      expect(incident?.anomalousSignals).toHaveLength(1);
     });
 
-    it("appendRawEvidence appends logEvidence to rawState", async () => {
+    it("updatePacket is a no-op for unknown incidentId", async () => {
       const packet = makePacket();
-      await driver.createIncident(packet);
-      await driver.appendRawEvidence(packet.incidentId, {
-        logEvidence: [
-          { service: "web", environment: "staging", timestamp: "2026-03-15T00:00:00Z", startTimeMs: 1000, severity: "ERROR", body: "fail", attributes: {} },
-        ],
-      });
-      const rawState = await driver.getRawState(packet.incidentId);
-      expect(rawState!.logEvidence).toHaveLength(1);
-      expect(rawState!.logEvidence[0].severity).toBe("ERROR");
+      await expect(driver.updatePacket("inc_unknown", packet)).resolves.toBeUndefined();
     });
 
-    it("appendRawEvidence accumulates across calls", async () => {
+    // expandTelemetryScope ──────────────────────────────────────────────────
+
+    it("expandTelemetryScope monotonically expands window and services", async () => {
       const packet = makePacket();
-      await driver.createIncident(packet);
-      await driver.appendRawEvidence(packet.incidentId, {
-        metricEvidence: [{ name: "m1", service: "s", environment: "e", startTimeMs: 1, summary: {} }],
+      const membership = makeMembership({
+        telemetryScope: {
+          ...createEmptyTelemetryScope(),
+          windowStartMs: 1000,
+          windowEndMs: 2000,
+          detectTimeMs: 1000,
+          environment: "production",
+          memberServices: ["web"],
+          dependencyServices: ["stripe"],
+        },
       });
-      await driver.appendRawEvidence(packet.incidentId, {
-        metricEvidence: [{ name: "m2", service: "s", environment: "e", startTimeMs: 2, summary: {} }],
-        logEvidence: [{ service: "s", environment: "e", timestamp: "t", startTimeMs: 1, severity: "WARN", body: "b", attributes: {} }],
+      await driver.createIncident(packet, membership);
+
+      await driver.expandTelemetryScope(packet.incidentId, {
+        windowStartMs: 500,   // earlier → should expand
+        windowEndMs: 1500,    // earlier → should NOT expand
+        memberServices: ["api"],
+        dependencyServices: ["redis"],
       });
-      const rawState = await driver.getRawState(packet.incidentId);
-      expect(rawState!.metricEvidence).toHaveLength(2);
-      expect(rawState!.logEvidence).toHaveLength(1);
+
+      const incident = await driver.getIncident(packet.incidentId);
+      expect(incident?.telemetryScope.windowStartMs).toBe(500);    // min(1000, 500)
+      expect(incident?.telemetryScope.windowEndMs).toBe(2000);      // max(2000, 1500)
+      expect(incident?.telemetryScope.memberServices).toContain("web");
+      expect(incident?.telemetryScope.memberServices).toContain("api");
+      expect(incident?.telemetryScope.dependencyServices).toContain("stripe");
+      expect(incident?.telemetryScope.dependencyServices).toContain("redis");
     });
 
-    it("appendRawEvidence is no-op for unknown incidentId", async () => {
+    it("expandTelemetryScope is a no-op for unknown incidentId", async () => {
       await expect(
-        driver.appendRawEvidence("inc_unknown", {
-          metricEvidence: [{ name: "x", service: "s", environment: "e", startTimeMs: 1, summary: {} }],
+        driver.expandTelemetryScope("inc_unknown", {
+          windowStartMs: 0, windowEndMs: 1000, memberServices: [], dependencyServices: [],
         }),
       ).resolves.toBeUndefined();
     });
 
-    // appendSpans ────────────────────────────────────────────────────────────
+    // appendSpanMembership ──────────────────────────────────────────────────
 
-    it("createIncident initializes rawState with empty arrays", async () => {
+    it("appendSpanMembership adds span IDs and deduplicates", async () => {
       const packet = makePacket();
-      await driver.createIncident(packet);
-      const rawState = await driver.getRawState(packet.incidentId);
-      expect(rawState).not.toBeNull();
-      expect(rawState?.spans).toEqual([]);
-      expect(rawState?.anomalousSignals).toEqual([]);
-      expect(rawState?.metricEvidence).toEqual([]);
-      expect(rawState?.logEvidence).toEqual([]);
-      expect(rawState?.platformEvents).toEqual([]);
+      const membership = makeMembership({
+        spanMembership: ["trace_abc:span_001"],
+      });
+      await driver.createIncident(packet, membership);
+
+      await driver.appendSpanMembership(packet.incidentId, [
+        "trace_abc:span_002",
+        "trace_abc:span_001",  // duplicate, should be ignored
+      ]);
+
+      const incident = await driver.getIncident(packet.incidentId);
+      expect(incident?.spanMembership).toContain("trace_abc:span_001");
+      expect(incident?.spanMembership).toContain("trace_abc:span_002");
+      // No duplicates
+      const unique = new Set(incident?.spanMembership);
+      expect(unique.size).toBe(incident?.spanMembership.length);
     });
 
-    it("appendSpans accumulates spans across multiple calls", async () => {
-      const packet = makePacket();
-      await driver.createIncident(packet);
-
-      const span1: ExtractedSpan = {
-        traceId: "trace_001", spanId: "span_001", serviceName: "web",
-        environment: "production", spanStatusCode: 2, durationMs: 100,
-        startTimeMs: 1000, exceptionCount: 0,
-      };
-      const span2: ExtractedSpan = {
-        traceId: "trace_001", spanId: "span_002", serviceName: "web",
-        environment: "production", spanStatusCode: 0, durationMs: 6000,
-        startTimeMs: 1100, exceptionCount: 0,
-      };
-
-      await driver.appendSpans(packet.incidentId, [span1]);
-      await driver.appendSpans(packet.incidentId, [span2]);
-
-      const rawState = await driver.getRawState(packet.incidentId);
-      expect(rawState?.spans).toHaveLength(2);
-      expect(rawState?.spans[0].spanId).toBe("span_001");
-      expect(rawState?.spans[1].spanId).toBe("span_002");
-    });
-
-    it("appendSpans is a no-op for unknown incidentId", async () => {
-      const span: ExtractedSpan = {
-        traceId: "t", spanId: "s", serviceName: "svc",
-        environment: "prod", spanStatusCode: 0, durationMs: 50,
-        startTimeMs: 0, exceptionCount: 0,
-      };
-      // Should not throw
-      await driver.appendSpans("inc_unknown", [span]);
+    it("appendSpanMembership is a no-op for unknown incidentId", async () => {
+      await expect(
+        driver.appendSpanMembership("inc_unknown", ["t:s"]),
+      ).resolves.toBeUndefined();
     });
 
     // appendAnomalousSignals ─────────────────────────────────────────────────
 
     it("appendAnomalousSignals accumulates signals across multiple calls", async () => {
       const packet = makePacket();
-      await driver.createIncident(packet);
+      await driver.createIncident(packet, makeMembership({
+        anomalousSignals: [],
+      }));
 
       const sig1: AnomalousSignal = {
         signal: "http_429", firstSeenAt: "2026-03-09T03:00:00Z",
@@ -389,10 +398,10 @@ export function runStorageSuite(
       await driver.appendAnomalousSignals(packet.incidentId, [sig1]);
       await driver.appendAnomalousSignals(packet.incidentId, [sig2]);
 
-      const rawState = await driver.getRawState(packet.incidentId);
-      expect(rawState?.anomalousSignals).toHaveLength(2);
-      expect(rawState?.anomalousSignals[0].signal).toBe("http_429");
-      expect(rawState?.anomalousSignals[1].signal).toBe("slow_span");
+      const incident = await driver.getIncident(packet.incidentId);
+      expect(incident?.anomalousSignals).toHaveLength(2);
+      expect(incident?.anomalousSignals[0].signal).toBe("http_429");
+      expect(incident?.anomalousSignals[1].signal).toBe("slow_span");
     });
 
     it("appendAnomalousSignals is a no-op for unknown incidentId", async () => {
@@ -408,7 +417,7 @@ export function runStorageSuite(
 
     it("appendPlatformEvents accumulates platform events across multiple calls", async () => {
       const packet = makePacket();
-      await driver.createIncident(packet);
+      await driver.createIncident(packet, makeMembership());
 
       const event1: PlatformEvent = {
         eventType: "deploy",
@@ -429,10 +438,10 @@ export function runStorageSuite(
       await driver.appendPlatformEvents(packet.incidentId, [event1]);
       await driver.appendPlatformEvents(packet.incidentId, [event2]);
 
-      const rawState = await driver.getRawState(packet.incidentId);
-      expect(rawState?.platformEvents).toHaveLength(2);
-      expect(rawState?.platformEvents[0]?.eventType).toBe("deploy");
-      expect(rawState?.platformEvents[1]?.eventId).toBe("evt_provider_1");
+      const incident = await driver.getIncident(packet.incidentId);
+      expect(incident?.platformEvents).toHaveLength(2);
+      expect(incident?.platformEvents[0]?.eventType).toBe("deploy");
+      expect(incident?.platformEvents[1]?.eventId).toBe("evt_provider_1");
     });
 
     it("appendPlatformEvents is a no-op for unknown incidentId", async () => {
@@ -446,53 +455,20 @@ export function runStorageSuite(
       await expect(driver.appendPlatformEvents("inc_unknown", [event])).resolves.toBeUndefined();
     });
 
-    // getRawState ────────────────────────────────────────────────────────────
+    // createIncident initializes compact fields ──────────────────────────────
 
-    it("getRawState returns null for unknown incidentId", async () => {
-      expect(await driver.getRawState("inc_unknown")).toBeNull();
-    });
-
-    it("getRawState reflects spans and signals appended independently", async () => {
+    it("createIncident initializes telemetryScope, spanMembership, anomalousSignals, and platformEvents", async () => {
       const packet = makePacket();
-      await driver.createIncident(packet);
+      const membership = makeMembership();
+      await driver.createIncident(packet, membership);
 
-      const span: ExtractedSpan = {
-        traceId: "t1", spanId: "s1", serviceName: "api",
-        environment: "production", spanStatusCode: 2, durationMs: 200,
-        startTimeMs: 5000, exceptionCount: 1,
-      };
-      const sig: AnomalousSignal = {
-        signal: "exception", firstSeenAt: "2026-03-09T03:00:00Z",
-        entity: "api", spanId: "s1",
-      };
-
-      await driver.appendSpans(packet.incidentId, [span]);
-      await driver.appendAnomalousSignals(packet.incidentId, [sig]);
-
-      const rawState = await driver.getRawState(packet.incidentId);
-      expect(rawState?.spans).toHaveLength(1);
-      expect(rawState?.anomalousSignals).toHaveLength(1);
-      expect(rawState?.spans[0].exceptionCount).toBe(1);
-      expect(rawState?.anomalousSignals[0].signal).toBe("exception");
-    });
-
-    it("createIncident upsert preserves rawState accumulated before re-insert", async () => {
-      const packet = makePacket();
-      await driver.createIncident(packet);
-
-      const span: ExtractedSpan = {
-        traceId: "t1", spanId: "s1", serviceName: "web",
-        environment: "production", spanStatusCode: 0, durationMs: 10,
-        startTimeMs: 0, exceptionCount: 0,
-      };
-      await driver.appendSpans(packet.incidentId, [span]);
-
-      // Upsert (re-create) should preserve rawState
-      const updatedPacket = makePacket({ packetId: "pkt_test_001_v2" });
-      await driver.createIncident(updatedPacket);
-
-      const rawState = await driver.getRawState(packet.incidentId);
-      expect(rawState?.spans).toHaveLength(1);
+      const incident = await driver.getIncident(packet.incidentId);
+      expect(incident).not.toBeNull();
+      expect(incident?.telemetryScope.environment).toBe("production");
+      expect(incident?.telemetryScope.memberServices).toContain("web");
+      expect(incident?.spanMembership).toHaveLength(1);
+      expect(incident?.anomalousSignals).toHaveLength(1);
+      expect(incident?.platformEvents).toEqual([]);
     });
 
   });

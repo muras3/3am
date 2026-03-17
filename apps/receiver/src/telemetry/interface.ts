@@ -23,6 +23,8 @@ export interface TelemetrySpan {
   startTimeMs: number
   peerService?: string
   exceptionCount: number
+  httpMethod?: string                  // http.request.method attribute
+  spanKind?: number                    // OTel SpanKind enum: 0-5
   attributes: Record<string, unknown>  // JSONB/TEXT
   ingestedAt: number                   // epoch ms
 }
@@ -58,6 +60,25 @@ export interface TelemetryQueryFilter {
   endMs: number     // inclusive
   services?: string[]  // omit = all services
   environment?: string
+}
+
+// ── Query Helpers ────────────────────────────────────────────────────────
+
+import type { TelemetryScope } from '../storage/interface.js'
+
+/**
+ * Build a TelemetryQueryFilter from a TelemetryScope.
+ * Used by api.ts telemetry endpoints and snapshot-builder to construct
+ * consistent query filters from incident scope data.
+ */
+export function buildIncidentQueryFilter(scope: TelemetryScope): TelemetryQueryFilter {
+  const queryServices = [...new Set([...scope.memberServices, ...scope.dependencyServices])]
+  return {
+    startMs: scope.windowStartMs,
+    endMs: scope.windowEndMs,
+    services: queryServices.length > 0 ? queryServices : undefined,
+    environment: scope.environment,
+  }
 }
 
 // ── Evidence Snapshot ────────────────────────────────────────────────────

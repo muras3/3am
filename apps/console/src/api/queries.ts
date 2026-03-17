@@ -4,7 +4,9 @@ import { encodeIncidentId } from "../lib/incidentId.js";
 import type {
   Incident,
   IncidentPage,
-  IncidentWithRaw,
+  TelemetrySpan,
+  TelemetryMetric,
+  TelemetryLogsResponse,
   RecentActivity,
   ServiceSurface,
 } from "./types.js";
@@ -42,10 +44,26 @@ export const incidentQueries = {
       refetchInterval: 10_000,
     }),
 
-  rawEvidence: (id: string) =>
+  telemetrySpans: (id: string) =>
     queryOptions({
-      queryKey: ["incidents", id, "raw"],
-      queryFn: () => apiFetch<IncidentWithRaw>(`/api/incidents/${encodeIncidentId(id)}/raw`),
+      queryKey: ["incidents", id, "telemetry", "spans"],
+      queryFn: () => apiFetch<TelemetrySpan[]>(`/api/incidents/${encodeIncidentId(id)}/telemetry/spans`),
+      staleTime: 30_000,
+      enabled: !!id,
+    }),
+
+  telemetryMetrics: (id: string) =>
+    queryOptions({
+      queryKey: ["incidents", id, "telemetry", "metrics"],
+      queryFn: () => apiFetch<TelemetryMetric[]>(`/api/incidents/${encodeIncidentId(id)}/telemetry/metrics`),
+      staleTime: 30_000,
+      enabled: !!id,
+    }),
+
+  telemetryLogs: (id: string) =>
+    queryOptions({
+      queryKey: ["incidents", id, "telemetry", "logs"],
+      queryFn: () => apiFetch<TelemetryLogsResponse>(`/api/incidents/${encodeIncidentId(id)}/telemetry/logs`),
       staleTime: 30_000,
       enabled: !!id,
     }),

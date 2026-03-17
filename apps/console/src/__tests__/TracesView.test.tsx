@@ -2,14 +2,14 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, it, expect, vi } from "vitest";
 import { TracesView } from "../components/evidence/TracesView.js";
-import { testSpan1, testSpan2, testSpan3, testPacket } from "./fixtures.js";
+import { testTelemetrySpan1, testTelemetrySpan2, testTelemetrySpan3, testPacket } from "./fixtures.js";
 
 const packetTraces = testPacket.evidence.representativeTraces;
 
 describe("TracesView", () => {
-  it("shows EmptyView when rawSpans is empty", () => {
+  it("shows EmptyView when telemetrySpans is empty", () => {
     render(
-      <TracesView rawSpans={[]} packetTraces={[]} onSpanSelect={vi.fn()} />,
+      <TracesView telemetrySpans={[]} packetTraces={[]} onSpanSelect={vi.fn()} />,
     );
     expect(
       screen.getByText("No trace data available for this incident."),
@@ -19,7 +19,7 @@ describe("TracesView", () => {
   it("renders trace groups", () => {
     render(
       <TracesView
-        rawSpans={[testSpan1, testSpan2, testSpan3]}
+        telemetrySpans={[testTelemetrySpan1, testTelemetrySpan2, testTelemetrySpan3]}
         packetTraces={packetTraces}
         onSpanSelect={vi.fn()}
       />,
@@ -31,7 +31,7 @@ describe("TracesView", () => {
   it("renders span rows in DFS order", () => {
     render(
       <TracesView
-        rawSpans={[testSpan1, testSpan2]}
+        telemetrySpans={[testTelemetrySpan1, testTelemetrySpan2]}
         packetTraces={[]}
         onSpanSelect={vi.fn()}
       />,
@@ -46,7 +46,7 @@ describe("TracesView", () => {
     const onSpanSelect = vi.fn();
     render(
       <TracesView
-        rawSpans={[testSpan1]}
+        telemetrySpans={[testTelemetrySpan1]}
         packetTraces={[]}
         onSpanSelect={onSpanSelect}
       />,
@@ -54,23 +54,23 @@ describe("TracesView", () => {
     const row = screen.getByTestId("span-row");
     await user.click(row);
     expect(onSpanSelect).toHaveBeenCalledOnce();
-    expect(onSpanSelect).toHaveBeenCalledWith(testSpan1);
+    expect(onSpanSelect).toHaveBeenCalledWith(testTelemetrySpan1);
   });
 
   it("highlights spans matching packetTraces", () => {
-    // testSpan1 matches by spanId to packet traces
+    // testTelemetrySpan1 matches by spanId to packet traces
     const matchingPacketTraces = [
       {
-        traceId: testSpan1.traceId,
-        spanId: testSpan1.spanId,
-        serviceName: testSpan1.serviceName,
-        durationMs: testSpan1.durationMs,
-        spanStatusCode: testSpan1.spanStatusCode,
+        traceId: testTelemetrySpan1.traceId,
+        spanId: testTelemetrySpan1.spanId,
+        serviceName: testTelemetrySpan1.serviceName,
+        durationMs: testTelemetrySpan1.durationMs,
+        spanStatusCode: testTelemetrySpan1.spanStatusCode,
       },
     ];
     render(
       <TracesView
-        rawSpans={[testSpan1, testSpan2]}
+        telemetrySpans={[testTelemetrySpan1, testTelemetrySpan2]}
         packetTraces={matchingPacketTraces}
         onSpanSelect={vi.fn()}
       />,
@@ -82,7 +82,7 @@ describe("TracesView", () => {
   it("shows error traces before non-error traces (sort order)", () => {
     render(
       <TracesView
-        rawSpans={[testSpan3, testSpan1, testSpan2]}
+        telemetrySpans={[testTelemetrySpan3, testTelemetrySpan1, testTelemetrySpan2]}
         packetTraces={[]}
         onSpanSelect={vi.fn()}
       />,
@@ -95,12 +95,12 @@ describe("TracesView", () => {
   it("renders method/route in trace group header", () => {
     render(
       <TracesView
-        rawSpans={[testSpan1]}
+        telemetrySpans={[testTelemetrySpan1]}
         packetTraces={[]}
         onSpanSelect={vi.fn()}
       />,
     );
-    // testSpan1 has method POST and route /checkout
+    // testTelemetrySpan1 has method POST and route /checkout
     expect(screen.getByText("POST")).toBeInTheDocument();
     expect(screen.getByText("/checkout")).toBeInTheDocument();
   });

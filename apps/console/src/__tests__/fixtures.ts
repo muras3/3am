@@ -1,4 +1,4 @@
-import type { Incident } from "../api/types.js";
+import type { Incident, TelemetrySpan, TelemetryMetric, TelemetryLog } from "../api/types.js";
 import type {
   DiagnosisResult,
   IncidentPacket,
@@ -194,6 +194,108 @@ export const testSpan3: ExtractedSpan = {
   durationMs: 120,
   startTimeMs: 1741485601000,
   exceptionCount: 0,
+};
+
+// ── TelemetryStore-typed fixtures ────────────────────────────
+
+export const testTelemetrySpan1: TelemetrySpan = {
+  traceId: "trace_001",
+  spanId: "span_root_001",
+  serviceName: "web",
+  environment: "production",
+  spanName: "POST /checkout",
+  httpRoute: "/checkout",
+  httpMethod: "POST",
+  httpStatusCode: 429,
+  spanStatusCode: 2,
+  spanKind: 2,
+  durationMs: 5200,
+  startTimeMs: 1741485600000,
+  exceptionCount: 1,
+  attributes: {},
+  ingestedAt: 1741485610000,
+};
+
+export const testTelemetrySpan2: TelemetrySpan = {
+  traceId: "trace_001",
+  spanId: "span_child_002",
+  parentSpanId: "span_root_001",
+  serviceName: "stripe",
+  environment: "production",
+  spanName: "POST /v1/charges",
+  httpRoute: "/v1/charges",
+  httpMethod: "POST",
+  httpStatusCode: 429,
+  spanStatusCode: 2,
+  spanKind: 3,
+  durationMs: 5100,
+  startTimeMs: 1741485600050,
+  exceptionCount: 0,
+  peerService: "stripe",
+  attributes: {},
+  ingestedAt: 1741485610000,
+};
+
+export const testTelemetrySpan3: TelemetrySpan = {
+  traceId: "trace_002",
+  spanId: "span_root_003",
+  serviceName: "api-gateway",
+  environment: "production",
+  spanName: "GET /api/payments",
+  httpRoute: "/api/payments",
+  httpStatusCode: 200,
+  spanStatusCode: 0,
+  durationMs: 120,
+  startTimeMs: 1741485601000,
+  exceptionCount: 0,
+  attributes: {},
+  ingestedAt: 1741485610000,
+};
+
+export const testTelemetryMetric1: TelemetryMetric = {
+  name: "http_server_request_duration",
+  service: "web",
+  environment: "production",
+  startTimeMs: 1741485600000,
+  summary: { asDouble: 5200.0 },
+  ingestedAt: 1741485610000,
+};
+
+export const testTelemetryMetric2: TelemetryMetric = {
+  name: "stripe_request_count",
+  service: "web",
+  environment: "production",
+  startTimeMs: 1741485600000,
+  summary: { count: 100, sum: 429 },
+  ingestedAt: 1741485610000,
+};
+
+export const testTelemetryLog1: TelemetryLog = {
+  service: "web",
+  environment: "production",
+  timestamp: "2026-03-09T03:00:12Z",
+  startTimeMs: 1741485612000,
+  severity: "ERROR",
+  severityNumber: 17,
+  body: "Stripe API returned 429 Too Many Requests",
+  bodyHash: "abc123",
+  attributes: { "http.status_code": 429, "stripe.endpoint": "/v1/charges" },
+  traceId: "trace_001",
+  spanId: "span_root_001",
+  ingestedAt: 1741485620000,
+};
+
+export const testTelemetryLog2: TelemetryLog = {
+  service: "api-gateway",
+  environment: "production",
+  timestamp: "2026-03-09T03:00:45Z",
+  startTimeMs: 1741485645000,
+  severity: "WARN",
+  severityNumber: 13,
+  body: "Checkout retry storm detected",
+  bodyHash: "def456",
+  attributes: {},
+  ingestedAt: 1741485650000,
 };
 
 export const testPlatformEvent1: PlatformEvent = {

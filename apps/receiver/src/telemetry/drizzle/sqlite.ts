@@ -64,6 +64,8 @@ export class SQLiteTelemetryAdapter implements TelemetryStoreDriver {
         start_time_ms    INTEGER NOT NULL,
         peer_service     TEXT,
         exception_count  INTEGER NOT NULL,
+        http_method      TEXT,
+        span_kind        INTEGER,
         attributes       TEXT NOT NULL,
         ingested_at      INTEGER NOT NULL
       )
@@ -160,6 +162,8 @@ export class SQLiteTelemetryAdapter implements TelemetryStoreDriver {
             startTimeMs: row.startTimeMs,
             peerService: row.peerService ?? null,
             exceptionCount: row.exceptionCount,
+            httpMethod: row.httpMethod ?? null,
+            spanKind: row.spanKind ?? null,
             attributes: JSON.stringify(row.attributes),
             ingestedAt: row.ingestedAt,
           })
@@ -177,6 +181,8 @@ export class SQLiteTelemetryAdapter implements TelemetryStoreDriver {
               startTimeMs: row.startTimeMs,
               peerService: row.peerService ?? null,
               exceptionCount: row.exceptionCount,
+              httpMethod: row.httpMethod ?? null,
+              spanKind: row.spanKind ?? null,
               attributes: JSON.stringify(row.attributes),
               ingestedAt: row.ingestedAt,
             },
@@ -284,6 +290,8 @@ export class SQLiteTelemetryAdapter implements TelemetryStoreDriver {
       startTimeMs: r.startTimeMs,
       ...(r.peerService != null ? { peerService: r.peerService } : {}),
       exceptionCount: r.exceptionCount,
+      ...(r.httpMethod != null ? { httpMethod: r.httpMethod } : {}),
+      ...(r.spanKind != null ? { spanKind: r.spanKind } : {}),
       attributes: JSON.parse(r.attributes) as Record<string, unknown>,
       ingestedAt: r.ingestedAt,
     }));
