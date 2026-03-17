@@ -87,3 +87,11 @@ rebuild は `rawState.platformEvents` から以下を導出する。
 - [ADR 0018: Incident Packet Semantic Sections](0018-incident-packet-semantic-sections.md)
 - [ADR 0022: Ingest Protocol and Platform Log Separation](0022-ingest-protocol-and-platform-log-separation.md)
 - [Plan 5: Platform Events Integration (A-3)](../plans/plan-5-platform-events-a3.md)
+
+## Amendment (2026-03-17)
+
+[ADR 0032](0032-telemetry-store-and-evidence-selection.md) により、platform events の保存先を変更:
+
+- 保存先: incident rawState → TelemetryStore (`telemetry_platform_events` テーブル)
+- Canonical shape (eventType, timestamp, environment, description 等) は維持
+- Incident 作成時に packetizer が curated snapshot に含める

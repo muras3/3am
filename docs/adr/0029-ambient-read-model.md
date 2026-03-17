@@ -143,3 +143,11 @@ createApiRouter(storage: StorageDriver, spanBuffer?: SpanBuffer): Hono
 - [0025-phase1-performance-and-responsiveness-guardrails.md](0025-phase1-performance-and-responsiveness-guardrails.md)
 - [0028-receiver-serves-console.md](0028-receiver-serves-console.md)
 - [docs/design/ui-fit-gap-and-implementation-plan-2026-03-12.md](../design/ui-fit-gap-and-implementation-plan-2026-03-12.md)
+
+## Amendment (2026-03-17)
+
+[ADR 0032](0032-telemetry-store-and-evidence-selection.md) により、SpanBuffer のスコープを明確化:
+
+- SpanBuffer は **ambient read model の L1 in-memory cache** として維持。仕様 (容量、TTL、push タイミング、集計方式) に変更なし
+- 「永続化は非目標」(Decision 9) は SpanBuffer に限定した記述。OTel 生データの永続化は TelemetryStore (ADR 0032) が担う
+- TelemetryStore は SpanBuffer と並行して ingest path から書き込まれる L2 persistent store
