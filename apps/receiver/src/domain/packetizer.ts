@@ -43,6 +43,7 @@ import type { IncidentPacket, PlatformEvent, ChangedMetric, RelevantLog } from "
 import { type ExtractedSpan, isAnomalous, SLOW_SPAN_THRESHOLD_MS } from "./anomaly-detector.js"
 import { normalizeDependency } from "./formation.js"
 import type { AnomalousSignal, IncidentRawState } from "../storage/interface.js"
+import { diversityFill } from "../telemetry/scoring/diversity-fill.js"
 
 // ---------------------------------------------------------------------------
 // Exported constants (used in tests and future tunability)
@@ -183,91 +184,30 @@ function toRepresentativeTrace(span: ExtractedSpan): RepresentativeTrace {
   }
 }
 
-function selectRepresentativeTraces(spans: ExtractedSpan[]): RepresentativeTrace[] {
+export function selectRepresentativeTraces(spans: ExtractedSpan[]): RepresentativeTrace[] {
   if (spans.length === 0) return []
 
   // Pre-sort all spans once: score desc, tie-break asc
   const scored = spans.slice().sort(compareByScore)
 
   // ------------------------------------------------------------------
-  // Phase 1 — Top anomaly guarantee
+  // Phase 1 + 2 + 3 — Generic diversity fill
   // ------------------------------------------------------------------
-  // Take up to TOP_ANOMALY_GUARANTEE spans that have score > 0.
-  const guaranteed: ExtractedSpan[] = []
-  for (const span of scored) {
-    if (guaranteed.length >= TOP_ANOMALY_GUARANTEE) break
-    if (scoreSpan(span) > 0) {
-      guaranteed.push(span)
-    }
-  }
-
-  // Track route caps and service set; seed with Phase 1 results.
-  const routeCaps: Record<string, number> = {}
-  const serviceSet = new Set<string>()
-
-  for (const span of guaranteed) {
-    const key = `${span.serviceName}:${span.httpRoute ?? ""}`
-    routeCaps[key] = (routeCaps[key] ?? 0) + 1
-    serviceSet.add(span.serviceName)
-  }
+  const selected = diversityFill(scored, {
+    maxItems: MAX_REPRESENTATIVE_TRACES,
+    topGuarantee: TOP_ANOMALY_GUARANTEE,
+    getScore: scoreSpan,
+    getServiceKey: (s) => s.serviceName,
+    getDiversityKey: (s) => `${s.serviceName}:${s.httpRoute ?? ""}`,
+    maxPerDiversityKey: MAX_ROUTE_DIVERSITY,
+    getIdentityKey: tiebreakerKey,
+  })
 
   // ------------------------------------------------------------------
-  // Phase 2 — Diversity fill (greedy with dynamic service-diversity preference)
-  // ------------------------------------------------------------------
-  // At each step, prefer a span whose service has not yet been selected in
-  // Phase 2 (dynamic, not a one-time partition). This prevents a high-score
-  // service from consuming multiple Phase 2 slots before other services get
-  // a chance, which is critical for cascade-spread coverage.
-  // Fallback: if no unseen-service span is available within the route cap,
-  // pick the best remaining span regardless of service.
-  const guaranteedSet = new Set(guaranteed.map(tiebreakerKey))
-  const remaining = scored.filter((s) => !guaranteedSet.has(tiebreakerKey(s)))
-
-  const phase2Picks: ExtractedSpan[] = []
-  const phase2ServiceSet = new Set<string>()   // services selected so far in Phase 2
-  const phase2PickedKeys = new Set<string>()   // identity keys of picked spans
-  const budget = MAX_REPRESENTATIVE_TRACES - guaranteed.length
-
-  while (phase2Picks.length < budget) {
-    let picked: ExtractedSpan | undefined
-
-    // Pass 1: prefer span from a service not yet seen in Phase 2
-    for (const span of remaining) {
-      if (phase2PickedKeys.has(tiebreakerKey(span))) continue
-      const key = `${span.serviceName}:${span.httpRoute ?? ""}`
-      if ((routeCaps[key] ?? 0) >= MAX_ROUTE_DIVERSITY) continue
-      if (!phase2ServiceSet.has(span.serviceName)) {
-        picked = span
-        break
-      }
-    }
-
-    // Pass 2: no unseen-service available — take best remaining within route cap
-    if (picked === undefined) {
-      for (const span of remaining) {
-        if (phase2PickedKeys.has(tiebreakerKey(span))) continue
-        const key = `${span.serviceName}:${span.httpRoute ?? ""}`
-        if ((routeCaps[key] ?? 0) >= MAX_ROUTE_DIVERSITY) continue
-        picked = span
-        break
-      }
-    }
-
-    if (picked === undefined) break
-
-    phase2Picks.push(picked)
-    phase2PickedKeys.add(tiebreakerKey(picked))
-    const routeKey = `${picked.serviceName}:${picked.httpRoute ?? ""}`
-    routeCaps[routeKey] = (routeCaps[routeKey] ?? 0) + 1
-    phase2ServiceSet.add(picked.serviceName)
-  }
-
-  // ------------------------------------------------------------------
-  // Dependency injection
+  // Dependency injection (trace-specific post-processing)
   // ------------------------------------------------------------------
   // Ensure at least one span with a peerService is present so the LLM
   // always sees external-dependency context.
-  const selected: ExtractedSpan[] = [...guaranteed, ...phase2Picks]
   const hasDep = selected.some((s) => s.peerService !== undefined)
 
   if (!hasDep) {
@@ -276,6 +216,15 @@ function selectRepresentativeTraces(spans: ExtractedSpan[]): RepresentativeTrace
     const depSpan = scored.find((s) => s.peerService !== undefined && !selectedKeys.has(tiebreakerKey(s)))
 
     if (depSpan !== undefined) {
+      // Determine where Phase 1 ends: count of guaranteed items (topGuarantee with score > 0)
+      let guaranteedCount = 0
+      for (const item of scored) {
+        if (guaranteedCount >= TOP_ANOMALY_GUARANTEE) break
+        if (scoreSpan(item) > 0) guaranteedCount++
+      }
+      const phase2Start = Math.min(guaranteedCount, selected.length)
+      const phase2Picks = selected.slice(phase2Start)
+
       // Injection candidates are Phase 2 picks only; guaranteed are untouchable.
       if (phase2Picks.length === 0) {
         // Case 3/4: no Phase 2 picks
@@ -287,7 +236,7 @@ function selectRepresentativeTraces(spans: ExtractedSpan[]): RepresentativeTrace
       } else {
         // Try to find a score=0 Phase 2 pick (Case 1)
         let replacedIdx = -1
-        for (let i = selected.length - 1; i >= guaranteed.length; i--) {
+        for (let i = selected.length - 1; i >= phase2Start; i--) {
           if (scoreSpan(selected[i]) === 0) {
             replacedIdx = i
             break

@@ -1,6 +1,7 @@
 import { serve } from "@hono/node-server";
 import { createApp } from "./index.js";
 import { PostgresAdapter } from "./storage/drizzle/postgres.js";
+import { PostgresTelemetryAdapter } from "./telemetry/drizzle/postgres.js";
 
 const port = Number(process.env.PORT ?? 4318);
 
@@ -10,19 +11,23 @@ const port = Number(process.env.PORT ?? 4318);
 // If future migrations require data transforms, move them to a pre-deploy step.
 async function main() {
   let storage: PostgresAdapter | undefined;
+  let telemetryStore: PostgresTelemetryAdapter | undefined;
 
   if (process.env["DATABASE_URL"]) {
     console.log("[receiver] DATABASE_URL detected — using PostgresAdapter");
     storage = new PostgresAdapter();
     await storage.migrate();
-    console.log("[receiver] database migration complete");
+
+    telemetryStore = new PostgresTelemetryAdapter();
+    await telemetryStore.migrate();
+    console.log("[receiver] database migration complete (incidents + telemetry)");
   } else {
     console.warn(
       "[receiver] DATABASE_URL not set — using MemoryAdapter (data is not persisted)",
     );
   }
 
-  const app = createApp(storage);
+  const app = createApp(storage, { telemetryStore });
 
   // Bind to 0.0.0.0 so the server is reachable from outside the process
   // (containers, VMs, any hosted environment).
