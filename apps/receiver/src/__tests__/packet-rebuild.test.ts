@@ -158,6 +158,9 @@ function setupApp() {
   const storage = new MemoryAdapter();
   delete process.env["RECEIVER_AUTH_TOKEN"];
   process.env["ALLOW_INSECURE_DEV_MODE"] = "true";
+  // Bypass diagnosis debouncer — these tests expect immediate thin event dispatch
+  process.env["DIAGNOSIS_GENERATION_THRESHOLD"] = "0";
+  process.env["DIAGNOSIS_MAX_WAIT_MS"] = "0";
   const app = createApp(storage);
   return { storage, app };
 }
@@ -175,6 +178,8 @@ async function postTraces(app: ReturnType<typeof createApp>, payload: object) {
 describe("Gate 1: packetId stability", () => {
   afterEach(() => {
     delete process.env["ALLOW_INSECURE_DEV_MODE"];
+    delete process.env["DIAGNOSIS_GENERATION_THRESHOLD"];
+    delete process.env["DIAGNOSIS_MAX_WAIT_MS"];
   });
 
   it("packetId is stable after a second batch attaches to the same incident", async () => {
@@ -238,6 +243,8 @@ describe("Gate 1: packetId stability", () => {
 describe("Gate 2: membership accumulates across batches", () => {
   afterEach(() => {
     delete process.env["ALLOW_INSECURE_DEV_MODE"];
+    delete process.env["DIAGNOSIS_GENERATION_THRESHOLD"];
+    delete process.env["DIAGNOSIS_MAX_WAIT_MS"];
   });
 
   it("spanMembership grows across batches", async () => {
@@ -326,6 +333,8 @@ describe("Gate 2: membership accumulates across batches", () => {
 describe("Gate 3: Diagnosis path", () => {
   afterEach(() => {
     delete process.env["ALLOW_INSECURE_DEV_MODE"];
+    delete process.env["DIAGNOSIS_GENERATION_THRESHOLD"];
+    delete process.env["DIAGNOSIS_MAX_WAIT_MS"];
   });
 
   const shouldRunLiveDiagnosisTest =
@@ -380,12 +389,17 @@ describe("Gate 4: Regression — existing behaviour", () => {
   beforeEach(() => {
     delete process.env["RECEIVER_AUTH_TOKEN"];
     process.env["ALLOW_INSECURE_DEV_MODE"] = "true";
+    // Bypass diagnosis debouncer — these tests expect immediate thin event dispatch
+    process.env["DIAGNOSIS_GENERATION_THRESHOLD"] = "0";
+    process.env["DIAGNOSIS_MAX_WAIT_MS"] = "0";
     storage = new MemoryAdapter();
     app = createApp(storage);
   });
 
   afterEach(() => {
     delete process.env["ALLOW_INSECURE_DEV_MODE"];
+    delete process.env["DIAGNOSIS_GENERATION_THRESHOLD"];
+    delete process.env["DIAGNOSIS_MAX_WAIT_MS"];
   });
 
   it("new incident creation returns incidentId + packetId (200)", async () => {
@@ -614,6 +628,8 @@ describe("Gate 4: Regression — existing behaviour", () => {
 describe("Gate 5: Performance — rebuild under time budget", () => {
   afterEach(() => {
     delete process.env["ALLOW_INSECURE_DEV_MODE"];
+    delete process.env["DIAGNOSIS_GENERATION_THRESHOLD"];
+    delete process.env["DIAGNOSIS_MAX_WAIT_MS"];
   });
 
   it("5 batches of 10 spans each — each request responds within 100ms (in-process budget)", async () => {

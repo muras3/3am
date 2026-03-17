@@ -303,12 +303,17 @@ describe("Receiver integration tests", () => {
   beforeEach(() => {
     delete process.env["RECEIVER_AUTH_TOKEN"];
     process.env["ALLOW_INSECURE_DEV_MODE"] = "true";
+    // Bypass diagnosis debouncer — these tests expect immediate thin event dispatch
+    process.env["DIAGNOSIS_GENERATION_THRESHOLD"] = "0";
+    process.env["DIAGNOSIS_MAX_WAIT_MS"] = "0";
     storage = new MemoryAdapter();
     app = createApp(storage);
   });
 
   afterEach(() => {
     delete process.env["ALLOW_INSECURE_DEV_MODE"];
+    delete process.env["DIAGNOSIS_GENERATION_THRESHOLD"];
+    delete process.env["DIAGNOSIS_MAX_WAIT_MS"];
   });
 
   // Test 1: POST /v1/traces with error span → 200, response has incidentId and packetId

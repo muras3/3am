@@ -1,3 +1,4 @@
+import { randomUUID } from "crypto";
 import { readFileSync } from "fs";
 import { join } from "path";
 import { Hono } from "hono";
@@ -11,6 +12,8 @@ import { MemoryTelemetryAdapter } from "./telemetry/adapters/memory.js";
 import { createIngestRouter } from "./transport/ingest.js";
 import { createApiRouter } from "./transport/api.js";
 import { SpanBuffer } from "./ambient/span-buffer.js";
+import { DiagnosisDebouncer } from "./runtime/diagnosis-debouncer.js";
+import { dispatchThinEvent } from "./runtime/github-dispatch.js";
 
 export type { StorageDriver } from "./storage/interface.js";
 export type { Incident, IncidentPage } from "./storage/interface.js";
@@ -68,7 +71,34 @@ export function createApp(storage?: StorageDriver, options?: AppOptions): Hono {
   const spanBuffer = options?.spanBuffer ?? new SpanBuffer();
   // Auto-create TelemetryStore if not provided (DJ-3: always available)
   const telemetryStore = options?.telemetryStore ?? new MemoryTelemetryAdapter();
-  app.route("/", createIngestRouter(store, spanBuffer, telemetryStore));
+
+  // Diagnosis quiet period: defer thin event dispatch until evidence accumulates.
+  // Dual trigger: generation threshold OR max wait time (whichever fires first).
+  // Both = 0 → immediate dispatch (backward compat, no debouncer created).
+  const parseEnvInt = (v: string | undefined, fallback: number) => {
+    const n = parseInt(v ?? String(fallback), 10);
+    return Number.isNaN(n) ? fallback : n;
+  };
+  const generationThreshold = parseEnvInt(process.env["DIAGNOSIS_GENERATION_THRESHOLD"], 50);
+  const maxWaitMs = parseEnvInt(process.env["DIAGNOSIS_MAX_WAIT_MS"], 180000);
+  const diagnosisDebouncer = (generationThreshold === 0 && maxWaitMs === 0)
+    ? undefined
+    : new DiagnosisDebouncer({
+        generationThreshold: generationThreshold || Infinity,
+        maxWaitMs: maxWaitMs || Infinity,
+        onReady: async (incidentId, packetId) => {
+          const thinEvent = {
+            event_id: "evt_" + randomUUID(),
+            event_type: "incident.created" as const,
+            incident_id: incidentId,
+            packet_id: packetId,
+          };
+          await store.saveThinEvent(thinEvent);
+          await dispatchThinEvent(thinEvent);
+        },
+      });
+
+  app.route("/", createIngestRouter(store, spanBuffer, telemetryStore, diagnosisDebouncer));
   app.route("/", createApiRouter(store, spanBuffer, telemetryStore));
 
   // Static serving for the Console SPA (ADR 0028)

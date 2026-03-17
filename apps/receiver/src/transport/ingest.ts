@@ -28,6 +28,7 @@ import { extractTelemetryMetrics, extractTelemetryLogs } from "../telemetry/otlp
 import { rebuildSnapshots } from "../telemetry/snapshot-builder.js";
 import { CLEANUP_INTERVAL_MS, RETENTION_MS } from "../telemetry/constants.js";
 import { dispatchThinEvent } from "../runtime/github-dispatch.js";
+import type { DiagnosisDebouncer } from "../runtime/diagnosis-debouncer.js";
 import { decodeTraces, decodeMetrics, decodeLogs } from "./otlp-protobuf.js";
 
 const gunzipAsync = promisify(gunzip);
@@ -178,7 +179,39 @@ function computeScopeExpansion(spans: Array<{ traceId: string; spanId: string; s
   return { spanIds, memberServices, dependencyServices, windowStartMs, windowEndMs };
 }
 
-export function createIngestRouter(storage: StorageDriver, spanBuffer: SpanBuffer | undefined, telemetryStore: TelemetryStoreDriver): Hono {
+/** Create, persist, and dispatch a thin event for an incident. */
+async function saveAndDispatchThinEvent(
+  incidentId: string,
+  packetId: string,
+  storage: StorageDriver,
+): Promise<void> {
+  const thinEvent = {
+    event_id: "evt_" + randomUUID(),
+    event_type: "incident.created" as const,
+    incident_id: incidentId,
+    packet_id: packetId,
+  };
+  await storage.saveThinEvent(thinEvent);
+  await dispatchThinEvent(thinEvent);
+}
+
+/** Rebuild snapshots and notify the debouncer of the new generation. */
+async function rebuildAndNotify(
+  incidentId: string,
+  telemetryStore: TelemetryStoreDriver,
+  storage: StorageDriver,
+  debouncer?: DiagnosisDebouncer,
+): Promise<void> {
+  await rebuildSnapshots(incidentId, telemetryStore, storage);
+  if (debouncer) {
+    const updated = await storage.getIncident(incidentId);
+    if (updated) {
+      debouncer.onGenerationUpdate(incidentId, updated.packet.generation ?? 1);
+    }
+  }
+}
+
+export function createIngestRouter(storage: StorageDriver, spanBuffer: SpanBuffer | undefined, telemetryStore: TelemetryStoreDriver, diagnosisDebouncer?: DiagnosisDebouncer): Hono {
   const app = new Hono();
 
   app.use(
@@ -269,7 +302,7 @@ export function createIngestRouter(storage: StorageDriver, spanBuffer: SpanBuffe
         await storage.expandTelemetryScope(existing.incidentId, expansion);
         await storage.appendSpanMembership(existing.incidentId, expansion.spanIds);
         await storage.appendAnomalousSignals(existing.incidentId, buildAnomalousSignals(signalSpans));
-        await rebuildSnapshots(existing.incidentId, telemetryStore, storage);
+        await rebuildAndNotify(existing.incidentId, telemetryStore, storage, diagnosisDebouncer);
       }
       return c.json({ status: "ok" });
     }
@@ -298,23 +331,21 @@ export function createIngestRouter(storage: StorageDriver, spanBuffer: SpanBuffe
         await storage.expandTelemetryScope(incidentId, expansion);
         await storage.appendSpanMembership(incidentId, expansion.spanIds);
         await storage.appendAnomalousSignals(incidentId, buildAnomalousSignals(signalSpans));
-        await rebuildSnapshots(incidentId, telemetryStore, storage);
+        await rebuildAndNotify(incidentId, telemetryStore, storage, diagnosisDebouncer);
         return c.json({ status: "ok", incidentId, packetId: created.packet.packetId });
       }
 
       // ADR 0032: Rebuild snapshots for new incident
-      await rebuildSnapshots(incidentId, telemetryStore, storage);
+      await rebuildAndNotify(incidentId, telemetryStore, storage, diagnosisDebouncer);
 
-      const thinEvent = {
-        event_id: "evt_" + randomUUID(),
-        event_type: "incident.created" as const,
-        incident_id: incidentId,
-        packet_id: packet.packetId,
-      };
-      await storage.saveThinEvent(thinEvent);
-      // ADR 0021: dispatch the same thin event to GitHub Actions workflow_dispatch.
-      // Failure is logged but does not fail the response — thin event is already persisted.
-      await dispatchThinEvent(thinEvent);
+      if (diagnosisDebouncer) {
+        // Debouncer active: defer thin event dispatch until generation threshold or max wait.
+        // The debouncer's onReady callback will save + dispatch the thin event.
+        diagnosisDebouncer.track(incidentId, packet.packetId);
+      } else {
+        // No debouncer (both env vars = 0): immediate dispatch (backward compat)
+        await saveAndDispatchThinEvent(incidentId, packet.packetId, storage);
+      }
       return c.json({ status: "ok", incidentId, packetId: packet.packetId });
     }
 
@@ -323,7 +354,7 @@ export function createIngestRouter(storage: StorageDriver, spanBuffer: SpanBuffe
     await storage.expandTelemetryScope(incidentId, expansion);
     await storage.appendSpanMembership(incidentId, expansion.spanIds);
     await storage.appendAnomalousSignals(incidentId, buildAnomalousSignals(signalSpans));
-    await rebuildSnapshots(incidentId, telemetryStore, storage);
+    await rebuildAndNotify(incidentId, telemetryStore, storage, diagnosisDebouncer);
     return c.json({ status: "ok", incidentId, packetId: existing.packet.packetId });
   });
 
@@ -350,7 +381,7 @@ export function createIngestRouter(storage: StorageDriver, spanBuffer: SpanBuffe
         page.items.flatMap((incident) => {
           if (!telemetryMetrics.some((m) => shouldAttachEvidence(m, incident))) return [];
           return [(async () => {
-            await rebuildSnapshots(incident.incidentId, telemetryStore, storage);
+            await rebuildAndNotify(incident.incidentId, telemetryStore, storage, diagnosisDebouncer);
           })()];
         }),
       );
@@ -382,7 +413,7 @@ export function createIngestRouter(storage: StorageDriver, spanBuffer: SpanBuffe
         page.items.flatMap((incident) => {
           if (!telemetryLogs.some((l) => shouldAttachEvidence(l, incident))) return [];
           return [(async () => {
-            await rebuildSnapshots(incident.incidentId, telemetryStore, storage);
+            await rebuildAndNotify(incident.incidentId, telemetryStore, storage, diagnosisDebouncer);
           })()];
         }),
       );
@@ -431,7 +462,7 @@ export function createIngestRouter(storage: StorageDriver, spanBuffer: SpanBuffe
 
     for (const [incidentId, events] of eventsByIncidentId) {
       await storage.appendPlatformEvents(incidentId, events);
-      await rebuildSnapshots(incidentId, telemetryStore, storage);
+      await rebuildAndNotify(incidentId, telemetryStore, storage, diagnosisDebouncer);
     }
 
     return c.json({ status: "ok" });
