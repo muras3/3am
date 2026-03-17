@@ -109,6 +109,7 @@ services:
       PORT: "7001"
       SLOW_LATENCY_MS: "8000"
       DEFAULT_LATENCY_MS: "100"
+      OTEL_SERVICE_NAME: mock-notification-svc
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
       APP_LOG_FILE: /workspace/out/service-logs/mock-notification-svc.jsonl
     healthcheck:

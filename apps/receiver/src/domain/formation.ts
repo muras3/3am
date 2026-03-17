@@ -83,17 +83,32 @@ export function buildFormationKey(spans: ExtractedSpan[]): IncidentFormationKey 
 }
 
 /**
+ * Extract unique traceIds from an incident's spanMembership set.
+ * Each entry has format "traceId:spanId" — we extract the traceId portion.
+ * Used for trace-based cross-service merge (ADR 0033).
+ */
+export function getIncidentBoundTraceIds(spanMembership: string[]): Set<string> {
+  const traceIds = new Set<string>()
+  for (const ref of spanMembership) {
+    const colonIdx = ref.indexOf(':')
+    if (colonIdx > 0) traceIds.add(ref.substring(0, colonIdx))
+  }
+  return traceIds
+}
+
+/**
  * Determine if a signal should be attached to an existing open incident.
  *
- * When a `dependency` is present in the formation key, dependency-first
- * split/merge logic applies (ADR 0017):
+ * Priority order (ADR 0017 + ADR 0033):
  *
- *   - dependency NOT in scope.affectedDependencies → always split (different dep)
- *   - same service + same dependency → merge
- *   - different service + same dependency → merge only if affectedServices < MAX_CROSS_SERVICE_MERGE
+ *   1. dependency match + same/cross service (ADR 0017)
+ *   2. same primaryService, no dependency (ADR 0017)
+ *   3. service already in affectedServices, no dependency (ADR 0033 D3)
+ *   4. shared traceId cross-service merge (ADR 0033)
+ *   5. no match → new incident
  *
- * When there is no dependency, classic primaryService + environment matching
- * applies (unchanged from the original implementation).
+ * When a `dependency` is present, split-first applies (ADR 0017):
+ *   dep NOT in incident → always split. Trace match does NOT override split-first.
  *
  * NOTE: 48hr close rule deferred to Phase C (needs background job)
  */
@@ -101,6 +116,7 @@ export function shouldAttachToIncident(
   key: IncidentFormationKey,
   incident: Incident,
   signalTimeMs: number,
+  sharedTraceCount?: number,
 ): boolean {
   if (incident.status !== 'open') {
     return false
@@ -118,7 +134,8 @@ export function shouldAttachToIncident(
   }
 
   if (key.dependency !== undefined) {
-    // dependency-first: split when the incident does not share the same dependency
+    // dependency-first: split when the incident does not share the same dependency.
+    // Trace match does NOT override split-first (ADR 0033 D2).
     if (!scope.affectedDependencies.includes(key.dependency)) {
       return false // different dependency → always split
     }
@@ -138,6 +155,17 @@ export function shouldAttachToIncident(
     return scope.affectedServices.length < MAX_CROSS_SERVICE_MERGE
   }
 
-  // no dependency info → classic service matching
-  return scope.primaryService === key.primaryService
+  // no dependency info → service matching + trace-based fallback
+  if (scope.primaryService === key.primaryService) return true
+
+  // ADR 0033 D3: service already pulled into incident (e.g. via prior trace merge)
+  if (scope.affectedServices.includes(key.primaryService)) return true
+
+  // ADR 0033: trace-based cross-service merge — shared traceId with anomalous spans
+  if (sharedTraceCount !== undefined && sharedTraceCount > 0
+    && scope.affectedServices.length < MAX_CROSS_SERVICE_MERGE) {
+    return true
+  }
+
+  return false
 }
