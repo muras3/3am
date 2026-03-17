@@ -7,6 +7,7 @@ import { z } from "zod";
 import { PlatformEventSchema, type PlatformEvent } from "@3amoncall/core";
 import type { Incident, StorageDriver } from "../storage/interface.js";
 import type { SpanBuffer } from "../ambient/span-buffer.js";
+import type { TelemetryStoreDriver, TelemetrySpan } from "../telemetry/interface.js";
 import {
   extractSpans,
   isAnomalous,
@@ -22,6 +23,9 @@ import {
   shouldAttachEvidence,
 } from "../domain/evidence-extractor.js";
 import { buildAnomalousSignals, createPacket, rebuildPacket } from "../domain/packetizer.js";
+import { extractTelemetryMetrics, extractTelemetryLogs } from "../telemetry/otlp-extractors.js";
+import { rebuildSnapshots } from "../telemetry/snapshot-builder.js";
+import { CLEANUP_INTERVAL_MS, RETENTION_MS } from "../telemetry/constants.js";
 import { dispatchThinEvent } from "../runtime/github-dispatch.js";
 import { decodeTraces, decodeMetrics, decodeLogs } from "./otlp-protobuf.js";
 
@@ -165,7 +169,22 @@ async function fetchAndRebuild(storage: StorageDriver, incident: Incident): Prom
   await storage.createIncident(rebuiltPacket);
 }
 
-export function createIngestRouter(storage: StorageDriver, spanBuffer?: SpanBuffer): Hono {
+// ── Opportunistic TTL cleanup (ADR 0032 Appendix A.5) ─────────────────────────
+let lastCleanup = 0;
+
+async function maybeCleanup(telemetryStore: TelemetryStoreDriver): Promise<void> {
+  const now = Date.now();
+  if (now - lastCleanup < CLEANUP_INTERVAL_MS) return;
+  lastCleanup = now;
+  await telemetryStore.deleteExpired(new Date(now - RETENTION_MS));
+}
+
+/** Exported for testing only — reset the cleanup timer between test runs. */
+export function _resetCleanupTimerForTest(): void {
+  lastCleanup = 0;
+}
+
+export function createIngestRouter(storage: StorageDriver, spanBuffer?: SpanBuffer, telemetryStore?: TelemetryStoreDriver): Hono {
   const app = new Hono();
 
   app.use(
@@ -177,12 +196,37 @@ export function createIngestRouter(storage: StorageDriver, spanBuffer?: SpanBuff
   );
 
   app.post("/v1/traces", async (c) => {
+    if (telemetryStore) await maybeCleanup(telemetryStore);
+
     const result = await decodeOtlpBody(c, decodeTraces);
     if (result instanceof Response) return result;
     const { body } = result;
 
     const spans = extractSpans(body);
     spans.forEach((span) => spanBuffer?.push({ ...span, ingestedAt: Date.now() }));
+
+    // ADR 0032: Ingest spans to TelemetryStore (if available)
+    if (telemetryStore && spans.length > 0) {
+      const now = Date.now();
+      const telemetrySpans: TelemetrySpan[] = spans.map((s) => ({
+        traceId: s.traceId,
+        spanId: s.spanId,
+        parentSpanId: s.parentSpanId,
+        serviceName: s.serviceName,
+        environment: s.environment,
+        spanName: s.spanName ?? '',
+        httpRoute: s.httpRoute,
+        httpStatusCode: s.httpStatusCode,
+        spanStatusCode: s.spanStatusCode,
+        durationMs: s.durationMs,
+        startTimeMs: s.startTimeMs,
+        peerService: s.peerService,
+        exceptionCount: s.exceptionCount,
+        attributes: {},
+        ingestedAt: now,
+      }));
+      await telemetryStore.ingestSpans(telemetrySpans);
+    }
 
     // signalSpans: all anomalous spans (isAnomalous) — for evidence/signal recording.
     // triggerSpans: subset eligible to open a new incident (isIncidentTrigger) —
@@ -222,6 +266,10 @@ export function createIngestRouter(storage: StorageDriver, spanBuffer?: SpanBuff
       if (existing) {
         await storage.appendSpans(existing.incidentId, spans);
         await storage.appendAnomalousSignals(existing.incidentId, buildAnomalousSignals(signalSpans));
+        // ADR 0032: With TelemetryStore, spans are already ingested — rebuild snapshots
+        if (telemetryStore) {
+          await rebuildSnapshots(existing.incidentId, telemetryStore, storage);
+        }
       }
       return c.json({ status: "ok" });
     }
@@ -245,6 +293,12 @@ export function createIngestRouter(storage: StorageDriver, spanBuffer?: SpanBuff
       // signalSpans (isAnomalous) is used for evidence — broader than triggerSpans.
       await storage.appendSpans(incidentId, spans);
       await storage.appendAnomalousSignals(incidentId, buildAnomalousSignals(signalSpans));
+
+      // ADR 0032: If TelemetryStore is available, rebuild snapshots for new incident
+      if (telemetryStore) {
+        await rebuildSnapshots(incidentId, telemetryStore, storage);
+      }
+
       const thinEvent = {
         event_id: "evt_" + randomUUID(),
         event_type: "incident.created" as const,
@@ -263,16 +317,30 @@ export function createIngestRouter(storage: StorageDriver, spanBuffer?: SpanBuff
     // packetId is stable across rebuilds (thin event reference remains valid).
     await storage.appendSpans(incidentId, spans);
     await storage.appendAnomalousSignals(incidentId, buildAnomalousSignals(signalSpans));
-    await fetchAndRebuild(storage, existing);
+    if (telemetryStore) {
+      await rebuildSnapshots(incidentId, telemetryStore, storage);
+    } else {
+      await fetchAndRebuild(storage, existing);
+    }
     return c.json({ status: "ok", incidentId, packetId: existing.packet.packetId });
   });
 
   // OTLP metrics — protobuf + JSON both accepted (ADR 0022).
   // Evidence is extracted and attached to matching open incidents.
   app.post("/v1/metrics", async (c) => {
+    if (telemetryStore) await maybeCleanup(telemetryStore);
+
     const result = await decodeOtlpBody(c, decodeMetrics);
     if (result instanceof Response) return result;
     const { body } = result;
+
+    // ADR 0032: Ingest metrics to TelemetryStore (if available)
+    if (telemetryStore) {
+      const telemetryMetrics = extractTelemetryMetrics(body);
+      if (telemetryMetrics.length > 0) {
+        await telemetryStore.ingestMetrics(telemetryMetrics);
+      }
+    }
 
     // No explicit field-presence check: extractMetricEvidence handles missing/empty
     // resourceMetrics gracefully (returns []), keeping protobuf and JSON paths symmetric.
@@ -287,8 +355,13 @@ export function createIngestRouter(storage: StorageDriver, spanBuffer?: SpanBuff
           const matching = evidences.filter((e) => shouldAttachEvidence(e, incident));
           if (matching.length === 0) return [];
           return [(async () => {
+            // rawState append continues during migration (rawState needed for window/scope)
             await storage.appendRawEvidence(incident.incidentId, { metricEvidence: matching });
-            await fetchAndRebuild(storage, incident);
+            if (telemetryStore) {
+              await rebuildSnapshots(incident.incidentId, telemetryStore, storage);
+            } else {
+              await fetchAndRebuild(storage, incident);
+            }
           })()];
         }),
       );
@@ -300,9 +373,19 @@ export function createIngestRouter(storage: StorageDriver, spanBuffer?: SpanBuff
   // OTLP logs — protobuf + JSON both accepted (ADR 0022).
   // Only WARN/ERROR/FATAL logs (severityNumber >= 13) are extracted and attached.
   app.post("/v1/logs", async (c) => {
+    if (telemetryStore) await maybeCleanup(telemetryStore);
+
     const result = await decodeOtlpBody(c, decodeLogs);
     if (result instanceof Response) return result;
     const { body } = result;
+
+    // ADR 0032: Ingest logs to TelemetryStore (if available)
+    if (telemetryStore) {
+      const telemetryLogs = await extractTelemetryLogs(body);
+      if (telemetryLogs.length > 0) {
+        await telemetryStore.ingestLogs(telemetryLogs);
+      }
+    }
 
     // No explicit field-presence check: extractLogEvidence handles missing/empty
     // resourceLogs gracefully (returns []), keeping protobuf and JSON paths symmetric.
@@ -315,8 +398,13 @@ export function createIngestRouter(storage: StorageDriver, spanBuffer?: SpanBuff
           const matching = evidences.filter((e) => shouldAttachEvidence(e, incident));
           if (matching.length === 0) return [];
           return [(async () => {
+            // rawState append continues during migration (rawState needed for window/scope)
             await storage.appendRawEvidence(incident.incidentId, { logEvidence: matching });
-            await fetchAndRebuild(storage, incident);
+            if (telemetryStore) {
+              await rebuildSnapshots(incident.incidentId, telemetryStore, storage);
+            } else {
+              await fetchAndRebuild(storage, incident);
+            }
           })()];
         }),
       );

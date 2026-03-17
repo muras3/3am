@@ -49,3 +49,35 @@ export function getStringAttr(attrs: unknown, key: string): string {
   }
   return ''
 }
+
+/**
+ * Normalize a traceId/spanId value to lowercase hex.
+ *
+ * OTLP JSON transport uses lowercase hex strings. OTLP protobuf transport
+ * (via protobufjs with `bytes: String`) returns base64-encoded strings.
+ * This helper detects the encoding and normalizes to hex.
+ *
+ * Detection: if the value consists entirely of hex characters, it is already hex.
+ * Otherwise, assume base64 and convert.
+ *
+ * Returns '' for non-string or empty values.
+ */
+const HEX_PATTERN = /^[0-9a-f]+$/i
+
+export function normalizeIdToHex(value: unknown): string {
+  if (typeof value !== 'string' || value === '') return ''
+  // Already hex
+  if (HEX_PATTERN.test(value)) return value.toLowerCase()
+  // Assume base64 — decode to hex
+  try {
+    // Use atob (available in Node 16+, CF Workers, browsers) for cross-platform base64 decode
+    const binary = atob(value)
+    let hex = ''
+    for (let i = 0; i < binary.length; i++) {
+      hex += binary.charCodeAt(i).toString(16).padStart(2, '0')
+    }
+    return hex
+  } catch {
+    return ''
+  }
+}
