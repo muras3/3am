@@ -33,3 +33,4 @@
 - [0029-ambient-read-model.md](/Users/murase/project/3amoncall/docs/adr/0029-ambient-read-model.md)
 - [0030-incident-state-and-packet-rebuild.md](/Users/murase/project/3amoncall/docs/adr/0030-incident-state-and-packet-rebuild.md)
 - [0031-platform-event-contract.md](/Users/murase/project/3amoncall/docs/adr/0031-platform-event-contract.md)
+- [0032-telemetry-store-and-evidence-selection.md](/Users/murase/project/3amoncall/docs/adr/0032-telemetry-store-and-evidence-selection.md) — supersedes ADR 0030

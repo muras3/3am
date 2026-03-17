@@ -1,6 +1,6 @@
 # ADR 0030: Incident State and Packet Rebuild
 
-- Status: Proposed
+- Status: Superseded by [ADR 0032](0032-telemetry-store-and-evidence-selection.md)
 - Date: 2026-03-13
 
 ## Context

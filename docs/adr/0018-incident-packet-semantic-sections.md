@@ -1,8 +1,8 @@
 # ADR 0018: Incident Packet Semantic Sections
 
-- Status: Accepted (amended 2026-03-13)
+- Status: Accepted (amended 2026-03-13, 2026-03-17)
 - Date: 2026-03-08
-- Amended: 2026-03-13
+- Amended: 2026-03-13, 2026-03-17
 
 ## Context
 
@@ -16,7 +16,9 @@ UI の最終レイアウトは今後も変わりうるため、packet を UI の
 `incident packet` は **LLM input 用の canonical incident model** とする。
 UI 専用 schema ではなく、以下の semantic sections を持つ。
 
-> **Amendment (2026-03-13):** Packet は初回作成時の snapshot ではなく、incident raw state からの **derived current-state view** である。新しい signals / evidence が attach されるたびに rebuild される。詳細は [ADR 0030](0030-incident-state-and-packet-rebuild.md) を参照。
+> **Amendment (2026-03-13):** Packet は初回作成時の snapshot ではなく、**derived current-state view** である。新しい signals / evidence が attach されるたびに rebuild される。
+>
+> **Amendment (2026-03-17):** ADR 0030 は [ADR 0032](0032-telemetry-store-and-evidence-selection.md) により supersede された。Packet rebuild の入力は rawState ではなく、TelemetryStore から再選別された curated snapshot に変更。derived current-state view の原則は維持。
 
 ### 1. `identity`
 
@@ -64,7 +66,9 @@ incident を裏づける観測データの層。
 
 この層は packet の中核であり、LLM への主な入力となる。
 
-> **Amendment (2026-03-13):** evidence の各 field は incident raw state から rebuild 時に再導出される。raw state が唯一の正本であり、packet.evidence を rebuild の入力にしない。evidence type ごとの typed schema は今後の work item (B-4) で導入する。
+> **Amendment (2026-03-13):** evidence の各 field は rebuild 時に再導出される。packet.evidence を rebuild の入力にしない。evidence type ごとの typed schema は今後の work item (B-4) で導入する。
+>
+> **Amendment (2026-03-17):** rebuild の入力は rawState ではなく TelemetryStore からの再選別結果 (curated snapshot)。詳細は [ADR 0032](0032-telemetry-store-and-evidence-selection.md) Decision 4/5 を参照。
 
 ### 4. `retrieval`
 
@@ -80,7 +84,9 @@ packet から raw data や保存済み artifact へ戻るための層。
 
 `retrieval` は UI deep dive と replay の両方を支える。
 
-> **Amendment (2026-03-13):** retrieval refs も raw state から rebuild 時に再導出する。traces 以外の refs (logs, metrics, platform) の充填は今後の work item (B-5) で実装する。
+> **Amendment (2026-03-13):** retrieval refs も rebuild 時に再導出する。traces 以外の refs (logs, metrics, platform) の充填は今後の work item (B-5) で実装する。
+>
+> **Amendment (2026-03-17):** retrieval refs は TelemetryStore 上のデータへの参照として機能する。詳細は [ADR 0032](0032-telemetry-store-and-evidence-selection.md)。
 
 ## Explicit Non-Goals
 
@@ -112,7 +118,9 @@ packet から raw data や保存済み artifact へ戻るための層。
 - `scope.primaryService` は incident 作成時の triggering service を保持し、後続 signal では更新しない
 - UI / diagnosis / formation key 側も、この `primaryService` を incident の canonical subject として扱う
 
-> **Amendment (2026-03-13):** Packet は derived view であるため、同一 packetId で内容が更新される。packetId は latest canonical view を指す stable identifier である。詳細は [ADR 0030](0030-incident-state-and-packet-rebuild.md) を参照。
+> **Amendment (2026-03-13):** Packet は derived view であるため、同一 packetId で内容が更新される。packetId は latest canonical view を指す stable identifier である。
+>
+> **Amendment (2026-03-17):** ADR 0030 は [ADR 0032](0032-telemetry-store-and-evidence-selection.md) により supersede。rebuild の仕組みは TelemetryStore → curated snapshot → packet に変更されたが、packetId の stable identifier としての性質は維持。
 
 ## Related
 
