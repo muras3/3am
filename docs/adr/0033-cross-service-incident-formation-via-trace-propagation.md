@@ -131,6 +131,33 @@ if (sharedTraceIds.length > 0 && scope.affectedServices.length < MAX_CROSS_SERVI
 
 本 ADR の効果を検証するには、`mock-notification-svc` の `OTEL_SERVICE_NAME` 設定が必要（現在未設定のため `unknown_service:node` になっている）。これは validation stack のバグであり、本 ADR とは独立して修正する。
 
+## Known Limitations
+
+### L-1: Overlapping incidents での metrics/logs evidence 混入
+
+同一 service/environment/time window に 2 つの incident が並走する場合、trace-based merge で incident の span membership は正確に分離されるが、**metrics と logs は完全には分離できない**。
+
+- **Metrics**: aggregate 値（e.g., `http_request_duration_seconds`）は個別 span に紐づかないため、window-scoped のまま全 incident で共有される。incident-bound filtering は不可能
+- **Logs**: OTel の trace context が付与されている log は traceId 相関で incident-bound filtering が可能。ただし **trace context のない log**（standalone log record）は window-scoped のまま混入する
+
+この制約は ADR 0032 の scoring パイプラインにも影響する。scoring の入力に他 incident の evidence が混入すると、選別精度が下がる可能性がある。
+
+**緩和策**:
+- 3amoncall のターゲット環境（小規模サーバーレスアプリ）では同時並走 incident は稀
+- Metrics scoring の z-score baseline は incident window の 4 倍で計算するため、overlapping incident の metric 変動は baseline にも反映され、相対的な異常度は保たれる
+- Logs は traceId 相関 bonus により incident-bound log が優先される
+
+根本解決は metrics/logs にも incident-level の帰属メカニズムを導入することだが、Phase 1 のスコープ外とする。
+
+### L-2: Packet rebuild と compact fields の保全
+
+Cross-service merge により incident の `spanMembership`, `anomalousSignals`, `telemetryScope` は拡張される。`rebuildSnapshots` が packet を再構築する際、これらの compact fields を上書きしてはならない。
+
+実装上の制約:
+- `rebuildSnapshots` は **`updatePacket(incidentId, packet)`** を使用し、compact fields に触れない
+- `createIncident(packet, initialMembership)` は新規作成時のみ使用。rebuild パスからは呼ばない
+- この分離は ADR 0032 Step 4-5 実装プランで定義済み（`createIncident` / `updatePacket` の 2 メソッド分離）
+
 ## Consequences
 
 - `cascading_timeout` のような cross-service cascade シナリオで、原因サービスと被害サービスが同一 incident にまとまる
@@ -138,6 +165,7 @@ if (sharedTraceIds.length > 0 && scope.affectedServices.length < MAX_CROSS_SERVI
 - 既存の formation ルール（ADR 0017）は変更されない。trace match は優先順位 3 のフォールバック拡張
 - `MAX_CROSS_SERVICE_MERGE` ガードにより、mega-incident のリスクは ADR 0017 と同等
 - OTel の trace context propagation が正しく設定されていない環境では効果がない（trace propagation は OTel の基本機能であり、instrumentation minimum requirements (ADR 0023) の範囲内）
+- Overlapping incidents での evidence 混入は既知の limitation（L-1 参照）。Phase 1 では許容する
 
 ## Related
 
