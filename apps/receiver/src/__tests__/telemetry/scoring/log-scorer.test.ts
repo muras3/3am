@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { scoreLogs, type ScoredLog } from '../../../telemetry/scoring/log-scorer.js'
+import { scoreLogs } from '../../../telemetry/scoring/log-scorer.js'
 import type { TelemetryLog } from '../../../telemetry/interface.js'
 import {
   LOG_SEVERITY_WEIGHTS,
@@ -381,19 +381,6 @@ describe('scoreLogs', () => {
     })
 
     it('uses timestamp ascending as tie-breaker', () => {
-      const logs = [
-        makeLog({
-          severity: 'ERROR',
-          startTimeMs: DETECT_TIME_MS + 2000,
-          bodyHash: 'hash_tiebreak_01',
-        }),
-        makeLog({
-          severity: 'ERROR',
-          startTimeMs: DETECT_TIME_MS + 1000,
-          bodyHash: 'hash_tiebreak_02',
-        }),
-      ]
-
       // Both have same severity and very similar temporal proximity
       // With exactly same delta magnitude but different signs, temporal is slightly different
       // Let's use same delta so score is equal

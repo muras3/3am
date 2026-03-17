@@ -7,7 +7,7 @@
  * In CI this is provided by the GitHub Actions postgres service container.
  * Tests are skipped automatically when DATABASE_URL is not set.
  */
-import { describe, it, beforeAll, beforeEach, afterAll } from "vitest";
+import { describe, it, beforeAll, afterAll } from "vitest";
 import { sql } from "drizzle-orm";
 import { PostgresTelemetryAdapter } from "../../telemetry/drizzle/postgres.js";
 import { runTelemetryStoreSuite } from "./shared-suite.js";

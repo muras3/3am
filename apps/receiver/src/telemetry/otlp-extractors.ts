@@ -232,8 +232,7 @@ export async function extractTelemetryLogs(body: unknown): Promise<TelemetryLog[
   const hashes = await Promise.all(pending.map(p => computeBodyHash(p.rawBody)))
 
   const results: TelemetryLog[] = pending.map((p, i) => {
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { rawBody: _, ...rest } = p
+    const { rawBody: _rawBody, ...rest } = p
     return { ...rest, bodyHash: hashes[i] }
   })
 

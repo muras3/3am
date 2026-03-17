@@ -4,7 +4,6 @@ import {
   extractMetricValue,
   classifyMetric,
   spearmanCorrelation,
-  type ScoredMetric,
 } from '../../../telemetry/scoring/metric-scorer.js'
 import type { TelemetryMetric } from '../../../telemetry/interface.js'
 import type { AnomalousSignal } from '../../../storage/interface.js'
