@@ -17,6 +17,7 @@ import {
 import {
   buildFormationKey,
   shouldAttachToIncident,
+  getIncidentBoundTraceIds,
   normalizeDependency,
 } from "../domain/formation.js";
 import {
@@ -250,10 +251,14 @@ export function createIngestRouter(storage: StorageDriver, spanBuffer: SpanBuffe
     // Find existing open incident for this formation key within window.
     // Phase C: paginate through all pages (cursor loop) so matches are not
     // missed when there are >100 open incidents.
+    // ADR 0033: compute batch traceIds for cross-service trace-based merge.
+    const batchTraceIds = new Set(signalSpans.map(s => s.traceId));
     const page = await storage.listIncidents({ limit: 100 });
-    const existing = page.items.find((incident) =>
-      shouldAttachToIncident(formationKey, incident, signalTimeMs),
-    );
+    const existing = page.items.find((incident) => {
+      const incidentTraceIds = getIncidentBoundTraceIds(incident.spanMembership);
+      const sharedTraceCount = [...batchTraceIds].filter(id => incidentTraceIds.has(id)).length;
+      return shouldAttachToIncident(formationKey, incident, signalTimeMs, sharedTraceCount);
+    });
 
     // Evidence-only path: anomalous signals but no trigger-eligible spans.
     // Append to existing incident as evidence; do not create a new incident.

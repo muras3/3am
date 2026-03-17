@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   buildFormationKey,
   shouldAttachToIncident,
+  getIncidentBoundTraceIds,
   normalizeDependency,
   FORMATION_WINDOW_MS,
   MAX_CROSS_SERVICE_MERGE,
@@ -389,6 +390,118 @@ describe('shouldAttachToIncident: dependency-first logic', () => {
 
   it('MAX_CROSS_SERVICE_MERGE equals 3', () => {
     expect(MAX_CROSS_SERVICE_MERGE).toBe(3)
+  })
+})
+
+// ── getIncidentBoundTraceIds ─────────────────────────────────────────────────
+
+describe('getIncidentBoundTraceIds', () => {
+  it('returns empty set for empty spanMembership', () => {
+    expect(getIncidentBoundTraceIds([]).size).toBe(0)
+  })
+
+  it('extracts traceId from "traceId:spanId" format', () => {
+    const result = getIncidentBoundTraceIds(['abc123:span1', 'def456:span2'])
+    expect(result).toEqual(new Set(['abc123', 'def456']))
+  })
+
+  it('deduplicates traceIds from multiple spans in the same trace', () => {
+    const result = getIncidentBoundTraceIds(['trace1:span1', 'trace1:span2', 'trace2:span3'])
+    expect(result).toEqual(new Set(['trace1', 'trace2']))
+  })
+})
+
+// ── shouldAttachToIncident — trace-based cross-service merge (ADR 0033) ──────
+
+describe('shouldAttachToIncident: trace-based cross-service merge (ADR 0033)', () => {
+  const openedAt = new Date(BASE_SPAN.startTimeMs).toISOString()
+  const signalTimeMs = BASE_SPAN.startTimeMs + 1 * 60 * 1000 // 1 min later
+
+  it('shared trace + within window + affectedServices < MAX → true', () => {
+    const key = buildFormationKey([{ ...BASE_SPAN, serviceName: 'notification-svc' }])
+    const incident = makeIncident('production', 'web-service', openedAt, 'open', [], ['web-service'])
+    expect(shouldAttachToIncident(key, incident, signalTimeMs, 1)).toBe(true)
+  })
+
+  it('shared trace + affectedServices >= MAX → false', () => {
+    const key = buildFormationKey([{ ...BASE_SPAN, serviceName: 'fourth-svc' }])
+    const incident = makeIncident('production', 'svc-a', openedAt, 'open', [], ['svc-a', 'svc-b', 'svc-c'])
+    expect(shouldAttachToIncident(key, incident, signalTimeMs, 1)).toBe(false)
+  })
+
+  it('no shared traces (sharedTraceCount=0) → false', () => {
+    const key = buildFormationKey([{ ...BASE_SPAN, serviceName: 'notification-svc' }])
+    const incident = makeIncident('production', 'web-service', openedAt, 'open', [], ['web-service'])
+    expect(shouldAttachToIncident(key, incident, signalTimeMs, 0)).toBe(false)
+  })
+
+  it('shared trace + different environment → false', () => {
+    const key = buildFormationKey([{ ...BASE_SPAN, serviceName: 'notification-svc' }])
+    const incident = makeIncident('staging', 'web-service', openedAt, 'open', [], ['web-service'])
+    expect(shouldAttachToIncident(key, incident, signalTimeMs, 1)).toBe(false)
+  })
+
+  it('shared trace + outside time window → false', () => {
+    const key = buildFormationKey([{ ...BASE_SPAN, serviceName: 'notification-svc' }])
+    const incident = makeIncident('production', 'web-service', openedAt, 'open', [], ['web-service'])
+    const outsideWindowMs = BASE_SPAN.startTimeMs + 6 * 60 * 1000
+    expect(shouldAttachToIncident(key, incident, outsideWindowMs, 1)).toBe(false)
+  })
+
+  it('shared trace + closed incident → false', () => {
+    const key = buildFormationKey([{ ...BASE_SPAN, serviceName: 'notification-svc' }])
+    const incident = makeIncident('production', 'web-service', openedAt, 'closed', [], ['web-service'])
+    expect(shouldAttachToIncident(key, incident, signalTimeMs, 1)).toBe(false)
+  })
+
+  it('trace fallback when service does not match (no dep) — basic ADR 0033 case', () => {
+    const key = buildFormationKey([{ ...BASE_SPAN, serviceName: 'notification-svc' }])
+    const incident = makeIncident('production', 'web-service', openedAt, 'open', [], ['web-service'])
+    // sharedTraceCount=2 means 2 traceIds in common
+    expect(shouldAttachToIncident(key, incident, signalTimeMs, 2)).toBe(true)
+  })
+
+  it('sharedTraceCount=undefined → backward compatible (no trace merge)', () => {
+    const key = buildFormationKey([{ ...BASE_SPAN, serviceName: 'notification-svc' }])
+    const incident = makeIncident('production', 'web-service', openedAt, 'open', [], ['web-service'])
+    expect(shouldAttachToIncident(key, incident, signalTimeMs)).toBe(false)
+  })
+
+  it('dep-bearing signal + shared trace → still false (split-first not overridden)', () => {
+    const key = buildFormationKey([{ ...BASE_SPAN, peerService: 'stripe' }])
+    // incident has no stripe dependency
+    const incident = makeIncident('production', 'api-service', openedAt, 'open', [])
+    expect(shouldAttachToIncident(key, incident, signalTimeMs, 5)).toBe(false)
+  })
+})
+
+// ── shouldAttachToIncident — D3: affectedServices expansion ─────────────────
+
+describe('shouldAttachToIncident: D3 affectedServices expansion (ADR 0033)', () => {
+  const openedAt = new Date(BASE_SPAN.startTimeMs).toISOString()
+  const signalTimeMs = BASE_SPAN.startTimeMs + 1 * 60 * 1000
+
+  it('no dep, primaryService in affectedServices (not == primaryService) → true', () => {
+    const key = buildFormationKey([BASE_SPAN]) // primaryService: api-service, dep: undefined
+    // incident primaryService is "notification-svc" but affectedServices includes "api-service"
+    const incident = makeIncident('production', 'notification-svc', openedAt, 'open', [], ['notification-svc', 'api-service'])
+    expect(shouldAttachToIncident(key, incident, signalTimeMs)).toBe(true)
+  })
+
+  it('no dep, primaryService in affectedServices but MAX exceeded → false', () => {
+    const key = buildFormationKey([{ ...BASE_SPAN, serviceName: 'fourth-svc' }])
+    const incident = makeIncident('production', 'svc-a', openedAt, 'open', [], ['svc-a', 'svc-b', 'fourth-svc'])
+    // affectedServices.length === 3 === MAX, but fourth-svc IS in affectedServices
+    // D3 check: affectedServices.includes('fourth-svc') → true — this is a service
+    // already in the incident, so it should merge regardless of MAX
+    expect(shouldAttachToIncident(key, incident, signalTimeMs)).toBe(true)
+  })
+
+  it('3 services merged + 4th via trace → MAX guard blocks', () => {
+    const key = buildFormationKey([{ ...BASE_SPAN, serviceName: 'fourth-svc' }])
+    // fourth-svc is NOT in affectedServices, only trace would merge it
+    const incident = makeIncident('production', 'svc-a', openedAt, 'open', [], ['svc-a', 'svc-b', 'svc-c'])
+    expect(shouldAttachToIncident(key, incident, signalTimeMs, 1)).toBe(false)
   })
 })
 
