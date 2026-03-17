@@ -7,6 +7,7 @@ import { serveStatic } from "@hono/node-server/serve-static";
 import type { StorageDriver } from "./storage/interface.js";
 import type { TelemetryStoreDriver } from "./telemetry/interface.js";
 import { MemoryAdapter } from "./storage/adapters/memory.js";
+import { MemoryTelemetryAdapter } from "./telemetry/adapters/memory.js";
 import { createIngestRouter } from "./transport/ingest.js";
 import { createApiRouter } from "./transport/api.js";
 import { SpanBuffer } from "./ambient/span-buffer.js";
@@ -25,8 +26,7 @@ export interface AppOptions {
   /** SpanBuffer instance for the ambient read model (ADR 0029). */
   spanBuffer?: SpanBuffer;
   /** TelemetryStore instance for scored evidence selection (ADR 0032).
-   *  When not provided, the receiver falls back to rawState-based packet rebuilds.
-   *  The receiver does NOT auto-create an adapter; callers must provide one explicitly.
+   *  When not provided, a MemoryTelemetryAdapter is auto-created (DJ-3).
    */
   telemetryStore?: TelemetryStoreDriver;
 }
@@ -66,12 +66,10 @@ export function createApp(storage?: StorageDriver, options?: AppOptions): Hono {
 
   // Auto-create SpanBuffer if not provided (ADR 0029: always active in production)
   const spanBuffer = options?.spanBuffer ?? new SpanBuffer();
-  const telemetryStore = options?.telemetryStore;
-  if (!telemetryStore) {
-    console.warn("[receiver] TelemetryStore not provided — falling back to rawState-based packet rebuilds (ADR 0032)");
-  }
+  // Auto-create TelemetryStore if not provided (DJ-3: always available)
+  const telemetryStore = options?.telemetryStore ?? new MemoryTelemetryAdapter();
   app.route("/", createIngestRouter(store, spanBuffer, telemetryStore));
-  app.route("/", createApiRouter(store, spanBuffer));
+  app.route("/", createApiRouter(store, spanBuffer, telemetryStore));
 
   // Static serving for the Console SPA (ADR 0028)
   const consoleDist = options?.consoleDist ?? process.env["CONSOLE_DIST_PATH"];

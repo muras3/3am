@@ -1,5 +1,4 @@
-import type { IncidentPacket, DiagnosisResult, PlatformEvent, ThinEvent, ChangedMetric, RelevantLog } from "@3amoncall/core";
-import type { ExtractedSpan } from "../domain/anomaly-detector.js";
+import type { IncidentPacket, DiagnosisResult, PlatformEvent, ThinEvent } from "@3amoncall/core";
 
 export interface AnomalousSignal {
   signal: string;       // e.g., "http_429", "http_500", "span_error", "slow_span", "exception"
@@ -8,17 +7,51 @@ export interface AnomalousSignal {
   spanId: string;       // originating span
 }
 
-export interface IncidentRawState {
-  spans: ExtractedSpan[];
-  anomalousSignals: AnomalousSignal[];
-  metricEvidence: ChangedMetric[];
-  logEvidence: RelevantLog[];
-  platformEvents: PlatformEvent[];
+// ── Span membership key helper ──
+
+/** Build the canonical "traceId:spanId" string used in spanMembership sets. */
+export function spanMembershipKey(traceId: string, spanId: string): string {
+  return `${traceId}:${spanId}`;
 }
 
-export function createEmptyRawState(): IncidentRawState {
-  return { spans: [], anomalousSignals: [], metricEvidence: [], logEvidence: [], platformEvents: [] }
+/**
+ * Maximum number of span membership entries per incident.
+ * Each entry is ~53 bytes in JSON. 5000 entries ≈ ~265 KB, well within the 300 KB target.
+ * When exceeded, the oldest entries (earliest in the array) are dropped.
+ */
+export const MAX_SPAN_MEMBERSHIP = 5_000;
+
+// ── TelemetryScope — compact incident query anchor (replaces rawState window/scope role) ──
+
+export interface TelemetryScope {
+  windowStartMs: number;          // monotonically decreasing
+  windowEndMs: number;            // monotonically increasing
+  detectTimeMs: number;           // first anomalous span time (immutable after creation)
+  environment: string;            // immutable after creation
+  memberServices: string[];       // formation-matched span serviceNames (monotonically expanding)
+  dependencyServices: string[];   // peerService values (for query breadth, monotonically expanding)
 }
+
+export function createEmptyTelemetryScope(): TelemetryScope {
+  return {
+    windowStartMs: Number.MAX_SAFE_INTEGER,
+    windowEndMs: 0,
+    detectTimeMs: 0,
+    environment: "unknown",
+    memberServices: [],
+    dependencyServices: [],
+  };
+}
+
+// ── InitialMembership — atomic initial state for new incidents ──
+
+export interface InitialMembership {
+  telemetryScope: TelemetryScope;
+  spanMembership: string[];          // "traceId:spanId" compact ref set
+  anomalousSignals: AnomalousSignal[];
+}
+
+// ── Incident ──
 
 export interface Incident {
   incidentId: string;
@@ -27,7 +60,10 @@ export interface Incident {
   closedAt?: string;
   packet: IncidentPacket;
   diagnosisResult?: DiagnosisResult;
-  rawState: IncidentRawState;
+  telemetryScope: TelemetryScope;
+  spanMembership: string[];          // "traceId:spanId" compact ref set
+  anomalousSignals: AnomalousSignal[];
+  platformEvents: PlatformEvent[];
 }
 
 export interface IncidentPage {
@@ -35,9 +71,21 @@ export interface IncidentPage {
   nextCursor?: string;
 }
 
+// ── StorageDriver ──
+
 export interface StorageDriver {
-  /** Upsert by incidentId. If incident exists, update packet but keep diagnosisResult and openedAt. */
-  createIncident(packet: IncidentPacket): Promise<void>;
+  /**
+   * Create a new incident with packet and initial membership atomically.
+   * If incident already exists (by incidentId), this is a no-op — use updatePacket instead.
+   */
+  createIncident(packet: IncidentPacket, membership: InitialMembership): Promise<void>;
+
+  /**
+   * Update only the packet for an existing incident.
+   * Compact fields (telemetryScope, spanMembership, anomalousSignals, platformEvents) are preserved.
+   * Used by rebuildSnapshots.
+   */
+  updatePacket(incidentId: string, packet: IncidentPacket): Promise<void>;
 
   updateIncidentStatus(id: string, status: "open" | "closed"): Promise<void>;
 
@@ -53,21 +101,35 @@ export interface StorageDriver {
   deleteExpiredIncidents(before: Date): Promise<void>;
 
   /**
-   * Append typed evidence entries to an existing incident's rawState.
-   * Unknown incidentId is a no-op (does not throw).
+   * Monotonically expand the incident's telemetry scope.
+   * windowStartMs: min(existing, expansion); windowEndMs: max(existing, expansion)
+   * services: union of existing and expansion
+   * Unknown incidentId is a no-op.
    */
-  appendRawEvidence(
+  expandTelemetryScope(
     incidentId: string,
-    update: { metricEvidence?: ChangedMetric[]; logEvidence?: RelevantLog[] },
+    expansion: { windowStartMs: number; windowEndMs: number; memberServices: string[]; dependencyServices: string[] },
   ): Promise<void>;
 
-  appendSpans(incidentId: string, spans: ExtractedSpan[]): Promise<void>;
+  /**
+   * Append incident-bound span IDs ("traceId:spanId") to the membership set.
+   * Dedup: duplicate IDs are silently ignored.
+   * Capped at MAX_SPAN_MEMBERSHIP entries; oldest entries are dropped when exceeded.
+   * Unknown incidentId is a no-op.
+   */
+  appendSpanMembership(incidentId: string, spanIds: string[]): Promise<void>;
 
+  /**
+   * Append anomalous signals to the incident.
+   * Unknown incidentId is a no-op.
+   */
   appendAnomalousSignals(incidentId: string, signals: AnomalousSignal[]): Promise<void>;
 
+  /**
+   * Append platform events to the incident.
+   * Unknown incidentId is a no-op.
+   */
   appendPlatformEvents(incidentId: string, events: PlatformEvent[]): Promise<void>;
-
-  getRawState(incidentId: string): Promise<IncidentRawState | null>;
 
   saveThinEvent(event: ThinEvent): Promise<void>;
 

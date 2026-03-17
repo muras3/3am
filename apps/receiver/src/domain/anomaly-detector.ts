@@ -76,7 +76,7 @@ export function isAnomalous(span: ExtractedSpan): boolean {
  * UNSPECIFIED/absent spanKind: treated as trigger-eligible (backward-compatible safe default).
  *
  * Note: SERVER 429 spans are still anomalous signal evidence (isAnomalous returns true)
- * and may be attached to an existing incident's rawState; they just cannot start a new one.
+ * and may be attached to an existing incident's membership; they just cannot start a new one.
  */
 export function isIncidentTrigger(span: ExtractedSpan): boolean {
   if (span.spanKind === SPAN_KIND_SERVER || span.spanKind === SPAN_KIND_INTERNAL) {

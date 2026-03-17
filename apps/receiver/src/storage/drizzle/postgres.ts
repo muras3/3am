@@ -9,10 +9,23 @@ import { drizzle } from "drizzle-orm/postgres-js";
 import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import { eq, desc, lt, and, sql as drizzleSql, count } from "drizzle-orm";
 import { pgTable, text, timestamp, serial, jsonb } from "drizzle-orm/pg-core";
-import type { IncidentPacket, DiagnosisResult, PlatformEvent, ThinEvent, ChangedMetric, RelevantLog } from "@3amoncall/core";
-import type { ExtractedSpan } from "../../domain/anomaly-detector.js";
-import type { AnomalousSignal, Incident, IncidentPage, IncidentRawState, StorageDriver } from "../interface.js";
-import { createEmptyRawState } from "../interface.js";
+import type { IncidentPacket, DiagnosisResult, PlatformEvent, ThinEvent } from "@3amoncall/core";
+import type {
+  AnomalousSignal,
+  Incident,
+  IncidentPage,
+  InitialMembership,
+  StorageDriver,
+  TelemetryScope,
+} from "../interface.js";
+import { MAX_SPAN_MEMBERSHIP } from "../interface.js";
+import type { LegacyRawState } from "./lazy-migration.js";
+import {
+  deriveTelemetryScopeFromPacket,
+  deriveSpanMembershipFromRawState,
+  deriveAnomalousSignalsFromRawState,
+  derivePlatformEventsFromRawState,
+} from "./lazy-migration.js";
 
 // ── Postgres-specific table definitions (JSONB, timestamptz) ─────────────────
 
@@ -23,7 +36,11 @@ const pgIncidents = pgTable("incidents", {
   closedAt: text("closed_at"),
   packet: jsonb("packet").notNull(),
   diagnosisResult: jsonb("diagnosis_result"),
-  rawState: jsonb("raw_state"),
+  rawState: jsonb("raw_state"),                   // kept nullable for lazy migration (DJ-6)
+  telemetryScope: jsonb("telemetry_scope"),
+  spanMembership: jsonb("span_membership"),
+  anomalousSignals: jsonb("anomalous_signals"),
+  platformEvents: jsonb("platform_events"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 });
@@ -38,6 +55,8 @@ const pgThinEvents = pgTable("thin_events", {
 });
 
 type PgSchema = { pgIncidents: typeof pgIncidents; pgThinEvents: typeof pgThinEvents };
+
+// ── PostgresAdapter ─────────────────────────────────────────────────────────
 
 export class PostgresAdapter implements StorageDriver {
   private db: PostgresJsDatabase<PgSchema>;
@@ -54,16 +73,33 @@ export class PostgresAdapter implements StorageDriver {
   async migrate(): Promise<void> {
     await this.db.execute(drizzleSql`
       CREATE TABLE IF NOT EXISTS incidents (
-        incident_id      TEXT PRIMARY KEY,
-        status           TEXT NOT NULL DEFAULT 'open',
-        opened_at        TEXT NOT NULL,
-        closed_at        TEXT,
-        packet           JSONB NOT NULL,
-        diagnosis_result JSONB,
-        raw_state        JSONB,
-        created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
-        updated_at       TIMESTAMPTZ NOT NULL DEFAULT now()
+        incident_id        TEXT PRIMARY KEY,
+        status             TEXT NOT NULL DEFAULT 'open',
+        opened_at          TEXT NOT NULL,
+        closed_at          TEXT,
+        packet             JSONB NOT NULL,
+        diagnosis_result   JSONB,
+        raw_state          JSONB,
+        telemetry_scope    JSONB,
+        span_membership    JSONB,
+        anomalous_signals  JSONB,
+        platform_events    JSONB,
+        created_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
+        updated_at         TIMESTAMPTZ NOT NULL DEFAULT now()
       )
+    `);
+    // Add new columns to existing tables (idempotent)
+    await this.db.execute(drizzleSql`
+      ALTER TABLE incidents ADD COLUMN IF NOT EXISTS telemetry_scope JSONB
+    `);
+    await this.db.execute(drizzleSql`
+      ALTER TABLE incidents ADD COLUMN IF NOT EXISTS span_membership JSONB
+    `);
+    await this.db.execute(drizzleSql`
+      ALTER TABLE incidents ADD COLUMN IF NOT EXISTS anomalous_signals JSONB
+    `);
+    await this.db.execute(drizzleSql`
+      ALTER TABLE incidents ADD COLUMN IF NOT EXISTS platform_events JSONB
     `);
     await this.db.execute(drizzleSql`
       CREATE TABLE IF NOT EXISTS thin_events (
@@ -94,12 +130,26 @@ export class PostgresAdapter implements StorageDriver {
   }
 
   private toIncident(row: typeof pgIncidents.$inferSelect): Incident {
+    const packet = row.packet as IncidentPacket;
+    const rawState = row.rawState as LegacyRawState | null;
+
     const incident: Incident = {
       incidentId: row.incidentId,
       status: row.status as "open" | "closed",
       openedAt: row.openedAt,
-      packet: row.packet as IncidentPacket,
-      rawState: row.rawState ? (row.rawState as IncidentRawState) : createEmptyRawState(),
+      packet,
+      telemetryScope: row.telemetryScope
+        ? (row.telemetryScope as TelemetryScope)
+        : deriveTelemetryScopeFromPacket(packet),
+      spanMembership: row.spanMembership
+        ? (row.spanMembership as string[])
+        : deriveSpanMembershipFromRawState(rawState),
+      anomalousSignals: row.anomalousSignals
+        ? (row.anomalousSignals as AnomalousSignal[])
+        : deriveAnomalousSignalsFromRawState(rawState),
+      platformEvents: row.platformEvents
+        ? (row.platformEvents as PlatformEvent[])
+        : derivePlatformEventsFromRawState(rawState, packet),
     };
     if (row.closedAt) incident.closedAt = row.closedAt;
     if (row.diagnosisResult) {
@@ -108,7 +158,7 @@ export class PostgresAdapter implements StorageDriver {
     return incident;
   }
 
-  async createIncident(packet: IncidentPacket): Promise<void> {
+  async createIncident(packet: IncidentPacket, membership: InitialMembership): Promise<void> {
     await this.db
       .insert(pgIncidents)
       .values({
@@ -116,15 +166,19 @@ export class PostgresAdapter implements StorageDriver {
         status: "open",
         openedAt: packet.openedAt,
         packet,
-        rawState: createEmptyRawState(),
+        telemetryScope: membership.telemetryScope,
+        spanMembership: membership.spanMembership,
+        anomalousSignals: membership.anomalousSignals,
+        platformEvents: [],
       })
-      .onConflictDoUpdate({
-        target: pgIncidents.incidentId,
-        set: {
-          packet,
-          updatedAt: new Date(),
-        },
-      });
+      .onConflictDoNothing(); // no-op if already exists
+  }
+
+  async updatePacket(incidentId: string, packet: IncidentPacket): Promise<void> {
+    await this.db
+      .update(pgIncidents)
+      .set({ packet, updatedAt: new Date() })
+      .where(eq(pgIncidents.incidentId, incidentId));
   }
 
   async updateIncidentStatus(id: string, status: "open" | "closed"): Promise<void> {
@@ -145,23 +199,96 @@ export class PostgresAdapter implements StorageDriver {
       .where(eq(pgIncidents.incidentId, id));
   }
 
-  async appendRawEvidence(
+  async expandTelemetryScope(
     incidentId: string,
-    update: { metricEvidence?: ChangedMetric[]; logEvidence?: RelevantLog[] },
+    expansion: { windowStartMs: number; windowEndMs: number; memberServices: string[]; dependencyServices: string[] },
   ): Promise<void> {
     await this.db.transaction(async (tx) => {
       const [row] = await tx.select().from(pgIncidents)
         .where(eq(pgIncidents.incidentId, incidentId))
         .for("update");
       if (!row) return;
-      const current = row.rawState ? (row.rawState as IncidentRawState) : createEmptyRawState();
-      const rawState: IncidentRawState = {
+      const current = row.telemetryScope
+        ? (row.telemetryScope as TelemetryScope)
+        : deriveTelemetryScopeFromPacket(row.packet as IncidentPacket);
+      const memberSet = new Set(current.memberServices);
+      for (const s of expansion.memberServices) memberSet.add(s);
+      const depSet = new Set(current.dependencyServices);
+      for (const s of expansion.dependencyServices) depSet.add(s);
+      const updated: TelemetryScope = {
         ...current,
-        metricEvidence: [...current.metricEvidence, ...(update.metricEvidence ?? [])],
-        logEvidence: [...current.logEvidence, ...(update.logEvidence ?? [])],
+        windowStartMs: Math.min(current.windowStartMs, expansion.windowStartMs),
+        windowEndMs: Math.max(current.windowEndMs, expansion.windowEndMs),
+        memberServices: [...memberSet],
+        dependencyServices: [...depSet],
       };
       await tx.update(pgIncidents)
-        .set({ rawState, updatedAt: new Date() })
+        .set({ telemetryScope: updated, updatedAt: new Date() })
+        .where(eq(pgIncidents.incidentId, incidentId));
+    });
+  }
+
+  async appendSpanMembership(incidentId: string, spanIds: string[]): Promise<void> {
+    if (spanIds.length === 0) return;
+    await this.db.transaction(async (tx) => {
+      const [row] = await tx.select().from(pgIncidents)
+        .where(eq(pgIncidents.incidentId, incidentId))
+        .for("update");
+      if (!row) return;
+      const current = row.spanMembership
+        ? (row.spanMembership as string[])
+        : deriveSpanMembershipFromRawState(row.rawState as LegacyRawState | null);
+      const existing = new Set(current);
+      let updated = [...current];
+      for (const id of spanIds) {
+        if (!existing.has(id)) {
+          updated.push(id);
+          existing.add(id);
+        }
+      }
+      // Cap: drop oldest entries when exceeding MAX_SPAN_MEMBERSHIP
+      if (updated.length > MAX_SPAN_MEMBERSHIP) {
+        updated = updated.slice(updated.length - MAX_SPAN_MEMBERSHIP);
+      }
+      await tx.update(pgIncidents)
+        .set({ spanMembership: updated, updatedAt: new Date() })
+        .where(eq(pgIncidents.incidentId, incidentId));
+    });
+  }
+
+  async appendAnomalousSignals(incidentId: string, signals: AnomalousSignal[]): Promise<void> {
+    if (signals.length === 0) return;
+    await this.db.transaction(async (tx) => {
+      const [row] = await tx.select().from(pgIncidents)
+        .where(eq(pgIncidents.incidentId, incidentId))
+        .for("update");
+      if (!row) return;
+      const current = row.anomalousSignals
+        ? (row.anomalousSignals as AnomalousSignal[])
+        : deriveAnomalousSignalsFromRawState(row.rawState as LegacyRawState | null);
+      const updated = [...current, ...signals];
+      await tx.update(pgIncidents)
+        .set({ anomalousSignals: updated, updatedAt: new Date() })
+        .where(eq(pgIncidents.incidentId, incidentId));
+    });
+  }
+
+  async appendPlatformEvents(incidentId: string, events: PlatformEvent[]): Promise<void> {
+    if (events.length === 0) return;
+    await this.db.transaction(async (tx) => {
+      const [row] = await tx.select().from(pgIncidents)
+        .where(eq(pgIncidents.incidentId, incidentId))
+        .for("update");
+      if (!row) return;
+      const current = row.platformEvents
+        ? (row.platformEvents as PlatformEvent[])
+        : derivePlatformEventsFromRawState(
+            row.rawState as LegacyRawState | null,
+            row.packet as IncidentPacket,
+          );
+      const updated = [...current, ...events];
+      await tx.update(pgIncidents)
+        .set({ platformEvents: updated, updatedAt: new Date() })
         .where(eq(pgIncidents.incidentId, incidentId));
     });
   }
@@ -195,7 +322,6 @@ export class PostgresAdapter implements StorageDriver {
   }
 
   async getIncidentByPacketId(packetId: string): Promise<Incident | null> {
-    // Use JSONB containment operator for efficient lookup
     const [row] = await this.db
       .select()
       .from(pgIncidents)
@@ -212,59 +338,6 @@ export class PostgresAdapter implements StorageDriver {
           lt(pgIncidents.openedAt, before.toISOString()),
         ),
       );
-  }
-
-  async appendSpans(incidentId: string, spans: ExtractedSpan[]): Promise<void> {
-    await this.db.transaction(async (tx) => {
-      const [row] = await tx.select().from(pgIncidents)
-        .where(eq(pgIncidents.incidentId, incidentId))
-        .for("update");
-      if (!row) return;
-      const current = row.rawState ? (row.rawState as IncidentRawState) : createEmptyRawState();
-      const rawState: IncidentRawState = { ...current, spans: [...current.spans, ...spans] };
-      await tx.update(pgIncidents)
-        .set({ rawState, updatedAt: new Date() })
-        .where(eq(pgIncidents.incidentId, incidentId));
-    });
-  }
-
-  async appendAnomalousSignals(incidentId: string, signals: AnomalousSignal[]): Promise<void> {
-    await this.db.transaction(async (tx) => {
-      const [row] = await tx.select().from(pgIncidents)
-        .where(eq(pgIncidents.incidentId, incidentId))
-        .for("update");
-      if (!row) return;
-      const current = row.rawState ? (row.rawState as IncidentRawState) : createEmptyRawState();
-      const rawState: IncidentRawState = {
-        ...current,
-        anomalousSignals: [...current.anomalousSignals, ...signals],
-      };
-      await tx.update(pgIncidents)
-        .set({ rawState, updatedAt: new Date() })
-        .where(eq(pgIncidents.incidentId, incidentId));
-    });
-  }
-
-  async appendPlatformEvents(incidentId: string, events: PlatformEvent[]): Promise<void> {
-    await this.db.transaction(async (tx) => {
-      const [row] = await tx.select().from(pgIncidents)
-        .where(eq(pgIncidents.incidentId, incidentId))
-        .for("update");
-      if (!row) return;
-      const current = row.rawState ? (row.rawState as IncidentRawState) : createEmptyRawState();
-      const rawState: IncidentRawState = {
-        ...current,
-        platformEvents: [...current.platformEvents, ...events],
-      };
-      await tx.update(pgIncidents)
-        .set({ rawState, updatedAt: new Date() })
-        .where(eq(pgIncidents.incidentId, incidentId));
-    });
-  }
-
-  async getRawState(incidentId: string): Promise<IncidentRawState | null> {
-    const incident = await this.getIncident(incidentId);
-    return incident ? incident.rawState : null;
   }
 
   async saveThinEvent(event: ThinEvent): Promise<void> {

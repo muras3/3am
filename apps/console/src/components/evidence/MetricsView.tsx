@@ -1,4 +1,4 @@
-import type { ChangedMetric } from "../../api/types.js";
+import type { ChangedMetric, TelemetryMetric } from "../../api/types.js";
 import {
   buildMetricsSeries,
   buildStatCards,
@@ -7,9 +7,9 @@ import {
 import { EmptyView } from "./EmptyView.js";
 
 interface Props {
-  rawMetrics: ChangedMetric[];
+  telemetryMetrics: TelemetryMetric[];
   packetMetrics: ChangedMetric[];
-  onMetricSelect: (metric: ChangedMetric) => void;
+  onMetricSelect: (metric: TelemetryMetric) => void;
 }
 
 interface ChartProps {
@@ -92,13 +92,13 @@ function formatValue(v: number): string {
   return v % 1 === 0 ? String(v) : v.toFixed(3);
 }
 
-export function MetricsView({ rawMetrics, packetMetrics, onMetricSelect }: Props) {
-  if (rawMetrics.length === 0) {
+export function MetricsView({ telemetryMetrics, packetMetrics, onMetricSelect }: Props) {
+  if (telemetryMetrics.length === 0) {
     return <EmptyView label="metric" />;
   }
 
-  const series = buildMetricsSeries(rawMetrics);
-  const statCards = buildStatCards(rawMetrics, packetMetrics);
+  const series = buildMetricsSeries(telemetryMetrics);
+  const statCards = buildStatCards(telemetryMetrics, packetMetrics);
   const packetKeys = new Set(packetMetrics.map((m) => `${m.name}::${m.service}`));
 
   // Use first series for timeseries chart display
@@ -137,7 +137,7 @@ export function MetricsView({ rawMetrics, packetMetrics, onMetricSelect }: Props
           <span>Service</span>
           <span>Value</span>
         </div>
-        {rawMetrics.map((m, i) => {
+        {telemetryMetrics.map((m, i) => {
           const key = `${m.name}::${m.service}`;
           const highlighted = packetKeys.has(key);
           return (

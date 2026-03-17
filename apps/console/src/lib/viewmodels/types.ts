@@ -1,4 +1,5 @@
-import type { CausalChainStep, ExtractedSpan } from "@3amoncall/core";
+import type { CausalChainStep } from "@3amoncall/core";
+import type { TelemetrySpan } from "../../api/types.js";
 
 // ── Evidence Studio v4 ──────────────────────────────────────
 
@@ -28,14 +29,14 @@ export interface SpanDetailVM {
 }
 
 export interface SpanRowVM {
-  span: ExtractedSpan;
+  span: TelemetrySpan;
   depth: number;
   isAiSelected: boolean;
 }
 
 export interface TraceGroupVM {
   traceId: string;
-  rootSpan: ExtractedSpan;
+  rootSpan: TelemetrySpan;
   method?: string;
   route?: string;
   rootStatus: number;

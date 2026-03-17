@@ -1,31 +1,32 @@
-import type { IncidentPacket, DiagnosisResult, PlatformEvent, ThinEvent, ChangedMetric, RelevantLog } from "@3amoncall/core";
-import type { ExtractedSpan } from "../../domain/anomaly-detector.js";
-import type { AnomalousSignal, Incident, IncidentPage, IncidentRawState, StorageDriver } from "../interface.js";
-import { createEmptyRawState } from "../interface.js";
+import type { IncidentPacket, DiagnosisResult, PlatformEvent, ThinEvent } from "@3amoncall/core";
+import type { AnomalousSignal, Incident, IncidentPage, InitialMembership, StorageDriver } from "../interface.js";
+import { MAX_SPAN_MEMBERSHIP } from "../interface.js";
 
 export class MemoryAdapter implements StorageDriver {
   private incidents: Map<string, Incident> = new Map();
   private packetIndex: Map<string, string> = new Map(); // packetId → incidentId
   private thinEvents: ThinEvent[] = [];
 
-  async createIncident(packet: IncidentPacket): Promise<void> {
-    const existing = this.incidents.get(packet.incidentId);
-    if (existing) {
-      // Upsert: update packet but preserve diagnosisResult, openedAt, and rawState
-      this.incidents.set(packet.incidentId, {
-        ...existing,
-        packet,
-      });
-    } else {
-      this.incidents.set(packet.incidentId, {
-        incidentId: packet.incidentId,
-        status: "open",
-        openedAt: packet.openedAt,
-        packet,
-        rawState: createEmptyRawState(),
-      });
-    }
+  async createIncident(packet: IncidentPacket, membership: InitialMembership): Promise<void> {
+    if (this.incidents.has(packet.incidentId)) return; // no-op if already exists
+    this.incidents.set(packet.incidentId, {
+      incidentId: packet.incidentId,
+      status: "open",
+      openedAt: packet.openedAt,
+      packet,
+      telemetryScope: membership.telemetryScope,
+      spanMembership: [...membership.spanMembership],
+      anomalousSignals: [...membership.anomalousSignals],
+      platformEvents: [],
+    });
     this.packetIndex.set(packet.packetId, packet.incidentId);
+  }
+
+  async updatePacket(incidentId: string, packet: IncidentPacket): Promise<void> {
+    const incident = this.incidents.get(incidentId);
+    if (!incident) return;
+    this.incidents.set(incidentId, { ...incident, packet });
+    this.packetIndex.set(packet.packetId, incidentId);
   }
 
   async updateIncidentStatus(
@@ -50,36 +51,52 @@ export class MemoryAdapter implements StorageDriver {
     });
   }
 
-  async appendRawEvidence(
-    id: string,
-    update: { metricEvidence?: ChangedMetric[]; logEvidence?: RelevantLog[] },
+  async expandTelemetryScope(
+    incidentId: string,
+    expansion: { windowStartMs: number; windowEndMs: number; memberServices: string[]; dependencyServices: string[] },
   ): Promise<void> {
-    const incident = this.incidents.get(id);
-    if (!incident) return;
-    if (update.metricEvidence) incident.rawState.metricEvidence.push(...update.metricEvidence);
-    if (update.logEvidence) incident.rawState.logEvidence.push(...update.logEvidence);
-  }
-
-  async appendSpans(incidentId: string, spans: ExtractedSpan[]): Promise<void> {
     const incident = this.incidents.get(incidentId);
     if (!incident) return;
-    incident.rawState.spans.push(...spans);
+    const scope = incident.telemetryScope;
+    const memberSet = new Set(scope.memberServices);
+    for (const s of expansion.memberServices) memberSet.add(s);
+    const depSet = new Set(scope.dependencyServices);
+    for (const s of expansion.dependencyServices) depSet.add(s);
+    incident.telemetryScope = {
+      ...scope,
+      windowStartMs: Math.min(scope.windowStartMs, expansion.windowStartMs),
+      windowEndMs: Math.max(scope.windowEndMs, expansion.windowEndMs),
+      memberServices: [...memberSet],
+      dependencyServices: [...depSet],
+    };
+  }
+
+  async appendSpanMembership(incidentId: string, spanIds: string[]): Promise<void> {
+    const incident = this.incidents.get(incidentId);
+    if (!incident) return;
+    const existing = new Set(incident.spanMembership);
+    for (const id of spanIds) {
+      if (!existing.has(id)) {
+        incident.spanMembership.push(id);
+        existing.add(id);
+      }
+    }
+    // Cap: drop oldest entries when exceeding MAX_SPAN_MEMBERSHIP
+    if (incident.spanMembership.length > MAX_SPAN_MEMBERSHIP) {
+      incident.spanMembership.splice(0, incident.spanMembership.length - MAX_SPAN_MEMBERSHIP);
+    }
   }
 
   async appendAnomalousSignals(incidentId: string, signals: AnomalousSignal[]): Promise<void> {
     const incident = this.incidents.get(incidentId);
     if (!incident) return;
-    incident.rawState.anomalousSignals.push(...signals);
+    incident.anomalousSignals.push(...signals);
   }
 
   async appendPlatformEvents(incidentId: string, events: PlatformEvent[]): Promise<void> {
     const incident = this.incidents.get(incidentId);
     if (!incident) return;
-    incident.rawState.platformEvents.push(...events);
-  }
-
-  async getRawState(incidentId: string): Promise<IncidentRawState | null> {
-    return this.incidents.get(incidentId)?.rawState ?? null;
+    incident.platformEvents.push(...events);
   }
 
   async listIncidents(opts: {

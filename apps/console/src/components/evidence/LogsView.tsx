@@ -1,9 +1,9 @@
 import { useState } from "react";
-import type { RelevantLog } from "../../api/types.js";
+import type { TelemetryLog, RelevantLog } from "../../api/types.js";
 import { EmptyView } from "./EmptyView.js";
 
 interface Props {
-  rawLogs: RelevantLog[];
+  telemetryLogs: TelemetryLog[];
   packetLogs: RelevantLog[];
 }
 
@@ -21,7 +21,7 @@ function severityClass(sev: string): string {
   return "lr-info";
 }
 
-function isHighlighted(log: RelevantLog, packetLogs: RelevantLog[]): boolean {
+function isHighlighted(log: TelemetryLog, packetLogs: RelevantLog[]): boolean {
   return packetLogs.some(
     (p) =>
       p.timestamp === log.timestamp &&
@@ -30,21 +30,21 @@ function isHighlighted(log: RelevantLog, packetLogs: RelevantLog[]): boolean {
   );
 }
 
-export function LogsView({ rawLogs, packetLogs }: Props) {
+export function LogsView({ telemetryLogs, packetLogs }: Props) {
   const [severityFilter, setSeverityFilter] = useState<string | null>(null);
   const [serviceFilter, setServiceFilter] = useState<string | null>(null);
   const [expandedIdx, setExpandedIdx] = useState<Set<number>>(new Set());
 
-  if (rawLogs.length === 0) {
+  if (telemetryLogs.length === 0) {
     return <EmptyView label="log record" />;
   }
 
-  const services = Array.from(new Set(rawLogs.map((l) => l.service)));
+  const services = Array.from(new Set(telemetryLogs.map((l) => l.service)));
   const severities = Array.from(
-    new Set(rawLogs.map((l) => l.severity.toUpperCase())),
+    new Set(telemetryLogs.map((l) => l.severity.toUpperCase())),
   );
 
-  const filtered = rawLogs
+  const filtered = telemetryLogs
     .filter((l) => !severityFilter || l.severity.toUpperCase() === severityFilter)
     .filter((l) => !serviceFilter || l.service === serviceFilter)
     .slice(0, LOGS_LIMIT);
@@ -124,9 +124,9 @@ export function LogsView({ rawLogs, packetLogs }: Props) {
             </div>
           );
         })}
-        {rawLogs.length > LOGS_LIMIT && (
+        {telemetryLogs.length > LOGS_LIMIT && (
           <div className="timeline-overflow">
-            +{rawLogs.length - LOGS_LIMIT} more entries
+            +{telemetryLogs.length - LOGS_LIMIT} more entries
           </div>
         )}
       </div>

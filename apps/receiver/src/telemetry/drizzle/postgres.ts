@@ -35,6 +35,8 @@ const pgTelemetrySpans = pgTable("telemetry_spans", {
   startTimeMs: bigint("start_time_ms", { mode: "number" }).notNull(),
   peerService: text("peer_service"),
   exceptionCount: integer("exception_count").notNull(),
+  httpMethod: text("http_method"),
+  spanKind: integer("span_kind"),
   attributes: jsonb("attributes").notNull(),
   ingestedAt: bigint("ingested_at", { mode: "number" }).notNull(), // epoch ms
 }, (table) => [
@@ -119,9 +121,18 @@ export class PostgresTelemetryAdapter implements TelemetryStoreDriver {
         start_time_ms    BIGINT NOT NULL,
         peer_service     TEXT,
         exception_count  INTEGER NOT NULL,
+        http_method      TEXT,
+        span_kind        INTEGER,
         attributes       JSONB NOT NULL,
         ingested_at      BIGINT NOT NULL
       )
+    `);
+    // Add columns if not present (migration for existing deployments)
+    await this.db.execute(drizzleSql`
+      ALTER TABLE telemetry_spans ADD COLUMN IF NOT EXISTS http_method TEXT
+    `);
+    await this.db.execute(drizzleSql`
+      ALTER TABLE telemetry_spans ADD COLUMN IF NOT EXISTS span_kind INTEGER
     `);
     await this.db.execute(drizzleSql`
       CREATE UNIQUE INDEX IF NOT EXISTS uq_pg_spans_trace_span
@@ -225,6 +236,8 @@ export class PostgresTelemetryAdapter implements TelemetryStoreDriver {
           startTimeMs: row.startTimeMs,
           peerService: row.peerService ?? null,
           exceptionCount: row.exceptionCount,
+          httpMethod: row.httpMethod ?? null,
+          spanKind: row.spanKind ?? null,
           attributes: row.attributes,
           ingestedAt: row.ingestedAt,
         })
@@ -242,6 +255,8 @@ export class PostgresTelemetryAdapter implements TelemetryStoreDriver {
             startTimeMs: row.startTimeMs,
             peerService: row.peerService ?? null,
             exceptionCount: row.exceptionCount,
+            httpMethod: row.httpMethod ?? null,
+            spanKind: row.spanKind ?? null,
             attributes: row.attributes,
             ingestedAt: row.ingestedAt,
           },
@@ -342,6 +357,8 @@ export class PostgresTelemetryAdapter implements TelemetryStoreDriver {
       startTimeMs: r.startTimeMs,
       ...(r.peerService != null ? { peerService: r.peerService } : {}),
       exceptionCount: r.exceptionCount,
+      ...(r.httpMethod != null ? { httpMethod: r.httpMethod } : {}),
+      ...(r.spanKind != null ? { spanKind: r.spanKind } : {}),
       attributes: r.attributes as Record<string, unknown>,
       ingestedAt: r.ingestedAt,
     }));

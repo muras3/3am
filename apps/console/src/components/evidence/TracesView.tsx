@@ -1,14 +1,14 @@
-import type { ExtractedSpan, RepresentativeTrace } from "../../api/types.js";
+import type { TelemetrySpan, RepresentativeTrace } from "../../api/types.js";
 import { buildTraceGroups } from "../../lib/viewmodels/index.js";
 import { EmptyView } from "./EmptyView.js";
 
 interface Props {
-  rawSpans: ExtractedSpan[];
+  telemetrySpans: TelemetrySpan[];
   packetTraces: RepresentativeTrace[];
-  onSpanSelect: (span: ExtractedSpan) => void;
+  onSpanSelect: (span: TelemetrySpan) => void;
 }
 
-function barClass(span: ExtractedSpan): string {
+function barClass(span: TelemetrySpan): string {
   if (span.spanStatusCode === 2) return "wf-bar-error";
   if (span.httpStatusCode === 429) return "wf-bar-429";
   if (span.peerService) return "wf-bar-system";
@@ -22,7 +22,7 @@ function httpStatusColor(code: number | undefined): string {
   return "";
 }
 
-function spanLabel(span: ExtractedSpan): string {
+function spanLabel(span: TelemetrySpan): string {
   return span.spanName ?? span.httpRoute ?? span.spanId.slice(0, 10);
 }
 
@@ -34,8 +34,8 @@ interface TraceGroupCardProps {
   totalDurationMs: number;
   spanCount: number;
   traceStartMs: number;
-  orderedSpans: Array<{ span: ExtractedSpan; depth: number; isAiSelected: boolean }>;
-  onSpanSelect: (span: ExtractedSpan) => void;
+  orderedSpans: Array<{ span: TelemetrySpan; depth: number; isAiSelected: boolean }>;
+  onSpanSelect: (span: TelemetrySpan) => void;
 }
 
 function TraceGroupCard({
@@ -131,8 +131,8 @@ function TraceGroupCard({
   );
 }
 
-export function TracesView({ rawSpans, packetTraces, onSpanSelect }: Props) {
-  const groups = buildTraceGroups(rawSpans, packetTraces);
+export function TracesView({ telemetrySpans, packetTraces, onSpanSelect }: Props) {
+  const groups = buildTraceGroups(telemetrySpans, packetTraces);
 
   if (groups.length === 0) {
     return <EmptyView label="trace" />;

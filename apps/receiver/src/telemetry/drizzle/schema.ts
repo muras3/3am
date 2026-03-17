@@ -22,6 +22,8 @@ export const telemetrySpans = sqliteTable("telemetry_spans", {
   startTimeMs: integer("start_time_ms").notNull(),
   peerService: text("peer_service"),
   exceptionCount: integer("exception_count").notNull(),
+  httpMethod: text("http_method"),              // http.request.method attribute
+  spanKind: integer("span_kind"),               // OTel SpanKind enum: 0-5
   attributes: text("attributes").notNull(),   // JSON string
   ingestedAt: integer("ingested_at").notNull(), // epoch ms
 }, (table) => [

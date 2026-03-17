@@ -8,6 +8,7 @@ import {
 } from '../../domain/formation.js'
 import type { ExtractedSpan } from '../../domain/anomaly-detector.js'
 import type { Incident } from '../../storage/interface.js'
+import { createEmptyTelemetryScope } from '../../storage/interface.js'
 import type { IncidentPacket } from '@3amoncall/core'
 
 // Minimal IncidentPacket fixture — only fields needed for formation logic
@@ -63,7 +64,15 @@ function makeIncident(
     status,
     openedAt,
     packet: makePacket(environment, primaryService, affectedDependencies, affectedServices),
-    rawState: { spans: [], anomalousSignals: [], metricEvidence: [], logEvidence: [], platformEvents: [] },
+    telemetryScope: {
+      ...createEmptyTelemetryScope(),
+      environment,
+      memberServices: [primaryService, ...affectedServices],
+      dependencyServices: affectedDependencies,
+    },
+    spanMembership: [],
+    anomalousSignals: [],
+    platformEvents: [],
   }
 }
 

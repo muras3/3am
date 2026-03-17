@@ -1,12 +1,10 @@
 import type {
   IncidentPacket,
   DiagnosisResult,
-  ExtractedSpan,
-  IncidentRawState,
   ChangedMetric,
   RepresentativeTrace,
 } from "@3amoncall/core";
-import type { Incident } from "../../api/types.js";
+import type { Incident, TelemetrySpan, TelemetryMetric } from "../../api/types.js";
 import type {
   IncidentWorkspaceVM,
   ChipVM,
@@ -286,7 +284,7 @@ function buildComponentFlow(
 // ── Evidence Studio v4 adapters ─────────────────────────────
 
 export function buildTraceGroups(
-  rawSpans: ExtractedSpan[],
+  rawSpans: TelemetrySpan[],
   packetTraces: RepresentativeTrace[],
 ): TraceGroupVM[] {
   if (rawSpans.length === 0) return [];
@@ -294,7 +292,7 @@ export function buildTraceGroups(
   const packetSpanIds = new Set(packetTraces.map((t) => t.spanId));
 
   // Group spans by traceId
-  const traceMap = new Map<string, ExtractedSpan[]>();
+  const traceMap = new Map<string, TelemetrySpan[]>();
   for (const span of rawSpans) {
     const group = traceMap.get(span.traceId) ?? [];
     group.push(span);
@@ -313,7 +311,7 @@ export function buildTraceGroups(
     if (!root) continue;
 
     // DFS ordering
-    const childMap = new Map<string, ExtractedSpan[]>();
+    const childMap = new Map<string, TelemetrySpan[]>();
     for (const span of spans) {
       if (span.parentSpanId && traceSpanIds.has(span.parentSpanId)) {
         const children = childMap.get(span.parentSpanId) ?? [];
@@ -323,7 +321,7 @@ export function buildTraceGroups(
     }
 
     const orderedSpans: SpanRowVM[] = [];
-    function dfs(span: ExtractedSpan, depth: number) {
+    function dfs(span: TelemetrySpan, depth: number) {
       orderedSpans.push({
         span,
         depth,
@@ -372,7 +370,7 @@ export function buildTraceGroups(
 }
 
 export function buildSpanDetailVM(
-  span: ExtractedSpan,
+  span: TelemetrySpan,
   packetTraces: RepresentativeTrace[],
 ): SpanDetailVM {
   const isAiSelected = packetTraces.some((t) => t.spanId === span.spanId);
@@ -458,7 +456,7 @@ export function buildProofCardsV4(incident: Incident): ProofCardV4VM[] {
 
 export function buildEvidenceStudioV4VM(
   incident: Incident,
-  rawState: IncidentRawState,
+  tabCounts: Record<TabKey, number>,
 ): EvidenceStudioV4VM {
   const dr = incident.diagnosisResult;
 
@@ -472,13 +470,6 @@ export function buildEvidenceStudioV4VM(
       : signalSeverity === "high" || signalSeverity === "medium"
         ? "warning"
         : "info";
-
-  const tabCounts: Record<TabKey, number> = {
-    traces: rawState.spans.length,
-    metrics: rawState.metricEvidence.length,
-    logs: rawState.logEvidence.length,
-    platform: rawState.platformEvents.length,
-  };
 
   const sideNotes: SideNoteVM[] = [];
 
@@ -540,7 +531,7 @@ export interface MetricSeries {
   points: MetricSeriesPoint[];
 }
 
-export function buildMetricsSeries(rawMetrics: ChangedMetric[]): MetricSeries[] {
+export function buildMetricsSeries(rawMetrics: TelemetryMetric[] | ChangedMetric[]): MetricSeries[] {
   const map = new Map<string, MetricSeries>();
 
   for (const m of rawMetrics) {
@@ -561,7 +552,7 @@ export function buildMetricsSeries(rawMetrics: ChangedMetric[]): MetricSeries[] 
 }
 
 export function buildStatCards(
-  rawMetrics: ChangedMetric[],
+  rawMetrics: TelemetryMetric[] | ChangedMetric[],
   packetMetrics: ChangedMetric[],
 ): Array<{ key: string; name: string; service: string; value: number; highlighted: boolean }> {
   const packetKeys = new Set(packetMetrics.map((m) => `${m.name}::${m.service}`));

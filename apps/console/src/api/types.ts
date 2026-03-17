@@ -2,16 +2,13 @@ export type {
   IncidentPacket,
   DiagnosisResult,
   CausalChainStep,
-  ExtractedSpan,
-  AnomalousSignal,
-  IncidentRawState,
   ChangedMetric,
   RelevantLog,
   PlatformEvent,
   RepresentativeTrace,
 } from "@3amoncall/core";
 
-import type { IncidentPacket, DiagnosisResult, IncidentRawState } from "@3amoncall/core";
+import type { IncidentPacket, DiagnosisResult } from "@3amoncall/core";
 
 export interface Incident {
   incidentId: string;
@@ -22,13 +19,60 @@ export interface Incident {
   diagnosisResult?: DiagnosisResult;
 }
 
-export interface IncidentWithRaw extends Incident {
-  rawState: IncidentRawState;
-}
-
 export interface IncidentPage {
   items: Incident[];
   nextCursor?: string;
+}
+
+// ── TelemetryStore row types (mirror receiver TelemetryStore shape) ──
+
+export interface TelemetrySpan {
+  traceId: string;
+  spanId: string;
+  parentSpanId?: string;
+  serviceName: string;
+  environment: string;
+  spanName: string;
+  httpRoute?: string;
+  httpMethod?: string;
+  httpStatusCode?: number;
+  spanStatusCode: number;
+  durationMs: number;
+  startTimeMs: number;
+  peerService?: string;
+  exceptionCount: number;
+  spanKind?: number;
+  attributes: Record<string, unknown>;
+  ingestedAt: number;
+}
+
+export interface TelemetryMetric {
+  service: string;
+  environment: string;
+  name: string;
+  startTimeMs: number;
+  summary: Record<string, unknown>;
+  ingestedAt: number;
+}
+
+export interface TelemetryLog {
+  service: string;
+  environment: string;
+  timestamp: string;
+  startTimeMs: number;
+  severity: string;
+  severityNumber: number;
+  body: string;
+  bodyHash: string;
+  attributes: Record<string, unknown>;
+  traceId?: string;
+  spanId?: string;
+  ingestedAt: number;
+}
+
+export interface TelemetryLogsResponse {
+  correlated: TelemetryLog[];
+  contextual: TelemetryLog[];
 }
 
 export interface ServiceSurface {

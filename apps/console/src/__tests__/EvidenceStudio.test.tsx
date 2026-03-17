@@ -100,23 +100,22 @@ describe("EvidenceStudio", () => {
     expect(proofCards || skeleton).toBeTruthy();
   });
 
-  it("renders proof cards with data when rawState is available", async () => {
+  it("renders proof cards with data when telemetry queries resolve", async () => {
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false, staleTime: Infinity } },
     });
-    // Pre-populate cache
+    // Pre-populate telemetry caches
     queryClient.setQueryData(
-      ["incidents", testIncident.incidentId, "raw"],
-      {
-        ...testIncident,
-        rawState: {
-          spans: [],
-          anomalousSignals: [],
-          metricEvidence: [],
-          logEvidence: [],
-          platformEvents: [],
-        },
-      },
+      ["incidents", testIncident.incidentId, "telemetry", "spans"],
+      [],
+    );
+    queryClient.setQueryData(
+      ["incidents", testIncident.incidentId, "telemetry", "metrics"],
+      [],
+    );
+    queryClient.setQueryData(
+      ["incidents", testIncident.incidentId, "telemetry", "logs"],
+      { correlated: [], contextual: [] },
     );
 
     await act(async () => {

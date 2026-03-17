@@ -1,6 +1,6 @@
 import { useEffect, useState, useMemo, useCallback } from "react";
 import { useQuery } from "@tanstack/react-query";
-import type { Incident, ExtractedSpan } from "../../api/types.js";
+import type { Incident, TelemetrySpan } from "../../api/types.js";
 import { incidentQueries } from "../../api/queries.js";
 import {
   buildEvidenceStudioV4VM,
@@ -20,29 +20,38 @@ interface Props {
   onClose: () => void;
 }
 
-const EMPTY_TAB_COUNTS: Record<TabKey, number> = {
-  traces: 0,
-  metrics: 0,
-  logs: 0,
-  platform: 0,
-};
-
 export function EvidenceStudio({ incident, onClose }: Props) {
   const [activeTab, setActiveTab] = useState<TabKey>("traces");
   const [viewingProofCardId, setViewingProofCardId] = useState<string | null>(null);
-  const [selectedSpan, setSelectedSpan] = useState<ExtractedSpan | null>(null);
+  const [selectedSpan, setSelectedSpan] = useState<TelemetrySpan | null>(null);
 
-  const rawQuery = useQuery(incidentQueries.rawEvidence(incident.incidentId));
-  const rawState = rawQuery.data?.rawState;
+  const spansQuery = useQuery(incidentQueries.telemetrySpans(incident.incidentId));
+  const metricsQuery = useQuery(incidentQueries.telemetryMetrics(incident.incidentId));
+  const logsQuery = useQuery(incidentQueries.telemetryLogs(incident.incidentId));
+
+  const telemetrySpans = spansQuery.data ?? [];
+  const telemetryMetrics = metricsQuery.data ?? [];
+  const telemetryLogs = logsQuery.data;
+  const allLogs = telemetryLogs
+    ? [...telemetryLogs.correlated, ...telemetryLogs.contextual]
+    : [];
+  const platformEvents = incident.packet.evidence.platformEvents;
+
+  const isLoading = spansQuery.isLoading || metricsQuery.isLoading || logsQuery.isLoading;
+
+  const tabCounts: Record<TabKey, number> = useMemo(() => ({
+    traces: telemetrySpans.length,
+    metrics: telemetryMetrics.length,
+    logs: allLogs.length,
+    platform: platformEvents.length,
+  }), [telemetrySpans.length, telemetryMetrics.length, allLogs.length, platformEvents.length]);
 
   const vm = useMemo(() => {
-    if (!rawState) return null;
-    return buildEvidenceStudioV4VM(incident, rawState);
-  }, [incident, rawState]);
+    return buildEvidenceStudioV4VM(incident, tabCounts);
+  }, [incident, tabCounts]);
 
-  const tabCounts = vm?.tabCounts ?? EMPTY_TAB_COUNTS;
-  const proofCards = vm?.proofCards ?? [];
-  const sideNotes = vm?.sideNotes ?? [];
+  const proofCards = vm.proofCards;
+  const sideNotes = vm.sideNotes;
 
   // Keyboard: Escape closes
   useEffect(() => {
@@ -72,7 +81,7 @@ export function EvidenceStudio({ incident, onClose }: Props) {
     [],
   );
 
-  const handleSpanSelect = useCallback((span: ExtractedSpan) => {
+  const handleSpanSelect = useCallback((span: TelemetrySpan) => {
     setSelectedSpan(span);
   }, []);
 
@@ -81,14 +90,14 @@ export function EvidenceStudio({ incident, onClose }: Props) {
   }, []);
 
   const spanDetailVM = useMemo(() => {
-    if (!selectedSpan || !rawState) return null;
+    if (!selectedSpan) return null;
     return buildSpanDetailVM(
       selectedSpan,
       incident.packet.evidence.representativeTraces,
     );
-  }, [selectedSpan, rawState, incident.packet.evidence.representativeTraces]);
+  }, [selectedSpan, incident.packet.evidence.representativeTraces]);
 
-  const severity = vm?.severity ?? "info";
+  const severity = vm.severity;
 
   return (
     <div className="es-app" data-testid="evidence-studio">
@@ -109,7 +118,7 @@ export function EvidenceStudio({ incident, onClose }: Props) {
       </div>
 
       {/* Row 2: Proof Cards */}
-      {rawQuery.isLoading ? (
+      {isLoading ? (
         <div className="es-proof-cards" aria-busy="true" data-testid="proof-cards-skeleton">
           {[0, 1, 2].map((i) => (
             <div key={i} className="proof-card" style={{ opacity: 0.4 }}>
@@ -137,27 +146,27 @@ export function EvidenceStudio({ incident, onClose }: Props) {
         <div className="es-main">
           {activeTab === "traces" && (
             <TracesView
-              rawSpans={rawState?.spans ?? []}
+              telemetrySpans={telemetrySpans}
               packetTraces={incident.packet.evidence.representativeTraces}
               onSpanSelect={handleSpanSelect}
             />
           )}
           {activeTab === "metrics" && (
             <MetricsView
-              rawMetrics={rawState?.metricEvidence ?? []}
+              telemetryMetrics={telemetryMetrics}
               packetMetrics={incident.packet.evidence.changedMetrics}
               onMetricSelect={handleMetricSelect}
             />
           )}
           {activeTab === "logs" && (
             <LogsView
-              rawLogs={rawState?.logEvidence ?? []}
+              telemetryLogs={allLogs}
               packetLogs={incident.packet.evidence.relevantLogs}
             />
           )}
           {activeTab === "platform" && (
             <PlatformEventsView
-              rawEvents={rawState?.platformEvents ?? []}
+              rawEvents={platformEvents}
               packetEvents={incident.packet.evidence.platformEvents}
               onEventSelect={() => {}}
             />

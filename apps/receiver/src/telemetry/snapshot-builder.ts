@@ -1,26 +1,33 @@
 /**
  * snapshot-builder.ts — Orchestrator for TelemetryStore-based evidence selection.
  *
- * Replaces `fetchAndRebuild` when TelemetryStore is available (ADR 0032 Decision 4, P2-5).
+ * Reads incident membership data (telemetryScope, spanMembership, anomalousSignals,
+ * platformEvents) from StorageDriver, queries TelemetryStore, scores + selects evidence,
+ * and rebuilds the incident packet.
  *
  * Flow:
- *   1. Re-read rawState + fresh incident from storage (stale avoidance)
- *   2. Compute incident window + scope from rawState spans
+ *   1. Read incident from storage (gets telemetryScope, spanMembership, etc.)
+ *   2. Build TelemetryQueryFilter from telemetryScope
  *   3. Query TelemetryStore for spans/metrics/logs (incident + baseline windows)
- *   4. Score + select evidence via scoring + diversityFill
- *   5. Upsert 3 snapshots (traces, metrics, logs)
- *   6. Build pointers from TelemetryStore data + snapshot selections
- *   7. Rebuild packet with snapshot evidence and persist
+ *   4. Filter spans by spanMembership → memberSpans (incident-bound)
+ *   5. Derive scope from memberSpans
+ *   6. Score + select evidence via scoring + diversityFill
+ *   7. Upsert 3 snapshots
+ *   8. Build packet directly and persist via updatePacket
  */
 
-import type { ChangedMetric, RelevantLog } from '@3amoncall/core'
-import type { TelemetryStoreDriver, TelemetrySpan, TelemetryQueryFilter } from './interface.js'
-import type { StorageDriver, IncidentRawState } from '../storage/interface.js'
+import type { ChangedMetric, IncidentPacket, RelevantLog } from '@3amoncall/core'
+import type { TelemetryStoreDriver, TelemetrySpan } from './interface.js'
+import { buildIncidentQueryFilter } from './interface.js'
+import type { StorageDriver } from '../storage/interface.js'
+import { spanMembershipKey } from '../storage/interface.js'
 import type { ExtractedSpan } from '../domain/anomaly-detector.js'
 import { isAnomalous } from '../domain/anomaly-detector.js'
+import { normalizeDependency } from '../domain/formation.js'
 import {
   selectRepresentativeTraces,
-  rebuildPacket,
+  deriveSignalSeverity,
+  deduplicateTriggerSignals,
   buildPlatformLogRef,
 } from '../domain/packetizer.js'
 import { scoreMetrics } from './scoring/metric-scorer.js'
@@ -56,43 +63,8 @@ function toExtractedSpan(ts: TelemetrySpan): ExtractedSpan {
     exceptionCount: ts.exceptionCount,
     peerService: ts.peerService,
     spanName: ts.spanName,
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Window + scope computation (mirrors rebuildPacket logic)
-// ---------------------------------------------------------------------------
-
-function computeWindowAndScope(rawState: IncidentRawState) {
-  const { spans } = rawState
-  if (spans.length === 0) {
-    return null
-  }
-
-  const windowStartMs = Math.min(...spans.map(s => s.startTimeMs))
-  const windowEndMs = Math.max(...spans.map(s => s.startTimeMs + s.durationMs))
-  const firstAnomalous = spans.filter(isAnomalous)[0]
-  const detectTimeMs = firstAnomalous ? firstAnomalous.startTimeMs : windowStartMs
-
-  const environment = spans[0]?.environment ?? 'unknown'
-  // Include both serviceName and peerService (affectedDependencies) in the query scope.
-  // This matches shouldAttachEvidence() which attaches metrics/logs from dependency services
-  // (e.g., stripe) that are in affectedDependencies. Without this, TelemetryStore queries
-  // would miss dependency-originated evidence that rawState path correctly includes.
-  const serviceNames = new Set(spans.map(s => s.serviceName))
-  for (const s of spans) {
-    if (s.peerService !== undefined) {
-      serviceNames.add(s.peerService)
-    }
-  }
-  const services = [...serviceNames]
-
-  return {
-    windowStartMs,
-    windowEndMs,
-    detectTimeMs,
-    environment,
-    services,
+    httpMethod: ts.httpMethod,
+    spanKind: ts.spanKind,
   }
 }
 
@@ -103,71 +75,76 @@ function computeWindowAndScope(rawState: IncidentRawState) {
 /**
  * Rebuild curated evidence snapshots from TelemetryStore and update the incident packet.
  *
- * This function REPLACES fetchAndRebuild when TelemetryStore is available.
- * It takes only incidentId (not an incident object) to avoid stale data —
- * internally re-reads rawState + incident from storage.
+ * Reads incident membership (telemetryScope, spanMembership, anomalousSignals,
+ * platformEvents) from StorageDriver, queries TelemetryStore, and persists the
+ * rebuilt packet via storage.updatePacket() — compact fields are preserved.
  */
 export async function rebuildSnapshots(
   incidentId: string,
   telemetryStore: TelemetryStoreDriver,
   storage: StorageDriver,
 ): Promise<void> {
-  // Step 1: Re-read rawState + fresh incident (stale avoidance, same as fetchAndRebuild)
-  const [rawState, fresh] = await Promise.all([
-    storage.getRawState(incidentId),
-    storage.getIncident(incidentId),
-  ])
-  if (rawState === null || fresh === null) return
+  // Step 1: Read incident from storage
+  const incident = await storage.getIncident(incidentId)
+  if (incident === null) return
 
-  // Step 2: Compute window + scope from rawState spans
-  const windowScope = computeWindowAndScope(rawState)
-  if (!windowScope) {
-    // No spans yet — nothing to query/select
+  const { telemetryScope, spanMembership, anomalousSignals, platformEvents } = incident
+
+  // Guard: need valid telemetryScope
+  if (telemetryScope.windowStartMs >= telemetryScope.windowEndMs) {
     return
   }
 
-  const { windowStartMs, windowEndMs, detectTimeMs, environment, services } = windowScope
+  // Step 2: Build query filter from telemetryScope
+  const incidentFilter = buildIncidentQueryFilter(telemetryScope)
 
-  // Step 3: Build query filter for incident window
-  const incidentFilter: TelemetryQueryFilter = {
-    startMs: windowStartMs,
-    endMs: windowEndMs,
-    services,
-    environment,
+  // Step 3+4: Query TelemetryStore for incident window data + baseline metrics in parallel
+  const windowDuration = telemetryScope.windowEndMs - telemetryScope.windowStartMs
+  const baselineStartMs = telemetryScope.windowStartMs - windowDuration * BASELINE_MULTIPLIER
+  const baselineFilter = {
+    ...incidentFilter,
+    startMs: baselineStartMs,
+    endMs: telemetryScope.windowStartMs - 1, // exclusive of incident window
   }
-
-  // Step 4: Query TelemetryStore for incident window data
-  const [tsSpans, tsMetrics, tsLogs] = await Promise.all([
+  const [tsSpans, tsMetrics, tsLogs, baselineMetrics] = await Promise.all([
     telemetryStore.querySpans(incidentFilter),
     telemetryStore.queryMetrics(incidentFilter),
     telemetryStore.queryLogs(incidentFilter),
+    telemetryStore.queryMetrics(baselineFilter),
   ])
 
-  // Step 5: Query baseline metrics (4x window before incident start)
-  const windowDuration = windowEndMs - windowStartMs
-  const baselineStartMs = windowStartMs - windowDuration * BASELINE_MULTIPLIER
-  const baselineFilter: TelemetryQueryFilter = {
-    startMs: baselineStartMs,
-    endMs: windowStartMs - 1, // exclusive of incident window
-    services,
-    environment,
-  }
-  const baselineMetrics = await telemetryStore.queryMetrics(baselineFilter)
+  // Step 5: Filter spans by spanMembership → incident-bound memberSpans
+  const spanMembershipSet = new Set(spanMembership)
+  const memberTsSpans = tsSpans.filter(s => spanMembershipSet.has(spanMembershipKey(s.traceId, s.spanId)))
+  const memberSpans = memberTsSpans.map(toExtractedSpan)
 
-  // Step 6: Get anomalous signals from rawState, anomalous traceIds
-  const { anomalousSignals, platformEvents } = rawState
+  // Step 6: Derive scope from memberSpans
+  const affectedServices = [...new Set(memberSpans.map(s => s.serviceName))]
+  const affectedRoutes = [...new Set(memberSpans.flatMap(s => s.httpRoute ? [s.httpRoute] : []))]
+  const affectedDependencies = [
+    ...new Set(
+      memberSpans.flatMap(s => {
+        const dep = normalizeDependency(s.peerService)
+        return dep !== undefined ? [dep] : []
+      }),
+    ),
+  ]
+
+  // Step 7: triggerSignals — dedup by signal+entity, keep earliest firstSeenAt
+  const triggerSignals = deduplicateTriggerSignals(anomalousSignals)
+
+  // Step 8: representativeTraces from incident-bound memberSpans
+  const representativeTraces = selectRepresentativeTraces(memberSpans)
+
+  // Step 9: Anomalous traceIds for log scoring (from memberSpans)
   const anomalousTraceIds = new Set(
-    rawState.spans.filter(isAnomalous).map(s => s.traceId),
+    memberSpans.filter(isAnomalous).map(s => s.traceId),
   )
 
-  // Step 7: Score + select traces
-  const extractedSpans = tsSpans.map(toExtractedSpan)
-  const representativeTraces = selectRepresentativeTraces(extractedSpans)
-
-  // Step 8: Score + select metrics
+  // Step 10: Score + select metrics
   const scoredMetrics = scoreMetrics(tsMetrics, baselineMetrics, anomalousSignals, {
-    startMs: windowStartMs,
-    endMs: windowEndMs,
+    startMs: telemetryScope.windowStartMs,
+    endMs: telemetryScope.windowEndMs,
   })
   const selectedMetrics = diversityFill(scoredMetrics, {
     maxItems: MAX_CHANGED_METRICS,
@@ -179,8 +156,8 @@ export async function rebuildSnapshots(
     getIdentityKey: m => `${m.service}:${m.name}:${m.startTimeMs}`,
   })
 
-  // Step 9: Score + select logs
-  const scoredLogs = scoreLogs(tsLogs, detectTimeMs, anomalousTraceIds)
+  // Step 11: Score + select logs
+  const scoredLogs = scoreLogs(tsLogs, telemetryScope.detectTimeMs, anomalousTraceIds)
   const selectedLogs = diversityFill(scoredLogs, {
     maxItems: MAX_RELEVANT_LOGS,
     topGuarantee: LOG_TOP_GUARANTEE,
@@ -191,7 +168,7 @@ export async function rebuildSnapshots(
     getIdentityKey: l => `${l.service}:${l.timestamp}:${l.bodyHash}`,
   })
 
-  // Step 10: Convert to packet types (drop scoring-only fields)
+  // Step 12: Convert to packet types (drop scoring-only fields)
   const changedMetrics: ChangedMetric[] = selectedMetrics.map(m => ({
     name: m.name,
     service: m.service,
@@ -210,48 +187,61 @@ export async function rebuildSnapshots(
     attributes: l.attributes,
   }))
 
-  // Step 11: Upsert 3 snapshots
+  // Step 13: Upsert 3 snapshots
   await Promise.all([
     telemetryStore.upsertSnapshot(incidentId, 'traces', representativeTraces),
     telemetryStore.upsertSnapshot(incidentId, 'metrics', changedMetrics),
     telemetryStore.upsertSnapshot(incidentId, 'logs', relevantLogs),
   ])
 
-  // Step 12: Build pointers from snapshot + TelemetryStore data
+  // Step 14: Build pointers
   // traceRefs: ALL distinct traceIds from TelemetryStore query (broader than representative), capped.
-  // Sort deterministically so packet diff is stable across adapter implementations and re-runs.
   const allTraceIds = [...new Set(tsSpans.map(s => s.traceId))].sort()
   const traceRefs = allTraceIds.slice(0, MAX_TRACE_REFS)
-
-  // metricRefs: distinct names from selected metrics
   const metricRefs = [...new Set(changedMetrics.map(m => m.name))]
-
-  // logRefs: service:timestamp from selected logs
   const logRefs = [...new Set(relevantLogs.map(l => `${l.service}:${l.timestamp}`))]
-
-  // platformLogRefs: from rawState.platformEvents (unchanged)
   const platformLogRefs = platformEvents.map(buildPlatformLogRef)
 
-  // Step 13: Rebuild packet — use existing rebuildPacket then override evidence + pointers
-  const generation = (fresh.packet.generation ?? 1) + 1
-  const rebuiltPacket = rebuildPacket(
+  // Step 15: signalSeverity
+  const signalSeverity = deriveSignalSeverity(anomalousSignals, relevantLogs, affectedServices.length)
+
+  // Step 16: Build packet directly (no rebuildPacket call)
+  const generation = (incident.packet.generation ?? 1) + 1
+  const newPacket: IncidentPacket = {
+    schemaVersion: 'incident-packet/v1alpha1',
+    packetId: incident.packet.packetId,
     incidentId,
-    fresh.packet.packetId,
-    fresh.openedAt,
-    rawState,
+    openedAt: incident.openedAt,
+    status: incident.packet.status,
     generation,
-    fresh.packet.scope.primaryService,
-  )
+    signalSeverity,
+    window: {
+      start: new Date(telemetryScope.windowStartMs).toISOString(),
+      detect: new Date(telemetryScope.detectTimeMs).toISOString(),
+      end: new Date(telemetryScope.windowEndMs).toISOString(),
+    },
+    scope: {
+      environment: telemetryScope.environment,
+      primaryService: incident.packet.scope.primaryService,
+      affectedServices,
+      affectedRoutes,
+      affectedDependencies,
+    },
+    triggerSignals,
+    evidence: {
+      changedMetrics,
+      representativeTraces,
+      relevantLogs,
+      platformEvents,
+    },
+    pointers: {
+      traceRefs,
+      logRefs,
+      metricRefs,
+      platformLogRefs,
+    },
+  }
 
-  // Override evidence and pointers with snapshot-sourced data
-  rebuiltPacket.evidence.changedMetrics = changedMetrics
-  rebuiltPacket.evidence.relevantLogs = relevantLogs
-  rebuiltPacket.evidence.representativeTraces = representativeTraces
-  rebuiltPacket.pointers.traceRefs = traceRefs
-  rebuiltPacket.pointers.metricRefs = metricRefs
-  rebuiltPacket.pointers.logRefs = logRefs
-  rebuiltPacket.pointers.platformLogRefs = platformLogRefs
-
-  // Step 14: Persist
-  await storage.createIncident(rebuiltPacket)
+  // Step 17: Persist via updatePacket — compact fields are preserved
+  await storage.updatePacket(incidentId, newPacket)
 }
