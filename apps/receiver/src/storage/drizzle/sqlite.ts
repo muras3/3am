@@ -20,6 +20,7 @@ import type {
   StorageDriver,
   TelemetryScope,
 } from "../interface.js";
+import { MAX_SPAN_MEMBERSHIP } from "../interface.js";
 import type { LegacyRawState } from "./lazy-migration.js";
 import {
   deriveTelemetryScopeFromPacket,
@@ -207,12 +208,16 @@ export class SQLiteAdapter implements StorageDriver {
         ? (JSON.parse(row.spanMembership) as string[])
         : deriveSpanMembershipFromRawState(rawState);
       const existing = new Set(current);
-      const updated = [...current];
+      let updated = [...current];
       for (const id of spanIds) {
         if (!existing.has(id)) {
           updated.push(id);
           existing.add(id);
         }
+      }
+      // Cap: drop oldest entries when exceeding MAX_SPAN_MEMBERSHIP
+      if (updated.length > MAX_SPAN_MEMBERSHIP) {
+        updated = updated.slice(updated.length - MAX_SPAN_MEMBERSHIP);
       }
       tx.update(incidents)
         .set({ spanMembership: JSON.stringify(updated), updatedAt: new Date().toISOString() })

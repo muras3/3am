@@ -14,6 +14,13 @@ export function spanMembershipKey(traceId: string, spanId: string): string {
   return `${traceId}:${spanId}`;
 }
 
+/**
+ * Maximum number of span membership entries per incident.
+ * Each entry is ~53 bytes in JSON. 5000 entries ≈ ~265 KB, well within the 300 KB target.
+ * When exceeded, the oldest entries (earliest in the array) are dropped.
+ */
+export const MAX_SPAN_MEMBERSHIP = 5_000;
+
 // ── TelemetryScope — compact incident query anchor (replaces rawState window/scope role) ──
 
 export interface TelemetryScope {
@@ -107,6 +114,7 @@ export interface StorageDriver {
   /**
    * Append incident-bound span IDs ("traceId:spanId") to the membership set.
    * Dedup: duplicate IDs are silently ignored.
+   * Capped at MAX_SPAN_MEMBERSHIP entries; oldest entries are dropped when exceeded.
    * Unknown incidentId is a no-op.
    */
   appendSpanMembership(incidentId: string, spanIds: string[]): Promise<void>;

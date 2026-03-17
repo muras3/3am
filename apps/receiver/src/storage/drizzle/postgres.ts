@@ -18,6 +18,7 @@ import type {
   StorageDriver,
   TelemetryScope,
 } from "../interface.js";
+import { MAX_SPAN_MEMBERSHIP } from "../interface.js";
 import type { LegacyRawState } from "./lazy-migration.js";
 import {
   deriveTelemetryScopeFromPacket,
@@ -238,12 +239,16 @@ export class PostgresAdapter implements StorageDriver {
         ? (row.spanMembership as string[])
         : deriveSpanMembershipFromRawState(row.rawState as LegacyRawState | null);
       const existing = new Set(current);
-      const updated = [...current];
+      let updated = [...current];
       for (const id of spanIds) {
         if (!existing.has(id)) {
           updated.push(id);
           existing.add(id);
         }
+      }
+      // Cap: drop oldest entries when exceeding MAX_SPAN_MEMBERSHIP
+      if (updated.length > MAX_SPAN_MEMBERSHIP) {
+        updated = updated.slice(updated.length - MAX_SPAN_MEMBERSHIP);
       }
       await tx.update(pgIncidents)
         .set({ spanMembership: updated, updatedAt: new Date() })

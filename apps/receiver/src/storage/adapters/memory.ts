@@ -1,5 +1,6 @@
 import type { IncidentPacket, DiagnosisResult, PlatformEvent, ThinEvent } from "@3amoncall/core";
 import type { AnomalousSignal, Incident, IncidentPage, InitialMembership, StorageDriver } from "../interface.js";
+import { MAX_SPAN_MEMBERSHIP } from "../interface.js";
 
 export class MemoryAdapter implements StorageDriver {
   private incidents: Map<string, Incident> = new Map();
@@ -79,6 +80,10 @@ export class MemoryAdapter implements StorageDriver {
         incident.spanMembership.push(id);
         existing.add(id);
       }
+    }
+    // Cap: drop oldest entries when exceeding MAX_SPAN_MEMBERSHIP
+    if (incident.spanMembership.length > MAX_SPAN_MEMBERSHIP) {
+      incident.spanMembership.splice(0, incident.spanMembership.length - MAX_SPAN_MEMBERSHIP);
     }
   }
 
