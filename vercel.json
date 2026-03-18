@@ -1,0 +1,17 @@
+{
+  "framework": null,
+  "installCommand": "pnpm install",
+  "buildCommand": "pnpm turbo run bundle:vercel && mkdir -p api/proto && cp apps/receiver/bundle/vercel.mjs api/index.mjs && cp apps/receiver/src/transport/proto/otlp.json api/proto/otlp.json",
+  "outputDirectory": "apps/console/dist",
+  "functions": {
+    "api/index.mjs": {
+      "includeFiles": "api/proto/**"
+    }
+  },
+  "rewrites": [
+    { "source": "/v1/:path*", "destination": "/api" },
+    { "source": "/api/:path*", "destination": "/api" },
+    { "source": "/healthz", "destination": "/api" },
+    { "source": "/(.*)", "destination": "/index.html" }
+  ]
+}

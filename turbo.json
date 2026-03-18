@@ -19,6 +19,10 @@
     "@3amoncall/receiver#bundle": {
       "dependsOn": ["@3amoncall/receiver#build", "@3amoncall/console#build"],
       "outputs": ["bundle/**"]
+    },
+    "@3amoncall/receiver#bundle:vercel": {
+      "dependsOn": ["@3amoncall/receiver#build", "@3amoncall/console#build"],
+      "outputs": ["bundle/vercel.*"]
     }
   }
 }

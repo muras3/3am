@@ -18,6 +18,9 @@ validation/.env
 validation/.env.staging
 .vercel
 
+# Vercel build artifact (esbuild output copied here by buildCommand)
+/api/
+
 # Staging reports (local screenshots/notes — not for OSS)
 validation/reports/
 
