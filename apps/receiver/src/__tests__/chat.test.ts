@@ -64,8 +64,11 @@ const minimalDiagnosis: DiagnosisResult = {
   },
 };
 
+let seedCounter = 0;
 async function seedIncidentWithDiagnosis(app: ReturnType<typeof makeApp>) {
-  // Ingest an anomalous span to create an incident
+  seedCounter++;
+  const suffix = String(seedCounter).padStart(3, "0");
+  // Ingest an anomalous span to create an incident — unique service per call for incident isolation
   const ingestRes = await app.request("/v1/traces", {
     method: "POST",
     headers: { ...authHeader(), "Content-Type": "application/json" },
@@ -74,7 +77,7 @@ async function seedIncidentWithDiagnosis(app: ReturnType<typeof makeApp>) {
         {
           resource: {
             attributes: [
-              { key: "service.name", value: { stringValue: "web" } },
+              { key: "service.name", value: { stringValue: `web-${suffix}` } },
               { key: "deployment.environment.name", value: { stringValue: "production" } },
             ],
           },
@@ -82,8 +85,8 @@ async function seedIncidentWithDiagnosis(app: ReturnType<typeof makeApp>) {
             {
               spans: [
                 {
-                  traceId: "abc123",
-                  spanId: "span001",
+                  traceId: `abc123_${suffix}`,
+                  spanId: `span${suffix}`,
                   name: "POST /checkout",
                   startTimeUnixNano: "1741392000000000000",
                   endTimeUnixNano: "1741392005200000000",
@@ -121,6 +124,7 @@ describe("POST /api/chat/:incidentId", () => {
   let app: ReturnType<typeof makeApp>;
 
   beforeEach(() => {
+    seedCounter = 0;
     app = makeApp();
     mockCreate.mockClear();
     mockCreate.mockResolvedValue({
@@ -128,14 +132,24 @@ describe("POST /api/chat/:incidentId", () => {
     });
   });
 
-  it("returns 404 without Bearer (Console same-origin route — no Bearer required, ADR 0028)", async () => {
+  // ── Auth (B-11) ────────────────────────────────────────────────────────────
+
+  it("returns 401 without Bearer when auth token is set (B-11)", async () => {
     const res = await app.request("/api/chat/inc_unknown", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ message: "Hello", history: [] }),
     });
-    // Not 401 — /api/chat/* is a Console route, auth is same-origin (ADR 0028)
-    expect(res.status).toBe(404);
+    expect(res.status).toBe(401);
+  });
+
+  it("returns 401 with wrong Bearer token (B-11)", async () => {
+    const res = await app.request("/api/chat/inc_unknown", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: "Bearer wrong-token" },
+      body: JSON.stringify({ message: "Hello", history: [] }),
+    });
+    expect(res.status).toBe(401);
   });
 
   it("returns 404 for unknown incidentId", async () => {
@@ -258,5 +272,48 @@ describe("POST /api/chat/:incidentId", () => {
     expect(callArgs.messages[0]?.role).toBe("user");
     expect(callArgs.messages[1]?.role).toBe("assistant");
     expect(callArgs.messages[2]?.role).toBe("user");
+  });
+
+  // ── Rate limiting (B-11) ──────────────────────────────────────────────────
+
+  it("returns 429 when rate limit is exceeded (B-11)", async () => {
+    const incidentId = await seedIncidentWithDiagnosis(app);
+    const reqOpts = {
+      method: "POST" as const,
+      headers: { ...authHeader(), "Content-Type": "application/json" },
+      body: JSON.stringify({ message: "question", history: [] }),
+    };
+
+    // Send 10 requests (within limit)
+    for (let i = 0; i < 10; i++) {
+      const res = await app.request(`/api/chat/${incidentId}`, reqOpts);
+      expect(res.status).toBe(200);
+    }
+
+    // 11th request should be rate limited
+    const res = await app.request(`/api/chat/${incidentId}`, reqOpts);
+    expect(res.status).toBe(429);
+  });
+
+  it("rate limit is independent per incident ID (B-11)", async () => {
+    const incidentId1 = await seedIncidentWithDiagnosis(app);
+
+    // Exhaust rate limit on incidentId1
+    for (let i = 0; i < 10; i++) {
+      await app.request(`/api/chat/${incidentId1}`, {
+        method: "POST",
+        headers: { ...authHeader(), "Content-Type": "application/json" },
+        body: JSON.stringify({ message: "q", history: [] }),
+      });
+    }
+
+    // Different incident should still be allowed (same IP, different ID)
+    const incidentId2 = await seedIncidentWithDiagnosis(app);
+    const res = await app.request(`/api/chat/${incidentId2}`, {
+      method: "POST",
+      headers: { ...authHeader(), "Content-Type": "application/json" },
+      body: JSON.stringify({ message: "q", history: [] }),
+    });
+    expect(res.status).toBe(200);
   });
 });

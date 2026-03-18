@@ -14,7 +14,8 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { MemoryAdapter } from "../storage/adapters/memory.js";
 import { MemoryTelemetryAdapter } from "../telemetry/adapters/memory.js";
 import { createApp } from "../index.js";
-import { spanMembershipKey, MAX_SPAN_MEMBERSHIP } from "../storage/interface.js";
+import { spanMembershipKey, MAX_SPAN_MEMBERSHIP, MAX_ANOMALOUS_SIGNALS } from "../storage/interface.js";
+import type { AnomalousSignal } from "../storage/interface.js";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 // Anchored at 2025-03-07T16:00:00Z (same epoch as existing integration tests)
@@ -501,6 +502,31 @@ describe("TelemetryStore integration tests (ADR 0032 Step 4+5)", () => {
       const incident = (await storage.getIncident(incidentId))!;
       expect(incident.spanMembership.length).toBeLessThanOrEqual(
         MAX_SPAN_MEMBERSHIP,
+      );
+    });
+
+    it("enforces MAX_ANOMALOUS_SIGNALS cap (B-12)", async () => {
+      const incidentId = await ingestErrorSpan(app, {
+        traceId: "trace_sigcap_00000000000000000000",
+        spanId: "span_sigcap_001",
+        serviceName: "web",
+      });
+
+      // Directly append synthetic signals beyond the cap
+      const signals: AnomalousSignal[] = Array.from(
+        { length: MAX_ANOMALOUS_SIGNALS + 100 },
+        (_, i) => ({
+          signal: `sig_${i}`,
+          firstSeenAt: new Date(Date.now() + i * 1000).toISOString(),
+          entity: "web",
+          spanId: `span_gen_${i}`,
+        }),
+      );
+      await storage.appendAnomalousSignals(incidentId, signals);
+
+      const incident2 = (await storage.getIncident(incidentId))!;
+      expect(incident2.anomalousSignals.length).toBeLessThanOrEqual(
+        MAX_ANOMALOUS_SIGNALS,
       );
     });
   });
