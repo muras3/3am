@@ -30,7 +30,7 @@ describe("GET /healthz", () => {
     const res = await app.request("/healthz");
 
     expect(res.status).toBe(200);
-    const body = await res.json();
+    const body = (await res.json()) as { status: string; version: string };
     expect(body.status).toBe("ok");
     expect(typeof body.version).toBe("string");
   });
