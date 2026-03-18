@@ -1,5 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { Hono } from "hono";
+import { bodyLimit } from "hono/body-limit";
 import { DiagnosisResultSchema, type DiagnosisResult } from "@3amoncall/core";
 import { rateLimiter } from "../middleware/rate-limit.js";
 import { SessionStore, sessionCookieSetter, sessionCookieValidator } from "../middleware/session-cookie.js";
@@ -79,6 +80,13 @@ function validateChatBody(body: unknown): { message: string; history: ChatTurn[]
   return { message, history: history as ChatTurn[] };
 }
 
+// Body size limits per route group (B-13).
+// Applied per-route (not wildcard) because Hono runs all matching middleware —
+// a restrictive wildcard would block routes that need a higher limit.
+// Future POST routes should use apiBodyLimit(64 * 1024) as the default.
+const apiBodyLimit = (maxSize: number) =>
+  bodyLimit({ maxSize, onError: (c) => c.json({ error: "payload too large" }, 413) });
+
 export function createApiRouter(storage: StorageDriver, spanBuffer: SpanBuffer | undefined, telemetryStore: TelemetryStoreDriver): Hono {
   const app = new Hono();
 
@@ -122,7 +130,7 @@ export function createApiRouter(storage: StorageDriver, spanBuffer: SpanBuffer |
     return c.json(incident.packet);
   });
 
-  app.post("/api/diagnosis/:id", async (c) => {
+  app.post("/api/diagnosis/:id", apiBodyLimit(512 * 1024), async (c) => {
     const id = c.req.param("id");
 
     let result: DiagnosisResult;
@@ -149,7 +157,7 @@ export function createApiRouter(storage: StorageDriver, spanBuffer: SpanBuffer |
     return c.json({ status: "ok" });
   });
 
-  app.post("/api/chat/:id", async (c) => {
+  app.post("/api/chat/:id", apiBodyLimit(1 * 1024), async (c) => {
     const id = c.req.param("id");
 
     let body: unknown;
