@@ -81,12 +81,13 @@ describe("EvidenceStudio", () => {
 
   it("switches tab when Metrics is clicked", async () => {
     const user = userEvent.setup();
-    const { container } = render(
+    render(
       <EvidenceStudio incident={testIncident} onClose={vi.fn()} />,
       { wrapper: createWrapper() },
     );
     await user.click(screen.getByText("Metrics"));
-    const activeTab = container.querySelector(".es-tab.active");
+    // EvidenceStudio renders via createPortal to document.body
+    const activeTab = document.querySelector(".es-tab.active");
     expect(activeTab?.textContent).toContain("Metrics");
   });
 
