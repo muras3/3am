@@ -21,6 +21,13 @@ export function spanMembershipKey(traceId: string, spanId: string): string {
  */
 export const MAX_SPAN_MEMBERSHIP = 5_000;
 
+/**
+ * Maximum number of anomalous signal entries per incident.
+ * Each entry is ~100 bytes in JSON. 1000 entries ≈ ~100 KB.
+ * When exceeded, the oldest entries (earliest in the array) are dropped.
+ */
+export const MAX_ANOMALOUS_SIGNALS = 1_000;
+
 // ── TelemetryScope — compact incident query anchor (replaces rawState window/scope role) ──
 
 export interface TelemetryScope {
