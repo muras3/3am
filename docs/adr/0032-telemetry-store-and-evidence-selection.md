@@ -1,6 +1,6 @@
 # ADR 0032: TelemetryStore — 統一 OTel データストレージと Evidence 選別アルゴリズム
 
-- Status: Proposed
+- Status: Accepted
 - Date: 2026-03-17
 - Supersedes: ADR 0030 (Incident State and Packet Rebuild)
 - Amends: ADR 0029 (Ambient Read Model), ADR 0031 (Platform Event Contract)
