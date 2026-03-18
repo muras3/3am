@@ -6,7 +6,6 @@
   "scripts": {
     "build": "tsc && cp -r src/transport/proto dist/transport/",
     "bundle": "esbuild src/server.ts --bundle --platform=node --format=esm --outfile=bundle/server.mjs --external:pg-native",
-    "bundle:vercel": "esbuild src/vercel-entry.ts --bundle --platform=node --format=esm --target=node20 --outfile=bundle/vercel.mjs --external:pg-native --external:better-sqlite3 --define:process.env.npm_package_version=\\\"0.1.0\\\"",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "typecheck": "tsc --noEmit",

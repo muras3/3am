@@ -98,7 +98,7 @@ export class PostgresTelemetryAdapter implements TelemetryStoreDriver {
   constructor(connectionString?: string) {
     const url = connectionString ?? process.env["DATABASE_URL"];
     if (!url) throw new Error("DATABASE_URL is required for PostgresTelemetryAdapter");
-    this.client = postgres(url, { max: 10, prepare: false });
+    this.client = postgres(url, { max: 10, prepare: false, connect_timeout: 10 });
     this.db = drizzle(this.client, {
       schema: { pgTelemetrySpans, pgTelemetryMetrics, pgTelemetryLogs, pgIncidentEvidenceSnapshots },
     });

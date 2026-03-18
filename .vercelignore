@@ -1,0 +1,7 @@
+validation/
+docs/
+.claude/
+.worktrees/
+codeql_*.db/
+test-results/
+playwright-report/

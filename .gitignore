@@ -18,9 +18,6 @@ validation/.env
 validation/.env.staging
 .vercel
 
-# Vercel build artifact (esbuild output copied here by buildCommand)
-/api/
-
 # Staging reports (local screenshots/notes — not for OSS)
 validation/reports/
 
@@ -32,3 +29,4 @@ packages/diagnosis/src/*.js
 packages/diagnosis/src/*.js.map
 packages/diagnosis/src/*.d.ts
 packages/diagnosis/src/*.d.ts.map
+.env*.local

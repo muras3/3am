@@ -1,37 +1,48 @@
 /**
  * Vercel Serverless Function entry point.
  *
- * Thin wrapper around createApp() using hono/vercel adapter.
+ * Uses named HTTP method exports (GET, POST) required by @vercel/node
+ * with Web Standard API. Calls Hono's app.fetch() directly instead of
+ * hono/vercel handle() which relies on unsupported export default.
+ *
  * - Lazy init: PostgresAdapter + migrate runs once per cold start
  * - consoleDist NOT passed — Vercel serves console SPA as static files
  * - server.ts (Node.js entry) is preserved for local/Docker use
  */
-import { handle } from "hono/vercel";
+import type { Hono } from "hono";
 import { createApp } from "./index.js";
 import { PostgresAdapter } from "./storage/drizzle/postgres.js";
 import { PostgresTelemetryAdapter } from "./telemetry/drizzle/postgres.js";
 
-type Handler = (req: Request, requestContext?: { waitUntil?: (p: Promise<unknown>) => void }) => Response | Promise<Response>;
+let appPromise: Promise<Hono> | null = null;
 
-let handlerPromise: Promise<Handler> | null = null;
+async function getApp(): Promise<Hono> {
+  if (!appPromise) {
+    appPromise = (async () => {
+      let storage: PostgresAdapter | undefined;
+      let telemetryStore: PostgresTelemetryAdapter | undefined;
 
-async function init(): Promise<Handler> {
-  let storage: PostgresAdapter | undefined;
-  let telemetryStore: PostgresTelemetryAdapter | undefined;
+      if (process.env["DATABASE_URL"]) {
+        storage = new PostgresAdapter();
+        await storage.migrate();
+        telemetryStore = new PostgresTelemetryAdapter();
+        await telemetryStore.migrate();
+      }
 
-  if (process.env["DATABASE_URL"]) {
-    storage = new PostgresAdapter();
-    await storage.migrate();
-    telemetryStore = new PostgresTelemetryAdapter();
-    await telemetryStore.migrate();
+      return createApp(storage, { telemetryStore });
+    })();
   }
-
-  const app = createApp(storage, { telemetryStore });
-  return handle(app);
+  return appPromise;
 }
 
-export default async function handler(req: Request, requestContext?: { waitUntil?: (p: Promise<unknown>) => void }): Promise<Response> {
-  handlerPromise ??= init();
-  const h = await handlerPromise;
-  return h(req, requestContext);
+async function handleRequest(request: Request): Promise<Response> {
+  const app = await getApp();
+  return app.fetch(request);
 }
+
+export const GET = handleRequest;
+export const POST = handleRequest;
+export const PUT = handleRequest;
+export const PATCH = handleRequest;
+export const DELETE = handleRequest;
+export const OPTIONS = handleRequest;
