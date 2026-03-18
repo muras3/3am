@@ -16,6 +16,7 @@ codeql_*.db/
 # Staging env (contains real auth token — never commit)
 validation/.env
 validation/.env.staging
+validation/.env.vercel
 .vercel
 
 # Staging reports (local screenshots/notes — not for OSS)
@@ -30,3 +31,4 @@ packages/diagnosis/src/*.js.map
 packages/diagnosis/src/*.d.ts
 packages/diagnosis/src/*.d.ts.map
 .env*.local
+.vercelignore
