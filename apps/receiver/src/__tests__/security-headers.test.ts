@@ -33,7 +33,7 @@ describe("Security response headers", () => {
     expect(res.headers.get("X-Frame-Options")).toBe("DENY");
     expect(res.headers.get("Referrer-Policy")).toBe("strict-origin-when-cross-origin");
     expect(res.headers.get("Content-Security-Policy")).toBe(
-      "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'",
+      "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com",
     );
   });
 

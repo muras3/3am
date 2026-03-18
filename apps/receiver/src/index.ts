@@ -69,7 +69,7 @@ export function createApp(storage?: StorageDriver, options?: AppOptions): Hono {
     c.res.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
     c.res.headers.set(
       "Content-Security-Policy",
-      "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'",
+      "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com",
     );
   });
 
