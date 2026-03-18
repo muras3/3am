@@ -165,9 +165,9 @@
 | 項目                                          | 状態                  |
 | ------------------------------------------- | ------------------- |
 | `receiver:bundle`                           | ❌ `echo 'TODO'` のまま |
-| Deploy config (vercel.json / wrangler.toml) | ❌ なし                |
-| Health check endpoint                       | ❌ なし                |
-| Security headers (CSP/X-Frame-Options)      | ❌ なし                |
+| Deploy config (vercel.json / wrangler.toml) | ✅ vercel.json + vercel-entry.ts (V-2) |
+| Health check endpoint                       | ✅ `/healthz` (V-2 で検証済み) |
+| Security headers (CSP/X-Frame-Options)      | ✅ (P2 で実装済み)        |
 | Rate limiting                               | ❌ なし                |
 | 構造化ログ                                       | ❌ なし                |
 | 48h auto-close                              | ❌ deferred          |
@@ -280,7 +280,7 @@ Overall:  B+ → B+ → B  → B+ → B+
 | #   | 課題                    | 理由                                           |
 | --- | --------------------- | -------------------------------------------- |
 | V-1 | ~~全5シナリオ再実行~~ **DONE** | **7.4 → 7.8/8 改善確認。** シナリオ2: 5/8→8/8 (ADR 0033)、シナリオ3: 5/8→7/8 |
-| V-2 | **Vercel に1回デプロイ**    | core differentiator の実証                      |
+| V-2 | ~~Vercel に1回デプロイ~~ **DONE** | **E2E 動作確認、8/8 診断スコア。** 課題: LLM 発火タイミング (V2-1) |
 | V-3 | **operator 30秒体験の検証** | プロダクト定義の充足確認                                 |
 
 
@@ -336,9 +336,61 @@ Overall:  B+ → B+ → B  → B+ → B+
 
 **「基盤改善がユーザー価値に届いているか」の問いに対して、V-1 で肯定的な回答が得られた。** TelemetryStore の evidence scoring と trace-based formation は、Railway staging の end-to-end パイプラインで 7.4 → 7.8/8 の改善として実測された。特にシナリオ 2 の 5/8 → 8/8 は formation 修正の直接的な効果であり、「内部データモデルの改善がユーザーに届く」ことを示している。
 
-残る V-2 (Vercel deploy) と V-3 (operator 30 秒体験) は引き続き未検証。
+残る ~~V-2 (Vercel deploy)~~ と V-3 (operator 30 秒体験) は引き続き未検証。
+
+---
+
+## V-2: Vercel Deploy E2E 検証 (2026-03-18)
+
+- 環境: Vercel Hobby (free) + Neon Free (PostgreSQL)
+- URL: `https://3amoncall.vercel.app`
+- モデル: Claude Sonnet 4.6 (GitHub Actions workflow_dispatch)
+- プロンプト: v5 (7-step SRE investigation)
+
+### 検証結果
+
+| チェック項目 | 結果 |
+|---|---|
+| `GET /healthz` → 200 | ✅ `{"status":"ok","version":"0.1.0"}` |
+| OTel ingest (`POST /v1/traces`) | ✅ incident 作成、generation=36 |
+| `GET /api/incidents` | ✅ incident 一覧取得 |
+| `GET /api/services` | ✅ SpanBuffer 動作 (warm instance) |
+| Neon テーブル自動作成 | ✅ cold start で migrate 実行 |
+| thin event → GitHub Actions dispatch | ✅ `dispatchThinEvent` → workflow_dispatch |
+| LLM 診断 (GitHub Actions) | ✅ Sonnet 4.6, 45s |
+| callback → Receiver 保存 | ✅ `POST /api/diagnosis/:id` → 200 |
+| Console SPA | ✅ static 配信 |
+| `make vercel` (validation scenario) | ✅ end-to-end 動作 |
+
+### 診断スコア (シナリオ 1: third_party_api_rate_limit_cascade)
+
+| 軸 | スコア |
+|---|---|
+| Immediate action effectiveness | 2/2 |
+| Root cause accuracy | 2/2 |
+| Causal chain coherence | 2/2 |
+| Absence of dangerous suggestions | 2/2 |
+| **合計** | **8/8** |
+
+Packet evidence: changedMetrics=10, representativeTraces=4, relevantLogs=2, triggerSignals=4。全データが正常に蓄積されていた。
+
+### 発見された課題
+
+| # | 重要度 | 内容 |
+|---|---|---|
+| V2-1 | **HIGH** | **LLM 診断の発火タイミングに設計上の保証なし。** debouncer は in-memory timer で serverless では動作しないため `DIAGNOSIS_GENERATION_THRESHOLD=0`, `DIAGNOSIS_MAX_WAIT_MS=0` で無効化。thin event は generation 1 (インシデント作成直後) で即発火する。今回は GitHub Actions の cold start (checkout + install + build = 4〜5分) の間に OTel batch が 35 回到着し、packet fetch 時点で generation 36 の full-data が取得できたが、これは偶然。Actions が高速化した場合、不完全なデータで診断が走るリスクがある。 |
+
+### V2-1 の対策案 (未実施)
+
+serverless 環境では in-memory debouncer が使えないため、platform-native な遅延メカニズムが必要:
+- **Vercel**: Cron Job (1分間隔) で未診断インシデントをポーリング → generation が安定 (N秒変化なし) したら dispatch
+- **Cloudflare**: Durable Objects + Alarms
+- **共通**: GitHub Actions 側に wait step 追加 (e.g., 60s sleep before packet fetch)
+
+最も低コストな暫定策は Actions の `sleep 60` で、platform 側の変更不要。
 
 ---
 
 *Reviewed by Claude Opus 4.6 (3-agent parallel audit + synthesis) — 2026-03-17*
 *V-1 diagnosis re-evaluation by Claude Sonnet 4.6 via Max plan (manual, Railway staging) — 2026-03-17*
+*V-2 Vercel deploy verification — 2026-03-18*
