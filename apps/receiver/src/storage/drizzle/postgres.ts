@@ -65,7 +65,7 @@ export class PostgresAdapter implements StorageDriver {
   constructor(connectionString?: string) {
     const url = connectionString ?? process.env["DATABASE_URL"];
     if (!url) throw new Error("DATABASE_URL is required for PostgresAdapter");
-    this.client = postgres(url, { max: 10 });
+    this.client = postgres(url, { max: 10, prepare: false, connect_timeout: 10 });
     this.db = drizzle(this.client, { schema: { pgIncidents, pgThinEvents } });
   }
 

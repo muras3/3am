@@ -1,6 +1,7 @@
 {
   "name": "3amoncall",
   "private": true,
+  "type": "module",
   "packageManager": "pnpm@10.31.0",
   "scripts": {
     "build": "turbo build",
