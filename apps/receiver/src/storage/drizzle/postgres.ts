@@ -18,7 +18,7 @@ import type {
   StorageDriver,
   TelemetryScope,
 } from "../interface.js";
-import { MAX_SPAN_MEMBERSHIP } from "../interface.js";
+import { MAX_ANOMALOUS_SIGNALS, MAX_SPAN_MEMBERSHIP } from "../interface.js";
 import type { LegacyRawState } from "./lazy-migration.js";
 import {
   deriveTelemetryScopeFromPacket,
@@ -266,7 +266,10 @@ export class PostgresAdapter implements StorageDriver {
       const current = row.anomalousSignals
         ? (row.anomalousSignals as AnomalousSignal[])
         : deriveAnomalousSignalsFromRawState(row.rawState as LegacyRawState | null);
-      const updated = [...current, ...signals];
+      let updated = [...current, ...signals];
+      if (updated.length > MAX_ANOMALOUS_SIGNALS) {
+        updated = updated.slice(updated.length - MAX_ANOMALOUS_SIGNALS);
+      }
       await tx.update(pgIncidents)
         .set({ anomalousSignals: updated, updatedAt: new Date() })
         .where(eq(pgIncidents.incidentId, incidentId));

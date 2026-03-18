@@ -20,7 +20,7 @@ import type {
   StorageDriver,
   TelemetryScope,
 } from "../interface.js";
-import { MAX_SPAN_MEMBERSHIP } from "../interface.js";
+import { MAX_ANOMALOUS_SIGNALS, MAX_SPAN_MEMBERSHIP } from "../interface.js";
 import type { LegacyRawState } from "./lazy-migration.js";
 import {
   deriveTelemetryScopeFromPacket,
@@ -235,7 +235,10 @@ export class SQLiteAdapter implements StorageDriver {
       const current = row.anomalousSignals
         ? (JSON.parse(row.anomalousSignals) as AnomalousSignal[])
         : deriveAnomalousSignalsFromRawState(rawState);
-      const updated = [...current, ...signals];
+      let updated = [...current, ...signals];
+      if (updated.length > MAX_ANOMALOUS_SIGNALS) {
+        updated = updated.slice(updated.length - MAX_ANOMALOUS_SIGNALS);
+      }
       tx.update(incidents)
         .set({ anomalousSignals: JSON.stringify(updated), updatedAt: new Date().toISOString() })
         .where(eq(incidents.incidentId, incidentId))

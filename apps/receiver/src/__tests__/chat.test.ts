@@ -7,6 +7,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { MemoryAdapter } from "../storage/adapters/memory.js";
 import { createApp } from "../index.js";
+import { COOKIE_NAME } from "../middleware/session-cookie.js";
 import type { DiagnosisResult } from "@3amoncall/core";
 
 // ── Mock Anthropic SDK ─────────────────────────────────────────────────────
@@ -27,6 +28,26 @@ function makeApp() {
 
 function authHeader() {
   return { Authorization: `Bearer ${TOKEN}` };
+}
+
+/** Extract the session cookie value from a Set-Cookie response header. */
+function extractSessionCookie(res: Response): string {
+  const header = res.headers.get("set-cookie") ?? "";
+  const match = header.match(new RegExp(`${COOKIE_NAME}=([^;]+)`));
+  return match?.[1] ?? "";
+}
+
+/** Get a valid session cookie by hitting an /api/* endpoint. */
+async function getSessionCookie(app: ReturnType<typeof makeApp>): Promise<string> {
+  const res = await app.request("/api/incidents");
+  return extractSessionCookie(res);
+}
+
+function chatHeaders(sessionCookie: string) {
+  return {
+    "Content-Type": "application/json",
+    Cookie: `${COOKIE_NAME}=${sessionCookie}`,
+  };
 }
 
 const minimalDiagnosis: DiagnosisResult = {
@@ -64,8 +85,11 @@ const minimalDiagnosis: DiagnosisResult = {
   },
 };
 
+let seedCounter = 0;
 async function seedIncidentWithDiagnosis(app: ReturnType<typeof makeApp>) {
-  // Ingest an anomalous span to create an incident
+  seedCounter++;
+  const suffix = String(seedCounter).padStart(3, "0");
+  // Ingest an anomalous span to create an incident — unique service per call for incident isolation
   const ingestRes = await app.request("/v1/traces", {
     method: "POST",
     headers: { ...authHeader(), "Content-Type": "application/json" },
@@ -74,7 +98,7 @@ async function seedIncidentWithDiagnosis(app: ReturnType<typeof makeApp>) {
         {
           resource: {
             attributes: [
-              { key: "service.name", value: { stringValue: "web" } },
+              { key: "service.name", value: { stringValue: `web-${suffix}` } },
               { key: "deployment.environment.name", value: { stringValue: "production" } },
             ],
           },
@@ -82,8 +106,8 @@ async function seedIncidentWithDiagnosis(app: ReturnType<typeof makeApp>) {
             {
               spans: [
                 {
-                  traceId: "abc123",
-                  spanId: "span001",
+                  traceId: `abc123_${suffix}`,
+                  spanId: `span${suffix}`,
                   name: "POST /checkout",
                   startTimeUnixNano: "1741392000000000000",
                   endTimeUnixNano: "1741392005200000000",
@@ -121,6 +145,7 @@ describe("POST /api/chat/:incidentId", () => {
   let app: ReturnType<typeof makeApp>;
 
   beforeEach(() => {
+    seedCounter = 0;
     app = makeApp();
     mockCreate.mockClear();
     mockCreate.mockResolvedValue({
@@ -128,26 +153,45 @@ describe("POST /api/chat/:incidentId", () => {
     });
   });
 
-  it("returns 404 without Bearer (Console same-origin route — no Bearer required, ADR 0028)", async () => {
+  // ── Session cookie auth (B-11) ────────────────────────────────────────────
+
+  it("returns 401 without session cookie (B-11)", async () => {
     const res = await app.request("/api/chat/inc_unknown", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ message: "Hello", history: [] }),
     });
-    // Not 401 — /api/chat/* is a Console route, auth is same-origin (ADR 0028)
-    expect(res.status).toBe(404);
+    expect(res.status).toBe(401);
+  });
+
+  it("returns 401 with invalid session cookie (B-11)", async () => {
+    const res = await app.request("/api/chat/inc_unknown", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: `${COOKIE_NAME}=invalid-token` },
+      body: JSON.stringify({ message: "Hello", history: [] }),
+    });
+    expect(res.status).toBe(401);
+  });
+
+  it("session cookie is set on /api/* responses (B-11)", async () => {
+    const res = await app.request("/api/incidents");
+    const cookie = extractSessionCookie(res);
+    expect(cookie).toBeTruthy();
+    expect(cookie.length).toBe(64); // 32 bytes hex
   });
 
   it("returns 404 for unknown incidentId", async () => {
+    const cookie = await getSessionCookie(app);
     const res = await app.request("/api/chat/inc_unknown", {
       method: "POST",
-      headers: { ...authHeader(), "Content-Type": "application/json" },
+      headers: chatHeaders(cookie),
       body: JSON.stringify({ message: "Hello", history: [] }),
     });
     expect(res.status).toBe(404);
   });
 
   it("returns 404 when diagnosis is not yet available", async () => {
+    const cookie = await getSessionCookie(app);
     // Create incident without attaching diagnosis
     const ingestRes = await app.request("/v1/traces", {
       method: "POST",
@@ -187,33 +231,36 @@ describe("POST /api/chat/:incidentId", () => {
 
     const res = await app.request(`/api/chat/${incidentId}`, {
       method: "POST",
-      headers: { ...authHeader(), "Content-Type": "application/json" },
+      headers: chatHeaders(cookie),
       body: JSON.stringify({ message: "What happened?", history: [] }),
     });
     expect(res.status).toBe(404);
   });
 
   it("returns 400 when message is missing", async () => {
+    const cookie = await getSessionCookie(app);
     const incidentId = await seedIncidentWithDiagnosis(app);
     const res = await app.request(`/api/chat/${incidentId}`, {
       method: "POST",
-      headers: { ...authHeader(), "Content-Type": "application/json" },
+      headers: chatHeaders(cookie),
       body: JSON.stringify({ history: [] }),
     });
     expect(res.status).toBe(400);
   });
 
   it("returns 400 when message exceeds 500 chars", async () => {
+    const cookie = await getSessionCookie(app);
     const incidentId = await seedIncidentWithDiagnosis(app);
     const res = await app.request(`/api/chat/${incidentId}`, {
       method: "POST",
-      headers: { ...authHeader(), "Content-Type": "application/json" },
+      headers: chatHeaders(cookie),
       body: JSON.stringify({ message: "x".repeat(501), history: [] }),
     });
     expect(res.status).toBe(400);
   });
 
   it("returns 422 when history exceeds 10 turns", async () => {
+    const cookie = await getSessionCookie(app);
     const incidentId = await seedIncidentWithDiagnosis(app);
     const history = Array.from({ length: 11 }, (_, i) => ({
       role: i % 2 === 0 ? "user" : "assistant",
@@ -221,17 +268,18 @@ describe("POST /api/chat/:incidentId", () => {
     }));
     const res = await app.request(`/api/chat/${incidentId}`, {
       method: "POST",
-      headers: { ...authHeader(), "Content-Type": "application/json" },
+      headers: chatHeaders(cookie),
       body: JSON.stringify({ message: "One more question", history }),
     });
     expect(res.status).toBe(422);
   });
 
   it("returns 200 with reply on valid request", async () => {
+    const cookie = await getSessionCookie(app);
     const incidentId = await seedIncidentWithDiagnosis(app);
     const res = await app.request(`/api/chat/${incidentId}`, {
       method: "POST",
-      headers: { ...authHeader(), "Content-Type": "application/json" },
+      headers: chatHeaders(cookie),
       body: JSON.stringify({ message: "What should I do first?", history: [] }),
     });
     expect(res.status).toBe(200);
@@ -241,6 +289,7 @@ describe("POST /api/chat/:incidentId", () => {
   });
 
   it("passes conversation history to the model", async () => {
+    const cookie = await getSessionCookie(app);
     const incidentId = await seedIncidentWithDiagnosis(app);
     const history = [
       { role: "user", content: "First question" },
@@ -248,7 +297,7 @@ describe("POST /api/chat/:incidentId", () => {
     ];
     await app.request(`/api/chat/${incidentId}`, {
       method: "POST",
-      headers: { ...authHeader(), "Content-Type": "application/json" },
+      headers: chatHeaders(cookie),
       body: JSON.stringify({ message: "Follow up", history }),
     });
 
@@ -258,5 +307,53 @@ describe("POST /api/chat/:incidentId", () => {
     expect(callArgs.messages[0]?.role).toBe("user");
     expect(callArgs.messages[1]?.role).toBe("assistant");
     expect(callArgs.messages[2]?.role).toBe("user");
+  });
+
+  // ── Rate limiting (B-11) ──────────────────────────────────────────────────
+
+  it("returns 429 when rate limit is exceeded (B-11)", async () => {
+    const cookie = await getSessionCookie(app);
+    const incidentId = await seedIncidentWithDiagnosis(app);
+
+    // Send 10 requests (within limit)
+    for (let i = 0; i < 10; i++) {
+      const res = await app.request(`/api/chat/${incidentId}`, {
+        method: "POST",
+        headers: chatHeaders(cookie),
+        body: JSON.stringify({ message: "question", history: [] }),
+      });
+      expect(res.status).toBe(200);
+    }
+
+    // 11th request should be rate limited
+    const res = await app.request(`/api/chat/${incidentId}`, {
+      method: "POST",
+      headers: chatHeaders(cookie),
+      body: JSON.stringify({ message: "question", history: [] }),
+    });
+    expect(res.status).toBe(429);
+  });
+
+  it("rate limit is independent per incident ID (B-11)", async () => {
+    const cookie = await getSessionCookie(app);
+    const incidentId1 = await seedIncidentWithDiagnosis(app);
+
+    // Exhaust rate limit on incidentId1
+    for (let i = 0; i < 10; i++) {
+      await app.request(`/api/chat/${incidentId1}`, {
+        method: "POST",
+        headers: chatHeaders(cookie),
+        body: JSON.stringify({ message: "q", history: [] }),
+      });
+    }
+
+    // Different incident should still be allowed (same IP, different ID)
+    const incidentId2 = await seedIncidentWithDiagnosis(app);
+    const res = await app.request(`/api/chat/${incidentId2}`, {
+      method: "POST",
+      headers: chatHeaders(cookie),
+      body: JSON.stringify({ message: "q", history: [] }),
+    });
+    expect(res.status).toBe(200);
   });
 });

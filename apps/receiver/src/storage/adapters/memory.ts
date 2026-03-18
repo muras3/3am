@@ -1,6 +1,6 @@
 import type { IncidentPacket, DiagnosisResult, PlatformEvent, ThinEvent } from "@3amoncall/core";
 import type { AnomalousSignal, Incident, IncidentPage, InitialMembership, StorageDriver } from "../interface.js";
-import { MAX_SPAN_MEMBERSHIP } from "../interface.js";
+import { MAX_ANOMALOUS_SIGNALS, MAX_SPAN_MEMBERSHIP } from "../interface.js";
 
 export class MemoryAdapter implements StorageDriver {
   private incidents: Map<string, Incident> = new Map();
@@ -91,6 +91,10 @@ export class MemoryAdapter implements StorageDriver {
     const incident = this.incidents.get(incidentId);
     if (!incident) return;
     incident.anomalousSignals.push(...signals);
+    // Cap: drop oldest entries when exceeding MAX_ANOMALOUS_SIGNALS
+    if (incident.anomalousSignals.length > MAX_ANOMALOUS_SIGNALS) {
+      incident.anomalousSignals.splice(0, incident.anomalousSignals.length - MAX_ANOMALOUS_SIGNALS);
+    }
   }
 
   async appendPlatformEvents(incidentId: string, events: PlatformEvent[]): Promise<void> {

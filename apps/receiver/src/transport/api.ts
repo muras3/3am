@@ -1,6 +1,8 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { Hono } from "hono";
 import { DiagnosisResultSchema, type DiagnosisResult } from "@3amoncall/core";
+import { rateLimiter } from "../middleware/rate-limit.js";
+import { SessionStore, sessionCookieSetter, sessionCookieValidator } from "../middleware/session-cookie.js";
 import type { Incident, IncidentPage, StorageDriver } from "../storage/interface.js";
 import { spanMembershipKey } from "../storage/interface.js";
 import type { SpanBuffer } from "../ambient/span-buffer.js";
@@ -79,6 +81,18 @@ function validateChatBody(body: unknown): { message: string; history: ChatTurn[]
 
 export function createApiRouter(storage: StorageDriver, spanBuffer: SpanBuffer | undefined, telemetryStore: TelemetryStoreDriver): Hono {
   const app = new Hono();
+
+  // Session cookie + rate limit for chat endpoint (B-11)
+  // Cookie is set on all /api/* responses; validated only on /api/chat/*.
+  // Active only when RECEIVER_AUTH_TOKEN is set (production). In dev mode, rate limit only.
+  const authToken = process.env["RECEIVER_AUTH_TOKEN"];
+  const allowInsecure = process.env["ALLOW_INSECURE_DEV_MODE"] === "true";
+  if (authToken) {
+    const sessionStore = new SessionStore();
+    app.use("/api/*", sessionCookieSetter(sessionStore, { secure: !allowInsecure }));
+    app.use("/api/chat/*", sessionCookieValidator(sessionStore));
+  }
+  app.use("/api/chat/*", rateLimiter({ windowMs: 60_000, max: 10 }));
 
   app.get("/api/incidents", async (c) => {
     const limitStr = c.req.query("limit");

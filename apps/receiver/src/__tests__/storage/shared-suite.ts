@@ -404,6 +404,35 @@ export function runStorageSuite(
       expect(incident?.anomalousSignals[1].signal).toBe("slow_span");
     });
 
+    it("appendAnomalousSignals caps at MAX_ANOMALOUS_SIGNALS (B-12)", async () => {
+      const { MAX_ANOMALOUS_SIGNALS } = await import("../../storage/interface.js");
+      const packet = makePacket();
+      await driver.createIncident(packet, makeMembership({
+        anomalousSignals: [],
+      }));
+
+      // Generate signals exceeding the cap
+      const signals: AnomalousSignal[] = Array.from(
+        { length: MAX_ANOMALOUS_SIGNALS + 50 },
+        (_, i) => ({
+          signal: `sig_${i}`,
+          firstSeenAt: new Date(Date.now() + i * 1000).toISOString(),
+          entity: "web",
+          spanId: `span_${i}`,
+        }),
+      );
+
+      await driver.appendAnomalousSignals(packet.incidentId, signals);
+
+      const incident = await driver.getIncident(packet.incidentId);
+      expect(incident?.anomalousSignals.length).toBeLessThanOrEqual(MAX_ANOMALOUS_SIGNALS);
+      // Newest signals should be kept, oldest dropped
+      expect(incident?.anomalousSignals[0]?.signal).toBe("sig_50");
+      expect(incident?.anomalousSignals[incident.anomalousSignals.length - 1]?.signal).toBe(
+        `sig_${MAX_ANOMALOUS_SIGNALS + 49}`,
+      );
+    });
+
     it("appendAnomalousSignals is a no-op for unknown incidentId", async () => {
       const sig: AnomalousSignal = {
         signal: "http_500", firstSeenAt: "2026-03-09T03:00:00Z",
