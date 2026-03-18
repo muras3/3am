@@ -37,14 +37,17 @@ describe("Security response headers", () => {
     );
   });
 
-  it("includes security headers on healthz (registered before middleware, so no headers)", async () => {
+  it("does not include security headers on healthz (registered before middleware)", async () => {
     process.env["ALLOW_INSECURE_DEV_MODE"] = "true";
     const app = createApp();
     const res = await app.request("/healthz");
 
+    expect(res.status).toBe(200);
     // healthz is registered before the security headers middleware,
     // so it does NOT get security headers. This is expected — healthz
     // is infra-only and doesn't serve user content.
-    expect(res.status).toBe(200);
+    expect(res.headers.get("X-Content-Type-Options")).toBeNull();
+    expect(res.headers.get("X-Frame-Options")).toBeNull();
+    expect(res.headers.get("Content-Security-Policy")).toBeNull();
   });
 });
