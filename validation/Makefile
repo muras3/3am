@@ -1,8 +1,9 @@
 # validation/Makefile
 #
-# Two test environments:
+# Three test environments:
 #   make local    — receiver on host, Docker containers send OTel to localhost
 #   make railway  — receiver on Railway, Docker containers send OTel to staging
+#   make vercel   — receiver on Vercel, Docker containers send OTel to preview/prod
 #
 # Quick start (local):
 #   make local
@@ -12,6 +13,11 @@
 #   make railway                          # up + run + down (all-in-one)
 #   make railway-up && make railway-run   # manual control
 #   make railway-down
+#
+# Quick start (vercel):
+#   make vercel                           # up + run + down (all-in-one)
+#   make vercel-up && make vercel-run     # manual control
+#   make vercel-down
 #
 # Legacy railway shortcuts (same as railway-*):
 #   make up / make run SCENARIO=<id> / make down
@@ -28,7 +34,7 @@ COMPOSE_FILES := -f docker-compose.yml -f docker-compose.staging.yml
 ENV_FILE      ?= .env.staging
 DC            := docker compose $(COMPOSE_FILES) --env-file $(ENV_FILE)
 
-.PHONY: local railway railway-up railway-run railway-down railway-diagnose up run down ps logs check-env help
+.PHONY: local railway railway-up railway-run railway-down railway-diagnose vercel vercel-up vercel-run vercel-down vercel-diagnose up run down ps logs check-env check-env-vercel help
 
 # ── Local ────────────────────────────────────────────────────────────────────
 
@@ -66,6 +72,32 @@ railway-diagnose: check-env
 	  MAX_DIAGNOSES=$(MAX_DIAGNOSES) \
 	  npx tsx validation/tools/local-diagnose.ts
 
+# ── Vercel ──────────────────────────────────────────────────────────────────
+
+VERCEL_ENV_FILE   ?= .env.vercel
+VERCEL_DC         := docker compose $(COMPOSE_FILES) --env-file $(VERCEL_ENV_FILE)
+
+vercel: vercel-up vercel-run vercel-down
+
+vercel-up: check-env-vercel
+	$(VERCEL_DC) up -d --wait otel-collector postgres mock-stripe web loadgen
+
+vercel-run: check-env-vercel
+	$(VERCEL_DC) run --rm -e FAST_MODE=$(FAST_MODE) scenario-runner node /app/run.js $(SCENARIO)
+
+vercel-down:
+	@[ -f $(VERCEL_ENV_FILE) ] && $(VERCEL_DC) down || docker compose down
+
+vercel-diagnose: check-env-vercel
+	@export $$(grep -v '^#' $(VERCEL_ENV_FILE) | xargs) && \
+	  cd .. && \
+	  RECEIVER_BASE_URL=$$RECEIVER_ENDPOINT \
+	  RECEIVER_AUTH_TOKEN=$$RECEIVER_AUTH_TOKEN \
+	  USE_CLAUDE_CLI=$(USE_CLAUDE_CLI) \
+	  DIAGNOSIS_MODEL=$(DIAGNOSIS_MODEL) \
+	  MAX_DIAGNOSES=$(MAX_DIAGNOSES) \
+	  npx tsx validation/tools/local-diagnose.ts
+
 # Legacy aliases (backward compat)
 up: railway-up
 run: railway-run
@@ -92,6 +124,19 @@ check-env:
 	@echo "OK: $(ENV_FILE) looks valid"
 	@echo "  endpoint: $$(grep RECEIVER_ENDPOINT $(ENV_FILE) | cut -d= -f2)"
 
+check-env-vercel:
+	@test -f $(VERCEL_ENV_FILE) || \
+	  (echo "ERROR: $(VERCEL_ENV_FILE) not found."; \
+	   echo "  cp .env.vercel.example .env.vercel"; \
+	   echo "  Then fill in RECEIVER_ENDPOINT and RECEIVER_AUTH_TOKEN"; \
+	   exit 1)
+	@grep -q 'RECEIVER_ENDPOINT=https://' $(VERCEL_ENV_FILE) || \
+	  (echo "ERROR: RECEIVER_ENDPOINT must be https://...vercel.app"; exit 1)
+	@grep -qE 'RECEIVER_AUTH_TOKEN=.{10}' $(VERCEL_ENV_FILE) || \
+	  (echo "ERROR: RECEIVER_AUTH_TOKEN missing or too short"; exit 1)
+	@echo "OK: $(VERCEL_ENV_FILE) looks valid"
+	@echo "  endpoint: $$(grep RECEIVER_ENDPOINT $(VERCEL_ENV_FILE) | cut -d= -f2)"
+
 help:
 	@echo ""
 	@echo "Local testing (receiver on host):"
@@ -113,8 +158,17 @@ help:
 	@echo "  make railway-diagnose USE_CLAUDE_CLI=1 DIAGNOSIS_MODEL=claude-opus-4-6"
 	@echo "  make railway-diagnose USE_CLAUDE_CLI=1 DIAGNOSIS_MODEL=gpt-5.4"
 	@echo ""
+	@echo "Vercel staging:"
+	@echo "  make vercel                         up + run + down (all-in-one)"
+	@echo "  make vercel-up                      start local containers → Vercel"
+	@echo "  make vercel-run                     run scenario"
+	@echo "  make vercel-run SCENARIO=<id>       specific scenario"
+	@echo "  make vercel-down                    tear down"
+	@echo "  make vercel-diagnose USE_CLAUDE_CLI=1              diagnose Vercel incident via CLI"
+	@echo ""
 	@echo "Utilities:"
 	@echo "  make check-env                      verify .env.staging"
+	@echo "  make check-env-vercel               verify .env.vercel"
 	@echo "  make ps                             container status"
 	@echo "  make logs                           tail otel-collector logs"
 	@echo ""
