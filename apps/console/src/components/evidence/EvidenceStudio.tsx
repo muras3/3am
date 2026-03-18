@@ -1,4 +1,5 @@
 import { useEffect, useState, useMemo, useCallback } from "react";
+import { createPortal } from "react-dom";
 import { useQuery } from "@tanstack/react-query";
 import type { Incident, TelemetrySpan } from "../../api/types.js";
 import { incidentQueries } from "../../api/queries.js";
@@ -99,7 +100,7 @@ export function EvidenceStudio({ incident, onClose }: Props) {
 
   const severity = vm.severity;
 
-  return (
+  return createPortal(
     <div className="es-app" data-testid="evidence-studio">
       {/* Row 1: Header */}
       <div className="es-header">
@@ -179,7 +180,8 @@ export function EvidenceStudio({ incident, onClose }: Props) {
           activeTab={activeTab}
         />
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 

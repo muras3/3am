@@ -40,6 +40,9 @@
   content:''; width:6px; height:6px; border-radius:50%;
   background:var(--accent);
 }
+.severity-badge[data-severity="medium"]::before { background:var(--amber); }
+.severity-badge[data-severity="low"]::before { background:var(--teal); }
+.severity-badge[data-severity="unknown"]::before { background:var(--ink-3); }
 .topbar-time {
   margin-left:auto;
   font-family:var(--mono); font-size:12px; color:var(--ink-3);

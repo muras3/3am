@@ -56,15 +56,16 @@ describe("EvidenceStudio", () => {
     expect(onClose).toHaveBeenCalledOnce();
   });
 
-  it("renders 4-row grid layout (.es-app)", () => {
-    const { container } = render(
+  it("renders 4-row grid layout (.es-app) via portal", () => {
+    render(
       <EvidenceStudio incident={testIncident} onClose={vi.fn()} />,
       { wrapper: createWrapper() },
     );
-    expect(container.querySelector(".es-app")).toBeInTheDocument();
-    expect(container.querySelector(".es-header")).toBeInTheDocument();
-    expect(container.querySelector(".es-tabs")).toBeInTheDocument();
-    expect(container.querySelector(".es-content")).toBeInTheDocument();
+    // EvidenceStudio uses createPortal to document.body
+    expect(document.querySelector(".es-app")).toBeInTheDocument();
+    expect(document.querySelector(".es-header")).toBeInTheDocument();
+    expect(document.querySelector(".es-tabs")).toBeInTheDocument();
+    expect(document.querySelector(".es-content")).toBeInTheDocument();
   });
 
   it("renders EvidenceTabs with all 4 tabs", () => {
@@ -80,12 +81,13 @@ describe("EvidenceStudio", () => {
 
   it("switches tab when Metrics is clicked", async () => {
     const user = userEvent.setup();
-    const { container } = render(
+    render(
       <EvidenceStudio incident={testIncident} onClose={vi.fn()} />,
       { wrapper: createWrapper() },
     );
     await user.click(screen.getByText("Metrics"));
-    const activeTab = container.querySelector(".es-tab.active");
+    // EvidenceStudio renders via createPortal to document.body
+    const activeTab = document.querySelector(".es-tab.active");
     expect(activeTab?.textContent).toContain("Metrics");
   });
 

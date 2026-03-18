@@ -1,9 +1,10 @@
 /* ── App layout ────────────────────────────────────────────── */
 .es-app {
-  width:100%; height:100vh;
+  position:fixed; inset:0; z-index:100;
   display:grid;
   grid-template-rows: auto auto auto 1fr;
   overflow:hidden;
+  background:var(--bg);
   animation: page-enter 0.35s ease-out;
 }
 
@@ -151,20 +152,15 @@
   transition:background 0.15s;
 }
 .tg-header:hover { background:var(--panel-3); }
-.tg-meta { display:flex; align-items:center; gap:8px; }
 .tg-method {
   font-family:var(--mono); font-size:var(--fs-xxs); font-weight:600; color:var(--ink-2);
   padding:1px 5px; background:var(--panel-3); border-radius:var(--radius-xs);
 }
 .tg-route { font-family:var(--mono); font-size:var(--fs-xs); font-weight:500; }
-.tg-trace-id { font-family:var(--mono); font-size:var(--fs-xxs); color:var(--ink-3); }
-.tg-stats { display:flex; align-items:center; gap:10px; }
+.tg-id { font-family:var(--mono); font-size:var(--fs-xxs); color:var(--ink-3); }
 .tg-status { font-size:var(--fs-xs); font-weight:700; font-family:var(--mono); }
-.tg-status-error { color:var(--accent-text); }
-.tg-status-ok { color:var(--good); }
-.tg-duration { font-family:var(--mono); font-size:var(--fs-xs); color:var(--ink-2); }
-.tg-span-count { font-size:var(--fs-xxs); color:var(--ink-3); }
-.tg-body { position:relative; }
+.tg-dur { font-family:var(--mono); font-size:var(--fs-xs); color:var(--ink-2); }
+.tg-count { font-size:var(--fs-xxs); color:var(--ink-3); }
 
 /* ── Traces: Ruler ─────────────────────────────────────────── */
 .wf-ruler {
