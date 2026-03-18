@@ -7,20 +7,40 @@ export interface RateLimitOptions {
   max: number;
 }
 
+const GC_INTERVAL_MS = 60_000;
+
 /**
  * In-memory sliding window rate limiter.
  * Key: `${clientIP}:${lastPathSegment}` (IP + incident ID for /api/chat/:id).
  */
 export function rateLimiter(opts: RateLimitOptions): MiddlewareHandler {
   const store = new Map<string, number[]>();
+  let lastGc = Date.now();
+
+  function gc(now: number): void {
+    if (now - lastGc < GC_INTERVAL_MS) return;
+    lastGc = now;
+    const cutoff = now - opts.windowMs;
+    for (const [key, timestamps] of store) {
+      const valid = timestamps.filter((t) => t > cutoff);
+      if (valid.length === 0) store.delete(key);
+      else store.set(key, valid);
+    }
+  }
 
   return async (c, next) => {
-    const ip = c.req.header("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
+    const ip =
+      c.req.header("cf-connecting-ip") ??
+      c.req.header("x-real-ip") ??
+      c.req.header("x-forwarded-for")?.split(",")[0]?.trim() ??
+      "unknown";
     const segments = c.req.path.split("/");
     const resourceId = segments[segments.length - 1] ?? "unknown";
     const key = `${ip}:${resourceId}`;
 
     const now = Date.now();
+    gc(now);
+
     const cutoff = now - opts.windowMs;
     let timestamps = store.get(key);
 
