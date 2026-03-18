@@ -1,6 +1,8 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { Hono } from "hono";
+import { bearerAuth } from "hono/bearer-auth";
 import { DiagnosisResultSchema, type DiagnosisResult } from "@3amoncall/core";
+import { rateLimiter } from "../middleware/rate-limit.js";
 import type { Incident, IncidentPage, StorageDriver } from "../storage/interface.js";
 import { spanMembershipKey } from "../storage/interface.js";
 import type { SpanBuffer } from "../ambient/span-buffer.js";
@@ -79,6 +81,13 @@ function validateChatBody(body: unknown): { message: string; history: ChatTurn[]
 
 export function createApiRouter(storage: StorageDriver, spanBuffer: SpanBuffer | undefined, telemetryStore: TelemetryStoreDriver): Hono {
   const app = new Hono();
+
+  // Auth + rate limit for chat endpoint — scoped here to avoid editing index.ts (B-11)
+  const authToken = process.env["RECEIVER_AUTH_TOKEN"];
+  if (authToken) {
+    app.use("/api/chat/*", bearerAuth({ token: authToken }));
+  }
+  app.use("/api/chat/*", rateLimiter({ windowMs: 60_000, max: 10 }));
 
   app.get("/api/incidents", async (c) => {
     const limitStr = c.req.query("limit");
