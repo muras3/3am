@@ -1,6 +1,6 @@
 # ADR 0033: Cross-Service Incident Formation via Trace Propagation
 
-- Status: Proposed
+- Status: Accepted
 - Date: 2026-03-17
 - Amends: ADR 0017 (Incident Formation Rules v1)
 

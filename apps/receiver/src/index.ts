@@ -1,6 +1,7 @@
 import { randomUUID } from "crypto";
 import { readFileSync } from "fs";
-import { join } from "path";
+import { dirname, join } from "path";
+import { fileURLToPath } from "url";
 import { Hono } from "hono";
 import { bearerAuth } from "hono/bearer-auth";
 import { cors } from "hono/cors";
@@ -19,6 +20,15 @@ export type { StorageDriver } from "./storage/interface.js";
 export type { Incident, IncidentPage } from "./storage/interface.js";
 export { MemoryAdapter } from "./storage/adapters/memory.js";
 export type { TelemetryStoreDriver } from "./telemetry/interface.js";
+
+const APP_VERSION: string = (() => {
+  try {
+    const dir = dirname(fileURLToPath(import.meta.url));
+    return JSON.parse(readFileSync(join(dir, "../package.json"), "utf-8")).version;
+  } catch {
+    return process.env["npm_package_version"] ?? "0.0.0";
+  }
+})();
 
 export interface AppOptions {
   /** Absolute path to the built Console dist directory. When set, Receiver serves
@@ -39,6 +49,9 @@ export function createApp(storage?: StorageDriver, options?: AppOptions): Hono {
   const app = new Hono();
   const allowInsecure = process.env["ALLOW_INSECURE_DEV_MODE"] === "true";
 
+  // Health check — no auth, no CORS (infra-only)
+  app.get("/healthz", (c) => c.json({ status: "ok", version: APP_VERSION }));
+
   // CORS middleware — must be registered before auth so preflight OPTIONS passes (ADR 0019 v2)
   const corsOrigin: string | undefined = allowInsecure
     ? "*"
@@ -47,6 +60,18 @@ export function createApp(storage?: StorageDriver, options?: AppOptions): Hono {
     app.use("/*", cors({ origin: corsOrigin }));
   }
   // If corsOrigin is falsy (prod without CORS_ALLOWED_ORIGIN), no CORS header → same-origin only
+
+  // Security headers — after CORS, before auth
+  app.use("/*", async (c, next) => {
+    await next();
+    c.res.headers.set("X-Content-Type-Options", "nosniff");
+    c.res.headers.set("X-Frame-Options", "DENY");
+    c.res.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
+    c.res.headers.set(
+      "Content-Security-Policy",
+      "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com",
+    );
+  });
 
   const authToken = process.env["RECEIVER_AUTH_TOKEN"];
 

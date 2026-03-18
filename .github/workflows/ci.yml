@@ -115,6 +115,10 @@ jobs:
       - name: Lint console
         run: pnpm --filter @3amoncall/console lint
 
+      # receiver bundle (depends on console build for turbo.json task graph)
+      - name: Bundle receiver
+        run: pnpm --filter @3amoncall/receiver bundle
+
       # console E2E (Playwright — Chromium only)
       - name: Install Playwright browsers
         run: pnpm --filter @3amoncall/console exec playwright install chromium --with-deps

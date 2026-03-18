@@ -1,6 +1,6 @@
 # ADR 0031: Platform Event Contract
 
-- Status: Proposed (amended 2026-03-17)
+- Status: Accepted (amended 2026-03-17)
 - Date: 2026-03-13
 - Amended: 2026-03-17
 
