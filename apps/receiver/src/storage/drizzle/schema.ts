@@ -34,5 +34,12 @@ export const thinEvents = sqliteTable("thin_events", {
   createdAt: text("created_at").notNull().default(sql`(strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))`),
 });
 
+export const settings = sqliteTable("settings", {
+  key: text("key").primaryKey(),
+  value: text("value").notNull(),
+  updatedAt: text("updated_at").notNull().default(sql`(strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))`),
+});
+
 export type IncidentsTable = typeof incidents;
 export type ThinEventsTable = typeof thinEvents;
+export type SettingsTable = typeof settings;

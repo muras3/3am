@@ -28,9 +28,9 @@ import {
   deriveAnomalousSignalsFromRawState,
   derivePlatformEventsFromRawState,
 } from "./lazy-migration.js";
-import { incidents, thinEvents } from "./schema.js";
+import { incidents, thinEvents, settings } from "./schema.js";
 
-type Schema = { incidents: typeof incidents; thinEvents: typeof thinEvents };
+type Schema = { incidents: typeof incidents; thinEvents: typeof thinEvents; settings: typeof settings };
 
 // ── SQLiteAdapter ───────────────────────────────────────────────────────────
 
@@ -42,7 +42,7 @@ export class SQLiteAdapter implements StorageDriver {
       typeof dbPathOrConnection === "string"
         ? new Database(dbPathOrConnection)
         : dbPathOrConnection;
-    this.db = drizzle(conn, { schema: { incidents, thinEvents } });
+    this.db = drizzle(conn, { schema: { incidents, thinEvents, settings } });
     this.migrate();
   }
 
@@ -93,6 +93,13 @@ export class SQLiteAdapter implements StorageDriver {
     `);
     this.db.run(sql`
       CREATE INDEX IF NOT EXISTS idx_incidents_packet_id ON incidents(json_extract(packet, '$.packetId'))
+    `);
+    this.db.run(sql`
+      CREATE TABLE IF NOT EXISTS settings (
+        key        TEXT PRIMARY KEY,
+        value      TEXT NOT NULL,
+        updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+      )
     `);
   }
 
@@ -329,5 +336,18 @@ export class SQLiteAdapter implements StorageDriver {
       incident_id: r.incidentId,
       packet_id: r.packetId,
     }));
+  }
+
+  async getSettings(key: string): Promise<string | null> {
+    const [row] = await this.db.select().from(settings).where(eq(settings.key, key));
+    return row?.value ?? null;
+  }
+
+  async setSettings(key: string, value: string): Promise<void> {
+    const now = new Date().toISOString();
+    await this.db
+      .insert(settings)
+      .values({ key, value, updatedAt: now })
+      .onConflictDoUpdate({ target: settings.key, set: { value, updatedAt: now } });
   }
 }

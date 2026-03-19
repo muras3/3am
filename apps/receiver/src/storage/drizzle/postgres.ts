@@ -54,7 +54,13 @@ const pgThinEvents = pgTable("thin_events", {
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
-type PgSchema = { pgIncidents: typeof pgIncidents; pgThinEvents: typeof pgThinEvents };
+const pgSettings = pgTable("settings", {
+  key: text("key").primaryKey(),
+  value: text("value").notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+type PgSchema = { pgIncidents: typeof pgIncidents; pgThinEvents: typeof pgThinEvents; pgSettings: typeof pgSettings };
 
 // ── PostgresAdapter ─────────────────────────────────────────────────────────
 
@@ -66,7 +72,7 @@ export class PostgresAdapter implements StorageDriver {
     const url = connectionString ?? process.env["DATABASE_URL"];
     if (!url) throw new Error("DATABASE_URL is required for PostgresAdapter");
     this.client = postgres(url, { max: 10, prepare: false, connect_timeout: 10 });
-    this.db = drizzle(this.client, { schema: { pgIncidents, pgThinEvents } });
+    this.db = drizzle(this.client, { schema: { pgIncidents, pgThinEvents, pgSettings } });
   }
 
   /** Run DDL to create tables if they don't exist. Call once at startup. */
@@ -116,6 +122,13 @@ export class PostgresAdapter implements StorageDriver {
     `);
     await this.db.execute(drizzleSql`
       CREATE INDEX IF NOT EXISTS idx_incidents_packet_id ON incidents((packet->>'packetId'))
+    `);
+    await this.db.execute(drizzleSql`
+      CREATE TABLE IF NOT EXISTS settings (
+        key        TEXT PRIMARY KEY,
+        value      TEXT NOT NULL,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+      )
     `);
   }
 
@@ -360,5 +373,17 @@ export class PostgresAdapter implements StorageDriver {
       incident_id: r.incidentId,
       packet_id: r.packetId,
     }));
+  }
+
+  async getSettings(key: string): Promise<string | null> {
+    const [row] = await this.db.select().from(pgSettings).where(eq(pgSettings.key, key));
+    return row?.value ?? null;
+  }
+
+  async setSettings(key: string, value: string): Promise<void> {
+    await this.db
+      .insert(pgSettings)
+      .values({ key, value })
+      .onConflictDoUpdate({ target: pgSettings.key, set: { value, updatedAt: new Date() } });
   }
 }

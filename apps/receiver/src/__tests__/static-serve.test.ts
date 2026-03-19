@@ -5,7 +5,7 @@
  * and that auth scoping is correct (ADR 0028):
  * - /v1/*           → 401 without Bearer
  * - /api/diagnosis/* → 401 without Bearer
- * - /api/*           → 200 without Bearer (same-origin Console routes)
+ * - /api/*           → 401 without Bearer, 200 with Bearer (ADR 0034: Console uses localStorage token)
  * - /               → index.html (static SPA)
  * - /unknown-route  → index.html (SPA fallback)
  */
@@ -85,10 +85,15 @@ describe("Receiver static serving (E4)", () => {
     expect(text).toContain("Console");
   });
 
-  it("GET /api/incidents returns 200 without Bearer (same-origin Console route)", async () => {
+  it("GET /api/incidents returns 401 without Bearer and 200 with Bearer (ADR 0034)", async () => {
     const app = makeApp();
-    const res = await app.request("/api/incidents");
-    expect(res.status).toBe(200);
+    const noAuthRes = await app.request("/api/incidents");
+    expect(noAuthRes.status).toBe(401);
+
+    const authRes = await app.request("/api/incidents", {
+      headers: { Authorization: `Bearer ${TOKEN}` },
+    });
+    expect(authRes.status).toBe(200);
   });
 
   it("POST /api/diagnosis/:id returns 401 without Bearer (GitHub Actions route)", async () => {

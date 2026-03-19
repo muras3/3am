@@ -4,6 +4,11 @@ import { fileURLToPath } from "url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
+// Path exported so global-setup.ts can write to the same location.
+// The file is written by globalSetup before any test runs, so it always exists
+// when Playwright loads storageState for each test context.
+export const E2E_STORAGE_STATE = path.resolve(__dirname, "e2e/.auth/storage.json");
+
 export default defineConfig({
   testDir: "./e2e",
   testIgnore: ["**/screenshots.spec.ts"],
@@ -17,6 +22,7 @@ export default defineConfig({
   use: {
     baseURL: "http://localhost:5174",
     trace: "on-first-retry",
+    storageState: E2E_STORAGE_STATE,
   },
 
   projects: [

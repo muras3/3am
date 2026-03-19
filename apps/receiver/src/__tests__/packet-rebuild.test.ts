@@ -223,18 +223,18 @@ describe("Gate 1: packetId stability", () => {
     );
   });
 
-  it("thin event's packet_id matches the stable packetId", async () => {
-    const { app, storage } = setupApp();
+  it("second batch attaches to the same incident (packetId stable)", async () => {
+    const { app } = setupApp();
 
     const res1 = await postTraces(app, makeErrorBatch1());
-    const { packetId } = (await res1.json()) as { packetId: string };
+    const { packetId, incidentId } = (await res1.json()) as { packetId: string; incidentId: string };
 
-    // Attach second batch
-    await postTraces(app, makeErrorBatch2());
+    // Attach second batch — should return same incidentId
+    const res2 = await postTraces(app, makeErrorBatch2());
+    const { incidentId: incidentId2 } = (await res2.json()) as { incidentId: string };
 
-    const events = await storage.listThinEvents();
-    expect(events).toHaveLength(1);
-    expect(events[0].packet_id).toBe(packetId);
+    expect(incidentId2).toBe(incidentId);
+    expect(packetId).toBeTruthy();
   });
 });
 
@@ -425,14 +425,13 @@ describe("Gate 4: Regression — existing behaviour", () => {
     expect(["critical", "high", "medium", "low"]).toContain(pkt.signalSeverity);
   });
 
-  it("thin event is saved to storage on incident creation", async () => {
+  it("incident is created and returned on first error span (ADR 0034: no thin events)", async () => {
     const res = await postTraces(app, makeErrorBatch1());
     const { incidentId } = (await res.json()) as { incidentId: string };
 
-    const events = await storage.listThinEvents();
-    expect(events).toHaveLength(1);
-    expect(events[0].event_type).toBe("incident.created");
-    expect(events[0].incident_id).toBe(incidentId);
+    expect(incidentId).toBeTruthy();
+    const incident = await storage.getIncident(incidentId);
+    expect(incident).not.toBeNull();
   });
 
   it("POST /api/diagnosis/:id saves diagnosisResult and GET returns it", async () => {
@@ -611,13 +610,18 @@ describe("Gate 4: Regression — existing behaviour", () => {
     delete process.env["RECEIVER_AUTH_TOKEN"];
   });
 
-  it("Console routes (/api/incidents) are accessible without Bearer token", async () => {
+  it("Console routes (/api/incidents) require Bearer auth (ADR 0034)", async () => {
     delete process.env["ALLOW_INSECURE_DEV_MODE"];
     process.env["RECEIVER_AUTH_TOKEN"] = "secret-gate4";
     const securedApp = createApp(new MemoryAdapter());
 
-    const res = await securedApp.request("/api/incidents");
-    expect(res.status).toBe(200);
+    const noAuthRes = await securedApp.request("/api/incidents");
+    expect(noAuthRes.status).toBe(401);
+
+    const authRes = await securedApp.request("/api/incidents", {
+      headers: { Authorization: "Bearer secret-gate4" },
+    });
+    expect(authRes.status).toBe(200);
 
     delete process.env["RECEIVER_AUTH_TOKEN"];
   });
