@@ -24,7 +24,7 @@ describe("Security response headers", () => {
     }
   });
 
-  it("includes all security headers on API responses", async () => {
+  it("includes all security headers on API responses (dev mode, no HSTS)", async () => {
     process.env["ALLOW_INSECURE_DEV_MODE"] = "true";
     const app = createApp();
     const res = await app.request("/api/incidents");
@@ -35,6 +35,21 @@ describe("Security response headers", () => {
     expect(res.headers.get("Content-Security-Policy")).toBe(
       "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com",
     );
+    // HSTS must NOT be set in dev mode
+    expect(res.headers.get("Strict-Transport-Security")).toBeNull();
+  });
+
+  it("includes HSTS in secure mode", async () => {
+    process.env["RECEIVER_AUTH_TOKEN"] = "test-token";
+    const app = createApp();
+    const res = await app.request("/api/incidents", {
+      headers: { Authorization: "Bearer test-token" },
+    });
+
+    expect(res.headers.get("Strict-Transport-Security")).toBe(
+      "max-age=31536000; includeSubDomains",
+    );
+    expect(res.headers.get("X-Content-Type-Options")).toBe("nosniff");
   });
 
   it("does not include security headers on healthz (registered before middleware)", async () => {
@@ -49,5 +64,6 @@ describe("Security response headers", () => {
     expect(res.headers.get("X-Content-Type-Options")).toBeNull();
     expect(res.headers.get("X-Frame-Options")).toBeNull();
     expect(res.headers.get("Content-Security-Policy")).toBeNull();
+    expect(res.headers.get("Strict-Transport-Security")).toBeNull();
   });
 });

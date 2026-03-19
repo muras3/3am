@@ -173,11 +173,12 @@ describe("POST /api/chat/:incidentId", () => {
     expect(res.status).toBe(401);
   });
 
-  it("session cookie is set on /api/* responses (B-11)", async () => {
+  it("session cookie is set on /api/* responses as JWT (B-11)", async () => {
     const res = await app.request("/api/incidents", { headers: authHeader() });
     const cookie = extractSessionCookie(res);
     expect(cookie).toBeTruthy();
-    expect(cookie.length).toBe(64); // 32 bytes hex
+    // JWT format: three base64url segments separated by dots
+    expect(cookie.split(".")).toHaveLength(3);
   });
 
   it("returns 404 for unknown incidentId", async () => {
@@ -356,4 +357,5 @@ describe("POST /api/chat/:incidentId", () => {
     });
     expect(res.status).toBe(200);
   });
+
 });
