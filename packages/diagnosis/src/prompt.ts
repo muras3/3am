@@ -1,7 +1,7 @@
 import type { IncidentPacket } from "@3amoncall/core";
 
 export function buildPrompt(packet: IncidentPacket): string {
-  const { window, scope, triggerSignals, evidence, pointers } = packet;
+  const { window, scope, triggerSignals, evidence, pointers, signalSeverity } = packet;
 
   const windowSection = [
     `  Start:    ${window.start}`,
@@ -15,6 +15,7 @@ export function buildPrompt(packet: IncidentPacket): string {
     `  Affected services:     ${scope.affectedServices.join(", ")}`,
     `  Affected routes:       ${scope.affectedRoutes.join(", ")}`,
     `  Affected dependencies: ${scope.affectedDependencies.join(", ") || "(none)"}`,
+    `  Signal severity:       ${signalSeverity ?? "(not computed)"}`,
   ].join("\n");
 
   const signalsSection = triggerSignals

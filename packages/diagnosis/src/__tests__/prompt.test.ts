@@ -145,6 +145,20 @@ describe("buildPrompt", () => {
     expect(prompt).not.toContain("[truncated]");
   });
 
+  it("renders signalSeverity in Scope section when provided", () => {
+    const packetWithSeverity: IncidentPacket = {
+      ...packet,
+      signalSeverity: "critical",
+    };
+    const prompt = buildPrompt(packetWithSeverity);
+    expect(prompt).toContain("Signal severity:       critical");
+  });
+
+  it("renders '(not computed)' when signalSeverity is undefined", () => {
+    const prompt = buildPrompt(packet);
+    expect(prompt).toContain("Signal severity:       (not computed)");
+  });
+
   it("consumes representativeTraces with peerService correctly (diagnosis gate)", () => {
     // Packet with a peerService=stripe span and a HTTP 429 span in representativeTraces
     const packetWithPeer: IncidentPacket = {
