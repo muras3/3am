@@ -2,6 +2,10 @@
  * Integration tests for the diagnosis debouncer — verifies that inline diagnosis
  * is deferred when DIAGNOSIS_GENERATION_THRESHOLD / DIAGNOSIS_MAX_WAIT_MS are set,
  * and immediate when both are 0.
+ *
+ * waitUntil-based: scheduleDelayedDiagnosis uses a waitUntil fallback (fire-and-forget)
+ * in the local Node.js environment. The delayed sleep + runIfNeeded chain runs as a
+ * fire-and-forget promise controlled by fake timers.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { MemoryAdapter } from "../storage/adapters/memory.js";
@@ -54,7 +58,7 @@ describe("Diagnosis debouncer integration", () => {
   });
 
   it("does NOT run diagnosis immediately when debouncer is active", async () => {
-    process.env["DIAGNOSIS_GENERATION_THRESHOLD"] = "5";
+    process.env["DIAGNOSIS_GENERATION_THRESHOLD"] = "999";
     process.env["DIAGNOSIS_MAX_WAIT_MS"] = "180000";
     const app = createApp(new MemoryAdapter());
 
@@ -79,7 +83,14 @@ describe("Diagnosis debouncer integration", () => {
     });
 
     expect(mockRun).not.toHaveBeenCalled();
-    await vi.advanceTimersByTimeAsync(5000);
+
+    // scheduleDelayedDiagnosis has an internal async wrapper (getWaitUntil + sleep).
+    // Advance micro-ticks so the async wrapper resolves, then advance the sleep timer.
+    await vi.advanceTimersByTimeAsync(0); // resolve getWaitUntil fallback
+    await vi.advanceTimersByTimeAsync(5000); // resolve sleep
+    // runIfNeeded is async — flush one more tick
+    await vi.advanceTimersByTimeAsync(0);
+
     expect(mockRun).toHaveBeenCalledTimes(1);
   });
 
@@ -109,14 +120,20 @@ describe("Diagnosis debouncer integration", () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(errorSpanPayload("t1", "s1")),
     });
+
+    // Flush async work so delayed diagnosis schedules but doesn't fire yet
+    await vi.advanceTimersByTimeAsync(0);
     expect(mockRun).not.toHaveBeenCalled();
 
-    // Second batch — attaches to same incident → rebuild → generation threshold reached
+    // Second batch — attaches to same incident → rebuild → generation threshold checked
     await app.request("/v1/traces", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(errorSpanPayload("t1", "s2")),
     });
+
+    // checkGenerationThreshold fires runIfNeeded asynchronously
+    await vi.advanceTimersByTimeAsync(0);
 
     expect(mockRun).toHaveBeenCalledTimes(1);
   });
