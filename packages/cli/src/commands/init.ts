@@ -25,6 +25,25 @@ function getInstallCommand(pm: string, deps: string[]): string {
   }
 }
 
+/**
+ * Returns true if the project is TypeScript (has typescript dep or tsconfig.json).
+ */
+export function isTypeScriptProject(
+  cwd: string,
+  allDeps: Record<string, string>,
+): boolean {
+  if ("typescript" in allDeps) return true;
+  if (existsSync(join(cwd, "tsconfig.json"))) return true;
+  return false;
+}
+
+/**
+ * Returns true if the project is ESM (package.json has "type": "module").
+ */
+export function isEsmProject(pkg: { type?: string }): boolean {
+  return pkg.type === "module";
+}
+
 export function updateEnvFile(
   content: string,
   updates: Record<string, string>,
@@ -52,7 +71,7 @@ export async function runInit(_argv: string[]): Promise<void> {
     return;
   }
 
-  let pkg: { name?: string; dependencies?: Record<string, string>; devDependencies?: Record<string, string> };
+  let pkg: { name?: string; type?: string; dependencies?: Record<string, string>; devDependencies?: Record<string, string> };
   try {
     pkg = JSON.parse(readFileSync(pkgPath, "utf-8")) as typeof pkg;
   } catch {
@@ -65,27 +84,10 @@ export async function runInit(_argv: string[]): Promise<void> {
   const framework = detectFramework(allDeps);
   const pm = detectPackageManager(cwd);
   const serviceName = pkg.name ?? "my-service";
+  const isTs = isTypeScriptProject(cwd, allDeps);
+  const isEsm = isEsmProject(pkg);
 
-  const instrumentationPath = join(cwd, "instrumentation.ts");
-  if (existsSync(instrumentationPath)) {
-    process.stdout.write("instrumentation.ts already exists — skipping.\n");
-  } else {
-    const template = getInstrumentationTemplate(framework);
-    writeFileSync(instrumentationPath, template, "utf-8");
-    process.stdout.write("Created instrumentation.ts\n");
-  }
-
-  const envPath = join(cwd, ".env");
-  const envContent = existsSync(envPath) ? readFileSync(envPath, "utf-8") : "";
-  const updatedEnv = updateEnvFile(envContent, {
-    OTEL_SERVICE_NAME: serviceName,
-    OTEL_RESOURCE_ATTRIBUTES: "deployment.environment.name=development",
-    OTEL_EXPORTER_OTLP_ENDPOINT: "http://localhost:3333",
-    OTEL_EXPORTER_OTLP_HEADERS: "",
-  });
-  writeFileSync(envPath, updatedEnv, "utf-8");
-  process.stdout.write("Updated .env\n");
-
+  // --- Install deps first (Finding 6: avoid partial state on failure) ---
   const pkgBackupPath = pkgPath + ".bak";
   copyFileSync(pkgPath, pkgBackupPath);
 
@@ -109,16 +111,47 @@ export async function runInit(_argv: string[]): Promise<void> {
     // backup cleanup failure is non-fatal
   }
 
+  // --- Generate instrumentation file (Finding 3: match extension to language) ---
+  const instrumentationExt = isTs ? ".ts" : ".js";
+  const instrumentationFile = `instrumentation${instrumentationExt}`;
+  const instrumentationPath = join(cwd, instrumentationFile);
+
+  if (existsSync(instrumentationPath)) {
+    process.stdout.write(`${instrumentationFile} already exists — skipping.\n`);
+  } else {
+    const template = getInstrumentationTemplate(framework);
+    writeFileSync(instrumentationPath, template, "utf-8");
+    process.stdout.write(`Created ${instrumentationFile}\n`);
+  }
+
+  // --- Update .env ---
+  const envPath = join(cwd, ".env");
+  const envContent = existsSync(envPath) ? readFileSync(envPath, "utf-8") : "";
+  const updatedEnv = updateEnvFile(envContent, {
+    OTEL_SERVICE_NAME: serviceName,
+    OTEL_RESOURCE_ATTRIBUTES: "deployment.environment.name=development",
+    OTEL_EXPORTER_OTLP_ENDPOINT: "http://localhost:3333",
+    OTEL_EXPORTER_OTLP_HEADERS: "",
+  });
+  writeFileSync(envPath, updatedEnv, "utf-8");
+  process.stdout.write("Updated .env\n");
+
   process.stdout.write("\n3amoncall init complete!\n\n");
 
+  // --- Startup guidance (Finding 3: match flag to module system) ---
   if (framework === "nextjs") {
     process.stdout.write(
       "Next.js detected: instrumentation.ts uses register() export — Next.js loads it automatically.\n",
     );
+  } else if (isEsm) {
+    process.stdout.write(
+      `Add --import to your startup command:\n` +
+      `  node --import ./${instrumentationFile} app.js\n`,
+    );
   } else {
     process.stdout.write(
-      "Add --require ./instrumentation.js to your startup command:\n" +
-      "  node --require ./instrumentation.js app.js\n",
+      `Add --require to your startup command:\n` +
+      `  node --require ./${instrumentationFile} app.js\n`,
     );
   }
 
