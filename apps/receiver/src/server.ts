@@ -1,5 +1,5 @@
 import { serve } from "@hono/node-server";
-import { createApp } from "./index.js";
+import { createApp, resolveAuthToken } from "./index.js";
 import { PostgresAdapter } from "./storage/drizzle/postgres.js";
 import { PostgresTelemetryAdapter } from "./telemetry/drizzle/postgres.js";
 
@@ -27,7 +27,11 @@ async function main() {
     );
   }
 
-  const app = createApp(storage, { telemetryStore });
+  const resolvedAuthToken = storage
+    ? await resolveAuthToken(storage)
+    : null;
+
+  const app = createApp(storage, { telemetryStore, resolvedAuthToken });
 
   // Bind to 0.0.0.0 so the server is reachable from outside the process
   // (containers, VMs, any hosted environment).

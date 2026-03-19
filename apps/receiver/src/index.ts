@@ -14,12 +14,14 @@ import { createIngestRouter } from "./transport/ingest.js";
 import { createApiRouter } from "./transport/api.js";
 import { SpanBuffer } from "./ambient/span-buffer.js";
 import { DiagnosisDebouncer } from "./runtime/diagnosis-debouncer.js";
-import { dispatchThinEvent } from "./runtime/github-dispatch.js";
+import { DiagnosisRunner } from "./runtime/diagnosis-runner.js";
 
 export type { StorageDriver } from "./storage/interface.js";
 export type { Incident, IncidentPage } from "./storage/interface.js";
 export { MemoryAdapter } from "./storage/adapters/memory.js";
 export type { TelemetryStoreDriver } from "./telemetry/interface.js";
+
+const SETTINGS_KEY_AUTH_TOKEN = "receiver_auth_token";
 
 const APP_VERSION: string = (() => {
   try {
@@ -29,6 +31,27 @@ const APP_VERSION: string = (() => {
     return process.env["npm_package_version"] ?? "0.0.0";
   }
 })();
+
+/**
+ * Resolve the auth token for this instance.
+ * Priority: RECEIVER_AUTH_TOKEN env var > DB-stored token > auto-generated (saved to DB).
+ * In dev mode (ALLOW_INSECURE_DEV_MODE=true), returns null (auth skipped).
+ */
+export async function resolveAuthToken(storage: StorageDriver): Promise<string | null> {
+  const allowInsecure = process.env["ALLOW_INSECURE_DEV_MODE"] === "true";
+  if (allowInsecure) return null;
+
+  const envToken = process.env["RECEIVER_AUTH_TOKEN"];
+  if (envToken) return envToken;
+
+  const stored = await storage.getSettings(SETTINGS_KEY_AUTH_TOKEN);
+  if (stored) return stored;
+
+  const generated = randomUUID();
+  await storage.setSettings(SETTINGS_KEY_AUTH_TOKEN, generated);
+  console.log("[receiver] Generated new auth token — retrieve via /api/setup-token on first access");
+  return generated;
+}
 
 export interface AppOptions {
   /** Absolute path to the built Console dist directory. When set, Receiver serves
@@ -42,6 +65,11 @@ export interface AppOptions {
    *  When not provided, a MemoryTelemetryAdapter is auto-created (DJ-3).
    */
   telemetryStore?: TelemetryStoreDriver;
+  /**
+   * Pre-resolved auth token from resolveAuthToken().
+   * When provided, createApp skips env-var lookup and uses this directly.
+   */
+  resolvedAuthToken?: string | null;
 }
 
 export function createApp(storage?: StorageDriver, options?: AppOptions): Hono {
@@ -73,23 +101,32 @@ export function createApp(storage?: StorageDriver, options?: AppOptions): Hono {
     );
   });
 
-  const authToken = process.env["RECEIVER_AUTH_TOKEN"];
+  // Auth token — use pre-resolved token if provided, otherwise fall back to env var
+  const authToken: string | null | undefined =
+    "resolvedAuthToken" in (options ?? {})
+      ? options!.resolvedAuthToken
+      : process.env["RECEIVER_AUTH_TOKEN"] ?? null;
 
   if (!authToken) {
     if (!allowInsecure) {
       throw new Error(
-        "[receiver] RECEIVER_AUTH_TOKEN must be set. " +
+        "[receiver] No auth token available. " +
           "For local dev only, set ALLOW_INSECURE_DEV_MODE=true (ADR 0011)",
       );
     }
     console.warn("[receiver] auth disabled — ALLOW_INSECURE_DEV_MODE=true (dev only, ADR 0011)");
   } else {
-    // Auth is scoped by caller type (ADR 0028):
-    // - /v1/*           → OTel SDK ingest — requires Bearer token
-    // - /api/diagnosis/* → GitHub Actions callback — requires Bearer token
-    // - /api/* (other)  → Console SPA (same-origin) — no Bearer required
+    // /v1/*: OTel SDK ingest — requires Bearer token
     app.use("/v1/*", bearerAuth({ token: authToken }));
-    app.use("/api/diagnosis/*", bearerAuth({ token: authToken }));
+    // /api/setup-status and /api/setup-token are public (no auth) — registered before /api/* auth
+    // /api/*: Console API — requires Bearer token (ADR 0034: inline diagnosis, no GitHub Actions)
+    app.use("/api/*", async (c, next) => {
+      // Exempt setup endpoints from Bearer auth
+      if (c.req.path === "/api/setup-status" || c.req.path === "/api/setup-token") {
+        return next();
+      }
+      return bearerAuth({ token: authToken })(c, next);
+    });
   }
 
   // Auto-create SpanBuffer if not provided (ADR 0029: always active in production)
@@ -97,9 +134,12 @@ export function createApp(storage?: StorageDriver, options?: AppOptions): Hono {
   // Auto-create TelemetryStore if not provided (DJ-3: always available)
   const telemetryStore = options?.telemetryStore ?? new MemoryTelemetryAdapter();
 
-  // Diagnosis quiet period: defer thin event dispatch until evidence accumulates.
+  // DiagnosisRunner: inline LLM diagnosis (ADR 0034 — replaces GitHub Actions dispatch)
+  const runner = new DiagnosisRunner(store);
+
+  // Diagnosis quiet period: defer diagnosis until evidence accumulates.
   // Dual trigger: generation threshold OR max wait time (whichever fires first).
-  // Both = 0 → immediate dispatch (backward compat, no debouncer created).
+  // Both = 0 → immediate diagnosis (no debouncer).
   const parseEnvInt = (v: string | undefined, fallback: number) => {
     const n = parseInt(v ?? String(fallback), 10);
     return Number.isNaN(n) ? fallback : n;
@@ -111,17 +151,32 @@ export function createApp(storage?: StorageDriver, options?: AppOptions): Hono {
     : new DiagnosisDebouncer({
         generationThreshold: generationThreshold || Infinity,
         maxWaitMs: maxWaitMs || Infinity,
-        onReady: async (incidentId, packetId) => {
-          const thinEvent = {
-            event_id: "evt_" + randomUUID(),
-            event_type: "incident.created" as const,
-            incident_id: incidentId,
-            packet_id: packetId,
-          };
-          await store.saveThinEvent(thinEvent);
-          await dispatchThinEvent(thinEvent);
+        onReady: (incidentId) => {
+          void runner.run(incidentId);
         },
       });
+
+  // Setup endpoints (public, no auth required) — must be registered before API router
+  let setupComplete = false;
+
+  app.get("/api/setup-status", (c) => {
+    return c.json({ setupComplete });
+  });
+
+  app.get("/api/setup-token", async (c) => {
+    if (setupComplete) {
+      return c.json({ error: "setup already complete" }, 403);
+    }
+
+    const token = await store.getSettings(SETTINGS_KEY_AUTH_TOKEN);
+    if (!token) {
+      // env var mode or dev mode — no DB token
+      return c.json({ error: "token not available (env var mode)" }, 404);
+    }
+
+    setupComplete = true;
+    return c.json({ token });
+  });
 
   app.route("/", createIngestRouter(store, spanBuffer, telemetryStore, diagnosisDebouncer));
   app.route("/", createApiRouter(store, spanBuffer, telemetryStore));

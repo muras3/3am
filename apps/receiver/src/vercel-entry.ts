@@ -6,13 +6,19 @@
  * hono/vercel handle() which relies on unsupported export default.
  *
  * - Lazy init: PostgresAdapter + migrate runs once per cold start
+ * - AUTH_TOKEN: resolved from DB (auto-generated on first cold start) or env var
+ * - Immediate diagnosis mode: DIAGNOSIS_GENERATION_THRESHOLD=0 + DIAGNOSIS_MAX_WAIT_MS=0
  * - consoleDist NOT passed — Vercel serves console SPA as static files
  * - server.ts (Node.js entry) is preserved for local/Docker use
  */
 import type { Hono } from "hono";
-import { createApp } from "./index.js";
+import { createApp, resolveAuthToken } from "./index.js";
 import { PostgresAdapter } from "./storage/drizzle/postgres.js";
 import { PostgresTelemetryAdapter } from "./telemetry/drizzle/postgres.js";
+
+// Force immediate diagnosis mode on Vercel (serverless — timers don't persist across invocations)
+process.env["DIAGNOSIS_GENERATION_THRESHOLD"] = "0";
+process.env["DIAGNOSIS_MAX_WAIT_MS"] = "0";
 
 let appPromise: Promise<Hono> | null = null;
 
@@ -29,7 +35,11 @@ async function getApp(): Promise<Hono> {
         await telemetryStore.migrate();
       }
 
-      return createApp(storage, { telemetryStore });
+      const resolvedAuthToken = storage
+        ? await resolveAuthToken(storage)
+        : null;
+
+      return createApp(storage, { telemetryStore, resolvedAuthToken });
     })();
   }
   return appPromise;
