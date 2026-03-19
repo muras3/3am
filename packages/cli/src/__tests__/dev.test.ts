@@ -15,20 +15,20 @@ describe("runDev", () => {
   let originalExit: typeof process.exit;
   let originalEnv: NodeJS.ProcessEnv;
   let stderrOutput: string;
-  let stdoutOutput: string;
+  let __stdoutOutput: string;
 
   beforeEach(() => {
     originalExit = process.exit;
     originalEnv = { ...process.env };
     stderrOutput = "";
-    stdoutOutput = "";
+    _stdoutOutput = "";
     process.exit = vi.fn() as never;
     vi.spyOn(process.stderr, "write").mockImplementation((chunk) => {
       stderrOutput += String(chunk);
       return true;
     });
     vi.spyOn(process.stdout, "write").mockImplementation((chunk) => {
-      stdoutOutput += String(chunk);
+      _stdoutOutput += String(chunk);
       return true;
     });
     vi.clearAllMocks();
