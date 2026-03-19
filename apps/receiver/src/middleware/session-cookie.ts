@@ -1,67 +1,59 @@
-import { randomBytes } from "crypto";
+import { SignJWT, jwtVerify } from "jose";
 import type { MiddlewareHandler } from "hono";
 import { getCookie, setCookie } from "hono/cookie";
 
-const SESSION_TTL_MS = 24 * 60 * 60 * 1000; // 24h
-const GC_INTERVAL_MS = 60_000;
 export const COOKIE_NAME = "console_session";
 
-export class SessionStore {
-  private sessions = new Map<string, number>(); // token → expiresAt
-  private lastGc = Date.now();
+/** Set JWT session cookie on responses if one is not already present and valid. */
+export function jwtCookieSetter(opts: {
+  authToken: string;
+  secure: boolean;
+}): MiddlewareHandler {
+  const secret = new TextEncoder().encode(opts.authToken);
 
-  create(): string {
-    this.gc();
-    const token = randomBytes(32).toString("hex");
-    this.sessions.set(token, Date.now() + SESSION_TTL_MS);
-    return token;
-  }
-
-  validate(token: string): boolean {
-    const expiresAt = this.sessions.get(token);
-    if (expiresAt === undefined) return false;
-    if (Date.now() > expiresAt) {
-      this.sessions.delete(token);
-      return false;
-    }
-    return true;
-  }
-
-  private gc(): void {
-    const now = Date.now();
-    if (now - this.lastGc < GC_INTERVAL_MS) return;
-    this.lastGc = now;
-    for (const [token, expiresAt] of this.sessions) {
-      if (now > expiresAt) this.sessions.delete(token);
-    }
-  }
-}
-
-/** Set session cookie on responses if one is not already present and valid. */
-export function sessionCookieSetter(
-  store: SessionStore,
-  opts: { secure: boolean },
-): MiddlewareHandler {
   return async (c, next) => {
     const existing = getCookie(c, COOKIE_NAME);
-    if (!existing || !store.validate(existing)) {
-      const token = store.create();
-      setCookie(c, COOKIE_NAME, token, {
+    let needsCookie = true;
+
+    if (existing) {
+      try {
+        await jwtVerify(existing, secret);
+        needsCookie = false;
+      } catch {
+        // invalid or expired — will issue a new one
+      }
+    }
+
+    if (needsCookie) {
+      const jwt = await new SignJWT({ sub: "console" })
+        .setProtectedHeader({ alg: "HS256" })
+        .setIssuedAt()
+        .setExpirationTime("24h")
+        .sign(secret);
+      setCookie(c, COOKIE_NAME, jwt, {
         httpOnly: true,
         sameSite: "Strict",
         secure: opts.secure,
         path: "/",
       });
     }
+
     await next();
   };
 }
 
-/** Reject requests without a valid session cookie. */
-export function sessionCookieValidator(store: SessionStore): MiddlewareHandler {
+/** Reject requests without a valid JWT session cookie. */
+export function jwtCookieValidator(authToken: string): MiddlewareHandler {
+  const secret = new TextEncoder().encode(authToken);
+
   return async (c, next) => {
     const token = getCookie(c, COOKIE_NAME);
-    if (!token || !store.validate(token)) {
+    if (!token) {
+      return c.json({ error: "unauthorized" }, 401);
+    }
+    try {
+      await jwtVerify(token, secret);
+    } catch {
       return c.json({ error: "unauthorized" }, 401);
     }
     await next();
