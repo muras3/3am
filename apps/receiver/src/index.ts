@@ -100,6 +100,9 @@ export function createApp(storage?: StorageDriver, options?: AppOptions): Hono {
       "Content-Security-Policy",
       "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com",
     );
+    if (!allowInsecure) {
+      c.res.headers.set("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
+    }
   });
 
   // Auth token — use pre-resolved token if provided, otherwise fall back to env var
