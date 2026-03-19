@@ -232,11 +232,11 @@ export function SetupGate({ children }: SetupGateProps) {
       })
       .catch((err: unknown) => {
         const msg = err instanceof Error ? err.message : String(err);
-        // setup-status 404 / network error → could be dev mode (ALLOW_INSECURE_DEV_MODE)
-        // where the endpoint doesn't exist, or a real connectivity failure.
-        // Only treat genuine network failures as errors; 404 means dev mode → ready.
-        if (msg.includes("setup-status 404") || msg.includes("Failed to fetch")) {
-          // Dev mode: receiver has no /api/setup-status → proceed without auth
+        // 404 on /api/setup-status means the receiver is running with
+        // ALLOW_INSECURE_DEV_MODE=true and has no setup endpoint → proceed.
+        // All other failures (network error, 500, etc.) show an error UI
+        // so the user can retry rather than entering the app with no token.
+        if (msg.includes("setup-status 404")) {
           setState("ready");
         } else {
           setErrorMsg(msg);
