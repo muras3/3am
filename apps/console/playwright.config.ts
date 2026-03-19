@@ -1,5 +1,6 @@
 import { defineConfig, devices } from "@playwright/test";
 import path from "path";
+import { tmpdir } from "os";
 import { fileURLToPath } from "url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -17,6 +18,7 @@ export default defineConfig({
   use: {
     baseURL: "http://localhost:5174",
     trace: "on-first-retry",
+    storageState: path.join(tmpdir(), "3amoncall-e2e-storage.json"),
   },
 
   projects: [

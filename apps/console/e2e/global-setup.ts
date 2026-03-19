@@ -6,6 +6,8 @@ import { tmpdir } from "os";
 import path from "path";
 import { fileURLToPath } from "url";
 
+const STORAGE_STATE_PATH = path.join(tmpdir(), "3amoncall-e2e-storage.json");
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const RECEIVER_URL = "http://localhost:4319";
 const TOKEN = "e2e-test-token";
@@ -119,6 +121,19 @@ export default async function globalSetup(): Promise<void> {
     });
     seedProc.on("error", reject);
   });
+
+  // Write storageState so the Console SPA has the auth token in localStorage.
+  // Playwright loads this file via use.storageState in playwright.config.ts.
+  const storageState = {
+    cookies: [],
+    origins: [
+      {
+        origin: "http://localhost:5174",
+        localStorage: [{ name: "receiver_auth_token", value: TOKEN }],
+      },
+    ],
+  };
+  writeFileSync(STORAGE_STATE_PATH, JSON.stringify(storageState), "utf8");
 
   console.log("[E2E] Receiver ready and seeded with 5 incidents");
 }

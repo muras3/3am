@@ -1,8 +1,9 @@
 import type { Page } from "@playwright/test";
 
+const E2E_TOKEN = "e2e-test-token";
+
 /**
  * Incident list shape used by E2E navigation helpers.
- * /api/incidents is not behind bearerAuth (ADR 0011) — same-origin console access.
  */
 interface E2EIncidentSummary {
   incidentId: string;
@@ -10,7 +11,9 @@ interface E2EIncidentSummary {
 }
 
 async function listIncidents(page: Page): Promise<E2EIncidentSummary[]> {
-  const res = await page.request.get("/api/incidents?limit=20");
+  const res = await page.request.get("/api/incidents?limit=20", {
+    headers: { Authorization: `Bearer ${E2E_TOKEN}` },
+  });
   const data = (await res.json()) as { items: E2EIncidentSummary[] };
   return data.items;
 }
