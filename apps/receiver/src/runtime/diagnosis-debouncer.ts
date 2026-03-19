@@ -1,61 +1,108 @@
-export interface DiagnosisDebouncerOptions {
-  /** Fire when packet generation >= this value. */
+import type { StorageDriver } from "../storage/interface.js";
+import type { DiagnosisRunner } from "./diagnosis-runner.js";
+
+export interface DiagnosisConfig {
+  /** Fire when packet generation >= this value. 0 = disabled. */
   generationThreshold: number;
-  /** Fire after this many ms from track(), regardless of generation. */
+  /** Fire after this many ms from track(), regardless of generation. 0 = disabled. */
   maxWaitMs: number;
-  /** Callback when diagnosis should be dispatched. */
-  onReady: (incidentId: string, packetId: string) => void;
 }
 
-interface TrackedIncident {
-  packetId: string;
-  timer: ReturnType<typeof setTimeout>;
+type WaitUntilFn = (promise: Promise<unknown>) => void;
+
+/** Local Node.js fallback: fire-and-forget (no serverless lifecycle guarantee). */
+const localFallback: WaitUntilFn = (promise) => { void promise; };
+
+/** Cached waitUntil function — resolved once on first use. */
+let cachedWaitUntil: WaitUntilFn | null = null;
+
+/**
+ * Resolve the platform's `waitUntil` function (cached after first call).
+ *
+ * - Vercel: `import { waitUntil } from '@vercel/functions'`
+ * - Local / Node.js fallback: fire-and-forget
+ */
+export async function resolveWaitUntil(): Promise<WaitUntilFn> {
+  if (cachedWaitUntil) return cachedWaitUntil;
+
+  try {
+    const mod = await import("@vercel/functions");
+    if (typeof mod.waitUntil === "function") {
+      cachedWaitUntil = mod.waitUntil;
+      return cachedWaitUntil;
+    }
+  } catch {
+    // Not on Vercel — fall through to local fallback.
+  }
+
+  cachedWaitUntil = localFallback;
+  return cachedWaitUntil;
+}
+
+/** Reset the cached waitUntil — for testing only. */
+export function _resetWaitUntilForTest(): void {
+  cachedWaitUntil = null;
 }
 
 /**
- * Delays thin event dispatch until either:
- * 1. Packet generation reaches the threshold, or
- * 2. Max wait time elapses from incident creation.
+ * Schedule a delayed diagnosis using platform-native `waitUntil`.
  *
- * In-memory only — suitable for MemoryAdapter (local dev, Phase 1).
+ * After `maxWaitMs` elapses, checks whether diagnosis has already been
+ * produced for this incident (idempotency) and runs if not.
+ *
+ * Called when a new incident is created and the debouncer is active.
+ *
+ * @param waitUntilFn - Pre-resolved waitUntil function (from resolveWaitUntil at app startup).
  */
-export class DiagnosisDebouncer {
-  private readonly opts: DiagnosisDebouncerOptions;
-  private readonly tracked = new Map<string, TrackedIncident>();
+export function scheduleDelayedDiagnosis(
+  incidentId: string,
+  storage: StorageDriver,
+  runner: DiagnosisRunner,
+  opts: { maxWaitMs: number },
+  waitUntilFn: WaitUntilFn,
+): void {
+  waitUntilFn(
+    (async () => {
+      await sleep(opts.maxWaitMs);
+      await runIfNeeded(incidentId, storage, runner);
+    })(),
+  );
+}
 
-  constructor(opts: DiagnosisDebouncerOptions) {
-    this.opts = opts;
+/**
+ * Check whether the generation threshold has been reached.
+ * If so, run diagnosis immediately (no waitUntil needed).
+ *
+ * Called after every rebuildSnapshots to check if enough evidence has accumulated.
+ */
+export function checkGenerationThreshold(
+  incidentId: string,
+  generation: number,
+  storage: StorageDriver,
+  runner: DiagnosisRunner,
+  opts: { generationThreshold: number },
+): void {
+  if (opts.generationThreshold > 0 && generation >= opts.generationThreshold) {
+    void runIfNeeded(incidentId, storage, runner);
   }
+}
 
-  /** Start tracking a newly created incident. */
-  track(incidentId: string, packetId: string): void {
-    if (this.tracked.has(incidentId)) return;
-    const timer = setTimeout(() => this.fire(incidentId), this.opts.maxWaitMs);
-    this.tracked.set(incidentId, { packetId, timer });
-  }
+/**
+ * Run diagnosis only if no result exists yet (idempotent guard).
+ * DiagnosisRunner.run() itself also checks for ANTHROPIC_API_KEY and incident existence,
+ * so this is an additional layer to prevent redundant LLM calls.
+ */
+async function runIfNeeded(
+  incidentId: string,
+  storage: StorageDriver,
+  runner: DiagnosisRunner,
+): Promise<void> {
+  const incident = await storage.getIncident(incidentId);
+  if (!incident) return;
+  if (incident.diagnosisResult) return; // Already diagnosed — skip.
+  await runner.run(incidentId);
+}
 
-  /** Called after each rebuildSnapshots — check generation threshold. */
-  onGenerationUpdate(incidentId: string, generation: number): void {
-    const entry = this.tracked.get(incidentId);
-    if (!entry) return;
-    if (generation >= this.opts.generationThreshold) {
-      this.fire(incidentId);
-    }
-  }
-
-  /** Cancel all timers (for graceful shutdown / tests). */
-  dispose(): void {
-    for (const entry of this.tracked.values()) {
-      clearTimeout(entry.timer);
-    }
-    this.tracked.clear();
-  }
-
-  private fire(incidentId: string): void {
-    const entry = this.tracked.get(incidentId);
-    if (!entry) return;
-    clearTimeout(entry.timer);
-    this.tracked.delete(incidentId);
-    this.opts.onReady(incidentId, entry.packetId);
-  }
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
