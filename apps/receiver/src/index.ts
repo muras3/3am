@@ -22,6 +22,7 @@ export { MemoryAdapter } from "./storage/adapters/memory.js";
 export type { TelemetryStoreDriver } from "./telemetry/interface.js";
 
 const SETTINGS_KEY_AUTH_TOKEN = "receiver_auth_token";
+const SETTINGS_KEY_SETUP_COMPLETE = "setup_complete";
 
 const APP_VERSION: string = (() => {
   try {
@@ -161,13 +162,14 @@ export function createApp(storage?: StorageDriver, options?: AppOptions): Hono {
       });
 
   // Setup endpoints (public, no auth required) — must be registered before API router
-  let setupComplete = false;
 
-  app.get("/api/setup-status", (c) => {
+  app.get("/api/setup-status", async (c) => {
+    const setupComplete = (await store.getSettings(SETTINGS_KEY_SETUP_COMPLETE)) === "true";
     return c.json({ setupComplete });
   });
 
   app.get("/api/setup-token", async (c) => {
+    const setupComplete = (await store.getSettings(SETTINGS_KEY_SETUP_COMPLETE)) === "true";
     if (setupComplete) {
       return c.json({ error: "setup already complete" }, 403);
     }
@@ -178,7 +180,7 @@ export function createApp(storage?: StorageDriver, options?: AppOptions): Hono {
       return c.json({ error: "token not available (env var mode)" }, 404);
     }
 
-    setupComplete = true;
+    await store.setSettings(SETTINGS_KEY_SETUP_COMPLETE, "true");
     return c.json({ token });
   });
 

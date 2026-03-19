@@ -26,13 +26,188 @@ interface SetupGateProps {
   children: React.ReactNode;
 }
 
-export function SetupGate({ children }: SetupGateProps) {
-  const [state, setState] = useState<"loading" | "setup" | "ready" | "error">("loading");
-  const [token, setToken] = useState<string | null>(null);
+// Shared card container styles
+const cardStyle: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  height: "100vh",
+  background: "var(--bg)",
+  padding: "24px",
+};
+
+const panelStyle: React.CSSProperties = {
+  background: "var(--panel)",
+  border: "1px solid var(--line)",
+  borderRadius: "var(--radius)",
+  padding: "32px",
+  maxWidth: "480px",
+  width: "100%",
+};
+
+const headingStyle: React.CSSProperties = {
+  fontFamily: "var(--font)",
+  fontSize: "var(--fs-lg)",
+  fontWeight: 600,
+  color: "var(--ink)",
+  margin: "0 0 8px",
+};
+
+const bodyStyle: React.CSSProperties = {
+  fontFamily: "var(--font)",
+  fontSize: "var(--fs-sm)",
+  color: "var(--ink-2)",
+  margin: "0 0 24px",
+  lineHeight: 1.5,
+};
+
+const tokenBoxStyle: React.CSSProperties = {
+  background: "var(--panel-2)",
+  border: "1px solid var(--line)",
+  borderRadius: "var(--radius-sm)",
+  padding: "12px",
+  marginBottom: "16px",
+};
+
+const tokenTextStyle: React.CSSProperties = {
+  fontFamily: "var(--mono)",
+  fontSize: "var(--fs-sm)",
+  color: "var(--ink)",
+  margin: 0,
+  wordBreak: "break-all",
+  userSelect: "all",
+};
+
+const footerStyle: React.CSSProperties = {
+  fontFamily: "var(--font)",
+  fontSize: "var(--fs-xs)",
+  color: "var(--ink-3)",
+  margin: "12px 0 0",
+};
+
+const secondaryBtnStyle: React.CSSProperties = {
+  fontFamily: "var(--font)",
+  fontSize: "var(--fs-sm)",
+  color: "var(--ink-2)",
+  background: "var(--panel-2)",
+  border: "1px solid var(--line)",
+  borderRadius: "var(--radius-sm)",
+  padding: "6px 12px",
+  cursor: "pointer",
+  flex: "0 0 auto",
+};
+
+const primaryBtnStyle: React.CSSProperties = {
+  fontFamily: "var(--font)",
+  fontSize: "var(--fs-sm)",
+  color: "#fff",
+  background: "var(--accent)",
+  border: "none",
+  borderRadius: "var(--radius-sm)",
+  padding: "6px 16px",
+  cursor: "pointer",
+  flex: 1,
+  fontWeight: 600,
+};
+
+/** First-boot: show generated token, prompt user to save it. */
+function FirstSetupView({ token, onSave }: { token: string; onSave: () => void }) {
   const [copied, setCopied] = useState(false);
 
+  const handleCopy = () => {
+    void navigator.clipboard.writeText(token).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  };
+
+  return (
+    <div style={cardStyle}>
+      <div style={panelStyle}>
+        <h1 style={headingStyle}>3amoncall Setup</h1>
+        <p style={bodyStyle}>
+          Your auth token has been generated. Save it now — it will not be shown again.
+        </p>
+        <div style={tokenBoxStyle}>
+          <p style={tokenTextStyle}>{token}</p>
+        </div>
+        <div style={{ display: "flex", gap: "8px" }}>
+          <button onClick={handleCopy} style={secondaryBtnStyle}>
+            {copied ? "Copied!" : "Copy"}
+          </button>
+          <button onClick={onSave} style={primaryBtnStyle}>
+            I have saved this token — Continue
+          </button>
+        </div>
+        <p style={footerStyle}>
+          To recover a lost token, set{" "}
+          <code style={{ fontFamily: "var(--mono)" }}>RECEIVER_AUTH_TOKEN</code>{" "}
+          in your Vercel environment variables.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+/** Recovery: setup already complete but no token in localStorage. User must enter token manually. */
+function TokenRecoveryView({ onSave }: { onSave: (token: string) => void }) {
+  const [input, setInput] = useState("");
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const trimmed = input.trim();
+    if (trimmed) onSave(trimmed);
+  };
+
+  return (
+    <div style={cardStyle}>
+      <div style={panelStyle}>
+        <h1 style={headingStyle}>Enter Auth Token</h1>
+        <p style={bodyStyle}>
+          Your auth token was previously set up but is not present in this browser. Enter your
+          token to continue. You can find it in your Vercel environment variables
+          (<code style={{ fontFamily: "var(--mono)" }}>RECEIVER_AUTH_TOKEN</code>) or from when
+          you first set up 3amoncall.
+        </p>
+        <form onSubmit={handleSubmit}>
+          <input
+            type="text"
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            placeholder="Paste your auth token here"
+            style={{
+              fontFamily: "var(--mono)",
+              fontSize: "var(--fs-sm)",
+              color: "var(--ink)",
+              background: "var(--panel-2)",
+              border: "1px solid var(--line)",
+              borderRadius: "var(--radius-sm)",
+              padding: "8px 12px",
+              width: "100%",
+              boxSizing: "border-box",
+              marginBottom: "12px",
+              outline: "none",
+            }}
+          />
+          <button
+            type="submit"
+            disabled={!input.trim()}
+            style={{ ...primaryBtnStyle, flex: "none", width: "100%", padding: "8px 16px" }}
+          >
+            Save and Continue
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+export function SetupGate({ children }: SetupGateProps) {
+  const [state, setState] = useState<"loading" | "first-setup" | "recovery" | "ready">("loading");
+  const [token, setToken] = useState<string | null>(null);
+
   useEffect(() => {
-    // If token already in localStorage, skip setup
+    // If token already in localStorage, skip setup entirely
     if (getStoredAuthToken()) {
       setState("ready");
       return;
@@ -41,18 +216,18 @@ export function SetupGate({ children }: SetupGateProps) {
     fetchSetupStatus()
       .then((status) => {
         if (status.setupComplete) {
-          // Setup done but no token in localStorage — user cleared storage or different browser
-          setState("ready");
+          // Setup done but no token in localStorage — show recovery input
+          setState("recovery");
         } else {
-          // First time — fetch and show the token
+          // First time — fetch and display the generated token
           return fetchSetupToken().then((t) => {
             setToken(t);
-            setState("setup");
+            setState("first-setup");
           });
         }
       })
       .catch(() => {
-        // If setup-status fails, assume dev mode (no auth) and proceed
+        // setup-status unreachable → dev mode (no auth) or network error — proceed
         setState("ready");
       });
   }, []);
@@ -65,120 +240,26 @@ export function SetupGate({ children }: SetupGateProps) {
     );
   }
 
-  if (state === "setup" && token) {
-    const handleSave = () => {
-      saveAuthToken(token);
-      setState("ready");
-    };
-
-    const handleCopy = () => {
-      void navigator.clipboard.writeText(token).then(() => {
-        setCopied(true);
-        setTimeout(() => setCopied(false), 2000);
-      });
-    };
-
+  if (state === "first-setup" && token) {
     return (
-      <div style={{
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        height: "100vh",
-        background: "var(--bg)",
-        padding: "24px",
-      }}>
-        <div style={{
-          background: "var(--panel)",
-          border: "1px solid var(--line)",
-          borderRadius: "var(--radius)",
-          padding: "32px",
-          maxWidth: "480px",
-          width: "100%",
-        }}>
-          <h1 style={{
-            fontFamily: "var(--font)",
-            fontSize: "var(--fs-lg)",
-            fontWeight: 600,
-            color: "var(--ink)",
-            margin: "0 0 8px",
-          }}>
-            3amoncall Setup
-          </h1>
-          <p style={{
-            fontFamily: "var(--font)",
-            fontSize: "var(--fs-sm)",
-            color: "var(--ink-2)",
-            margin: "0 0 24px",
-            lineHeight: 1.5,
-          }}>
-            Your auth token has been generated. Save it now — it will not be shown again.
-          </p>
+      <FirstSetupView
+        token={token}
+        onSave={() => {
+          saveAuthToken(token);
+          setState("ready");
+        }}
+      />
+    );
+  }
 
-          <div style={{
-            background: "var(--panel-2)",
-            border: "1px solid var(--line)",
-            borderRadius: "var(--radius-sm)",
-            padding: "12px",
-            marginBottom: "16px",
-          }}>
-            <p style={{
-              fontFamily: "var(--mono)",
-              fontSize: "var(--fs-sm)",
-              color: "var(--ink)",
-              margin: 0,
-              wordBreak: "break-all",
-              userSelect: "all",
-            }}>
-              {token}
-            </p>
-          </div>
-
-          <div style={{ display: "flex", gap: "8px" }}>
-            <button
-              onClick={handleCopy}
-              style={{
-                fontFamily: "var(--font)",
-                fontSize: "var(--fs-sm)",
-                color: "var(--ink-2)",
-                background: "var(--panel-2)",
-                border: "1px solid var(--line)",
-                borderRadius: "var(--radius-sm)",
-                padding: "6px 12px",
-                cursor: "pointer",
-                flex: "0 0 auto",
-              }}
-            >
-              {copied ? "Copied!" : "Copy"}
-            </button>
-            <button
-              onClick={handleSave}
-              style={{
-                fontFamily: "var(--font)",
-                fontSize: "var(--fs-sm)",
-                color: "#fff",
-                background: "var(--accent)",
-                border: "none",
-                borderRadius: "var(--radius-sm)",
-                padding: "6px 16px",
-                cursor: "pointer",
-                flex: 1,
-                fontWeight: 600,
-              }}
-            >
-              I have saved this token — Continue
-            </button>
-          </div>
-
-          <p style={{
-            fontFamily: "var(--font)",
-            fontSize: "var(--fs-xs)",
-            color: "var(--ink-3)",
-            margin: "12px 0 0",
-          }}>
-            To recover a lost token, set <code style={{ fontFamily: "var(--mono)" }}>RECEIVER_AUTH_TOKEN</code> in your Vercel environment variables.
-          </p>
-        </div>
-      </div>
+  if (state === "recovery") {
+    return (
+      <TokenRecoveryView
+        onSave={(t) => {
+          saveAuthToken(t);
+          setState("ready");
+        }}
+      />
     );
   }
 
