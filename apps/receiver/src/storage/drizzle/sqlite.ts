@@ -61,6 +61,7 @@ export class SQLiteAdapter implements StorageDriver {
         span_membership   TEXT,
         anomalous_signals TEXT,
         platform_events   TEXT,
+        diagnosis_dispatched_at TEXT,
         created_at        TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
         updated_at        TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
       )
@@ -71,6 +72,7 @@ export class SQLiteAdapter implements StorageDriver {
       "span_membership TEXT",
       "anomalous_signals TEXT",
       "platform_events TEXT",
+      "diagnosis_dispatched_at TEXT",
     ]) {
       try {
         this.db.run(sql.raw(`ALTER TABLE incidents ADD COLUMN ${col}`));
@@ -128,6 +130,9 @@ export class SQLiteAdapter implements StorageDriver {
     if (row.closedAt) incident.closedAt = row.closedAt;
     if (row.diagnosisResult) {
       incident.diagnosisResult = JSON.parse(row.diagnosisResult) as DiagnosisResult;
+    }
+    if (row.diagnosisDispatchedAt) {
+      incident.diagnosisDispatchedAt = row.diagnosisDispatchedAt;
     }
     return incident;
   }
@@ -268,6 +273,21 @@ export class SQLiteAdapter implements StorageDriver {
         .where(eq(incidents.incidentId, incidentId))
         .run();
     });
+  }
+
+  async claimDiagnosisDispatch(incidentId: string): Promise<boolean> {
+    const now = new Date().toISOString();
+    const result = this.db
+      .update(incidents)
+      .set({ diagnosisDispatchedAt: now, updatedAt: now })
+      .where(
+        and(
+          eq(incidents.incidentId, incidentId),
+          sql`${incidents.diagnosisDispatchedAt} IS NULL`,
+        ),
+      )
+      .run();
+    return result.changes > 0;
   }
 
   async listIncidents(opts: { limit: number; cursor?: string }): Promise<IncidentPage> {

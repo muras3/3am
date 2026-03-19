@@ -107,26 +107,30 @@ export function checkGenerationThreshold(
 }
 
 /**
- * Run diagnosis only if no result exists yet AND no run is already in-flight.
+ * Run diagnosis only if no result exists yet AND no run is already in-flight
+ * AND this instance wins the DB-level dispatch claim.
  *
- * The in-flight Set prevents the TOCTOU race between scheduleDelayedDiagnosis
- * (delayed path) and checkGenerationThreshold (immediate path): without it,
- * both can observe diagnosisResult === undefined at the same time and both
- * proceed to call runner.run(), causing duplicate LLM calls.
- *
- * DiagnosisRunner.run() itself also checks for ANTHROPIC_API_KEY and incident
- * existence, so this is an additional layer to prevent redundant LLM calls.
+ * Three layers of protection against duplicate LLM calls:
+ * 1. Process-local `inFlight` Set — prevents TOCTOU race within a single instance
+ *    between scheduleDelayedDiagnosis and checkGenerationThreshold.
+ * 2. DB-level `claimDiagnosisDispatch` — atomic UPDATE ... WHERE dispatched_at IS NULL
+ *    prevents duplicate dispatch across serverless instances.
+ * 3. `diagnosisResult` check — skips if diagnosis is already complete.
  */
 async function runIfNeeded(
   incidentId: string,
   storage: StorageDriver,
   runner: DiagnosisRunner,
 ): Promise<void> {
-  if (inFlight.has(incidentId)) return; // Another call is already running.
+  if (inFlight.has(incidentId)) return; // Another call is already running in this process.
 
   const incident = await storage.getIncident(incidentId);
   if (!incident) return;
   if (incident.diagnosisResult) return; // Already diagnosed — skip.
+
+  // DB-level atomic claim: prevents cross-instance duplicate dispatch.
+  const claimed = await storage.claimDiagnosisDispatch(incidentId);
+  if (!claimed) return; // Another instance already claimed — skip.
 
   inFlight.add(incidentId);
   try {

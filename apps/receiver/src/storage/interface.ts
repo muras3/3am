@@ -67,6 +67,7 @@ export interface Incident {
   closedAt?: string;
   packet: IncidentPacket;
   diagnosisResult?: DiagnosisResult;
+  diagnosisDispatchedAt?: string;     // ISO timestamp — set when diagnosis dispatch is claimed
   telemetryScope: TelemetryScope;
   spanMembership: string[];          // "traceId:spanId" compact ref set
   anomalousSignals: AnomalousSignal[];
@@ -137,6 +138,14 @@ export interface StorageDriver {
    * Unknown incidentId is a no-op.
    */
   appendPlatformEvents(incidentId: string, events: PlatformEvent[]): Promise<void>;
+
+  /**
+   * Atomically claim diagnosis dispatch for an incident.
+   * Returns true if this call won the claim (diagnosis should proceed).
+   * Returns false if another instance already claimed (skip diagnosis).
+   * Uses optimistic locking: UPDATE ... WHERE diagnosis_dispatched_at IS NULL.
+   */
+  claimDiagnosisDispatch(incidentId: string): Promise<boolean>;
 
   saveThinEvent(event: ThinEvent): Promise<void>;
 

@@ -10,6 +10,7 @@ function createMockStorage(incident?: { diagnosisResult?: unknown }): StorageDri
         ? { incidentId: "inc_1", diagnosisResult: incident.diagnosisResult, packet: { generation: 1 } }
         : null,
     ),
+    claimDiagnosisDispatch: vi.fn().mockResolvedValue(true),
     createIncident: vi.fn(),
     updatePacket: vi.fn(),
     updateIncidentStatus: vi.fn(),
@@ -223,5 +224,45 @@ describe("in-flight guard (race condition prevention)", () => {
 
     resolveRun1();
     await vi.advanceTimersByTimeAsync(0);
+  });
+});
+
+describe("DB-level dispatch guard (cross-instance idempotency)", () => {
+  beforeEach(() => { vi.useFakeTimers(); _resetInFlightForTest(); });
+  afterEach(() => { vi.useRealTimers(); });
+
+  it("skips runner.run when claimDiagnosisDispatch returns false", async () => {
+    const storage = createMockStorage({ diagnosisResult: undefined });
+    (storage.claimDiagnosisDispatch as ReturnType<typeof vi.fn>).mockResolvedValue(false);
+    const runner = createMockRunner();
+
+    checkGenerationThreshold("inc_1", 50, storage, runner, { generationThreshold: 50 });
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(storage.claimDiagnosisDispatch).toHaveBeenCalledWith("inc_1");
+    expect(runner.run).not.toHaveBeenCalled();
+  });
+
+  it("calls runner.run when claimDiagnosisDispatch returns true", async () => {
+    const storage = createMockStorage({ diagnosisResult: undefined });
+    (storage.claimDiagnosisDispatch as ReturnType<typeof vi.fn>).mockResolvedValue(true);
+    const runner = createMockRunner();
+
+    checkGenerationThreshold("inc_1", 50, storage, runner, { generationThreshold: 50 });
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(storage.claimDiagnosisDispatch).toHaveBeenCalledWith("inc_1");
+    expect(runner.run).toHaveBeenCalledWith("inc_1");
+  });
+
+  it("does not call claimDiagnosisDispatch when diagnosis already exists", async () => {
+    const storage = createMockStorage({ diagnosisResult: { summary: "done" } });
+    const runner = createMockRunner();
+
+    checkGenerationThreshold("inc_1", 50, storage, runner, { generationThreshold: 50 });
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(storage.claimDiagnosisDispatch).not.toHaveBeenCalled();
+    expect(runner.run).not.toHaveBeenCalled();
   });
 });
