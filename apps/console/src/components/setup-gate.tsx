@@ -224,10 +224,22 @@ export function SetupGate({ children }: SetupGateProps) {
           setState("recovery");
         } else {
           // First time — fetch and display the generated token
-          return fetchSetupToken().then((t) => {
-            setToken(t);
-            setState("first-setup");
-          });
+          return fetchSetupToken()
+            .then((t) => {
+              setToken(t);
+              setState("first-setup");
+            })
+            .catch((tokenErr: unknown) => {
+              const tokenMsg = tokenErr instanceof Error ? tokenErr.message : String(tokenErr);
+              // 404 on setup-token means dev mode (ALLOW_INSECURE_DEV_MODE) —
+              // no token was generated, auth is disabled, proceed without token.
+              if (tokenMsg.includes("setup-token 404")) {
+                setState("ready");
+              } else {
+                setErrorMsg(tokenMsg);
+                setState("error");
+              }
+            });
         }
       })
       .catch((err: unknown) => {
