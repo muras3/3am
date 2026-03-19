@@ -1,7 +1,6 @@
 import { execSync, spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
-import { createRequire } from "node:module";
+import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { dirname } from "node:path";
 
@@ -9,11 +8,15 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 
 function getCLIVersion(): string {
   try {
-    const require = createRequire(import.meta.url);
-    const pkgPath = require.resolve("../../../package.json");
+    // Resolve package.json relative to this file's location.
+    // Works both from src/ (dev) and dist/commands/ (published):
+    //   src/commands/dev.ts  → ../../package.json
+    //   dist/commands/dev.js → ../../package.json
+    const pkgPath = resolve(__dirname, "../../package.json");
     return JSON.parse(readFileSync(pkgPath, "utf-8")).version as string;
   } catch {
-    return "latest";
+    // Fall back to a safe tag format that still follows the v-prefix convention.
+    return "0.0.0-unknown";
   }
 }
 

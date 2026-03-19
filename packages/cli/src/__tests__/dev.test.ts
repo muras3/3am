@@ -11,6 +11,20 @@ const mockSpawnSync = vi.mocked(childProcess.spawnSync);
 const mockExistsSync = vi.mocked(fs.existsSync);
 const mockReadFileSync = vi.mocked(fs.readFileSync);
 
+// Helper: readFileSync mock that returns package version for package.json paths
+// and delegates .env reads to the provided envContent string.
+function makeReadFileMock(version: string | null, envContent?: string) {
+  return (path: Parameters<typeof fs.readFileSync>[0]) => {
+    const p = String(path);
+    if (p.endsWith("package.json")) {
+      if (version === null) throw new Error("ENOENT");
+      return JSON.stringify({ version });
+    }
+    if (p.endsWith(".env") && envContent !== undefined) return envContent;
+    return "";
+  };
+}
+
 describe("runDev", () => {
   let originalExit: typeof process.exit;
   let originalEnv: NodeJS.ProcessEnv;
@@ -67,10 +81,7 @@ describe("runDev", () => {
   it("uses default port 3333 when no port option given", async () => {
     mockExecSync.mockReturnValue(Buffer.from("Docker version 24.0.0"));
     mockExistsSync.mockReturnValue(false);
-    mockReadFileSync.mockImplementation((path) => {
-      if (String(path).endsWith("package.json")) return JSON.stringify({ version: "0.1.0" });
-      return "";
-    });
+    mockReadFileSync.mockImplementation(makeReadFileMock("0.1.0"));
     mockSpawnSync.mockReturnValue({ status: 0, error: undefined } as ReturnType<typeof childProcess.spawnSync>);
 
     delete process.env["ANTHROPIC_API_KEY"];
@@ -88,10 +99,7 @@ describe("runDev", () => {
   it("uses custom port when --port option given", async () => {
     mockExecSync.mockReturnValue(Buffer.from("Docker version 24.0.0"));
     mockExistsSync.mockReturnValue(false);
-    mockReadFileSync.mockImplementation((path) => {
-      if (String(path).endsWith("package.json")) return JSON.stringify({ version: "0.1.0" });
-      return "";
-    });
+    mockReadFileSync.mockImplementation(makeReadFileMock("0.1.0"));
     mockSpawnSync.mockReturnValue({ status: 0, error: undefined } as ReturnType<typeof childProcess.spawnSync>);
 
     delete process.env["ANTHROPIC_API_KEY"];
@@ -109,10 +117,7 @@ describe("runDev", () => {
   it("passes ANTHROPIC_API_KEY from env to docker run", async () => {
     mockExecSync.mockReturnValue(Buffer.from("Docker version 24.0.0"));
     mockExistsSync.mockReturnValue(false);
-    mockReadFileSync.mockImplementation((path) => {
-      if (String(path).endsWith("package.json")) return JSON.stringify({ version: "0.1.0" });
-      return "";
-    });
+    mockReadFileSync.mockImplementation(makeReadFileMock("0.1.0"));
     mockSpawnSync.mockReturnValue({ status: 0, error: undefined } as ReturnType<typeof childProcess.spawnSync>);
 
     process.env["ANTHROPIC_API_KEY"] = "test-key-123";
@@ -130,12 +135,7 @@ describe("runDev", () => {
   it("reads ANTHROPIC_API_KEY from .env file when not in env", async () => {
     mockExecSync.mockReturnValue(Buffer.from("Docker version 24.0.0"));
     mockExistsSync.mockReturnValue(true);
-    mockReadFileSync.mockImplementation((path) => {
-      const p = String(path);
-      if (p.endsWith("package.json")) return JSON.stringify({ version: "0.1.0" });
-      if (p.endsWith(".env")) return "ANTHROPIC_API_KEY=dotenv-key-456\n";
-      return "";
-    });
+    mockReadFileSync.mockImplementation(makeReadFileMock("0.1.0", "ANTHROPIC_API_KEY=dotenv-key-456\n"));
     mockSpawnSync.mockReturnValue({ status: 0, error: undefined } as ReturnType<typeof childProcess.spawnSync>);
 
     delete process.env["ANTHROPIC_API_KEY"];
@@ -153,10 +153,7 @@ describe("runDev", () => {
   it("passes dev mode env vars to docker run", async () => {
     mockExecSync.mockReturnValue(Buffer.from("Docker version 24.0.0"));
     mockExistsSync.mockReturnValue(false);
-    mockReadFileSync.mockImplementation((path) => {
-      if (String(path).endsWith("package.json")) return JSON.stringify({ version: "0.1.0" });
-      return "";
-    });
+    mockReadFileSync.mockImplementation(makeReadFileMock("0.1.0"));
     mockSpawnSync.mockReturnValue({ status: 0, error: undefined } as ReturnType<typeof childProcess.spawnSync>);
 
     delete process.env["ANTHROPIC_API_KEY"];
@@ -168,5 +165,46 @@ describe("runDev", () => {
     expect(callArgs).toContain("ALLOW_INSECURE_DEV_MODE=true");
     expect(callArgs).toContain("DIAGNOSIS_GENERATION_THRESHOLD=0");
     expect(callArgs).toContain("DIAGNOSIS_MAX_WAIT_MS=0");
+  });
+
+  it("uses correct image tag with version from package.json", async () => {
+    mockExecSync.mockReturnValue(Buffer.from("Docker version 24.0.0"));
+    mockExistsSync.mockReturnValue(false);
+    mockReadFileSync.mockImplementation(makeReadFileMock("1.2.3"));
+    mockSpawnSync.mockReturnValue({ status: 0, error: undefined } as ReturnType<typeof childProcess.spawnSync>);
+
+    delete process.env["ANTHROPIC_API_KEY"];
+
+    const { runDev } = await import("../commands/dev.js");
+    runDev();
+
+    expect(mockSpawnSync).toHaveBeenCalledWith(
+      "docker",
+      expect.arrayContaining(["ghcr.io/3amoncall/receiver:v1.2.3"]),
+      expect.any(Object),
+    );
+  });
+
+  it("falls back to 0.0.0-unknown tag when package.json cannot be read", async () => {
+    mockExecSync.mockReturnValue(Buffer.from("Docker version 24.0.0"));
+    mockExistsSync.mockReturnValue(false);
+    // Simulate unreadable package.json (e.g. wrong path after publish)
+    mockReadFileSync.mockImplementation(makeReadFileMock(null));
+    mockSpawnSync.mockReturnValue({ status: 0, error: undefined } as ReturnType<typeof childProcess.spawnSync>);
+
+    delete process.env["ANTHROPIC_API_KEY"];
+
+    const { runDev } = await import("../commands/dev.js");
+    runDev();
+
+    expect(mockSpawnSync).toHaveBeenCalledWith(
+      "docker",
+      expect.arrayContaining(["ghcr.io/3amoncall/receiver:v0.0.0-unknown"]),
+      expect.any(Object),
+    );
+    // Must NOT use ":vlatest" which would silently pull wrong image
+    const allArgs = (mockSpawnSync.mock.calls[0]![1] as string[]).join(" ");
+    expect(allArgs).not.toContain(":vlatest");
+    expect(allArgs).not.toContain(":latest");
   });
 });
