@@ -12,7 +12,7 @@ import { execSync } from "node:child_process";
 import { detectFramework } from "../commands/init/detect-framework.js";
 import { detectPackageManager } from "../commands/init/detect-package-manager.js";
 import { getInstrumentationTemplate } from "../commands/init/templates.js";
-import { updateEnvFile, runInit } from "../commands/init.js";
+import { updateEnvFile, runInit, isTypeScriptProject, isEsmProject } from "../commands/init.js";
 
 // ---------------------------------------------------------------------------
 // detectFramework
@@ -140,6 +140,54 @@ describe("updateEnvFile()", () => {
 });
 
 // ---------------------------------------------------------------------------
+// isTypeScriptProject
+// ---------------------------------------------------------------------------
+
+describe("isTypeScriptProject()", () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = join(tmpdir(), `ts-test-${Date.now()}`);
+    mkdirSync(tmpDir, { recursive: true });
+  });
+
+  afterEach(() => {
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it("returns true when typescript is in deps", () => {
+    expect(isTypeScriptProject(tmpDir, { typescript: "5.0.0" })).toBe(true);
+  });
+
+  it("returns true when tsconfig.json exists", () => {
+    writeFileSync(join(tmpDir, "tsconfig.json"), "{}");
+    expect(isTypeScriptProject(tmpDir, {})).toBe(true);
+  });
+
+  it("returns false for plain JS project", () => {
+    expect(isTypeScriptProject(tmpDir, { express: "4.18.0" })).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// isEsmProject
+// ---------------------------------------------------------------------------
+
+describe("isEsmProject()", () => {
+  it("returns true when type is module", () => {
+    expect(isEsmProject({ type: "module" })).toBe(true);
+  });
+
+  it("returns false when type is commonjs", () => {
+    expect(isEsmProject({ type: "commonjs" })).toBe(false);
+  });
+
+  it("returns false when type is absent", () => {
+    expect(isEsmProject({})).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // runInit integration
 // ---------------------------------------------------------------------------
 
@@ -162,7 +210,27 @@ describe("runInit()", () => {
     vi.restoreAllMocks();
   });
 
-  it("creates instrumentation.ts and updates .env", async () => {
+  it("creates instrumentation.ts for TypeScript project and updates .env", async () => {
+    writeFileSync(
+      join(tmpDir, "package.json"),
+      JSON.stringify({ name: "my-app", dependencies: { express: "4.18.0", typescript: "5.0.0" } }),
+    );
+
+    const stdoutSpy = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+
+    await runInit([]);
+
+    stdoutSpy.mockRestore();
+
+    expect(existsSync(join(tmpDir, "instrumentation.ts"))).toBe(true);
+    expect(existsSync(join(tmpDir, "instrumentation.js"))).toBe(false);
+    const env = readFileSync(join(tmpDir, ".env"), "utf-8");
+    expect(env).toContain("OTEL_SERVICE_NAME=my-app");
+    expect(env).toContain("OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:3333");
+    expect(env).toContain("deployment.environment.name=development");
+  });
+
+  it("creates instrumentation.js for JavaScript project", async () => {
     writeFileSync(
       join(tmpDir, "package.json"),
       JSON.stringify({ name: "my-app", dependencies: { express: "4.18.0" } }),
@@ -174,14 +242,11 @@ describe("runInit()", () => {
 
     stdoutSpy.mockRestore();
 
-    expect(existsSync(join(tmpDir, "instrumentation.ts"))).toBe(true);
-    const env = readFileSync(join(tmpDir, ".env"), "utf-8");
-    expect(env).toContain("OTEL_SERVICE_NAME=my-app");
-    expect(env).toContain("OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:3333");
-    expect(env).toContain("deployment.environment.name=development");
+    expect(existsSync(join(tmpDir, "instrumentation.js"))).toBe(true);
+    expect(existsSync(join(tmpDir, "instrumentation.ts"))).toBe(false);
   });
 
-  it("instrumentation.ts uses express/generic template (no register export)", async () => {
+  it("advises --require for CJS JS project and references .js file", async () => {
     writeFileSync(
       join(tmpDir, "package.json"),
       JSON.stringify({ name: "my-app", dependencies: { express: "4.18.0" } }),
@@ -197,19 +262,84 @@ describe("runInit()", () => {
 
     stdoutSpy.mockRestore();
 
-    const template = readFileSync(join(tmpDir, "instrumentation.ts"), "utf-8");
-    expect(template).not.toContain("export function register()");
     const combined = stdoutChunks.join("");
     expect(combined).toContain("--require");
+    expect(combined).toContain("instrumentation.js");
+    expect(combined).not.toContain("--import");
   });
 
-  it("skips instrumentation.ts if it already exists (idempotency)", async () => {
+  it("advises --import for ESM JS project and references .js file", async () => {
+    writeFileSync(
+      join(tmpDir, "package.json"),
+      JSON.stringify({ name: "my-app", type: "module", dependencies: { express: "4.18.0" } }),
+    );
+
+    const stdoutChunks: string[] = [];
+    const stdoutSpy = vi.spyOn(process.stdout, "write").mockImplementation((chunk) => {
+      stdoutChunks.push(String(chunk));
+      return true;
+    });
+
+    await runInit([]);
+
+    stdoutSpy.mockRestore();
+
+    const combined = stdoutChunks.join("");
+    expect(combined).toContain("--import");
+    expect(combined).toContain("instrumentation.js");
+    expect(combined).not.toContain("--require");
+  });
+
+  it("advises --require for CJS TS project and references .ts file", async () => {
+    writeFileSync(
+      join(tmpDir, "package.json"),
+      JSON.stringify({ name: "my-app", dependencies: { typescript: "5.0.0" } }),
+    );
+
+    const stdoutChunks: string[] = [];
+    const stdoutSpy = vi.spyOn(process.stdout, "write").mockImplementation((chunk) => {
+      stdoutChunks.push(String(chunk));
+      return true;
+    });
+
+    await runInit([]);
+
+    stdoutSpy.mockRestore();
+
+    const combined = stdoutChunks.join("");
+    expect(combined).toContain("--require");
+    expect(combined).toContain("instrumentation.ts");
+  });
+
+  it("advises --import for ESM TS project and references .ts file", async () => {
+    writeFileSync(
+      join(tmpDir, "package.json"),
+      JSON.stringify({ name: "my-app", type: "module", dependencies: { typescript: "5.0.0" } }),
+    );
+
+    const stdoutChunks: string[] = [];
+    const stdoutSpy = vi.spyOn(process.stdout, "write").mockImplementation((chunk) => {
+      stdoutChunks.push(String(chunk));
+      return true;
+    });
+
+    await runInit([]);
+
+    stdoutSpy.mockRestore();
+
+    const combined = stdoutChunks.join("");
+    expect(combined).toContain("--import");
+    expect(combined).toContain("instrumentation.ts");
+  });
+
+  it("skips instrumentation file if it already exists (idempotency)", async () => {
     writeFileSync(
       join(tmpDir, "package.json"),
       JSON.stringify({ name: "my-app", dependencies: {} }),
     );
     const existingContent = "// existing instrumentation\n";
-    writeFileSync(join(tmpDir, "instrumentation.ts"), existingContent);
+    // JS project (no typescript dep), so file is instrumentation.js
+    writeFileSync(join(tmpDir, "instrumentation.js"), existingContent);
 
     const stdoutSpy = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
 
@@ -217,7 +347,7 @@ describe("runInit()", () => {
 
     stdoutSpy.mockRestore();
 
-    const content = readFileSync(join(tmpDir, "instrumentation.ts"), "utf-8");
+    const content = readFileSync(join(tmpDir, "instrumentation.js"), "utf-8");
     expect(content).toBe(existingContent);
   });
 
@@ -239,7 +369,7 @@ describe("runInit()", () => {
     expect(count).toBe(1);
   });
 
-  it("restores package.json and exits on install failure", async () => {
+  it("restores package.json, does not create instrumentation or .env, exits on install failure", async () => {
     const pkg = { name: "my-app", dependencies: {} };
     writeFileSync(join(tmpDir, "package.json"), JSON.stringify(pkg));
 
@@ -253,8 +383,14 @@ describe("runInit()", () => {
 
     expect(exitSpy).toHaveBeenCalledWith(1);
 
+    // package.json should be restored to original state
     const restoredPkg = JSON.parse(readFileSync(join(tmpDir, "package.json"), "utf-8")) as typeof pkg;
     expect(restoredPkg.name).toBe("my-app");
+
+    // instrumentation file and .env must NOT have been created (install-first ordering)
+    expect(existsSync(join(tmpDir, "instrumentation.js"))).toBe(false);
+    expect(existsSync(join(tmpDir, "instrumentation.ts"))).toBe(false);
+    expect(existsSync(join(tmpDir, ".env"))).toBe(false);
 
     exitSpy.mockRestore();
     stderrSpy.mockRestore();
