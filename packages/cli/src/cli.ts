@@ -34,9 +34,9 @@ program
 program
   .command("dev")
   .description("Start local 3amoncall Receiver via Docker (Requires Docker Desktop)")
-  .allowUnknownOption(true)
-  .action(async () => {
-    await runDev(process.argv.slice(3));
+  .option("--port <number>", "Port to expose (default: 3333)", parseInt)
+  .action((options: { port?: number }) => {
+    runDev({ port: options.port });
   });
 
 program.parse(process.argv);
