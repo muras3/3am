@@ -10,9 +10,6 @@ import type {
   ChipVM,
   EvidenceEntryVM,
   ImpactTimelineVM,
-  EvidenceStudioVM,
-  ProofCardVM,
-  ComponentFlowVM,
   TabKey,
   TraceGroupVM,
   SpanRowVM,
@@ -21,13 +18,6 @@ import type {
   EvidenceStudioV4VM,
   SideNoteVM,
 } from "./types.js";
-
-type RecoveryStatus = "watch" | "ok" | "alert";
-const VALID_RECOVERY_STATUSES: ReadonlyArray<string> = ["watch", "ok", "alert"];
-
-function toRecoveryStatus(raw: string): RecoveryStatus {
-  return VALID_RECOVERY_STATUSES.includes(raw) ? (raw as RecoveryStatus) : "watch";
-}
 
 export function buildIncidentWorkspaceVM(
   incident: Incident,
@@ -43,13 +33,6 @@ export function buildIncidentWorkspaceVM(
       primaryText: compactAction(dr.recommendation.immediate_action),
       rationale: compactSentence(dr.recommendation.action_rationale_short, 160),
       doNot: compactSentence(dr.recommendation.do_not, 180),
-    },
-    recovery: {
-      items: dr.operator_guidance.watch_items.map((item) => ({
-        look: humanizeWatchLabel(item.label),
-        means: compactSentence(item.state, 120),
-        status: toRecoveryStatus(item.status),
-      })),
     },
     cause: {
       hypothesis: dr.summary.root_cause_hypothesis,
@@ -80,14 +63,6 @@ function compactSentence(text: string, maxChars: number): string {
   const firstClause = trimmed.split(/(?<=[.!?])\s+/)[0] ?? trimmed;
   if (firstClause.length <= maxChars) return firstClause;
   return `${firstClause.slice(0, maxChars - 1).trim()}…`;
-}
-
-function humanizeWatchLabel(label: string): string {
-  if (!label.includes("_")) return label;
-  return label
-    .replace(/_total$/i, "")
-    .replace(/_/g, " ")
-    .replace(/\b\w/g, (ch) => ch.toUpperCase());
 }
 
 export function buildEvidenceEntryVM(packet: IncidentPacket): EvidenceEntryVM {
@@ -136,13 +111,6 @@ function buildImpactTimelineVM(packet: IncidentPacket): ImpactTimelineVM {
   return { events, surface };
 }
 
-export function buildEvidenceStudioVM(incident: Incident): EvidenceStudioVM {
-  return {
-    proofCards: buildProofCards(incident.packet, incident.diagnosisResult),
-    componentFlow: buildComponentFlow(incident.packet, incident.diagnosisResult),
-  };
-}
-
 function buildChips(packet: IncidentPacket, dr: DiagnosisResult): ChipVM[] {
   const chips: ChipVM[] = [];
 
@@ -161,124 +129,6 @@ function buildChips(packet: IncidentPacket, dr: DiagnosisResult): ChipVM[] {
   chips.push({ label: `confidence: ${confLevel}`, kind: "system" });
 
   return chips;
-}
-
-function buildProofCards(
-  packet: IncidentPacket,
-  dr?: DiagnosisResult,
-): ProofCardVM[] {
-  const hasMetrics = packet.evidence.changedMetrics.length > 0;
-  const hasLogs = packet.evidence.relevantLogs.length > 0;
-  const hasPlatformEvents = packet.evidence.platformEvents.length > 0;
-  const hasTraces = packet.evidence.representativeTraces.length > 0;
-
-  const baseEvidenceSource = hasMetrics
-    ? "metrics"
-    : hasLogs
-      ? "logs"
-      : hasPlatformEvents
-        ? "platform"
-        : hasTraces
-          ? "traces"
-          : "diagnosis";
-
-  const firstSignal = packet.triggerSignals[0];
-  const firstDep = packet.scope.affectedDependencies[0];
-  const externalStep = dr?.reasoning.causal_chain[0];
-  const designStep = dr?.reasoning.causal_chain[1];
-  const firstWatch = dr?.operator_guidance.watch_items[0];
-  const firstTrace = packet.evidence.representativeTraces[0];
-
-  const card1: ProofCardVM = {
-    label: "External Trigger",
-    proof:
-      externalStep?.title ??
-      firstSignal?.signal ??
-      firstDep ??
-      "Unknown trigger",
-    sourceFamily: externalStep
-      ? "diagnosis"
-      : firstSignal
-        ? "triggers"
-        : baseEvidenceSource,
-    detail: externalStep?.detail ?? firstSignal?.entity ?? "",
-  };
-
-  const card2: ProofCardVM = {
-    label: "Design Gap",
-    proof:
-      designStep?.title ??
-      dr?.recommendation.action_rationale_short ??
-      "Design gap analysis pending",
-    sourceFamily: designStep ?? dr?.recommendation ? "diagnosis" : baseEvidenceSource,
-    detail: designStep?.detail ?? "",
-  };
-
-  let recoveryProof: string;
-  let card3SourceFamily: string;
-
-  if (firstWatch) {
-    recoveryProof = `${firstWatch.label}: ${firstWatch.state}`;
-    card3SourceFamily = "operator-guidance";
-  } else if (dr) {
-    recoveryProof = dr.summary.what_happened;
-    card3SourceFamily = "diagnosis";
-  } else if (firstTrace) {
-    recoveryProof = `${firstTrace.serviceName} span: ${firstTrace.httpStatusCode ?? firstTrace.spanStatusCode}`;
-    card3SourceFamily = "traces";
-  } else {
-    recoveryProof = "Recovery signal pending";
-    card3SourceFamily = baseEvidenceSource;
-  }
-
-  const card3: ProofCardVM = {
-    label: "Recovery Signal",
-    proof: recoveryProof,
-    sourceFamily: card3SourceFamily,
-    detail: firstWatch?.status ?? "",
-  };
-
-  return [card1, card2, card3];
-}
-
-function buildComponentFlow(
-  packet: IncidentPacket,
-  dr?: DiagnosisResult,
-): ComponentFlowVM {
-  const nodes: ComponentFlowVM["nodes"] = [];
-  const edges: ComponentFlowVM["edges"] = [];
-
-  nodes.push({
-    id: packet.scope.primaryService,
-    label: packet.scope.primaryService,
-    role: packet.scope.affectedDependencies.length > 0 ? "spread" : "cause",
-  });
-
-  for (const dep of packet.scope.affectedDependencies) {
-    nodes.push({ id: dep, label: dep, role: "cause" });
-    edges.push({ from: dep, to: packet.scope.primaryService });
-  }
-
-  const scopeImpactServices = packet.scope.affectedServices.filter(
-    (svc) => svc !== packet.scope.primaryService,
-  );
-
-  for (const svc of scopeImpactServices) {
-    nodes.push({ id: svc, label: svc, role: "impact" });
-    edges.push({ from: packet.scope.primaryService, to: svc });
-  }
-
-  if (scopeImpactServices.length === 0 && dr) {
-    for (const step of dr.reasoning.causal_chain) {
-      if (step.type === "impact") {
-        const nodeId = `chain-impact:${step.title}`;
-        nodes.push({ id: nodeId, label: step.title, role: "impact" });
-        edges.push({ from: packet.scope.primaryService, to: nodeId });
-      }
-    }
-  }
-
-  return { nodes, edges };
 }
 
 // ── Evidence Studio v4 adapters ─────────────────────────────

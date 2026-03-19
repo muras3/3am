@@ -69,20 +69,6 @@
   letter-spacing:0.06em; color:var(--ink-3); margin-bottom:8px;
 }
 
-/* ── Watch rows (Mitigation Watch) ────────────────────────── */
-.watch-row {
-  display:grid;
-  grid-template-columns:60px 1fr auto;
-  gap:4px;
-  align-items:center;
-  padding:3px 0;
-  font-size:11px;
-  border-bottom:1px solid var(--line);
-}
-.watch-row:last-child { border-bottom:none; }
-.watch-row .wl { font-weight:600; }
-.watch-row .wv { color:var(--ink-2); }
-
 /* ── Timeline surface footer ──────────────────────────────── */
 .timeline-surface {
   margin-top:6px;
@@ -106,17 +92,6 @@
   font-size:var(--fs-sm); color:var(--ink-2); margin-bottom:12px;
   line-height:var(--lh-read);
 }
-
-/* ── Shared card internals ─────────────────────────────────── */
-.ws {
-  font-size:9px; font-weight:600; text-transform:uppercase;
-  padding:1px 5px; border-radius:var(--radius-xs);
-  flex-shrink: 0;
-}
-.ws-watch { background:var(--teal-soft); color:var(--teal); }
-.ws-ok { background:var(--good-soft); color:var(--good); }
-.ws-next { background:var(--amber-soft); color:var(--amber); }
-.ws-lagging { background:var(--panel-2); color:var(--ink-3); }
 
 /* ── Causal chain flow ─────────────────────────────────────── */
 .chain-flow {
