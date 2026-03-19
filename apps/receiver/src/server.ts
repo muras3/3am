@@ -1,5 +1,6 @@
 import { serve } from "@hono/node-server";
 import { createApp, resolveAuthToken } from "./index.js";
+import { MemoryAdapter } from "./storage/adapters/memory.js";
 import { PostgresAdapter } from "./storage/drizzle/postgres.js";
 import { PostgresTelemetryAdapter } from "./telemetry/drizzle/postgres.js";
 
@@ -27,9 +28,10 @@ async function main() {
     );
   }
 
-  const resolvedAuthToken = storage
-    ? await resolveAuthToken(storage)
-    : null;
+  // resolveAuthToken needs a StorageDriver even for MemoryAdapter, so that
+  // env-var token is picked up when DATABASE_URL is not set (e.g. E2E tests).
+  const storageForAuth = storage ?? new MemoryAdapter();
+  const resolvedAuthToken = await resolveAuthToken(storageForAuth);
 
   const app = createApp(storage, { telemetryStore, resolvedAuthToken });
 
