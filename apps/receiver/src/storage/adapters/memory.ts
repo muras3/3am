@@ -6,6 +6,7 @@ export class MemoryAdapter implements StorageDriver {
   private incidents: Map<string, Incident> = new Map();
   private packetIndex: Map<string, string> = new Map(); // packetId → incidentId
   private thinEvents: ThinEvent[] = [];
+  private settings: Map<string, string> = new Map();
 
   async createIncident(packet: IncidentPacket, membership: InitialMembership): Promise<void> {
     if (this.incidents.has(packet.incidentId)) return; // no-op if already exists
@@ -154,5 +155,13 @@ export class MemoryAdapter implements StorageDriver {
 
   async listThinEvents(): Promise<ThinEvent[]> {
     return [...this.thinEvents];
+  }
+
+  async getSettings(key: string): Promise<string | null> {
+    return this.settings.get(key) ?? null;
+  }
+
+  async setSettings(key: string, value: string): Promise<void> {
+    this.settings.set(key, value);
   }
 }

@@ -1,5 +1,12 @@
-// Console runs same-origin with Receiver (ADR 0028).
-// Receiver handles auth server-side — no token in the browser bundle.
+const STORAGE_KEY = "receiver_auth_token";
+
+function getAuthHeaders(): HeadersInit {
+  const token = localStorage.getItem(STORAGE_KEY);
+  if (token) {
+    return { "Content-Type": "application/json", "Authorization": `Bearer ${token}` };
+  }
+  return { "Content-Type": "application/json" };
+}
 
 function userMessage(status: number): string {
   if (status === 404) return "Not found.";
@@ -8,10 +15,18 @@ function userMessage(status: number): string {
   return `Request failed (${status}).`;
 }
 
+export function saveAuthToken(token: string): void {
+  localStorage.setItem(STORAGE_KEY, token);
+}
+
+export function getStoredAuthToken(): string | null {
+  return localStorage.getItem(STORAGE_KEY);
+}
+
 export async function apiFetchPost<T>(path: string, body: unknown): Promise<T> {
   const res = await fetch(path, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: getAuthHeaders(),
     body: JSON.stringify(body),
   });
   if (!res.ok) {
@@ -26,7 +41,7 @@ export async function apiFetchPost<T>(path: string, body: unknown): Promise<T> {
 
 export async function apiFetch<T>(path: string): Promise<T> {
   const res = await fetch(path, {
-    headers: { "Content-Type": "application/json" },
+    headers: getAuthHeaders(),
   });
   if (!res.ok) {
     const rawBody = await res.text();

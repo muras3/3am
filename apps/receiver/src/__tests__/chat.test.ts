@@ -37,9 +37,9 @@ function extractSessionCookie(res: Response): string {
   return match?.[1] ?? "";
 }
 
-/** Get a valid session cookie by hitting an /api/* endpoint. */
+/** Get a valid session cookie by hitting an /api/* endpoint (Bearer required). */
 async function getSessionCookie(app: ReturnType<typeof makeApp>): Promise<string> {
-  const res = await app.request("/api/incidents");
+  const res = await app.request("/api/incidents", { headers: authHeader() });
   return extractSessionCookie(res);
 }
 
@@ -174,7 +174,7 @@ describe("POST /api/chat/:incidentId", () => {
   });
 
   it("session cookie is set on /api/* responses (B-11)", async () => {
-    const res = await app.request("/api/incidents");
+    const res = await app.request("/api/incidents", { headers: authHeader() });
     const cookie = extractSessionCookie(res);
     expect(cookie).toBeTruthy();
     expect(cookie.length).toBe(64); // 32 bytes hex

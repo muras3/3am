@@ -141,4 +141,15 @@ export interface StorageDriver {
   saveThinEvent(event: ThinEvent): Promise<void>;
 
   listThinEvents(): Promise<ThinEvent[]>;
+
+  /**
+   * Get a settings value by key.
+   * Returns null if not found.
+   */
+  getSettings(key: string): Promise<string | null>;
+
+  /**
+   * Set a settings value by key.
+   */
+  setSettings(key: string, value: string): Promise<void>;
 }

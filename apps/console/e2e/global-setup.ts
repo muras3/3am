@@ -1,10 +1,11 @@
 import { createServer } from "http";
 import type { Server } from "http";
 import { spawn } from "child_process";
-import { writeFileSync } from "fs";
+import { mkdirSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import path from "path";
 import { fileURLToPath } from "url";
+import { E2E_STORAGE_STATE } from "../playwright.config.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const RECEIVER_URL = "http://localhost:4319";
@@ -119,6 +120,21 @@ export default async function globalSetup(): Promise<void> {
     });
     seedProc.on("error", reject);
   });
+
+  // Write storageState so the Console SPA has the auth token in localStorage.
+  // global-setup runs before any test context is created, so this file is
+  // guaranteed to exist when Playwright reads use.storageState.
+  mkdirSync(path.dirname(E2E_STORAGE_STATE), { recursive: true });
+  const storageState = {
+    cookies: [],
+    origins: [
+      {
+        origin: "http://localhost:5174",
+        localStorage: [{ name: "receiver_auth_token", value: TOKEN }],
+      },
+    ],
+  };
+  writeFileSync(E2E_STORAGE_STATE, JSON.stringify(storageState), "utf8");
 
   console.log("[E2E] Receiver ready and seeded with 5 incidents");
 }

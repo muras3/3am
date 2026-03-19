@@ -4,6 +4,12 @@ import { fileURLToPath } from "url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
+// Path exported so global-setup.receiver-served.ts can write to the same location.
+export const E2E_RECEIVER_SERVED_STORAGE_STATE = path.resolve(
+  __dirname,
+  "e2e/.auth/storage-receiver-served.json",
+);
+
 export default defineConfig({
   testDir: "./e2e",
   testMatch: ["specs/**/*.spec.ts"],
@@ -17,6 +23,7 @@ export default defineConfig({
   use: {
     baseURL: "http://localhost:4321",
     trace: "on-first-retry",
+    storageState: E2E_RECEIVER_SERVED_STORAGE_STATE,
   },
 
   // Platform-agnostic snapshot path: same baseline works on macOS + Linux CI.

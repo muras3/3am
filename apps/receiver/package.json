@@ -16,6 +16,7 @@
   },
   "dependencies": {
     "@3amoncall/core": "workspace:*",
+    "@3amoncall/diagnosis": "workspace:*",
     "@anthropic-ai/sdk": "^0.39.0",
     "@hono/node-server": "^1.0.0",
     "better-sqlite3": "^12.6.2",
