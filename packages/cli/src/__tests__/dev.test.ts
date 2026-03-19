@@ -15,7 +15,7 @@ describe("runDev", () => {
   let originalExit: typeof process.exit;
   let originalEnv: NodeJS.ProcessEnv;
   let stderrOutput: string;
-  let __stdoutOutput: string;
+  let _stdoutOutput: string;
 
   beforeEach(() => {
     originalExit = process.exit;
