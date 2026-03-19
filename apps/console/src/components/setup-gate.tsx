@@ -203,10 +203,14 @@ function TokenRecoveryView({ onSave }: { onSave: (token: string) => void }) {
 }
 
 export function SetupGate({ children }: SetupGateProps) {
-  const [state, setState] = useState<"loading" | "first-setup" | "recovery" | "ready">("loading");
+  const [state, setState] = useState<"loading" | "first-setup" | "recovery" | "error" | "ready">("loading");
   const [token, setToken] = useState<string | null>(null);
+  const [errorMsg, setErrorMsg] = useState<string>("");
 
-  useEffect(() => {
+  const runSetup = () => {
+    setState("loading");
+    setErrorMsg("");
+
     // If token already in localStorage, skip setup entirely
     if (getStoredAuthToken()) {
       setState("ready");
@@ -226,10 +230,23 @@ export function SetupGate({ children }: SetupGateProps) {
           });
         }
       })
-      .catch(() => {
-        // setup-status unreachable → dev mode (no auth) or network error — proceed
-        setState("ready");
+      .catch((err: unknown) => {
+        const msg = err instanceof Error ? err.message : String(err);
+        // setup-status 404 / network error → could be dev mode (ALLOW_INSECURE_DEV_MODE)
+        // where the endpoint doesn't exist, or a real connectivity failure.
+        // Only treat genuine network failures as errors; 404 means dev mode → ready.
+        if (msg.includes("setup-status 404") || msg.includes("Failed to fetch")) {
+          // Dev mode: receiver has no /api/setup-status → proceed without auth
+          setState("ready");
+        } else {
+          setErrorMsg(msg);
+          setState("error");
+        }
       });
+  };
+
+  useEffect(() => {
+    runSetup();
   }, []);
 
   if (state === "loading") {
@@ -260,6 +277,32 @@ export function SetupGate({ children }: SetupGateProps) {
           setState("ready");
         }}
       />
+    );
+  }
+
+  if (state === "error") {
+    return (
+      <div style={cardStyle}>
+        <div style={panelStyle}>
+          <h1 style={{ ...headingStyle, color: "var(--accent)" }}>Setup Failed</h1>
+          <p style={bodyStyle}>
+            Could not connect to the receiver to complete setup.
+          </p>
+          {errorMsg && (
+            <div style={tokenBoxStyle}>
+              <p style={{ ...tokenTextStyle, color: "var(--accent)" }}>{errorMsg}</p>
+            </div>
+          )}
+          <button onClick={runSetup} style={primaryBtnStyle}>
+            Retry
+          </button>
+          <p style={footerStyle}>
+            If this persists, check that the receiver is running and{" "}
+            <code style={{ fontFamily: "var(--mono)" }}>RECEIVER_AUTH_TOKEN</code>{" "}
+            is set correctly.
+          </p>
+        </div>
+      </div>
     );
   }
 
