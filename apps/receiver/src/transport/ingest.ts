@@ -28,7 +28,7 @@ import { extractTelemetryMetrics, extractTelemetryLogs } from "../telemetry/otlp
 import { rebuildSnapshots } from "../telemetry/snapshot-builder.js";
 import { CLEANUP_INTERVAL_MS, RETENTION_MS } from "../telemetry/constants.js";
 import type { DiagnosisRunner } from "../runtime/diagnosis-runner.js";
-import type { DiagnosisDebouncer } from "../runtime/diagnosis-debouncer.js";
+import { type DiagnosisConfig, scheduleDelayedDiagnosis, checkGenerationThreshold, resolveWaitUntil } from "../runtime/diagnosis-debouncer.js";
 import { decodeTraces, decodeMetrics, decodeLogs } from "./otlp-protobuf.js";
 
 const gunzipAsync = promisify(gunzip);
@@ -179,31 +179,35 @@ function computeScopeExpansion(spans: Array<{ traceId: string; spanId: string; s
   return { spanIds, memberServices, dependencyServices, windowStartMs, windowEndMs };
 }
 
-/** Fire inline diagnosis for a newly formed incident (ADR 0034). */
-function runDiagnosis(incidentId: string, runner: DiagnosisRunner | undefined): void {
-  if (runner) {
-    void runner.run(incidentId);
-  }
-}
-
-/** Rebuild snapshots and notify the debouncer of the new generation. */
+/** Rebuild snapshots and check generation threshold for diagnosis trigger. */
 async function rebuildAndNotify(
   incidentId: string,
   telemetryStore: TelemetryStoreDriver,
   storage: StorageDriver,
-  debouncer?: DiagnosisDebouncer,
+  diagnosisConfig: DiagnosisConfig,
+  runner?: DiagnosisRunner,
 ): Promise<void> {
   await rebuildSnapshots(incidentId, telemetryStore, storage);
-  if (debouncer) {
+  if (runner && diagnosisConfig.generationThreshold > 0) {
     const updated = await storage.getIncident(incidentId);
     if (updated) {
-      debouncer.onGenerationUpdate(incidentId, updated.packet.generation ?? 1);
+      checkGenerationThreshold(
+        incidentId,
+        updated.packet.generation ?? 1,
+        storage,
+        runner,
+        { generationThreshold: diagnosisConfig.generationThreshold },
+      );
     }
   }
 }
 
-export function createIngestRouter(storage: StorageDriver, spanBuffer: SpanBuffer | undefined, telemetryStore: TelemetryStoreDriver, diagnosisDebouncer?: DiagnosisDebouncer, diagnosisRunner?: DiagnosisRunner): Hono {
+export function createIngestRouter(storage: StorageDriver, spanBuffer: SpanBuffer | undefined, telemetryStore: TelemetryStoreDriver, diagnosisConfig: DiagnosisConfig, diagnosisRunner?: DiagnosisRunner): Hono {
   const app = new Hono();
+
+  // Resolve waitUntil once (cached after first resolution).
+  // Used by scheduleDelayedDiagnosis for serverless-safe deferred execution.
+  const waitUntilPromise = resolveWaitUntil();
 
   app.use(
     "*",
@@ -293,7 +297,7 @@ export function createIngestRouter(storage: StorageDriver, spanBuffer: SpanBuffe
         await storage.expandTelemetryScope(existing.incidentId, expansion);
         await storage.appendSpanMembership(existing.incidentId, expansion.spanIds);
         await storage.appendAnomalousSignals(existing.incidentId, buildAnomalousSignals(signalSpans));
-        await rebuildAndNotify(existing.incidentId, telemetryStore, storage, diagnosisDebouncer);
+        await rebuildAndNotify(existing.incidentId, telemetryStore, storage, diagnosisConfig, diagnosisRunner);
       }
       return c.json({ status: "ok" });
     }
@@ -322,20 +326,26 @@ export function createIngestRouter(storage: StorageDriver, spanBuffer: SpanBuffe
         await storage.expandTelemetryScope(incidentId, expansion);
         await storage.appendSpanMembership(incidentId, expansion.spanIds);
         await storage.appendAnomalousSignals(incidentId, buildAnomalousSignals(signalSpans));
-        await rebuildAndNotify(incidentId, telemetryStore, storage, diagnosisDebouncer);
+        await rebuildAndNotify(incidentId, telemetryStore, storage, diagnosisConfig, diagnosisRunner);
         return c.json({ status: "ok", incidentId, packetId: created.packet.packetId });
       }
 
       // ADR 0032: Rebuild snapshots for new incident
-      await rebuildAndNotify(incidentId, telemetryStore, storage, diagnosisDebouncer);
+      await rebuildAndNotify(incidentId, telemetryStore, storage, diagnosisConfig, diagnosisRunner);
 
-      if (diagnosisDebouncer) {
-        // Debouncer active: defer diagnosis until generation threshold or max wait.
-        // The debouncer's onReady callback will call runner.run().
-        diagnosisDebouncer.track(incidentId, packet.packetId);
-      } else {
-        // No debouncer (both env vars = 0): immediate inline diagnosis (ADR 0034)
-        runDiagnosis(incidentId, diagnosisRunner);
+      // Schedule delayed diagnosis via waitUntil (serverless-safe).
+      // Generation threshold is checked in rebuildAndNotify above.
+      // If maxWaitMs > 0, schedule a delayed fallback; otherwise immediate diagnosis.
+      if (diagnosisRunner) {
+        if (diagnosisConfig.maxWaitMs > 0) {
+          const waitUntilFn = await waitUntilPromise;
+          scheduleDelayedDiagnosis(incidentId, storage, diagnosisRunner, {
+            maxWaitMs: diagnosisConfig.maxWaitMs,
+          }, waitUntilFn);
+        } else {
+          // No delay configured: immediate inline diagnosis (ADR 0034)
+          void diagnosisRunner.run(incidentId);
+        }
       }
       return c.json({ status: "ok", incidentId, packetId: packet.packetId });
     }
@@ -345,7 +355,7 @@ export function createIngestRouter(storage: StorageDriver, spanBuffer: SpanBuffe
     await storage.expandTelemetryScope(incidentId, expansion);
     await storage.appendSpanMembership(incidentId, expansion.spanIds);
     await storage.appendAnomalousSignals(incidentId, buildAnomalousSignals(signalSpans));
-    await rebuildAndNotify(incidentId, telemetryStore, storage, diagnosisDebouncer);
+    await rebuildAndNotify(incidentId, telemetryStore, storage, diagnosisConfig, diagnosisRunner);
     return c.json({ status: "ok", incidentId, packetId: existing.packet.packetId });
   });
 
@@ -372,7 +382,7 @@ export function createIngestRouter(storage: StorageDriver, spanBuffer: SpanBuffe
         page.items.flatMap((incident) => {
           if (!telemetryMetrics.some((m) => shouldAttachEvidence(m, incident))) return [];
           return [(async () => {
-            await rebuildAndNotify(incident.incidentId, telemetryStore, storage, diagnosisDebouncer);
+            await rebuildAndNotify(incident.incidentId, telemetryStore, storage, diagnosisConfig, diagnosisRunner);
           })()];
         }),
       );
@@ -404,7 +414,7 @@ export function createIngestRouter(storage: StorageDriver, spanBuffer: SpanBuffe
         page.items.flatMap((incident) => {
           if (!telemetryLogs.some((l) => shouldAttachEvidence(l, incident))) return [];
           return [(async () => {
-            await rebuildAndNotify(incident.incidentId, telemetryStore, storage, diagnosisDebouncer);
+            await rebuildAndNotify(incident.incidentId, telemetryStore, storage, diagnosisConfig, diagnosisRunner);
           })()];
         }),
       );
@@ -453,7 +463,7 @@ export function createIngestRouter(storage: StorageDriver, spanBuffer: SpanBuffe
 
     for (const [incidentId, events] of eventsByIncidentId) {
       await storage.appendPlatformEvents(incidentId, events);
-      await rebuildAndNotify(incidentId, telemetryStore, storage, diagnosisDebouncer);
+      await rebuildAndNotify(incidentId, telemetryStore, storage, diagnosisConfig, diagnosisRunner);
     }
 
     return c.json({ status: "ok" });

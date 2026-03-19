@@ -13,7 +13,7 @@ import { MemoryTelemetryAdapter } from "./telemetry/adapters/memory.js";
 import { createIngestRouter } from "./transport/ingest.js";
 import { createApiRouter } from "./transport/api.js";
 import { SpanBuffer } from "./ambient/span-buffer.js";
-import { DiagnosisDebouncer } from "./runtime/diagnosis-debouncer.js";
+import type { DiagnosisConfig } from "./runtime/diagnosis-debouncer.js";
 import { DiagnosisRunner } from "./runtime/diagnosis-runner.js";
 
 export type { StorageDriver } from "./storage/interface.js";
@@ -144,22 +144,15 @@ export function createApp(storage?: StorageDriver, options?: AppOptions): Hono {
 
   // Diagnosis quiet period: defer diagnosis until evidence accumulates.
   // Dual trigger: generation threshold OR max wait time (whichever fires first).
-  // Both = 0 → immediate diagnosis (no debouncer).
+  // Uses waitUntil (Vercel) or fire-and-forget (local) for serverless-safe deferred execution.
   const parseEnvInt = (v: string | undefined, fallback: number) => {
     const n = parseInt(v ?? String(fallback), 10);
     return Number.isNaN(n) ? fallback : n;
   };
-  const generationThreshold = parseEnvInt(process.env["DIAGNOSIS_GENERATION_THRESHOLD"], 50);
-  const maxWaitMs = parseEnvInt(process.env["DIAGNOSIS_MAX_WAIT_MS"], 180000);
-  const diagnosisDebouncer = (generationThreshold === 0 && maxWaitMs === 0)
-    ? undefined
-    : new DiagnosisDebouncer({
-        generationThreshold: generationThreshold || Infinity,
-        maxWaitMs: maxWaitMs || Infinity,
-        onReady: (incidentId) => {
-          void runner.run(incidentId);
-        },
-      });
+  const diagnosisConfig: DiagnosisConfig = {
+    generationThreshold: parseEnvInt(process.env["DIAGNOSIS_GENERATION_THRESHOLD"], 50),
+    maxWaitMs: parseEnvInt(process.env["DIAGNOSIS_MAX_WAIT_MS"], 180000),
+  };
 
   // Setup endpoints (public, no auth required) — must be registered before API router
 
@@ -184,7 +177,7 @@ export function createApp(storage?: StorageDriver, options?: AppOptions): Hono {
     return c.json({ token });
   });
 
-  app.route("/", createIngestRouter(store, spanBuffer, telemetryStore, diagnosisDebouncer, runner));
+  app.route("/", createIngestRouter(store, spanBuffer, telemetryStore, diagnosisConfig, runner));
   app.route("/", createApiRouter(store, spanBuffer, telemetryStore));
 
   // Static serving for the Console SPA (ADR 0028)
