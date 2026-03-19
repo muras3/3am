@@ -8,7 +8,7 @@ import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
 import { OTLPMetricExporter } from "@opentelemetry/exporter-metrics-otlp-http";
 import { PeriodicExportingMetricReader } from "@opentelemetry/sdk-metrics";
 import { OTLPLogExporter } from "@opentelemetry/exporter-logs-otlp-http";
-import { BatchLogRecordProcessor } from "@opentelemetry/sdk-node";
+import { BatchLogRecordProcessor } from "@opentelemetry/sdk-logs";
 
 const sdk = new NodeSDK({
   traceExporter: new OTLPTraceExporter(),
@@ -31,7 +31,7 @@ import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
 import { OTLPMetricExporter } from "@opentelemetry/exporter-metrics-otlp-http";
 import { PeriodicExportingMetricReader } from "@opentelemetry/sdk-metrics";
 import { OTLPLogExporter } from "@opentelemetry/exporter-logs-otlp-http";
-import { BatchLogRecordProcessor } from "@opentelemetry/sdk-node";
+import { BatchLogRecordProcessor } from "@opentelemetry/sdk-logs";
 
 const sdk = new NodeSDK({
   traceExporter: new OTLPTraceExporter(),

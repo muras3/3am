@@ -12,6 +12,7 @@ const OTEL_DEPS = [
   "@opentelemetry/exporter-trace-otlp-http",
   "@opentelemetry/exporter-metrics-otlp-http",
   "@opentelemetry/exporter-logs-otlp-http",
+  "@opentelemetry/sdk-logs",
   "@opentelemetry/sdk-metrics",
 ];
 

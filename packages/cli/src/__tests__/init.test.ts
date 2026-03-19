@@ -99,10 +99,12 @@ describe("getInstrumentationTemplate()", () => {
     expect(t).toContain("OTLPMetricExporter");
   });
 
-  it("template includes BatchLogRecordProcessor and OTLPLogExporter", () => {
+  it("template includes BatchLogRecordProcessor from sdk-logs and OTLPLogExporter", () => {
     const t = getInstrumentationTemplate("generic");
     expect(t).toContain("BatchLogRecordProcessor");
     expect(t).toContain("OTLPLogExporter");
+    expect(t).toContain('from "@opentelemetry/sdk-logs"');
+    expect(t).not.toContain('BatchLogRecordProcessor } from "@opentelemetry/sdk-node"');
   });
 
   it("express template matches generic", () => {
