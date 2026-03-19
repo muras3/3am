@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { scheduleDelayedDiagnosis, checkGenerationThreshold } from "../diagnosis-debouncer.js";
+import { scheduleDelayedDiagnosis, checkGenerationThreshold, _resetInFlightForTest } from "../diagnosis-debouncer.js";
 import type { StorageDriver } from "../../storage/interface.js";
 import type { DiagnosisRunner } from "../diagnosis-runner.js";
 
@@ -33,7 +33,7 @@ function createMockRunner(): DiagnosisRunner & { run: ReturnType<typeof vi.fn> }
 }
 
 describe("scheduleDelayedDiagnosis", () => {
-  beforeEach(() => { vi.useFakeTimers(); });
+  beforeEach(() => { vi.useFakeTimers(); _resetInFlightForTest(); });
   afterEach(() => { vi.useRealTimers(); });
 
   it("calls runner.run after maxWaitMs when no diagnosis exists", async () => {
@@ -118,5 +118,110 @@ describe("checkGenerationThreshold", () => {
     // Give the async runIfNeeded time to resolve
     await new Promise((r) => setTimeout(r, 0));
     expect(runner.run).not.toHaveBeenCalled();
+  });
+});
+
+describe("in-flight guard (race condition prevention)", () => {
+  beforeEach(() => { vi.useFakeTimers(); _resetInFlightForTest(); });
+  afterEach(() => { vi.useRealTimers(); });
+
+  it("prevents duplicate runner.run when delayed and threshold paths race", async () => {
+    // runner.run() takes some time — simulate with a deferred promise
+    let resolveRun!: () => void;
+    const runPromise = new Promise<void>((r) => { resolveRun = r; });
+    const runner = createMockRunner();
+    runner.run.mockReturnValue(runPromise);
+
+    const storage = createMockStorage({ diagnosisResult: undefined });
+    const waitUntilFn = vi.fn((p: Promise<unknown>) => { void p; });
+
+    // Schedule delayed diagnosis (will fire after 5s)
+    scheduleDelayedDiagnosis("inc_1", storage, runner, { maxWaitMs: 5_000 }, waitUntilFn);
+
+    // Advance past the sleep — delayed path enters runIfNeeded, starts runner.run
+    await vi.advanceTimersByTimeAsync(5_000);
+
+    // Now the delayed path has called runner.run() and it's in-flight.
+    // Concurrently, the generation threshold path tries to fire for the same incident.
+    checkGenerationThreshold("inc_1", 50, storage, runner, { generationThreshold: 50 });
+
+    // Give async a tick to process
+    await vi.advanceTimersByTimeAsync(0);
+
+    // runner.run should have been called exactly once (the delayed path).
+    // The threshold path should have been blocked by the in-flight guard.
+    expect(runner.run).toHaveBeenCalledTimes(1);
+
+    // Complete the in-flight run
+    resolveRun();
+    await vi.advanceTimersByTimeAsync(0);
+  });
+
+  it("allows runner.run for same incident after previous run completes", async () => {
+    const storage = createMockStorage({ diagnosisResult: undefined });
+    const runner = createMockRunner();
+    const waitUntilFn = vi.fn((p: Promise<unknown>) => { void p; });
+
+    // First run via delayed diagnosis
+    scheduleDelayedDiagnosis("inc_1", storage, runner, { maxWaitMs: 1_000 }, waitUntilFn);
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(runner.run).toHaveBeenCalledTimes(1);
+
+    // After completion, in-flight guard should be cleared.
+    // A new threshold check should be able to fire.
+    checkGenerationThreshold("inc_1", 50, storage, runner, { generationThreshold: 50 });
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(runner.run).toHaveBeenCalledTimes(2);
+  });
+
+  it("cleans up in-flight guard even when runner.run throws", async () => {
+    const storage = createMockStorage({ diagnosisResult: undefined });
+    const runner = createMockRunner();
+    runner.run.mockRejectedValueOnce(new Error("LLM failed"));
+    const waitUntilFn = vi.fn((p: Promise<unknown>) => { void p; });
+
+    // First run fails
+    scheduleDelayedDiagnosis("inc_1", storage, runner, { maxWaitMs: 1_000 }, waitUntilFn);
+    await vi.advanceTimersByTimeAsync(1_000);
+    // Give the rejection a tick to settle
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(runner.run).toHaveBeenCalledTimes(1);
+
+    // After failure, in-flight guard should be cleared (finally block).
+    // A retry via threshold check should proceed.
+    runner.run.mockResolvedValue(undefined);
+    checkGenerationThreshold("inc_1", 50, storage, runner, { generationThreshold: 50 });
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(runner.run).toHaveBeenCalledTimes(2);
+  });
+
+  it("allows concurrent runs for different incidents", async () => {
+    let resolveRun1!: () => void;
+    const runPromise1 = new Promise<void>((r) => { resolveRun1 = r; });
+    const runner = createMockRunner();
+    runner.run.mockReturnValueOnce(runPromise1).mockResolvedValue(undefined);
+
+    const storage1 = createMockStorage({ diagnosisResult: undefined });
+    const storage2 = createMockStorage({ diagnosisResult: undefined });
+    const waitUntilFn = vi.fn((p: Promise<unknown>) => { void p; });
+
+    // Start run for inc_1
+    scheduleDelayedDiagnosis("inc_1", storage1, runner, { maxWaitMs: 1_000 }, waitUntilFn);
+    await vi.advanceTimersByTimeAsync(1_000);
+
+    // inc_1 is in-flight. inc_2 should still be allowed.
+    checkGenerationThreshold("inc_2", 50, storage2, runner, { generationThreshold: 50 });
+    await vi.advanceTimersByTimeAsync(0);
+
+    // Both incidents should have had runner.run called
+    expect(runner.run).toHaveBeenCalledTimes(2);
+    expect(runner.run).toHaveBeenCalledWith("inc_1");
+    expect(runner.run).toHaveBeenCalledWith("inc_2");
+
+    resolveRun1();
+    await vi.advanceTimersByTimeAsync(0);
   });
 });

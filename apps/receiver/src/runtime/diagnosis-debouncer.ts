@@ -10,6 +10,19 @@ export interface DiagnosisConfig {
 
 type WaitUntilFn = (promise: Promise<unknown>) => void;
 
+/**
+ * In-flight guard: tracks incidentIds that currently have a diagnosis run
+ * in progress. Prevents the TOCTOU race where both scheduleDelayedDiagnosis
+ * and checkGenerationThreshold observe no diagnosisResult and both call
+ * runner.run() concurrently.
+ */
+const inFlight = new Set<string>();
+
+/** Reset in-flight guard — for testing only. */
+export function _resetInFlightForTest(): void {
+  inFlight.clear();
+}
+
 /** Local Node.js fallback: fire-and-forget (no serverless lifecycle guarantee). */
 const localFallback: WaitUntilFn = (promise) => { void promise; };
 
@@ -63,8 +76,14 @@ export function scheduleDelayedDiagnosis(
 ): void {
   waitUntilFn(
     (async () => {
-      await sleep(opts.maxWaitMs);
-      await runIfNeeded(incidentId, storage, runner);
+      try {
+        await sleep(opts.maxWaitMs);
+        await runIfNeeded(incidentId, storage, runner);
+      } catch (err) {
+        // Prevent unhandled rejection when waitUntil is fire-and-forget.
+        // DiagnosisRunner.run() handles its own errors, but guard defensively.
+        console.error(`[diagnosis-debouncer] delayed diagnosis failed for ${incidentId}:`, err);
+      }
     })(),
   );
 }
@@ -88,19 +107,33 @@ export function checkGenerationThreshold(
 }
 
 /**
- * Run diagnosis only if no result exists yet (idempotent guard).
- * DiagnosisRunner.run() itself also checks for ANTHROPIC_API_KEY and incident existence,
- * so this is an additional layer to prevent redundant LLM calls.
+ * Run diagnosis only if no result exists yet AND no run is already in-flight.
+ *
+ * The in-flight Set prevents the TOCTOU race between scheduleDelayedDiagnosis
+ * (delayed path) and checkGenerationThreshold (immediate path): without it,
+ * both can observe diagnosisResult === undefined at the same time and both
+ * proceed to call runner.run(), causing duplicate LLM calls.
+ *
+ * DiagnosisRunner.run() itself also checks for ANTHROPIC_API_KEY and incident
+ * existence, so this is an additional layer to prevent redundant LLM calls.
  */
 async function runIfNeeded(
   incidentId: string,
   storage: StorageDriver,
   runner: DiagnosisRunner,
 ): Promise<void> {
+  if (inFlight.has(incidentId)) return; // Another call is already running.
+
   const incident = await storage.getIncident(incidentId);
   if (!incident) return;
   if (incident.diagnosisResult) return; // Already diagnosed — skip.
-  await runner.run(incidentId);
+
+  inFlight.add(incidentId);
+  try {
+    await runner.run(incidentId);
+  } finally {
+    inFlight.delete(incidentId);
+  }
 }
 
 function sleep(ms: number): Promise<void> {
