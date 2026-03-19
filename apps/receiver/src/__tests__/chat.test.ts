@@ -310,4 +310,52 @@ describe("POST /api/chat/:incidentId", () => {
     expect(callArgs.messages[2]?.role).toBe("user");
   });
 
+  // ── Rate limiting (B-11) ──────────────────────────────────────────────────
+
+  it("returns 429 when rate limit is exceeded (B-11)", async () => {
+    const cookie = await getSessionCookie(app);
+    const incidentId = await seedIncidentWithDiagnosis(app);
+
+    // Send 10 requests (within limit)
+    for (let i = 0; i < 10; i++) {
+      const res = await app.request(`/api/chat/${incidentId}`, {
+        method: "POST",
+        headers: chatHeaders(cookie),
+        body: JSON.stringify({ message: "question", history: [] }),
+      });
+      expect(res.status).toBe(200);
+    }
+
+    // 11th request should be rate limited
+    const res = await app.request(`/api/chat/${incidentId}`, {
+      method: "POST",
+      headers: chatHeaders(cookie),
+      body: JSON.stringify({ message: "question", history: [] }),
+    });
+    expect(res.status).toBe(429);
+  });
+
+  it("rate limit is independent per incident ID (B-11)", async () => {
+    const cookie = await getSessionCookie(app);
+    const incidentId1 = await seedIncidentWithDiagnosis(app);
+
+    // Exhaust rate limit on incidentId1
+    for (let i = 0; i < 10; i++) {
+      await app.request(`/api/chat/${incidentId1}`, {
+        method: "POST",
+        headers: chatHeaders(cookie),
+        body: JSON.stringify({ message: "q", history: [] }),
+      });
+    }
+
+    // Different incident should still be allowed (same IP, different ID)
+    const incidentId2 = await seedIncidentWithDiagnosis(app);
+    const res = await app.request(`/api/chat/${incidentId2}`, {
+      method: "POST",
+      headers: chatHeaders(cookie),
+      body: JSON.stringify({ message: "q", history: [] }),
+    });
+    expect(res.status).toBe(200);
+  });
+
 });

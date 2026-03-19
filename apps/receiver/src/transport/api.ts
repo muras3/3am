@@ -3,6 +3,7 @@ import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { DiagnosisResultSchema, type DiagnosisResult } from "@3amoncall/core";
 import { jwtCookieSetter, jwtCookieValidator } from "../middleware/session-cookie.js";
+import { rateLimiter } from "../middleware/rate-limit.js";
 import type { Incident, IncidentPage, StorageDriver } from "../storage/interface.js";
 import { spanMembershipKey } from "../storage/interface.js";
 import type { SpanBuffer } from "../ambient/span-buffer.js";
@@ -98,6 +99,9 @@ export function createApiRouter(storage: StorageDriver, spanBuffer: SpanBuffer |
     app.use("/api/*", jwtCookieSetter({ authToken, secure: !allowInsecure }));
     app.use("/api/chat/*", jwtCookieValidator(authToken));
   }
+
+  // Rate limit chat endpoint — LLM cost protection (B-11)
+  app.use("/api/chat/*", rateLimiter({ windowMs: 60_000, max: 10 }));
 
   app.get("/api/incidents", async (c) => {
     const limitStr = c.req.query("limit");
