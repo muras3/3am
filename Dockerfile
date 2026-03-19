@@ -11,6 +11,7 @@ COPY package.json pnpm-workspace.yaml pnpm-lock.yaml turbo.json ./
 COPY apps/receiver/package.json ./apps/receiver/
 COPY apps/console/package.json ./apps/console/
 COPY packages/core/package.json ./packages/core/
+COPY packages/diagnosis/package.json ./packages/diagnosis/
 COPY packages/config-typescript/package.json ./packages/config-typescript/
 COPY packages/config-eslint/package.json ./packages/config-eslint/
 
@@ -20,6 +21,7 @@ RUN pnpm install --frozen-lockfile
 # Copy source
 COPY apps/ ./apps/
 COPY packages/core/ ./packages/core/
+COPY packages/diagnosis/ ./packages/diagnosis/
 COPY packages/config-typescript/ ./packages/config-typescript/
 COPY packages/config-eslint/ ./packages/config-eslint/
 
@@ -37,6 +39,7 @@ WORKDIR /app
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml turbo.json ./
 COPY apps/receiver/package.json ./apps/receiver/
 COPY packages/core/package.json ./packages/core/
+COPY packages/diagnosis/package.json ./packages/diagnosis/
 COPY packages/config-typescript/package.json ./packages/config-typescript/
 COPY packages/config-eslint/package.json ./packages/config-eslint/
 
@@ -48,6 +51,7 @@ COPY --from=builder /app/apps/receiver/dist ./apps/receiver/dist
 COPY --from=builder /app/apps/receiver/src/transport/proto ./apps/receiver/src/transport/proto
 COPY --from=builder /app/apps/console/dist ./apps/console/dist
 COPY --from=builder /app/packages/core/dist ./packages/core/dist
+COPY --from=builder /app/packages/diagnosis/dist ./packages/diagnosis/dist
 
 # Copy receiver package.json for version detection
 COPY apps/receiver/package.json ./apps/receiver/
