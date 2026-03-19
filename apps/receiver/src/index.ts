@@ -121,8 +121,12 @@ export function createApp(storage?: StorageDriver, options?: AppOptions): Hono {
     // /api/setup-status and /api/setup-token are public (no auth) — registered before /api/* auth
     // /api/*: Console API — requires Bearer token (ADR 0034: inline diagnosis, no GitHub Actions)
     app.use("/api/*", async (c, next) => {
-      // Exempt setup endpoints from Bearer auth
-      if (c.req.path === "/api/setup-status" || c.req.path === "/api/setup-token") {
+      // Exempt: setup endpoints (public), chat (uses session cookie auth instead)
+      if (
+        c.req.path === "/api/setup-status" ||
+        c.req.path === "/api/setup-token" ||
+        c.req.path.startsWith("/api/chat/")
+      ) {
         return next();
       }
       return bearerAuth({ token: authToken })(c, next);
@@ -178,7 +182,7 @@ export function createApp(storage?: StorageDriver, options?: AppOptions): Hono {
     return c.json({ token });
   });
 
-  app.route("/", createIngestRouter(store, spanBuffer, telemetryStore, diagnosisDebouncer));
+  app.route("/", createIngestRouter(store, spanBuffer, telemetryStore, diagnosisDebouncer, runner));
   app.route("/", createApiRouter(store, spanBuffer, telemetryStore));
 
   // Static serving for the Console SPA (ADR 0028)

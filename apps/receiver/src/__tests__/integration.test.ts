@@ -264,12 +264,12 @@ describe("Bearer Token auth (ADR 0011)", () => {
     expect(res.status).toBe(401);
   });
 
-  // /api/* Console routes are accessible without Bearer (same-origin protection, ADR 0028)
-  it("returns 200 on /api/incidents without Bearer when token is set (Console same-origin route)", async () => {
+  // /api/* requires Bearer auth (ADR 0034: inline diagnosis, Console uses localStorage token)
+  it("returns 401 on /api/incidents without Bearer when token is set", async () => {
     process.env["RECEIVER_AUTH_TOKEN"] = "test-secret";
     app = createApp(storage);
     const res = await app.request("/api/incidents");
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(401);
   });
 
   it("returns 200 when token is set and correct Authorization header is provided to /api/incidents", async () => {
@@ -292,7 +292,7 @@ describe("Bearer Token auth (ADR 0011)", () => {
   it("throws on startup when no token and ALLOW_INSECURE_DEV_MODE is not set (F-201 fail-closed)", () => {
     delete process.env["RECEIVER_AUTH_TOKEN"];
     delete process.env["ALLOW_INSECURE_DEV_MODE"];
-    expect(() => createApp(storage)).toThrow("RECEIVER_AUTH_TOKEN must be set");
+    expect(() => createApp(storage)).toThrow("No auth token available");
   });
 });
 
@@ -303,7 +303,7 @@ describe("Receiver integration tests", () => {
   beforeEach(() => {
     delete process.env["RECEIVER_AUTH_TOKEN"];
     process.env["ALLOW_INSECURE_DEV_MODE"] = "true";
-    // Bypass diagnosis debouncer — these tests expect immediate thin event dispatch
+    // Immediate diagnosis mode (ADR 0034: inline, no debouncer delay)
     process.env["DIAGNOSIS_GENERATION_THRESHOLD"] = "0";
     process.env["DIAGNOSIS_MAX_WAIT_MS"] = "0";
     storage = new MemoryAdapter();
@@ -1144,8 +1144,8 @@ describe("Receiver integration tests", () => {
     expect(incidentAfter.packet.evidence.changedMetrics.length).toBeGreaterThan(0);
   });
 
-  // Test 9: Two POST /v1/traces within 5min for same service/env → only 1 ThinEvent
-  it("Two error spans within 5min for same service/env produce only 1 ThinEvent", async () => {
+  // Test 9: Two POST /v1/traces within 5min for same service/env → only 1 incident (ADR 0034: no ThinEvents)
+  it("Two error spans within 5min for same service/env produce only 1 incident", async () => {
     // Both spans use the same startTimeUnixNano (within the 5-minute window)
     await app.request("/v1/traces", {
       method: "POST",
@@ -1201,8 +1201,9 @@ describe("Receiver integration tests", () => {
       body: JSON.stringify(secondErrorSpan),
     });
 
-    const thinEvents = await storage.listThinEvents();
-    expect(thinEvents).toHaveLength(1);
+    // Verify only one incident was created (second span attaches to existing)
+    const page = await (await app.request("/api/incidents")).json() as { items: unknown[] };
+    expect(page.items).toHaveLength(1);
   });
 
   it("sets primaryService from the triggering anomalous service on initial create", async () => {

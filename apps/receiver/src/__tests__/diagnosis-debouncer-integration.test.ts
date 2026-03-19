@@ -1,17 +1,17 @@
 /**
- * Integration tests for the diagnosis debouncer — verifies that thin event
- * dispatch is deferred when DIAGNOSIS_GENERATION_THRESHOLD / DIAGNOSIS_MAX_WAIT_MS
- * are set, and immediate when both are 0 (backward compat).
+ * Integration tests for the diagnosis debouncer — verifies that inline diagnosis
+ * is deferred when DIAGNOSIS_GENERATION_THRESHOLD / DIAGNOSIS_MAX_WAIT_MS are set,
+ * and immediate when both are 0.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { MemoryAdapter } from "../storage/adapters/memory.js";
 import { createApp } from "../index.js";
 
-// Mock dispatchThinEvent to capture calls without hitting GitHub API
-vi.mock("../runtime/github-dispatch.js", () => ({
-  dispatchThinEvent: vi.fn().mockResolvedValue(undefined),
+// Mock DiagnosisRunner to capture calls without hitting LLM
+const mockRun = vi.fn().mockResolvedValue(undefined);
+vi.mock("../runtime/diagnosis-runner.js", () => ({
+  DiagnosisRunner: vi.fn().mockImplementation(() => ({ run: mockRun })),
 }));
-import { dispatchThinEvent } from "../runtime/github-dispatch.js";
 
 const errorSpanPayload = (traceId: string, spanId: string) => ({
   resourceSpans: [{
@@ -43,7 +43,7 @@ describe("Diagnosis debouncer integration", () => {
     vi.useFakeTimers();
     delete process.env["RECEIVER_AUTH_TOKEN"];
     process.env["ALLOW_INSECURE_DEV_MODE"] = "true";
-    vi.mocked(dispatchThinEvent).mockClear();
+    mockRun.mockClear();
   });
 
   afterEach(() => {
@@ -53,7 +53,7 @@ describe("Diagnosis debouncer integration", () => {
     delete process.env["DIAGNOSIS_MAX_WAIT_MS"];
   });
 
-  it("does NOT dispatch immediately when debouncer is active", async () => {
+  it("does NOT run diagnosis immediately when debouncer is active", async () => {
     process.env["DIAGNOSIS_GENERATION_THRESHOLD"] = "5";
     process.env["DIAGNOSIS_MAX_WAIT_MS"] = "180000";
     const app = createApp(new MemoryAdapter());
@@ -64,10 +64,10 @@ describe("Diagnosis debouncer integration", () => {
       body: JSON.stringify(errorSpanPayload("t1", "s1")),
     });
 
-    expect(dispatchThinEvent).not.toHaveBeenCalled();
+    expect(mockRun).not.toHaveBeenCalled();
   });
 
-  it("dispatches on max wait timeout", async () => {
+  it("runs diagnosis on max wait timeout", async () => {
     process.env["DIAGNOSIS_GENERATION_THRESHOLD"] = "999";
     process.env["DIAGNOSIS_MAX_WAIT_MS"] = "5000";
     const app = createApp(new MemoryAdapter());
@@ -78,12 +78,12 @@ describe("Diagnosis debouncer integration", () => {
       body: JSON.stringify(errorSpanPayload("t1", "s1")),
     });
 
-    expect(dispatchThinEvent).not.toHaveBeenCalled();
+    expect(mockRun).not.toHaveBeenCalled();
     await vi.advanceTimersByTimeAsync(5000);
-    expect(dispatchThinEvent).toHaveBeenCalledTimes(1);
+    expect(mockRun).toHaveBeenCalledTimes(1);
   });
 
-  it("dispatches immediately when both thresholds are 0 (backward compat)", async () => {
+  it("runs diagnosis immediately when both thresholds are 0", async () => {
     process.env["DIAGNOSIS_GENERATION_THRESHOLD"] = "0";
     process.env["DIAGNOSIS_MAX_WAIT_MS"] = "0";
     const app = createApp(new MemoryAdapter());
@@ -94,38 +94,30 @@ describe("Diagnosis debouncer integration", () => {
       body: JSON.stringify(errorSpanPayload("t1", "s1")),
     });
 
-    expect(dispatchThinEvent).toHaveBeenCalledTimes(1);
+    expect(mockRun).toHaveBeenCalledTimes(1);
   });
 
-  it("dispatches when generation threshold is reached via repeated batches", async () => {
-    // Low threshold so we can reach it with a few batches
+  it("runs diagnosis when generation threshold is reached via repeated batches", async () => {
     process.env["DIAGNOSIS_GENERATION_THRESHOLD"] = "3";
     process.env["DIAGNOSIS_MAX_WAIT_MS"] = "180000";
     const storage = new MemoryAdapter();
     const app = createApp(storage);
 
-    // First batch — creates incident (generation starts at 1, then rebuild → 2)
-    const res = await app.request("/v1/traces", {
+    // First batch — creates incident
+    await app.request("/v1/traces", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(errorSpanPayload("t1", "s1")),
     });
-    const { incidentId } = await res.json() as { incidentId: string };
-    expect(dispatchThinEvent).not.toHaveBeenCalled();
+    expect(mockRun).not.toHaveBeenCalled();
 
-    // Second batch — attaches to same incident → rebuild → generation 3 → threshold reached
+    // Second batch — attaches to same incident → rebuild → generation threshold reached
     await app.request("/v1/traces", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(errorSpanPayload("t1", "s2")),
     });
 
-    // Generation threshold should have fired the debouncer
-    expect(dispatchThinEvent).toHaveBeenCalledTimes(1);
-
-    // Verify thin event was saved to storage
-    const events = await storage.listThinEvents();
-    expect(events).toHaveLength(1);
-    expect(events[0].incident_id).toBe(incidentId);
+    expect(mockRun).toHaveBeenCalledTimes(1);
   });
 });

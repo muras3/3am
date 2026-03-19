@@ -27,7 +27,7 @@ import { buildAnomalousSignals, createPacket } from "../domain/packetizer.js";
 import { extractTelemetryMetrics, extractTelemetryLogs } from "../telemetry/otlp-extractors.js";
 import { rebuildSnapshots } from "../telemetry/snapshot-builder.js";
 import { CLEANUP_INTERVAL_MS, RETENTION_MS } from "../telemetry/constants.js";
-import { dispatchThinEvent } from "../runtime/github-dispatch.js";
+import type { DiagnosisRunner } from "../runtime/diagnosis-runner.js";
 import type { DiagnosisDebouncer } from "../runtime/diagnosis-debouncer.js";
 import { decodeTraces, decodeMetrics, decodeLogs } from "./otlp-protobuf.js";
 
@@ -179,20 +179,11 @@ function computeScopeExpansion(spans: Array<{ traceId: string; spanId: string; s
   return { spanIds, memberServices, dependencyServices, windowStartMs, windowEndMs };
 }
 
-/** Create, persist, and dispatch a thin event for an incident. */
-async function saveAndDispatchThinEvent(
-  incidentId: string,
-  packetId: string,
-  storage: StorageDriver,
-): Promise<void> {
-  const thinEvent = {
-    event_id: "evt_" + randomUUID(),
-    event_type: "incident.created" as const,
-    incident_id: incidentId,
-    packet_id: packetId,
-  };
-  await storage.saveThinEvent(thinEvent);
-  await dispatchThinEvent(thinEvent);
+/** Fire inline diagnosis for a newly formed incident (ADR 0034). */
+function runDiagnosis(incidentId: string, runner: DiagnosisRunner | undefined): void {
+  if (runner) {
+    void runner.run(incidentId);
+  }
 }
 
 /** Rebuild snapshots and notify the debouncer of the new generation. */
@@ -211,7 +202,7 @@ async function rebuildAndNotify(
   }
 }
 
-export function createIngestRouter(storage: StorageDriver, spanBuffer: SpanBuffer | undefined, telemetryStore: TelemetryStoreDriver, diagnosisDebouncer?: DiagnosisDebouncer): Hono {
+export function createIngestRouter(storage: StorageDriver, spanBuffer: SpanBuffer | undefined, telemetryStore: TelemetryStoreDriver, diagnosisDebouncer?: DiagnosisDebouncer, diagnosisRunner?: DiagnosisRunner): Hono {
   const app = new Hono();
 
   app.use(
@@ -339,12 +330,12 @@ export function createIngestRouter(storage: StorageDriver, spanBuffer: SpanBuffe
       await rebuildAndNotify(incidentId, telemetryStore, storage, diagnosisDebouncer);
 
       if (diagnosisDebouncer) {
-        // Debouncer active: defer thin event dispatch until generation threshold or max wait.
-        // The debouncer's onReady callback will save + dispatch the thin event.
+        // Debouncer active: defer diagnosis until generation threshold or max wait.
+        // The debouncer's onReady callback will call runner.run().
         diagnosisDebouncer.track(incidentId, packet.packetId);
       } else {
-        // No debouncer (both env vars = 0): immediate dispatch (backward compat)
-        await saveAndDispatchThinEvent(incidentId, packet.packetId, storage);
+        // No debouncer (both env vars = 0): immediate inline diagnosis (ADR 0034)
+        runDiagnosis(incidentId, diagnosisRunner);
       }
       return c.json({ status: "ok", incidentId, packetId: packet.packetId });
     }
