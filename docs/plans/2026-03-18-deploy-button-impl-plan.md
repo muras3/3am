@@ -1,3 +1,5 @@
+> ⚠️ このドキュメントのコード例は参考にしないこと。実装は別ブランチで行われた。
+
 # Deploy Button + npx 3amoncall init Implementation Plan
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
