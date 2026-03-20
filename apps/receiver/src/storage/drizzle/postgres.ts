@@ -331,6 +331,13 @@ export class PostgresAdapter implements StorageDriver {
     return rows.length > 0;
   }
 
+  async releaseDiagnosisDispatch(incidentId: string): Promise<void> {
+    await this.db
+      .update(pgIncidents)
+      .set({ diagnosisDispatchedAt: null, updatedAt: new Date() })
+      .where(eq(pgIncidents.incidentId, incidentId));
+  }
+
   async listIncidents(opts: { limit: number; cursor?: string }): Promise<IncidentPage> {
     const offset = opts.cursor !== undefined ? parseInt(opts.cursor, 10) : 0;
     const rows = await this.db

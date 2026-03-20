@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { scheduleDelayedDiagnosis, checkGenerationThreshold, _resetInFlightForTest } from "../diagnosis-debouncer.js";
+import { scheduleDelayedDiagnosis, checkGenerationThreshold, runIfNeeded, _resetInFlightForTest } from "../diagnosis-debouncer.js";
 import type { StorageDriver } from "../../storage/interface.js";
 import type { DiagnosisRunner } from "../diagnosis-runner.js";
 
@@ -11,6 +11,7 @@ function createMockStorage(incident?: { diagnosisResult?: unknown }): StorageDri
         : null,
     ),
     claimDiagnosisDispatch: vi.fn().mockResolvedValue(true),
+    releaseDiagnosisDispatch: vi.fn().mockResolvedValue(undefined),
     createIncident: vi.fn(),
     updatePacket: vi.fn(),
     updateIncidentStatus: vi.fn(),
@@ -263,6 +264,70 @@ describe("DB-level dispatch guard (cross-instance idempotency)", () => {
     await vi.advanceTimersByTimeAsync(0);
 
     expect(storage.claimDiagnosisDispatch).not.toHaveBeenCalled();
+    expect(runner.run).not.toHaveBeenCalled();
+  });
+});
+
+describe("claim release on diagnosis failure", () => {
+  beforeEach(() => { _resetInFlightForTest(); });
+
+  it("releases dispatch claim when runner.run throws", async () => {
+    const storage = createMockStorage({ diagnosisResult: undefined });
+    const runner = createMockRunner();
+    runner.run.mockRejectedValueOnce(new Error("ANTHROPIC_API_KEY missing"));
+
+    await expect(runIfNeeded("inc_1", storage, runner)).rejects.toThrow("ANTHROPIC_API_KEY missing");
+
+    expect(storage.claimDiagnosisDispatch).toHaveBeenCalledWith("inc_1");
+    expect(storage.releaseDiagnosisDispatch).toHaveBeenCalledWith("inc_1");
+  });
+
+  it("allows re-claim after release (incident becomes retryable)", async () => {
+    const storage = createMockStorage({ diagnosisResult: undefined });
+    const runner = createMockRunner();
+    runner.run.mockRejectedValueOnce(new Error("LLM timeout"));
+
+    await expect(runIfNeeded("inc_1", storage, runner)).rejects.toThrow("LLM timeout");
+    expect(storage.releaseDiagnosisDispatch).toHaveBeenCalledWith("inc_1");
+
+    // After release, claimDiagnosisDispatch should succeed again
+    runner.run.mockResolvedValue(undefined);
+    await runIfNeeded("inc_1", storage, runner);
+    expect(runner.run).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not release claim when runner.run succeeds", async () => {
+    const storage = createMockStorage({ diagnosisResult: undefined });
+    const runner = createMockRunner();
+
+    await runIfNeeded("inc_1", storage, runner);
+
+    expect(storage.releaseDiagnosisDispatch).not.toHaveBeenCalled();
+    expect(runner.run).toHaveBeenCalledWith("inc_1");
+  });
+});
+
+describe("runIfNeeded (exported for immediate path)", () => {
+  beforeEach(() => { _resetInFlightForTest(); });
+
+  it("goes through claim protocol", async () => {
+    const storage = createMockStorage({ diagnosisResult: undefined });
+    const runner = createMockRunner();
+
+    await runIfNeeded("inc_1", storage, runner);
+
+    expect(storage.getIncident).toHaveBeenCalledWith("inc_1");
+    expect(storage.claimDiagnosisDispatch).toHaveBeenCalledWith("inc_1");
+    expect(runner.run).toHaveBeenCalledWith("inc_1");
+  });
+
+  it("skips when claim is already taken", async () => {
+    const storage = createMockStorage({ diagnosisResult: undefined });
+    (storage.claimDiagnosisDispatch as ReturnType<typeof vi.fn>).mockResolvedValue(false);
+    const runner = createMockRunner();
+
+    await runIfNeeded("inc_1", storage, runner);
+
     expect(runner.run).not.toHaveBeenCalled();
   });
 });

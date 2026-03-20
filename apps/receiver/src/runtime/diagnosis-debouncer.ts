@@ -117,7 +117,7 @@ export function checkGenerationThreshold(
  *    prevents duplicate dispatch across serverless instances.
  * 3. `diagnosisResult` check — skips if diagnosis is already complete.
  */
-async function runIfNeeded(
+export async function runIfNeeded(
   incidentId: string,
   storage: StorageDriver,
   runner: DiagnosisRunner,
@@ -135,6 +135,10 @@ async function runIfNeeded(
   inFlight.add(incidentId);
   try {
     await runner.run(incidentId);
+  } catch (err) {
+    // Release claim so the incident can be retried on next trigger.
+    await storage.releaseDiagnosisDispatch(incidentId);
+    throw err;
   } finally {
     inFlight.delete(incidentId);
   }
