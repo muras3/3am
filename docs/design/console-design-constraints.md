@@ -66,7 +66,7 @@ Status: validated mock, pre-implementation
 ## 4. Current Scope
 
 - Core evidence: **OTel traces, OTel logs, OTel metrics**. Nothing else.
-- Platform logs are out of scope. Do not add a Platform tab. (Note: `product-concept-v0.2.md` still references platform logs — that document needs updating to reflect this constraint. This design constraints doc takes precedence until then.)
+- Platform logs are out of scope. Do not add a Platform tab.
 - Platform events (deploys, config changes) may exist in the packet but are not a primary evidence surface at launch.
 - AI features are embedded in Evidence Studio Q&A, not a separate chat panel.
 
