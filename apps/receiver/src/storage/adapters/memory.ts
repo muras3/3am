@@ -112,6 +112,12 @@ export class MemoryAdapter implements StorageDriver {
     return true;
   }
 
+  async releaseDiagnosisDispatch(incidentId: string): Promise<void> {
+    const incident = this.incidents.get(incidentId);
+    if (!incident) return;
+    incident.diagnosisDispatchedAt = undefined;
+  }
+
   async listIncidents(opts: {
     limit: number;
     cursor?: string;

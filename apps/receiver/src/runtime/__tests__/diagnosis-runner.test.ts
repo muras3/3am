@@ -76,56 +76,60 @@ describe("DiagnosisRunner", () => {
     }
   });
 
-  it("skips diagnosis when ANTHROPIC_API_KEY is not set", async () => {
+  it("skips diagnosis when ANTHROPIC_API_KEY is not set and returns false", async () => {
     delete process.env["ANTHROPIC_API_KEY"];
     const storage = makeStorage();
     const runner = new DiagnosisRunner(storage);
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
 
-    await runner.run("inc_test");
+    const result = await runner.run("inc_test");
 
+    expect(result).toBe(false);
     expect(diagnose).not.toHaveBeenCalled();
     expect(storage.appendDiagnosis).not.toHaveBeenCalled();
     expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("ANTHROPIC_API_KEY"));
     warnSpy.mockRestore();
   });
 
-  it("runs diagnosis and stores result on success", async () => {
+  it("runs diagnosis and stores result on success, returns true", async () => {
     process.env["ANTHROPIC_API_KEY"] = "test-key";
     const mockResult = { summary: { what_happened: "test" } } as never;
     vi.mocked(diagnose).mockResolvedValueOnce(mockResult);
     const storage = makeStorage();
     const runner = new DiagnosisRunner(storage);
 
-    await runner.run("inc_test");
+    const result = await runner.run("inc_test");
 
+    expect(result).toBe(true);
     expect(storage.getIncident).toHaveBeenCalledWith("inc_test");
     expect(diagnose).toHaveBeenCalledWith(expect.objectContaining({ incidentId: "inc_test" }));
     expect(storage.appendDiagnosis).toHaveBeenCalledWith("inc_test", mockResult);
   });
 
-  it("logs error but does not throw when diagnose() fails", async () => {
+  it("logs error and returns false when diagnose() fails", async () => {
     process.env["ANTHROPIC_API_KEY"] = "test-key";
     vi.mocked(diagnose).mockRejectedValueOnce(new Error("LLM error"));
     const storage = makeStorage();
     const runner = new DiagnosisRunner(storage);
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
-    await expect(runner.run("inc_test")).resolves.toBeUndefined();
+    const result = await runner.run("inc_test");
 
+    expect(result).toBe(false);
     expect(storage.appendDiagnosis).not.toHaveBeenCalled();
     expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining("inc_test"), expect.any(Error));
     errorSpy.mockRestore();
   });
 
-  it("logs warn when incident is not found", async () => {
+  it("logs warn and returns false when incident is not found", async () => {
     process.env["ANTHROPIC_API_KEY"] = "test-key";
     const storage = makeStorage({ getIncident: vi.fn().mockResolvedValue(null) });
     const runner = new DiagnosisRunner(storage);
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
 
-    await runner.run("inc_missing");
+    const result = await runner.run("inc_missing");
 
+    expect(result).toBe(false);
     expect(diagnose).not.toHaveBeenCalled();
     expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("inc_missing"));
     warnSpy.mockRestore();

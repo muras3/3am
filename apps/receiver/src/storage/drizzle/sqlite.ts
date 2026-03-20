@@ -290,6 +290,15 @@ export class SQLiteAdapter implements StorageDriver {
     return result.changes > 0;
   }
 
+  async releaseDiagnosisDispatch(incidentId: string): Promise<void> {
+    const now = new Date().toISOString();
+    this.db
+      .update(incidents)
+      .set({ diagnosisDispatchedAt: null, updatedAt: now })
+      .where(eq(incidents.incidentId, incidentId))
+      .run();
+  }
+
   async listIncidents(opts: { limit: number; cursor?: string }): Promise<IncidentPage> {
     const offset = opts.cursor !== undefined ? parseInt(opts.cursor, 10) : 0;
     const rows = await this.db

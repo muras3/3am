@@ -12,7 +12,7 @@ import { MemoryAdapter } from "../storage/adapters/memory.js";
 import { createApp } from "../index.js";
 
 // Mock DiagnosisRunner to capture calls without hitting LLM
-const mockRun = vi.fn().mockResolvedValue(undefined);
+const mockRun = vi.fn().mockResolvedValue(true);
 vi.mock("../runtime/diagnosis-runner.js", () => ({
   DiagnosisRunner: vi.fn().mockImplementation(() => ({ run: mockRun })),
 }));

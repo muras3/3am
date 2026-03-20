@@ -147,6 +147,13 @@ export interface StorageDriver {
    */
   claimDiagnosisDispatch(incidentId: string): Promise<boolean>;
 
+  /**
+   * Release a previously claimed diagnosis dispatch.
+   * Sets diagnosis_dispatched_at back to NULL so the incident can be retried.
+   * Used when diagnosis fails after claiming dispatch.
+   */
+  releaseDiagnosisDispatch(incidentId: string): Promise<void>;
+
   saveThinEvent(event: ThinEvent): Promise<void>;
 
   listThinEvents(): Promise<ThinEvent[]>;
