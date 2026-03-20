@@ -41,6 +41,7 @@ const pgIncidents = pgTable("incidents", {
   spanMembership: jsonb("span_membership"),
   anomalousSignals: jsonb("anomalous_signals"),
   platformEvents: jsonb("platform_events"),
+  diagnosisDispatchedAt: timestamp("diagnosis_dispatched_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 });
@@ -90,6 +91,7 @@ export class PostgresAdapter implements StorageDriver {
         span_membership    JSONB,
         anomalous_signals  JSONB,
         platform_events    JSONB,
+        diagnosis_dispatched_at TIMESTAMPTZ,
         created_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
         updated_at         TIMESTAMPTZ NOT NULL DEFAULT now()
       )
@@ -106,6 +108,9 @@ export class PostgresAdapter implements StorageDriver {
     `);
     await this.db.execute(drizzleSql`
       ALTER TABLE incidents ADD COLUMN IF NOT EXISTS platform_events JSONB
+    `);
+    await this.db.execute(drizzleSql`
+      ALTER TABLE incidents ADD COLUMN IF NOT EXISTS diagnosis_dispatched_at TIMESTAMPTZ
     `);
     await this.db.execute(drizzleSql`
       CREATE TABLE IF NOT EXISTS thin_events (
@@ -167,6 +172,9 @@ export class PostgresAdapter implements StorageDriver {
     if (row.closedAt) incident.closedAt = row.closedAt;
     if (row.diagnosisResult) {
       incident.diagnosisResult = row.diagnosisResult as DiagnosisResult;
+    }
+    if (row.diagnosisDispatchedAt) {
+      incident.diagnosisDispatchedAt = row.diagnosisDispatchedAt.toISOString();
     }
     return incident;
   }
@@ -307,6 +315,27 @@ export class PostgresAdapter implements StorageDriver {
         .set({ platformEvents: updated, updatedAt: new Date() })
         .where(eq(pgIncidents.incidentId, incidentId));
     });
+  }
+
+  async claimDiagnosisDispatch(incidentId: string): Promise<boolean> {
+    const rows = await this.db
+      .update(pgIncidents)
+      .set({ diagnosisDispatchedAt: new Date(), updatedAt: new Date() })
+      .where(
+        and(
+          eq(pgIncidents.incidentId, incidentId),
+          drizzleSql`${pgIncidents.diagnosisDispatchedAt} IS NULL`,
+        ),
+      )
+      .returning({ incidentId: pgIncidents.incidentId });
+    return rows.length > 0;
+  }
+
+  async releaseDiagnosisDispatch(incidentId: string): Promise<void> {
+    await this.db
+      .update(pgIncidents)
+      .set({ diagnosisDispatchedAt: null, updatedAt: new Date() })
+      .where(eq(pgIncidents.incidentId, incidentId));
   }
 
   async listIncidents(opts: { limit: number; cursor?: string }): Promise<IncidentPage> {

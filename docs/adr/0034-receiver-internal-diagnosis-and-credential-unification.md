@@ -55,3 +55,30 @@ product-concept-v0.2 では、Receiver と診断ランタイム (GitHub Actions)
 - CLI (`3amoncall-cli`) は変更なし。ローカル再現・評価・CI 用途として維持
 - `@3amoncall/diagnosis` パッケージは変更なし。呼び出し元が変わるだけ
 - `@3amoncall/core` のスキーマは変更なし
+
+## Addendum: waitUntil-based Diagnosis Debouncer
+
+**Date**: 2026-03-19
+
+### Problem
+
+元の DiagnosisDebouncer は in-memory Map + `setTimeout` に依存していた。Vercel serverless では HTTP response 後にタイマーが消失するため、`vercel-entry.ts` で `DIAGNOSIS_GENERATION_THRESHOLD=0` / `DIAGNOSIS_MAX_WAIT_MS=0` を強制設定してデバウンサーを完全無効化するハックが必要だった。
+
+### Solution
+
+DiagnosisDebouncer class を削除し、2つの関数型 API に置き換えた:
+
+1. **`scheduleDelayedDiagnosis()`** — `waitUntil()` を使用して、HTTP response 後もバックグラウンドで sleep + diagnosis を実行する。Vercel では `@vercel/functions` の `waitUntil()` が Function execution lifetime を延長する。ローカル Node.js では fire-and-forget fallback。
+2. **`checkGenerationThreshold()`** — rebuildSnapshots 後に generation を確認し、閾値到達時は即座に診断を実行。
+
+### Idempotency
+
+二重発火防止は `runIfNeeded()` で実装: `storage.getIncident()` → `diagnosisResult` 存在チェック → 存在すればスキップ。`DiagnosisRunner.run()` 自体も ANTHROPIC_API_KEY チェックと incident 存在チェックを持つ。
+
+### Platform Compatibility
+
+| Platform | waitUntil source | Behavior |
+|----------|-----------------|----------|
+| Vercel | `@vercel/functions` (optionalDependency) | Function execution lifetime 延長 |
+| Cloudflare Workers | Future: `ctx.waitUntil()` | 未実装 (Cloudflare 対応時に追加) |
+| Local Node.js | fire-and-forget fallback | プロセスが生きている限り動作 |

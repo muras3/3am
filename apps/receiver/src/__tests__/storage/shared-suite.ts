@@ -484,6 +484,38 @@ export function runStorageSuite(
       await expect(driver.appendPlatformEvents("inc_unknown", [event])).resolves.toBeUndefined();
     });
 
+    // claimDiagnosisDispatch ─────────────────────────────────────────────────
+
+    it("claimDiagnosisDispatch returns true on first call, false on second", async () => {
+      const packet = makePacket();
+      await driver.createIncident(packet, makeMembership());
+
+      const first = await driver.claimDiagnosisDispatch(packet.incidentId);
+      expect(first).toBe(true);
+
+      const second = await driver.claimDiagnosisDispatch(packet.incidentId);
+      expect(second).toBe(false);
+    });
+
+    it("claimDiagnosisDispatch sets diagnosisDispatchedAt on the incident", async () => {
+      const packet = makePacket();
+      await driver.createIncident(packet, makeMembership());
+
+      // Before claim
+      const before = await driver.getIncident(packet.incidentId);
+      expect(before?.diagnosisDispatchedAt).toBeUndefined();
+
+      await driver.claimDiagnosisDispatch(packet.incidentId);
+
+      const after = await driver.getIncident(packet.incidentId);
+      expect(after?.diagnosisDispatchedAt).toBeDefined();
+    });
+
+    it("claimDiagnosisDispatch returns false for unknown incidentId", async () => {
+      const result = await driver.claimDiagnosisDispatch("inc_unknown");
+      expect(result).toBe(false);
+    });
+
     // createIncident initializes compact fields ──────────────────────────────
 
     it("createIncident initializes telemetryScope, spanMembership, anomalousSignals, and platformEvents", async () => {

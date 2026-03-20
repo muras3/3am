@@ -7,7 +7,7 @@
  *
  * - Lazy init: PostgresAdapter + migrate runs once per cold start
  * - AUTH_TOKEN: resolved from DB (auto-generated on first cold start) or env var
- * - Immediate diagnosis mode: DIAGNOSIS_GENERATION_THRESHOLD=0 + DIAGNOSIS_MAX_WAIT_MS=0
+ * - Diagnosis debouncer uses waitUntil (@vercel/functions) for serverless-safe deferred execution
  * - consoleDist NOT passed — Vercel serves console SPA as static files
  * - server.ts (Node.js entry) is preserved for local/Docker use
  */
@@ -15,10 +15,6 @@ import type { Hono } from "hono";
 import { createApp, resolveAuthToken } from "./index.js";
 import { PostgresAdapter } from "./storage/drizzle/postgres.js";
 import { PostgresTelemetryAdapter } from "./telemetry/drizzle/postgres.js";
-
-// Force immediate diagnosis mode on Vercel (serverless — timers don't persist across invocations)
-process.env["DIAGNOSIS_GENERATION_THRESHOLD"] = "0";
-process.env["DIAGNOSIS_MAX_WAIT_MS"] = "0";
 
 let appPromise: Promise<Hono> | null = null;
 
