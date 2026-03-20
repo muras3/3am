@@ -20,7 +20,8 @@ Status: validated mock, pre-implementation
 ### Normal (Runtime Dependency Map)
 
 - Map shows only what recent spans observed. Nothing imagined.
-- Nodes are 3 tiers: **Entry Points** (routes/functions) → **Runtime Units** (internal modules) → **Dependencies** (external services, DBs).
+- Nodes are 3 tiers: **Entry Points** (routes/functions) → **Runtime Units** (observable runtime groupings derived from spans — e.g. client classes, handler groups) → **Dependencies** (external services, DBs).
+- Runtime Units are not fixed to internal module names. They are whatever grouping the span data supports. If spans only show service-level granularity, that is the unit. Do not invent module names.
 - Each tier has distinct visual treatment: shape, border style, position.
 - 1-3 nodes must look intentional, not broken. Do not pad with invisible nodes.
 - Edges represent observed calls, not architectural intent. Dashed for external.
@@ -57,16 +58,16 @@ Status: validated mock, pre-implementation
 - Zoom transitions use scale + blur. Going deeper = zooming in. Going back = zooming out.
 - First viewport of each screen must deliver its core value without scrolling.
 - **30-second rule**: Map tells you something is wrong. Incident tells you what to do. Evidence tells you why to trust it.
-- URL reflects current state (`?level=N&tab=traces`). Browser back/forward works.
+- All view state (zoom level, active tab, expanded panels) must be deep-linkable. URL shape is an implementation decision.
 - Escape zooms out. Keyboard navigation works throughout.
 
 ---
 
-## 4. Scope Constraints (Phase 1)
+## 4. Current Scope
 
 - Core evidence: **OTel traces, OTel logs, OTel metrics**. Nothing else.
-- Platform logs are out of scope. Do not add a Platform tab.
-- Platform events (deploys, config changes) may exist in the packet but are not a primary evidence surface in Phase 1.
+- Platform logs are out of scope. Do not add a Platform tab. (Note: `product-concept-v0.2.md` still references platform logs — that document needs updating to reflect this constraint. This design constraints doc takes precedence until then.)
+- Platform events (deploys, config changes) may exist in the packet but are not a primary evidence surface at launch.
 - AI features are embedded in Evidence Studio Q&A, not a separate chat panel.
 
 ---
