@@ -318,7 +318,7 @@ export class PostgresAdapter implements StorageDriver {
   }
 
   async claimDiagnosisDispatch(incidentId: string): Promise<boolean> {
-    const rows = await this.db
+    const result = await this.db
       .update(pgIncidents)
       .set({ diagnosisDispatchedAt: new Date(), updatedAt: new Date() })
       .where(
@@ -326,16 +326,11 @@ export class PostgresAdapter implements StorageDriver {
           eq(pgIncidents.incidentId, incidentId),
           drizzleSql`${pgIncidents.diagnosisDispatchedAt} IS NULL`,
         ),
-      )
-      .returning({ incidentId: pgIncidents.incidentId });
-    return rows.length > 0;
-  }
-
-  async releaseDiagnosisDispatch(incidentId: string): Promise<void> {
-    await this.db
-      .update(pgIncidents)
-      .set({ diagnosisDispatchedAt: null, updatedAt: new Date() })
-      .where(eq(pgIncidents.incidentId, incidentId));
+      );
+    // postgres.js returns array with count property; drizzle wraps it.
+    // The rowCount from the UPDATE tells us if we claimed it.
+    const rowCount = (result as unknown as { rowCount: number }).rowCount ?? 0;
+    return rowCount > 0;
   }
 
   async listIncidents(opts: { limit: number; cursor?: string }): Promise<IncidentPage> {

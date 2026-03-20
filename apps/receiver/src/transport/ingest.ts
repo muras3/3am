@@ -28,7 +28,7 @@ import { extractTelemetryMetrics, extractTelemetryLogs } from "../telemetry/otlp
 import { rebuildSnapshots } from "../telemetry/snapshot-builder.js";
 import { CLEANUP_INTERVAL_MS, RETENTION_MS } from "../telemetry/constants.js";
 import type { DiagnosisRunner } from "../runtime/diagnosis-runner.js";
-import { type DiagnosisConfig, scheduleDelayedDiagnosis, checkGenerationThreshold, resolveWaitUntil, runIfNeeded } from "../runtime/diagnosis-debouncer.js";
+import { type DiagnosisConfig, scheduleDelayedDiagnosis, checkGenerationThreshold, resolveWaitUntil } from "../runtime/diagnosis-debouncer.js";
 import { decodeTraces, decodeMetrics, decodeLogs } from "./otlp-protobuf.js";
 
 const gunzipAsync = promisify(gunzip);
@@ -344,8 +344,7 @@ export function createIngestRouter(storage: StorageDriver, spanBuffer: SpanBuffe
           }, waitUntilFn);
         } else {
           // No delay configured: immediate inline diagnosis (ADR 0034)
-          // Route through runIfNeeded to respect claim protocol.
-          void runIfNeeded(incidentId, storage, diagnosisRunner);
+          void diagnosisRunner.run(incidentId);
         }
       }
       return c.json({ status: "ok", incidentId, packetId: packet.packetId });
