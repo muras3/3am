@@ -8,7 +8,7 @@
  * effects beyond queries.
  */
 
-import type { TelemetryStoreDriver } from '../telemetry/interface.js'
+import type { TelemetryStoreDriver, TelemetryQueryFilter } from '../telemetry/interface.js'
 import { buildIncidentQueryFilter } from '../telemetry/interface.js'
 import type { Incident, TelemetryScope } from '../storage/interface.js'
 import type { IncidentDetailExtension } from '@3amoncall/core'
@@ -133,7 +133,7 @@ function buildImpactSummary(incident: Incident): IncidentDetailExtension['impact
  * Baseline window: 4x incident duration, ending at incident start.
  * Minimum 5 minutes. Only queries the primary service.
  */
-function buildBaselineFilter(scope: TelemetryScope): import('../telemetry/interface.js').TelemetryQueryFilter {
+function buildBaselineFilter(scope: TelemetryScope): TelemetryQueryFilter {
   const incidentDuration = scope.windowEndMs - scope.windowStartMs
   const baselineWindowMs = Math.max(
     incidentDuration * BASELINE_MULTIPLIER,

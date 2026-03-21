@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { buildMetricsSurface } from '../../domain/metrics-surface.js'
 import type { TelemetryMetric, TelemetryStoreDriver, TelemetryQueryFilter } from '../../telemetry/interface.js'
-import type { TelemetryScope, AnomalousSignal } from '../../storage/interface.js'
+import type { TelemetryScope } from '../../storage/interface.js'
 
 // ── Helpers ──────────────────────────────────────────────────────────────
 
@@ -13,15 +13,6 @@ function makeMetric(overrides: Partial<TelemetryMetric> = {}): TelemetryMetric {
     startTimeMs: overrides.startTimeMs ?? 1700000010000,
     summary: overrides.summary ?? { asDouble: 100 },
     ingestedAt: overrides.ingestedAt ?? Date.now(),
-  }
-}
-
-function makeSignal(overrides: Partial<AnomalousSignal> = {}): AnomalousSignal {
-  return {
-    signal: overrides.signal ?? 'http_500',
-    firstSeenAt: overrides.firstSeenAt ?? new Date(1700000005000).toISOString(),
-    entity: overrides.entity ?? 'api-service',
-    spanId: overrides.spanId ?? 'span-001',
   }
 }
 

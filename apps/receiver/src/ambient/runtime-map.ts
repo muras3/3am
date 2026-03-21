@@ -89,7 +89,6 @@ function computeStatus(errorRate: number): 'healthy' | 'degraded' | 'critical' {
 
 // ── Span Kind constants ────────────────────────────────────────────────────
 
-const SPAN_KIND_INTERNAL = 1
 const SPAN_KIND_SERVER = 2
 const SPAN_KIND_CLIENT = 3
 

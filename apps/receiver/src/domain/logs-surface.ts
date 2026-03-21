@@ -141,7 +141,7 @@ export async function buildLogsSurface(
   }
 
   // 5. Build LogCluster from each group
-  let clusters: LogCluster[] = []
+  const clusters: LogCluster[] = []
   let clusterIndex = 0
 
   for (const [, group] of clusterMap) {

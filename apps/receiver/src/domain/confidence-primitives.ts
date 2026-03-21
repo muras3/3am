@@ -37,7 +37,7 @@ export async function computeConfidencePrimitives(
   telemetryStore: TelemetryStoreDriver,
   telemetryScope: TelemetryScope,
   anomalousSignals: AnomalousSignal[],
-  snapshots: EvidenceSnapshot[],
+  _snapshots: EvidenceSnapshot[],
 ): Promise<ConfidencePrimitives> {
   const incidentFilter = buildIncidentQueryFilter(telemetryScope)
 

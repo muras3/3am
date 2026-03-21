@@ -7,7 +7,7 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { MemoryTelemetryAdapter } from '../../telemetry/adapters/memory.js'
 import { computeConfidencePrimitives } from '../../domain/confidence-primitives.js'
-import type { TelemetrySpan, TelemetryMetric, TelemetryLog, EvidenceSnapshot } from '../../telemetry/interface.js'
+import type { TelemetrySpan, TelemetryMetric, TelemetryLog } from '../../telemetry/interface.js'
 import type { TelemetryScope, AnomalousSignal } from '../../storage/interface.js'
 
 // ── Test helpers ─────────────────────────────────────────────────────────

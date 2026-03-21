@@ -16,7 +16,6 @@ import { buildIncidentQueryFilter } from '../telemetry/interface.js'
 import type { TelemetryScope, AnomalousSignal } from '../storage/interface.js'
 import type { MetricsSurface, MetricGroup, MetricRow, MetricGroupKey, EvidenceRef } from '@3amoncall/core'
 import { extractMetricValue, classifyMetric, scoreMetrics } from '../telemetry/scoring/metric-scorer.js'
-import type { ScoredMetric } from '../telemetry/scoring/metric-scorer.js'
 import { BASELINE_MULTIPLIER } from '../telemetry/constants.js'
 
 // ── Constants ────────────────────────────────────────────────────────────
