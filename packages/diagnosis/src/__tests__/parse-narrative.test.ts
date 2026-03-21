@@ -19,6 +19,10 @@ const validOutput = {
   qa: {
     question: "Why are checkout payments failing?",
     answer: "The payment API rate limit was exceeded due to unbatched retry logic.",
+    answerEvidenceRefs: [
+      { kind: "span", id: "tid:a3f8:sid:pay429" },
+      { kind: "metric", id: "worker_pool_in_use::checkout-orchestrator" },
+    ],
     evidenceBindings: [
       { claim: "Payment API rate limit exceeded", evidenceRefs: [{ kind: "span", id: "tid:a3f8:sid:pay429" }] },
       { claim: "Worker pool saturated from retries", evidenceRefs: [{ kind: "metric", id: "worker_pool_in_use::checkout-orchestrator" }] },
@@ -84,6 +88,7 @@ describe("parseNarrative", () => {
       qa: {
         ...validOutput.qa,
         answer: "Cannot determine from available evidence.",
+        answerEvidenceRefs: [],
         evidenceBindings: [],
         noAnswerReason: "Insufficient trace data.",
       },

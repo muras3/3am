@@ -17,10 +17,20 @@ const FollowupSchema = z.object({
   targetEvidenceKinds: z.array(z.enum(["traces", "metrics", "logs"])).min(1),
 }).strict();
 
-// QA Narrative — pre-generated question/answer with claim-level evidence binding.
+// Answer-level evidence ref — flat link from answer to evidence surface.
+// Frontend uses this directly without aggregating claim-level bindings.
+const AnswerEvidenceRefSchema = z.object({
+  kind: z.enum(["span", "log", "metric", "log_cluster", "metric_group"]),
+  id: z.string(),
+}).strict();
+
+// QA Narrative — pre-generated question/answer with both answer-level
+// and claim-level evidence refs. Frontend uses answerEvidenceRefs directly;
+// evidenceBindings provide granular claim→evidence mapping for drill-down.
 const QANarrativeSchema = z.object({
   question: z.string(),
   answer: z.string(),
+  answerEvidenceRefs: z.array(AnswerEvidenceRefSchema),
   evidenceBindings: z.array(EvidenceBindingSchema),
   followups: z.array(FollowupSchema),
   noAnswerReason: z.string().nullable(),

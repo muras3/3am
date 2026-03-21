@@ -73,6 +73,11 @@ export function assertConsoleNarrative(
       knownIds.add(er.id);
     }
   }
+  for (const ref of n.qa.answerEvidenceRefs) {
+    if (!knownIds.has(ref.id)) {
+      failures.push(`answerEvidenceRef "${ref.id}" not found in proofRefs`);
+    }
+  }
   for (const binding of n.qa.evidenceBindings) {
     for (const ref of binding.evidenceRefs) {
       if (!knownIds.has(ref.id)) {
@@ -91,9 +96,14 @@ export function assertConsoleNarrative(
     failures.push("Q&A answer is empty but noAnswerReason is null");
   }
 
-  // 9. Unanswerable case: evidenceBindings should be empty
-  if (n.qa.noAnswerReason !== null && n.qa.evidenceBindings.length > 0) {
-    failures.push("noAnswerReason is set but evidenceBindings is non-empty");
+  // 9. Unanswerable case: both answer-level and claim-level refs should be empty
+  if (n.qa.noAnswerReason !== null) {
+    if (n.qa.answerEvidenceRefs.length > 0) {
+      failures.push("noAnswerReason is set but answerEvidenceRefs is non-empty");
+    }
+    if (n.qa.evidenceBindings.length > 0) {
+      failures.push("noAnswerReason is set but evidenceBindings is non-empty");
+    }
   }
 
   return { pass: failures.length === 0, failures };

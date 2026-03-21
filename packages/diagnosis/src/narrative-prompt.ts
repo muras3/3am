@@ -110,10 +110,14 @@ CRITICAL CONSTRAINTS:
    - summary: One sentence describing the evidence. If the card's status is "pending" (see Proof Card References above), write a summary that acknowledges evidence is not yet available.
 6. qa.question: A natural question derived from the headline.
 7. qa.answer: A grounded answer referencing the evidence.
-8. qa.evidenceBindings: Break the answer into claims. Each claim MUST have ≥1 concrete evidence ref.
+8. qa.answerEvidenceRefs: Flat list of ALL evidence refs that support the answer as a whole.
+   Frontend uses this directly — it must not need to aggregate from evidenceBindings.
+   If unanswerable, set to [].
+9. qa.evidenceBindings: Break the answer into claims. Each claim MUST have ≥1 concrete evidence ref.
    - ONLY use IDs from the "Known Evidence IDs" list above. Do NOT invent IDs.
    - Each evidenceRef must use kind from: span, log, metric, log_cluster, metric_group.
-   - If the question cannot be answered with available evidence, set noAnswerReason to a string and leave evidenceBindings as [].
+   - answerEvidenceRefs should be the union of all evidenceBindings refs (plus any additional).
+   - If the question cannot be answered with available evidence, set noAnswerReason to a string and leave both answerEvidenceRefs and evidenceBindings as [].
 9. qa.followups: 3-5 follow-up questions. Each has targetEvidenceKinds (which surfaces the question relates to).
 10. sideNotes: Include confidence, uncertainty, and affected dependencies.
 11. absenceEvidence: For each absence candidate, generate label, expected, observed, explanation.
@@ -133,6 +137,7 @@ CRITICAL CONSTRAINTS:
   "qa": {
     "question": "...",
     "answer": "...",
+    "answerEvidenceRefs": [{"kind": "span|log|metric|log_cluster|metric_group", "id": "..."}],
     "evidenceBindings": [
       {"claim": "...", "evidenceRefs": [{"kind": "span|log|metric|log_cluster|metric_group", "id": "..."}]}
     ],

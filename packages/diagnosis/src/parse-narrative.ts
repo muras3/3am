@@ -40,6 +40,14 @@ function validateEvidenceRefIds(
     }
   }
 
+  for (const ref of narrative.qa.answerEvidenceRefs) {
+    if (!knownIds.has(ref.id)) {
+      throw new Error(
+        `NarrativeValidationError: answerEvidenceRef "${ref.id}" is not in proofRefs. Diagnosis must not invent IDs.`,
+      );
+    }
+  }
+
   for (const binding of narrative.qa.evidenceBindings) {
     for (const ref of binding.evidenceRefs) {
       if (!knownIds.has(ref.id)) {

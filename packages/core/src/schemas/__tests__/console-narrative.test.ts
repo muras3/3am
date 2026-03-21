@@ -17,6 +17,10 @@ const minimalValid = {
   qa: {
     question: "Why are checkout payments failing?",
     answer: "Stripe API rate limit exceeded. payment-service sends unbatched API calls (1 per tx). During 3x traffic surge, this exceeded the 100 req/sec quota.",
+    answerEvidenceRefs: [
+      { kind: "span", id: "tid:a3f8:sid:c91d" },
+      { kind: "metric", id: "stripe_429_rate::payment-service" },
+    ],
     evidenceBindings: [
       {
         claim: "Stripe API rate limit exceeded",
@@ -85,6 +89,12 @@ describe("ConsoleNarrativeSchema", () => {
     expect(() => ConsoleNarrativeSchema.parse(bad)).toThrow(ZodError);
   });
 
+  it("requires answerEvidenceRefs field", () => {
+    const noAnswerRefs = { ...minimalValid, qa: { ...minimalValid.qa } };
+    delete (noAnswerRefs.qa as Record<string, unknown>)["answerEvidenceRefs"];
+    expect(() => ConsoleNarrativeSchema.parse(noAnswerRefs)).toThrow(ZodError);
+  });
+
   it("requires ≥1 evidence ref per binding (concrete ref constraint)", () => {
     const emptyRefs = {
       ...minimalValid,
@@ -126,6 +136,7 @@ describe("ConsoleNarrativeSchema", () => {
       qa: {
         ...minimalValid.qa,
         answer: "現在の evidence からは判断できません。insufficient data.",
+        answerEvidenceRefs: [],
         evidenceBindings: [],
         noAnswerReason: "No relevant traces or logs found in the incident window.",
       },
