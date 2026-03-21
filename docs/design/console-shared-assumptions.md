@@ -10,9 +10,10 @@ receiver / diagnosis / frontend を並行開発する前に、全員が共有す
 
 ## Source of Truth
 
-- validated mock (`docs/mock/lens-prototype-v1.html`) が UI の source of truth
+- validated mock (`docs/mock/lens-prototype-v1.html`) が UI の source of truth — ただし happy path のみ
 - `docs/design/console-data-requirements.md` がデータ契約の source of truth
 - mock の再議論・再設計はしない。実装に入る
+- 非 happy path (empty/degraded/pending state) の source of truth は mock に存在しない。§3.7 contract として receiver plan で定義し、frontend plan で fixture 化する
 
 ## ナビゲーションモデル
 
@@ -27,15 +28,15 @@ receiver / diagnosis / frontend を並行開発する前に、全員が共有す
   - `GET /api/incidents/:id` (拡張)
   - `GET /api/incidents/:id/evidence`
 - 既存 raw API (`/api/services`, `/api/activity`, `/api/incidents/:id/telemetry/*`, `/api/chat/:id`) は debug / support / migration 専用。new console の frontend コードから直接消費しない
-- curated API の response shape は console-data-requirements.md §2 にスケッチ済み。ただし §3 に列挙された以下の sub-contract は未確定であり、各 plan で個別に固定する:
-  - §3.1 expected behavior contract (baseline source, window, fallback)
-  - §3.2 runtime map derivation contract (node id, tier classification, edge dedup, ordering)
-  - §3.3 blast radius contract (target unit, impact metric, aggregation)
-  - §3.4 proof card reference contract (card id, target surface, ref type)
-  - §3.5 Q&A contract (turn model, evidence refs, confidence, unanswerable handling)
-  - §3.6 absence evidence contract (pattern set, threshold, ownership)
-  - §3.7 empty/degraded state contract (pending, sparse, insufficient baseline)
-  - §3.8 old/new API coexistence contract (migration boundary)
+- curated API の response shape は console-data-requirements.md §2 にスケッチ済み。ただし §3 に列挙された以下の sub-contract は未確定であり、括弧内の plan が最終責任を持つ:
+  - §3.1 expected behavior contract — baseline source, window, fallback (**receiver plan**)
+  - §3.2 runtime map derivation contract — node id, tier classification, edge dedup, ordering (**receiver plan**)
+  - §3.3 blast radius contract — target unit, impact metric, aggregation (**receiver plan**)
+  - §3.4 proof card reference contract — card id, target surface, ref type (**diagnosis plan**)
+  - §3.5 Q&A contract — turn model, evidence refs, confidence, unanswerable handling (**diagnosis plan**)
+  - §3.6 absence evidence contract — pattern set, threshold, ownership (**receiver plan** で候補生成、**diagnosis plan** でラベル付与)
+  - §3.7 empty/degraded state contract — pending, sparse, insufficient baseline (**receiver plan** で state enum 定義、**frontend plan** で描画仕様)
+  - §3.8 old/new API coexistence contract — migration boundary, raw endpoint の廃止/維持判定 (**integration plan**)
 
 ## IncidentPacket
 
