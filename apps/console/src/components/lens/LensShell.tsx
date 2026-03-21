@@ -1,9 +1,13 @@
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, lazy, Suspense } from "react";
 import { useSearch, useNavigate } from "@tanstack/react-router";
 import type { LensLevel, LensSearchParams } from "../../routes/__root.js";
 import { LevelHeader } from "./LevelHeader.js";
 import { ZoomNav } from "./ZoomNav.js";
 import { MapView } from "./map/MapView.js";
+
+const LensIncidentBoard = lazy(() =>
+  import("./board/LensIncidentBoard.js").then((m) => ({ default: m.LensIncidentBoard })),
+);
 
 /**
  * LensShell — 3-level zoom navigation shell.
@@ -107,8 +111,13 @@ export function LensShell() {
           zoomTo={zoomTo}
         />
         <div className="level-content" data-focus-target>
-          {/* IncidentBoard — F-3 will populate this */}
-          <div className="level-placeholder">Incident Board — Level 1</div>
+          <Suspense fallback={<div className="level-placeholder">Loading…</div>}>
+            {incidentId ? (
+              <LensIncidentBoard incidentId={incidentId} zoomTo={zoomTo} />
+            ) : (
+              <div className="level-placeholder">Select an incident from the map</div>
+            )}
+          </Suspense>
         </div>
       </section>
 
