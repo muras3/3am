@@ -1208,6 +1208,8 @@
 }
 
 .lens-ev-proof-card:focus-visible {
+}
+
 .lens-traces-attr-val {
   font-family: var(--mono);
   color: var(--ink-2);
@@ -1357,6 +1359,11 @@
 }
 
 .lens-ev-qa-question-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 /* ── Metrics view ─────────────────────────────────────────────── */
 .lens-metrics-root {
   display: flex;
@@ -1750,6 +1757,8 @@
 
 /* ── Responsive: collapse side rail on narrow screens ──────────── */
 @media (max-width: 800px) {
+}
+
   .lens-ev-grid {
     grid-template-columns: 1fr;
   }
@@ -1760,6 +1769,9 @@
 
   .lens-ev-proof-cards {
     grid-template-columns: 1fr;
+  }
+}
+
 /* ── Logs view ───────────────────────────────────────────────── */
 .lens-logs-root {
   display: flex;
@@ -1945,6 +1957,8 @@
 
 /* ── Evidence surfaces: reduced motion ───────────────────────── */
 @media (prefers-reduced-motion: reduce) {
+}
+
   .lens-traces-bar,
   .lens-metrics-metric-fill,
   .lens-logs-log-row {
