@@ -1,7 +1,6 @@
 import type {
   IncidentPacket,
   DiagnosisResult,
-  ConsoleNarrative,
   ChangedMetric,
   RepresentativeTrace,
 } from "@3amoncall/core";

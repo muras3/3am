@@ -4,7 +4,7 @@
  * and forbidden patterns.
  */
 import { ConsoleNarrativeSchema } from "@3amoncall/core";
-import type { ConsoleNarrative, ReasoningStructure } from "@3amoncall/core";
+import type { ReasoningStructure } from "@3amoncall/core";
 
 export interface AssertionResult {
   pass: boolean;
