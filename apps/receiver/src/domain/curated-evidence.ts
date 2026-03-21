@@ -79,7 +79,11 @@ export async function buildCuratedEvidence(
         ? 'insufficient'
         : 'unavailable'
 
-  const traceCount = traceResult.surface.observed.length
+  // Derive counts from surface results to avoid duplicate queries.
+  // Canonical rule: unique traceId count, metric row count, log entry count.
+  // Trace: each observed group has a unique traceId, so group count = unique trace count.
+  // Metrics/logs: sum rows across groups to get raw-equivalent counts.
+  const traceCount = new Set(traceResult.surface.observed.map(t => t.traceId)).size
   const metricCount = metricsResult.surface.groups.reduce(
     (sum, g) => sum + g.rows.length, 0,
   )

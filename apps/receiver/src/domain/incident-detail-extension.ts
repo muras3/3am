@@ -14,6 +14,7 @@ import type { Incident, TelemetryScope } from '../storage/interface.js'
 import type { IncidentDetailExtension, ExtendedIncident } from '@3amoncall/core'
 import { computeBlastRadius } from './blast-radius.js'
 import { computeConfidencePrimitives } from './confidence-primitives.js'
+import { computeEvidenceCounts } from './evidence-counts.js'
 import { BASELINE_MULTIPLIER } from '../telemetry/constants.js'
 
 // ── Constants ─────────────────────────────────────────────────────────────
@@ -68,24 +69,15 @@ export async function buildIncidentDetailExtension(
   const impactSummary = buildImpactSummary(incident)
 
   // ── Evidence summary ───────────────────────────────────────────────────
-  const traceIds = new Set(spans.map(s => s.traceId))
-  const traceErrors = spans.filter(s =>
-    (s.httpStatusCode !== undefined && s.httpStatusCode >= 500) ||
-    s.spanStatusCode === 2 ||
-    s.exceptionCount > 0,
-  ).length
-
-  const logErrors = logs.filter(l =>
-    l.severity === 'ERROR' || l.severity === 'FATAL',
-  ).length
+  const counts = computeEvidenceCounts(spans, logs)
 
   const evidenceSummary = {
-    traces: traceIds.size,
-    traceErrors,
+    traces: counts.traceIds,
+    traceErrors: counts.traceErrors,
     metrics: metrics.length,
     metricsAnomalous: metrics.length, // Phase 1: all incident-window metrics are potentially anomalous
     logs: logs.length,
-    logErrors,
+    logErrors: counts.logErrors,
   }
 
   // ── State ──────────────────────────────────────────────────────────────
@@ -93,7 +85,7 @@ export async function buildIncidentDetailExtension(
     diagnosis: classifyDiagnosisState(incident),
     baseline: classifyBaselineState(baselineSpans.length),
     evidenceDensity: classifyEvidenceDensity(
-      traceIds.size,
+      counts.traceIds,
       metrics.length,
       logs.length,
     ),
