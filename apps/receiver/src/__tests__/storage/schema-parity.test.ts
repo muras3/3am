@@ -38,6 +38,7 @@ describe("Schema parity: SQLite vs Postgres", () => {
     expect(sqliteColumns.incidents).toEqual([
       "anomalous_signals",
       "closed_at",
+      "console_narrative",
       "created_at",
       "diagnosis_dispatched_at",
       "diagnosis_result",

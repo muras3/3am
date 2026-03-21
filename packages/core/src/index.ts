@@ -36,3 +36,6 @@ export {
   type AbsenceEvidenceEntry,
 } from "./schemas/curated-evidence.js";
 export * from "./schemas/curated-api.js";
+export * from "./schemas/reasoning-structure.js";
+export * from "./schemas/console-narrative.js";
+export * from "./schemas/narrative-utils.js";

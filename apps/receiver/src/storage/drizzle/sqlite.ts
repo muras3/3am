@@ -11,7 +11,7 @@ import { drizzle } from "drizzle-orm/better-sqlite3";
 import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import { eq, desc, lt, and } from "drizzle-orm";
 import { sql } from "drizzle-orm";
-import type { IncidentPacket, DiagnosisResult, PlatformEvent, ThinEvent } from "@3amoncall/core";
+import type { IncidentPacket, DiagnosisResult, ConsoleNarrative, PlatformEvent, ThinEvent } from "@3amoncall/core";
 import type {
   AnomalousSignal,
   Incident,
@@ -56,6 +56,7 @@ export class SQLiteAdapter implements StorageDriver {
         closed_at         TEXT,
         packet            TEXT NOT NULL,
         diagnosis_result  TEXT,
+        console_narrative TEXT,
         raw_state         TEXT,
         telemetry_scope   TEXT,
         span_membership   TEXT,
@@ -73,6 +74,7 @@ export class SQLiteAdapter implements StorageDriver {
       "anomalous_signals TEXT",
       "platform_events TEXT",
       "diagnosis_dispatched_at TEXT",
+      "console_narrative TEXT",
     ]) {
       try {
         this.db.run(sql.raw(`ALTER TABLE incidents ADD COLUMN ${col}`));
@@ -131,6 +133,9 @@ export class SQLiteAdapter implements StorageDriver {
     if (row.diagnosisResult) {
       incident.diagnosisResult = JSON.parse(row.diagnosisResult) as DiagnosisResult;
     }
+    if (row.consoleNarrative) {
+      incident.consoleNarrative = JSON.parse(row.consoleNarrative) as ConsoleNarrative;
+    }
     if (row.diagnosisDispatchedAt) {
       incident.diagnosisDispatchedAt = row.diagnosisDispatchedAt;
     }
@@ -179,6 +184,13 @@ export class SQLiteAdapter implements StorageDriver {
     await this.db
       .update(incidents)
       .set({ diagnosisResult: JSON.stringify(result), updatedAt: new Date().toISOString() })
+      .where(eq(incidents.incidentId, id));
+  }
+
+  async appendConsoleNarrative(id: string, narrative: ConsoleNarrative): Promise<void> {
+    await this.db
+      .update(incidents)
+      .set({ consoleNarrative: JSON.stringify(narrative), updatedAt: new Date().toISOString() })
       .where(eq(incidents.incidentId, id));
   }
 

@@ -1,4 +1,4 @@
-import type { IncidentPacket, DiagnosisResult, PlatformEvent, ThinEvent } from "@3amoncall/core";
+import type { IncidentPacket, DiagnosisResult, ConsoleNarrative, PlatformEvent, ThinEvent } from "@3amoncall/core";
 import type { AnomalousSignal, Incident, IncidentPage, InitialMembership, StorageDriver } from "../interface.js";
 import { MAX_ANOMALOUS_SIGNALS, MAX_SPAN_MEMBERSHIP } from "../interface.js";
 
@@ -49,6 +49,15 @@ export class MemoryAdapter implements StorageDriver {
     this.incidents.set(id, {
       ...incident,
       diagnosisResult: result,
+    });
+  }
+
+  async appendConsoleNarrative(id: string, narrative: ConsoleNarrative): Promise<void> {
+    const incident = this.incidents.get(id);
+    if (!incident) return;
+    this.incidents.set(id, {
+      ...incident,
+      consoleNarrative: narrative,
     });
   }
 
