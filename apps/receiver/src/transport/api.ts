@@ -10,6 +10,9 @@ import type { SpanBuffer } from "../ambient/span-buffer.js";
 import type { TelemetryStoreDriver } from "../telemetry/interface.js";
 import { buildIncidentQueryFilter } from "../telemetry/interface.js";
 import { computeServices, computeActivity } from "../ambient/service-aggregator.js";
+import { buildRuntimeMap } from "../ambient/runtime-map.js";
+import { buildIncidentDetailExtension } from "../domain/incident-detail-extension.js";
+import { buildCuratedEvidence } from "../domain/curated-evidence.js";
 
 const CHAT_MAX_HISTORY = 10;
 const CHAT_MAX_MESSAGE_CHARS = 500;
@@ -119,7 +122,19 @@ export function createApiRouter(storage: StorageDriver, spanBuffer: SpanBuffer |
     if (incident === null) {
       return c.json({ error: "not found" }, 404);
     }
-    return c.json(toIncidentResponse(incident));
+    const base = toIncidentResponse(incident);
+    const extension = await buildIncidentDetailExtension(incident, telemetryStore);
+    return c.json({ ...base, extension });
+  });
+
+  app.get("/api/incidents/:id/evidence", async (c) => {
+    const id = c.req.param("id");
+    const incident = await storage.getIncident(id);
+    if (incident === null) {
+      return c.json({ error: "not found" }, 404);
+    }
+    const result = await buildCuratedEvidence(incident, telemetryStore);
+    return c.json(result);
   });
 
   app.get("/api/packets/:packetId", async (c) => {
@@ -212,6 +227,15 @@ export function createApiRouter(storage: StorageDriver, spanBuffer: SpanBuffer |
   });
 
   // ── Ambient read-model routes (ADR 0029) ─────────────────────────────────────
+
+  app.get("/api/runtime-map", async (c) => {
+    const windowStr = c.req.query("windowMinutes");
+    const windowMinutes = windowStr !== undefined ? parseInt(windowStr, 10) : undefined;
+    const validWindow = windowMinutes !== undefined && !Number.isNaN(windowMinutes) && windowMinutes > 0
+      ? windowMinutes : undefined;
+    const result = await buildRuntimeMap(telemetryStore, storage, validWindow);
+    return c.json(result);
+  });
 
   app.get("/api/services", (c) => {
     if (!spanBuffer) return c.json([]);
