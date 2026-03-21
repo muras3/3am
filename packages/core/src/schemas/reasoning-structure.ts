@@ -73,8 +73,8 @@ export const ReasoningStructureSchema = z.object({
 
 export type ReasoningStructure = z.infer<typeof ReasoningStructureSchema>;
 export type ProofRef = z.infer<typeof ProofRefSchema>;
-export type EvidenceRef = z.infer<typeof EvidenceRefSchema>;
+export type NarrativeEvidenceRef = z.infer<typeof EvidenceRefSchema>;
 export type AbsenceCandidate = z.infer<typeof AbsenceCandidateSchema>;
-export type EvidenceCounts = z.infer<typeof EvidenceCountsSchema>;
+export type NarrativeEvidenceCounts = z.infer<typeof EvidenceCountsSchema>;
 export type BlastRadiusTarget = z.infer<typeof BlastRadiusTargetSchema>;
 export type QAContext = z.infer<typeof QAContextSchema>;
