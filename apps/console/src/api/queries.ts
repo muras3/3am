@@ -13,6 +13,7 @@ import type {
 import type {
   RuntimeMapResponse,
   ExtendedIncident,
+  EvidenceResponse,
 } from "./curated-types.js";
 
 export interface ChatTurn {
@@ -115,6 +116,22 @@ export const curatedQueries = {
         : () => apiFetch<ExtendedIncident>(`/api/incidents/${encodeIncidentId(id)}`),
       staleTime: 15_000,
       refetchInterval: useFixtures ? false : 10_000,
+      enabled: !!id,
+    }),
+
+  evidence: (id: string) =>
+    queryOptions({
+      queryKey: ["curated", "incidents", id, "evidence"],
+      queryFn: useFixtures
+        ? () => loadFixture(async () => {
+            const m = await import("../__fixtures__/curated/evidence.js");
+            if (fixtureVariant === "pending") return m.evidencePending;
+            if (fixtureVariant === "sparse") return m.evidenceSparse;
+            return m.evidenceReady;
+          })
+        : () => apiFetch<EvidenceResponse>(`/api/incidents/${encodeIncidentId(id)}/evidence`),
+      staleTime: 30_000,
+      refetchInterval: useFixtures ? false : undefined,
       enabled: !!id,
     }),
 };
