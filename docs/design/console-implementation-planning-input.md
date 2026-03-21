@@ -216,7 +216,56 @@ The required mental model is:
 - deviation
 - why that deviation matters
 
-## 9. Parallel Branch Strategy
+## 9. Planning Structure
+
+Implementation planning should be split into five planning inputs:
+
+0. `shared assumptions`
+1. `receiver plan`
+2. `diagnosis plan`
+3. `frontend plan`
+4. `integration plan`
+
+The shared assumptions are defined by this document.
+
+Each plan should answer:
+
+### Receiver plan
+
+- What deterministic structures must be produced?
+- Which existing storage/packet/query paths can be reused?
+- Which new APIs or transforms must be added?
+- What must be implemented first so downstream work can proceed?
+
+### Diagnosis plan
+
+- How should prompting be split into stage 1 and stage 2?
+- Which outputs belong to diagnosis vs receiver?
+- How should Q&A answers attach to evidence refs?
+- Which existing diagnosis result fields can be reused?
+
+### Frontend plan
+
+- How does the frontend consume curated APIs without inventing backend logic?
+- Which current components can be adapted vs replaced?
+- What fixture strategy allows development before backend completion?
+- How should URL state and interaction state map to the new contract?
+
+### Integration plan
+
+- In what order should the four lanes merge?
+- What contract checkpoints must pass before integration?
+- What sparse / degraded / pending states must be tested?
+- What end-to-end flows define success?
+
+Recommended planning order:
+- shared assumptions
+- receiver
+- diagnosis
+- frontend
+- integration
+
+## 10. Parallel Branch Strategy
 
 Parallel development is allowed, but only after the contract is fixed.
 
@@ -232,7 +281,7 @@ Parallel branch work is valid only if:
 - frontend does not invent missing backend behavior
 - backend does not optimize around old raw-only UI assumptions
 
-## 10. What Planning Should Produce
+## 11. What Planning Should Produce
 
 The next planning step should produce:
 - implementation order
