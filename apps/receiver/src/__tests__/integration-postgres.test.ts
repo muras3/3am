@@ -46,28 +46,25 @@ if (!DATABASE_URL) {
   describe("Integration: Postgres full ingest flow", () => {
     // Test 1: OTLP error span -> incident created with valid packet
     it("OTLP error span creates incident with valid packet", async () => {
-      const { incidentId } = await postTraces(app);
+      const { incidentId, packetId } = await postTraces(app);
 
-      const res = await app.request(`/api/incidents/${incidentId}`);
+      const res = await app.request(`/api/packets/${packetId}`);
       expect(res.status).toBe(200);
       const body = (await res.json()) as {
-        incidentId: string;
-        packet: { triggerSignals: Array<{ signal: string }> };
+        triggerSignals: Array<{ signal: string }>;
       };
-      expect(body.incidentId).toBe(incidentId);
-      // triggerSignals should contain the anomalous signal from the error span
-      expect(body.packet.triggerSignals.length).toBeGreaterThan(0);
+      expect(incidentId).toBeTruthy();
+      expect(body.triggerSignals.length).toBeGreaterThan(0);
     });
 
-    // Test 2: GET /api/incidents/:id returns incident without rawState
-    it("GET /api/incidents/:id returns incident without rawState", async () => {
+    // Test 2: GET /api/incidents/:id returns curated incident
+    it("GET /api/incidents/:id returns curated incident", async () => {
       const { incidentId } = await postTraces(app);
 
       const res = await app.request(`/api/incidents/${incidentId}`);
       expect(res.status).toBe(200);
-      const body = (await res.json()) as { incidentId: string; rawState?: unknown };
+      const body = (await res.json()) as { incidentId: string };
       expect(body.incidentId).toBe(incidentId);
-      expect(body.rawState).toBeUndefined();
     });
 
     // Test 3: GET /api/packets/:packetId returns packet with correct schemaVersion
@@ -80,8 +77,8 @@ if (!DATABASE_URL) {
       expect(body.schemaVersion).toBe("incident-packet/v1alpha1");
     });
 
-    // Test 4: appendDiagnosis -> getIncident has diagnosisResult
-    it("POST diagnosis then GET incident returns diagnosisResult", async () => {
+    // Test 4: appendDiagnosis -> curated incident reflects diagnosis
+    it("POST diagnosis then GET incident returns curated diagnosis fields", async () => {
       const { incidentId } = await postTraces(app);
 
       const diagnosisFixture = makeDiagnosisFixture(incidentId);
@@ -94,19 +91,15 @@ if (!DATABASE_URL) {
 
       const res = await app.request(`/api/incidents/${incidentId}`);
       expect(res.status).toBe(200);
-      const body = (await res.json()) as {
-        diagnosisResult?: { summary: { what_happened: string } };
-      };
-      expect(body.diagnosisResult).toBeDefined();
-      expect(body.diagnosisResult?.summary.what_happened).toBe(
-        "Stripe 429s caused checkout 504s.",
-      );
+      const body = (await res.json()) as { headline: string; state: { diagnosis: string } };
+      expect(body.state.diagnosis).toBe("ready");
+      expect(body.headline).toBe("Stripe 429s caused checkout 504s.");
     });
 
     // Test 5: second OTLP POST preserves diagnosisResult
     it("second OTLP POST preserves diagnosisResult", async () => {
       // Step 1: create incident via error span
-      const { incidentId } = await postTraces(app);
+      const { incidentId, packetId } = await postTraces(app);
 
       // Step 2: append diagnosis
       const diagnosisFixture = makeDiagnosisFixture(incidentId);
@@ -131,19 +124,13 @@ if (!DATABASE_URL) {
       // Step 4: verify incident still has packet and diagnosisResult
       const incRes = await app.request(`/api/incidents/${incidentId}`);
       expect(incRes.status).toBe(200);
-      const incBody = (await incRes.json()) as {
-        incidentId: string;
-        packet: { triggerSignals: Array<{ signal: string }> };
-        diagnosisResult?: { summary: { what_happened: string } };
-      };
-      // triggerSignals should reflect the error spans
-      expect(incBody.packet.triggerSignals.length).toBeGreaterThan(0);
+      const incBody = (await incRes.json()) as { headline: string; state: { diagnosis: string } };
+      expect(incBody.state.diagnosis).toBe("ready");
+      expect(incBody.headline).toBe("Stripe 429s caused checkout 504s.");
 
-      // Step 5: verify diagnosisResult preserved
-      expect(incBody.diagnosisResult).toBeDefined();
-      expect(incBody.diagnosisResult?.summary.what_happened).toBe(
-        "Stripe 429s caused checkout 504s.",
-      );
+      const packetRes = await app.request(`/api/packets/${packetId}`);
+      const packetBody = (await packetRes.json()) as { triggerSignals: Array<{ signal: string }> };
+      expect(packetBody.triggerSignals.length).toBeGreaterThan(0);
     });
   });
 }
