@@ -33,12 +33,12 @@ function EvidenceRefLink({ ref: evidenceRef }: { ref: EvidenceRef }) {
       replace: true,
     });
 
-    // Apply highlight after delay
+    // Apply highlight after delay — use data-target-id for concrete refs
     setTimeout(() => {
       document.querySelectorAll(".proof-highlight").forEach((el) => {
         el.classList.remove("proof-highlight");
       });
-      const targets = document.querySelectorAll(`[data-proof="${evidenceRef.id}"]`);
+      const targets = document.querySelectorAll(`[data-target-id="${evidenceRef.id}"]`);
       targets.forEach((el) => el.classList.add("proof-highlight"));
       const first = targets[0];
       if (first) first.scrollIntoView({ behavior: "smooth", block: "nearest" });

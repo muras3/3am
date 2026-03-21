@@ -4,6 +4,12 @@
  * These types mirror the shapes defined in console-data-requirements.md §2.
  * The frontend consumes these directly; it does NOT infer, cluster, or compute
  * any of these values.
+ *
+ * TODO: When @3amoncall/core defines curated API schemas (receiver plan),
+ * replace these local definitions with re-exports from @3amoncall/core.
+ * This file exists because core doesn't have curated types yet and the
+ * frontend needs to develop in parallel. The shapes here MUST stay aligned
+ * with the design docs — any drift is a bug.
  */
 
 // ── Shared enums ──────────────────────────────────────────────
