@@ -43,7 +43,7 @@ export function NormalSurface({ services, activity, incidents }: Props) {
                 key={incident.incidentId}
                 className="incident-entry-link"
                 to="/"
-                search={{ incidentId: incident.incidentId }}
+                search={{ incidentId: incident.incidentId, level: 0 as const, tab: "traces" as const }}
               >
                 {incident.packet.scope.primaryService}
               </Link>

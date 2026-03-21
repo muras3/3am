@@ -1,0 +1,221 @@
+/* ── Lens zoom tokens ─────────────────────────────────────── */
+:root {
+  --zoom-dur: 0.55s;
+  --zoom-ease: cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+/* ── World container ──────────────────────────────────────── */
+.lens-world {
+  width: 100%;
+  height: 100%;
+  position: relative;
+  overflow: hidden;
+  background: var(--bg);
+}
+
+/* ── Level panels ─────────────────────────────────────────── */
+.level {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  opacity: 0;
+  transform: scale(0.96);
+  filter: blur(2px);
+  pointer-events: none;
+  transition:
+    opacity var(--zoom-dur) var(--zoom-ease),
+    transform var(--zoom-dur) var(--zoom-ease),
+    filter var(--zoom-dur) var(--zoom-ease);
+  will-change: transform, opacity, filter;
+  overflow-y: auto;
+}
+
+.level.active {
+  opacity: 1;
+  transform: scale(1);
+  filter: blur(0);
+  pointer-events: auto;
+  z-index: 1;
+}
+
+.level.zoomed-past {
+  opacity: 0;
+  transform: scale(1.08);
+  filter: blur(4px);
+  pointer-events: none;
+}
+
+/* ── Level header ─────────────────────────────────────────── */
+.level-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 20px;
+  height: 46px;
+  min-height: 46px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+  box-shadow: inset 0 -1px 0 rgba(255, 255, 255, 0.7);
+}
+
+.level-header-id {
+  font-family: var(--mono);
+  font-size: var(--fs-sm);
+  color: var(--ink-3);
+  font-weight: 500;
+}
+
+.level-header-title {
+  font-size: var(--fs-md);
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.level-header-duration {
+  font-family: var(--mono);
+  font-size: var(--fs-xs);
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.level-header-clock {
+  margin-left: auto;
+  font-family: var(--mono);
+  font-size: var(--fs-sm);
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1, "ss01" 1;
+}
+
+.env-tag {
+  font-size: var(--fs-xs);
+  font-weight: 500;
+  color: var(--ink-3);
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  background: var(--panel-2);
+  text-transform: lowercase;
+}
+
+/* ── Back button ──────────────────────────────────────────── */
+.back-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border-radius: var(--radius-sm);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  color: var(--ink-2);
+  cursor: pointer;
+  transition: background 0.15s;
+  background: none;
+  border: none;
+}
+
+.back-btn:hover {
+  background: var(--panel-2);
+}
+
+.back-btn:focus-visible {
+  outline: 2px solid var(--teal);
+  outline-offset: 2px;
+}
+
+/* ── Level content ────────────────────────────────────────── */
+.level-content {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 24px;
+}
+
+.level-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  font-size: var(--fs-lg);
+  color: var(--ink-3);
+}
+
+/* ── Zoom nav breadcrumb ──────────────────────────────────── */
+.zoom-nav {
+  position: fixed;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 6px 16px;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(8px);
+  border: 1px solid var(--line);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+
+.zoom-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.zoom-nav-sep {
+  font-size: var(--fs-xs);
+  color: var(--ink-3);
+  margin: 0 4px;
+  user-select: none;
+}
+
+.zoom-nav-crumb {
+  font-size: var(--fs-xs);
+  font-weight: 500;
+  color: var(--ink-3);
+  padding: 3px 8px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+  background: none;
+  border: none;
+}
+
+.zoom-nav-crumb:hover:not(:disabled) {
+  background: var(--panel-2);
+  color: var(--ink-2);
+}
+
+.zoom-nav-crumb.active {
+  font-weight: 700;
+  color: var(--ink);
+  background: var(--panel-2);
+  cursor: default;
+}
+
+.zoom-nav-crumb:disabled:not(.active) {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.zoom-nav-crumb:focus-visible {
+  outline: 2px solid var(--teal);
+  outline-offset: 2px;
+}
+
+/* ── Accessibility: reduced motion ────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  .level {
+    transition: none;
+    filter: none !important;
+  }
+  .level.active {
+    filter: none;
+  }
+  .level.zoomed-past {
+    filter: none;
+  }
+}

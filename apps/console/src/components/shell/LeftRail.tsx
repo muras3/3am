@@ -48,7 +48,7 @@ export function LeftRail({ incidents, currentIncidentId, services }: Props) {
             <Link
               key={inc.incidentId}
               to="/"
-              search={{ incidentId: inc.incidentId }}
+              search={{ incidentId: inc.incidentId, level: 0 as const, tab: "traces" as const }}
               style={{ textDecoration: "none", color: "inherit" }}
             >
               <div className="rail-incident-entry">
@@ -74,7 +74,7 @@ export function LeftRail({ incidents, currentIncidentId, services }: Props) {
             <Link
               key={inc.incidentId}
               to="/"
-              search={{ incidentId: inc.incidentId }}
+              search={{ incidentId: inc.incidentId, level: 0 as const, tab: "traces" as const }}
               style={{ textDecoration: "none", color: "inherit" }}
             >
               <div className={`incident-item${inc.incidentId === currentIncidentId ? " active" : ""}`}>

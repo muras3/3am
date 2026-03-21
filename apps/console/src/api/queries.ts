@@ -10,6 +10,10 @@ import type {
   RecentActivity,
   ServiceSurface,
 } from "./types.js";
+import type {
+  RuntimeMapResponse,
+  ExtendedIncident,
+} from "./curated-types.js";
 
 export interface ChatTurn {
   role: "user" | "assistant";
@@ -68,6 +72,54 @@ export const incidentQueries = {
       enabled: !!id,
     }),
 };
+
+// ── Curated API queries (Lens UI) ─────────────────────────────
+// These consume the new curated endpoints. Fixture mode is supported
+// via VITE_USE_FIXTURES env var — when true, queries return static
+// fixture data instead of fetching from the API.
+
+const useFixtures = import.meta.env?.VITE_USE_FIXTURES === "true";
+
+const fixtureVariant: string = import.meta.env?.VITE_FIXTURE_VARIANT || "ready";
+
+async function loadFixture<T>(loader: () => Promise<T>): Promise<T> {
+  return loader();
+}
+
+export const curatedQueries = {
+  runtimeMap: () =>
+    queryOptions({
+      queryKey: ["curated", "runtime-map"],
+      queryFn: useFixtures
+        ? () => loadFixture(async () => {
+            const m = await import("../__fixtures__/curated/runtime-map.js");
+            if (fixtureVariant === "sparse") return m.runtimeMapSparse;
+            if (fixtureVariant === "unavailable") return m.runtimeMapUnavailable;
+            return m.runtimeMapReady;
+          })
+        : () => apiFetch<RuntimeMapResponse>("/api/runtime-map"),
+      staleTime: 15_000,
+      refetchInterval: useFixtures ? false : 15_000,
+    }),
+
+  extendedIncident: (id: string) =>
+    queryOptions({
+      queryKey: ["curated", "incidents", id],
+      queryFn: useFixtures
+        ? () => loadFixture(async () => {
+            const m = await import("../__fixtures__/curated/extended-incident.js");
+            if (fixtureVariant === "pending") return m.extendedIncidentPending;
+            if (fixtureVariant === "sparse") return m.extendedIncidentSparse;
+            return m.extendedIncidentReady;
+          })
+        : () => apiFetch<ExtendedIncident>(`/api/incidents/${encodeIncidentId(id)}`),
+      staleTime: 15_000,
+      refetchInterval: useFixtures ? false : 10_000,
+      enabled: !!id,
+    }),
+};
+
+// ── Legacy queries (raw APIs — kept for gate-off UI) ──────────
 
 export const ambientQueries = {
   services: () =>
