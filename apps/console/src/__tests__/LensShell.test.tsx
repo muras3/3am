@@ -37,6 +37,10 @@ vi.mock("../components/lens/ZoomNav.js", () => ({
   ),
 }));
 
+vi.mock("../components/lens/map/MapView.js", () => ({
+  MapView: () => <div data-testid="map-view-stub">Map View</div>,
+}));
+
 beforeEach(() => {
   mockSearch = { level: 0, tab: "traces", incidentId: undefined, proof: undefined, targetId: undefined };
   mockNavigate.mockClear();

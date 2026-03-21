@@ -3,6 +3,7 @@ import { useSearch, useNavigate } from "@tanstack/react-router";
 import type { LensLevel, LensSearchParams } from "../../routes/__root.js";
 import { LevelHeader } from "./LevelHeader.js";
 import { ZoomNav } from "./ZoomNav.js";
+import { MapView } from "./map/MapView.js";
 
 /**
  * LensShell — 3-level zoom navigation shell.
@@ -89,8 +90,7 @@ export function LensShell() {
       >
         <LevelHeader level={0} zoomTo={zoomTo} />
         <div className="level-content" data-focus-target>
-          {/* Map content — F-2 will populate this */}
-          <div className="level-placeholder">Map — Level 0</div>
+          <MapView zoomTo={zoomTo} />
         </div>
       </section>
 
