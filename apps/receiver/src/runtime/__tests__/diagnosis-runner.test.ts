@@ -225,11 +225,7 @@ describe("DiagnosisRunner", () => {
 
     it("re-runs stage 2 for diagnosed incident and returns true on success", async () => {
       const incident = makeIncident({ diagnosisResult: mockDiagnosisResult });
-      const incidentWithNarrative = { ...incident, consoleNarrative: mockNarrative };
-      const getIncident = vi.fn()
-        .mockResolvedValueOnce(incident)           // first call: check incident
-        .mockResolvedValueOnce(incidentWithNarrative); // second call: verify result
-      const storage = makeStorage({ getIncident });
+      const storage = makeStorage({ getIncident: vi.fn().mockResolvedValue(incident) });
       vi.mocked(buildReasoningStructure).mockResolvedValueOnce(mockReasoningStructure);
       vi.mocked(generateConsoleNarrative).mockResolvedValueOnce(mockNarrative);
       const runner = new DiagnosisRunner(storage, makeTelemetryStore());

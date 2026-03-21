@@ -1,5 +1,4 @@
 import { diagnose, generateConsoleNarrative } from "@3amoncall/diagnosis";
-import type { ReasoningStructure } from "@3amoncall/core";
 import type { StorageDriver, Incident } from "../storage/interface.js";
 import type { TelemetryStoreDriver } from "../telemetry/interface.js";
 import { buildReasoningStructure } from "../domain/reasoning-structure-builder.js";
@@ -52,10 +51,7 @@ export class DiagnosisRunner {
       return false;
     }
 
-    await this.runNarrativeGeneration(incident, incident.diagnosisResult);
-    // Check if narrative was saved
-    const updated = await this.storage.getIncident(incidentId);
-    return updated?.consoleNarrative != null;
+    return this.runNarrativeGeneration(incident, incident.diagnosisResult);
   }
 
   /**
@@ -66,7 +62,7 @@ export class DiagnosisRunner {
   private async runNarrativeGeneration(
     incident: Incident,
     diagnosisResult: Awaited<ReturnType<typeof diagnose>>,
-  ): Promise<void> {
+  ): Promise<boolean> {
     const incidentId = incident.incidentId;
     try {
       const reasoningStructure = await buildReasoningStructure(
@@ -81,16 +77,20 @@ export class DiagnosisRunner {
 
       try {
         await tryGenerate();
+        return true;
       } catch (firstErr) {
         console.warn(`[diagnosis-runner] narrative generation failed for ${incidentId}, retrying once:`, firstErr);
         try {
           await tryGenerate();
+          return true;
         } catch (retryErr) {
           console.error(`[diagnosis-runner] narrative generation retry also failed for ${incidentId} (stage 1 result preserved):`, retryErr);
+          return false;
         }
       }
     } catch (err) {
       console.warn(`[diagnosis-runner] could not build reasoning structure for ${incidentId}:`, err);
+      return false;
     }
   }
 }

@@ -29,7 +29,13 @@ export async function computeBlastRadius(
 ): Promise<{ entries: InternalBlastRadiusEntry[]; rollup: BlastRadiusRollup }> {
   const filter = buildIncidentQueryFilter(telemetryScope)
   const spans = await telemetryStore.querySpans(filter)
+  return computeBlastRadiusFromSpans(spans)
+}
 
+/** Pure computation from pre-fetched spans — avoids duplicate querySpans calls. */
+export function computeBlastRadiusFromSpans(
+  spans: TelemetrySpan[],
+): { entries: InternalBlastRadiusEntry[]; rollup: BlastRadiusRollup } {
   // Group spans by serviceName
   const serviceGroups = groupSpansByService(spans)
 

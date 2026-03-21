@@ -6,7 +6,6 @@
  */
 
 import type { TelemetryStoreDriver } from '../telemetry/interface.js'
-import { buildIncidentQueryFilter } from '../telemetry/interface.js'
 import type { Incident } from '../storage/interface.js'
 import type {
   EvidenceResponse,
@@ -27,9 +26,7 @@ export async function buildCuratedEvidence(
   incident: Incident,
   telemetryStore: TelemetryStoreDriver,
 ): Promise<EvidenceResponse> {
-  const incidentFilter = buildIncidentQueryFilter(incident.telemetryScope)
-
-  const [traceResult, metricsResult, logsResult, rawSpans, rawMetrics, rawLogs] = await Promise.all([
+  const [traceResult, metricsResult, logsResult] = await Promise.all([
     buildTraceSurface(incident, telemetryStore),
     buildMetricsSurface(
       telemetryStore,
@@ -42,10 +39,6 @@ export async function buildCuratedEvidence(
       incident.anomalousSignals,
       incident.spanMembership,
     ),
-    // Canonical counts — same query source as incident-detail-extension.ts
-    telemetryStore.querySpans(incidentFilter),
-    telemetryStore.queryMetrics(incidentFilter),
-    telemetryStore.queryLogs(incidentFilter),
   ])
 
   const evidenceIndex: EvidenceIndex = {
@@ -86,11 +79,17 @@ export async function buildCuratedEvidence(
         ? 'insufficient'
         : 'unavailable'
 
-  // Canonical counts: unique traceId, raw metric rows, raw log entries
-  // Must match ExtendedIncident.evidenceSummary (incident-detail-extension.ts)
-  const traceCount = new Set(rawSpans.map(s => s.traceId)).size
-  const metricCount = rawMetrics.length
-  const logCount = rawLogs.length
+  // Derive counts from surface results to avoid duplicate queries.
+  // Canonical rule: unique traceId count, metric row count, log entry count.
+  // Trace: each observed group has a unique traceId, so group count = unique trace count.
+  // Metrics/logs: sum rows across groups to get raw-equivalent counts.
+  const traceCount = new Set(traceResult.surface.observed.map(t => t.traceId)).size
+  const metricCount = metricsResult.surface.groups.reduce(
+    (sum, g) => sum + g.rows.length, 0,
+  )
+  const logCount = logsResult.surface.clusters.reduce(
+    (sum, c) => sum + c.entries.length, 0,
+  )
   const evidenceDensity: EvidenceResponse['state']['evidenceDensity'] =
     traceCount > 5 && metricCount > 3 && logCount > 10
       ? 'rich'
