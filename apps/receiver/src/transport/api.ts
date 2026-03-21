@@ -8,7 +8,6 @@ import {
   type ExtendedIncident,
   type EvidenceResponse,
   type ClaimType,
-  type HealthStatus,
 } from "@3amoncall/core";
 import type { RuntimeMapResponse as InternalRuntimeMapResponse } from "@3amoncall/core/schemas/runtime-map";
 import type { IncidentDetailExtension } from "@3amoncall/core/schemas/incident-detail-extension";
