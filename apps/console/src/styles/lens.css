@@ -751,3 +751,502 @@
   flex-shrink: 0;
 }
 
+/* ══════════════════════════════════════════════════════════════
+   Lens Evidence Studio (Level 2) — .lens-ev-* namespace
+   ══════════════════════════════════════════════════════════════ */
+
+/* ── Loading / error / empty states ───────────────────────────── */
+.lens-ev-loading,
+.lens-ev-error {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 200px;
+  font-size: var(--fs-md);
+  color: var(--ink-3);
+}
+
+.lens-ev-error {
+  color: var(--accent);
+}
+
+/* ── Empty state ───────────────────────────────────────────────── */
+.lens-ev-empty {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.lens-ev-empty-body {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 48px 24px;
+  text-align: center;
+}
+
+.lens-ev-empty-pulse {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--teal-soft);
+  border: 2px solid var(--teal);
+  animation: lens-ev-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes lens-ev-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.5; transform: scale(1.12); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lens-ev-empty-pulse {
+    animation: none;
+  }
+}
+
+.lens-ev-empty-text {
+  font-size: var(--fs-lg);
+  font-weight: 600;
+  color: var(--ink);
+  margin: 0;
+}
+
+.lens-ev-empty-sub {
+  font-size: var(--fs-sm);
+  color: var(--ink-3);
+  margin: 0;
+}
+
+/* ── Studio wrapper ────────────────────────────────────────────── */
+.lens-ev-studio {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-width: 1100px;
+  margin: 0 auto;
+}
+
+/* ── Context bar ───────────────────────────────────────────────── */
+.lens-ev-context-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 16px;
+  border-radius: var(--radius-sm);
+  background: var(--accent-soft);
+  border: 1px solid rgba(232,93,58,0.15);
+  font-size: var(--fs-xs);
+  flex-wrap: wrap;
+}
+
+.lens-ev-health-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.lens-ev-health-dot-critical { background: var(--accent); }
+.lens-ev-health-dot-high     { background: var(--amber); }
+.lens-ev-health-dot-medium   { background: var(--amber); }
+.lens-ev-health-dot-low      { background: var(--good); }
+
+.lens-ev-ctx-id {
+  font-family: var(--mono);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  color: var(--accent-text);
+}
+
+.lens-ev-ctx-sep {
+  color: var(--ink-3);
+}
+
+.lens-ev-ctx-headline {
+  font-weight: 600;
+  color: var(--ink);
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lens-ev-ctx-action {
+  font-size: var(--fs-xxs);
+  color: var(--ink-2);
+  font-style: italic;
+  white-space: nowrap;
+}
+
+/* ── Proof cards grid ──────────────────────────────────────────── */
+.lens-ev-proof-cards {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+
+.lens-ev-proof-card {
+  padding: 12px 14px;
+  border-radius: var(--radius);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  cursor: pointer;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  outline: none;
+}
+
+.lens-ev-proof-card:hover {
+  border-color: var(--line-strong);
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+.lens-ev-proof-card:focus-visible {
+  outline: 2px solid var(--teal);
+  outline-offset: 2px;
+}
+
+.lens-ev-proof-card-active {
+  border-color: var(--teal);
+  box-shadow: 0 0 0 2px var(--teal-soft);
+}
+
+.lens-ev-pc-top {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.lens-ev-pc-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: var(--radius-xs);
+  font-size: 11px;
+  flex-shrink: 0;
+}
+
+.lens-ev-pc-icon-accent  { background: var(--accent-soft); color: var(--accent-text); }
+.lens-ev-pc-icon-amber   { background: var(--amber-soft);  color: var(--amber); }
+.lens-ev-pc-icon-good    { background: var(--good-soft);   color: var(--good); }
+.lens-ev-pc-icon-ink     { background: var(--panel-2);     color: var(--ink-2); }
+
+.lens-ev-pc-label {
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  color: var(--ink);
+  flex: 1;
+  min-width: 0;
+}
+
+.lens-ev-pc-status {
+  font-size: var(--fs-xxs);
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: var(--radius-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  flex-shrink: 0;
+}
+
+.lens-ev-pc-status-confirmed { background: var(--good-soft);  color: var(--good); }
+.lens-ev-pc-status-inferred  { background: var(--amber-soft); color: var(--amber); }
+
+.lens-ev-pc-summary {
+  font-size: var(--fs-xs);
+  color: var(--ink-2);
+  line-height: var(--lh-read);
+}
+
+/* ── Q&A Frame ─────────────────────────────────────────────────── */
+.lens-ev-qa-frame {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.lens-ev-qa-empty,
+.lens-ev-qa-empty-msg {
+  padding: 12px 14px;
+  font-size: var(--fs-sm);
+  color: var(--ink-3);
+  font-style: italic;
+}
+
+.lens-ev-qa-no-answer {
+  padding: 10px 14px;
+  background: var(--panel-2);
+  border-radius: var(--radius-sm);
+  font-size: var(--fs-sm);
+  color: var(--ink-2);
+}
+
+.lens-ev-qa-question-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  box-shadow: 0 0 0 2px var(--teal-soft);
+}
+
+.lens-ev-qa-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--teal);
+  color: white;
+  font-size: 11px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.lens-ev-qa-question-text {
+  flex: 1;
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.lens-ev-qa-time {
+  font-family: var(--mono);
+  font-size: var(--fs-xxs);
+  color: var(--ink-3);
+  white-space: nowrap;
+}
+
+.lens-ev-qa-answer {
+  padding: 10px 14px;
+  border-radius: var(--radius-sm);
+  background: var(--teal-soft);
+  border: 1px solid rgba(13,115,119,0.2);
+  font-size: var(--fs-sm);
+  color: var(--ink-2);
+  line-height: var(--lh-read);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.lens-ev-qa-refs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.lens-ev-qa-refs-label {
+  font-size: var(--fs-xxs);
+  font-weight: 600;
+  color: var(--teal);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.lens-ev-qa-ref {
+  font-family: var(--mono);
+  font-size: var(--fs-xxs);
+  color: var(--teal);
+  cursor: pointer;
+  padding: 1px 4px;
+  border-radius: var(--radius-xs);
+  background: rgba(13,115,119,0.06);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  outline: none;
+}
+
+.lens-ev-qa-ref:hover {
+  background: var(--teal-soft);
+}
+
+.lens-ev-qa-ref:focus-visible {
+  outline: 2px solid var(--teal);
+  outline-offset: 1px;
+}
+
+.lens-ev-qa-evidence-note {
+  font-size: var(--fs-xxs);
+  color: var(--teal);
+  margin-top: 2px;
+}
+
+.lens-ev-qa-followups {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.lens-ev-qa-chip {
+  padding: 4px 10px;
+  border-radius: 12px;
+  border: 1px solid var(--line-strong);
+  background: var(--panel);
+  font-size: var(--fs-xs);
+  color: var(--ink-2);
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s;
+  font-family: var(--font);
+}
+
+.lens-ev-qa-chip:hover {
+  background: var(--panel-2);
+  border-color: var(--teal);
+  color: var(--teal);
+}
+
+.lens-ev-qa-chip:focus-visible {
+  outline: 2px solid var(--teal);
+  outline-offset: 2px;
+}
+
+/* ── Tabs ──────────────────────────────────────────────────────── */
+.lens-ev-tabs {
+  display: inline-flex;
+  gap: 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.lens-ev-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  color: var(--ink-2);
+  border: none;
+  background: none;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  transition: color 0.12s, border-color 0.12s;
+  margin-bottom: -1px;
+  font-family: var(--font);
+  outline: none;
+}
+
+.lens-ev-tab:hover {
+  color: var(--ink);
+}
+
+.lens-ev-tab-active {
+  font-weight: 700;
+  color: var(--ink);
+  border-bottom-color: var(--ink);
+}
+
+.lens-ev-tab:focus-visible {
+  outline: 2px solid var(--teal);
+  outline-offset: 2px;
+}
+
+.lens-ev-tab-count {
+  font-family: var(--mono);
+  font-size: var(--fs-xxs);
+  color: var(--ink-3);
+  background: var(--panel-2);
+  padding: 1px 5px;
+  border-radius: var(--radius-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.lens-ev-tab-active .lens-ev-tab-count {
+  background: var(--panel-3);
+  color: var(--ink-2);
+}
+
+/* ── Content grid ──────────────────────────────────────────────── */
+.lens-ev-grid {
+  display: grid;
+  grid-template-columns: 1fr 240px;
+  gap: 16px;
+  align-items: start;
+}
+
+.lens-ev-main {
+  min-width: 0;
+}
+
+.lens-ev-view {
+  /* Panel shown/hidden via hidden attribute */
+}
+
+.lens-ev-view[hidden] {
+  display: none;
+}
+
+/* ── Side rail ─────────────────────────────────────────────────── */
+.lens-ev-side {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.lens-ev-side-note {
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--panel);
+  border: 1px solid var(--line);
+}
+
+.lens-ev-side-note-primary {
+  border-color: rgba(13,115,119,0.2);
+}
+
+.lens-ev-side-note-title {
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  color: var(--ink-2);
+  margin-bottom: 4px;
+}
+
+.lens-ev-side-note-primary .lens-ev-side-note-title {
+  color: var(--teal);
+}
+
+.lens-ev-side-note-content {
+  font-size: var(--fs-xs);
+  color: var(--ink-2);
+  line-height: var(--lh-read);
+  margin: 0;
+}
+
+/* ── Proof highlight animation ─────────────────────────────────── */
+@keyframes highlight-pulse {
+  0%   { background-color: var(--accent-soft); }
+  100% { background-color: transparent; }
+}
+
+.proof-highlight {
+  animation: highlight-pulse 1s ease-out forwards;
+  border-radius: var(--radius-xs);
+}
+
+/* ── Responsive: collapse side rail on narrow screens ──────────── */
+@media (max-width: 800px) {
+  .lens-ev-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .lens-ev-side {
+    order: -1;
+  }
+
+  .lens-ev-proof-cards {
+    grid-template-columns: 1fr;
+  }
+}
+

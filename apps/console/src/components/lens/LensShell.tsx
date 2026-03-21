@@ -9,6 +9,10 @@ const LensIncidentBoard = lazy(() =>
   import("./board/LensIncidentBoard.js").then((m) => ({ default: m.LensIncidentBoard })),
 );
 
+const LensEvidenceStudio = lazy(() =>
+  import("./evidence/LensEvidenceStudio.js").then((m) => ({ default: m.LensEvidenceStudio })),
+);
+
 /**
  * LensShell — 3-level zoom navigation shell.
  *
@@ -134,8 +138,13 @@ export function LensShell() {
           zoomTo={zoomTo}
         />
         <div className="level-content" data-focus-target>
-          {/* EvidenceStudio — F-4 will populate this */}
-          <div className="level-placeholder">Evidence Studio — Level 2</div>
+          <Suspense fallback={<div className="level-placeholder">Loading…</div>}>
+            {incidentId ? (
+              <LensEvidenceStudio incidentId={incidentId} zoomTo={zoomTo} />
+            ) : (
+              <div className="level-placeholder">Select an incident to view evidence</div>
+            )}
+          </Suspense>
         </div>
       </section>
 
