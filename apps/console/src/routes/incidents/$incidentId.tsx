@@ -7,7 +7,7 @@ export const incidentRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/incidents/$incidentId",
   beforeLoad: ({ params }) => {
-    throw redirect({ to: "/", search: { incidentId: params.incidentId } });
+    throw redirect({ to: "/", search: { incidentId: params.incidentId, level: 0 as const, tab: "traces" as const } });
   },
   component: () => null,
 });

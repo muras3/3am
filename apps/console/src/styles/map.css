@@ -1,0 +1,371 @@
+/* ═══════════════════════════════════════════════════════════════
+   LEVEL 0 — RUNTIME DEPENDENCY MAP
+   ═══════════════════════════════════════════════════════════════ */
+
+/* ── Layout ─────────────────────────────────────────────────── */
+.l0-content {
+  padding: 16px 24px 80px;
+}
+
+.l0-section-title {
+  font-size: var(--fs-xxs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--ink-3);
+  margin-bottom: 8px;
+  margin-top: 0;
+}
+
+/* ── Stats bar ───────────────────────────────────────────────── */
+.l0-stats {
+  display: flex;
+  gap: 24px;
+  margin-bottom: 16px;
+}
+
+.stat-block {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.stat-value {
+  font-family: var(--mono);
+  font-size: 28px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  line-height: 1;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.stat-value.critical {
+  color: var(--accent-text);
+}
+
+.stat-value.warn {
+  color: var(--amber);
+}
+
+.stat-label {
+  font-size: var(--fs-xs);
+  color: var(--ink-3);
+  font-weight: 500;
+}
+
+/* ── System map container ────────────────────────────────────── */
+.system-map {
+  position: relative;
+  max-width: 1100px;
+  margin: 0 auto 12px;
+  height: 380px;
+}
+
+/* ── Tier labels ─────────────────────────────────────────────── */
+.map-tier-label {
+  position: absolute;
+  font-size: 8px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--ink-3);
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+  user-select: none;
+}
+
+.map-tier-label.t0 { left: 2px; top: 30px; }
+.map-tier-label.t1 { left: 2px; top: 160px; }
+.map-tier-label.t2 { left: 2px; top: 290px; }
+
+/* ── Tier dividers ───────────────────────────────────────────── */
+.map-tier-border {
+  position: absolute;
+  left: 20px;
+  right: 0;
+  border-top: 1px dashed var(--line);
+  z-index: 0;
+}
+
+/* ── SVG edges overlay ───────────────────────────────────────── */
+.map-edges {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+/* ── Map nodes ───────────────────────────────────────────────── */
+.map-node {
+  position: absolute;
+  width: 155px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel);
+  z-index: 2;
+  transition: border-color 0.2s, box-shadow 0.2s, transform 0.1s;
+  box-sizing: border-box;
+}
+
+/* Node type styles */
+.map-node.n-entry {
+  border-left: 3px solid var(--ink);
+  font-weight: 600;
+}
+
+.map-node.n-unit {
+  border-radius: 20px;
+  border-style: solid;
+}
+
+.map-node.n-dep {
+  border-style: dashed;
+  background: var(--panel-2);
+}
+
+/* Status styles */
+.map-node.n-critical {
+  border-color: rgba(232, 93, 58, 0.35);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.map-node.n-degraded {
+  border-color: rgba(184, 134, 11, 0.35);
+  box-shadow: 0 0 0 3px var(--amber-soft);
+}
+
+/* Clickable nodes */
+.map-node.clickable {
+  cursor: pointer;
+}
+
+.map-node.clickable:hover {
+  border-color: var(--line-strong);
+  box-shadow: 0 1px 2px rgba(26, 26, 26, 0.04), 0 4px 12px rgba(26, 26, 26, 0.08);
+  transform: translateY(-1px);
+}
+
+.map-node.n-critical.clickable:hover {
+  box-shadow: 0 1px 2px rgba(26, 26, 26, 0.04), 0 4px 12px rgba(26, 26, 26, 0.08), 0 0 0 3px var(--accent-soft);
+}
+
+.map-node.n-degraded.clickable:hover {
+  box-shadow: 0 1px 2px rgba(26, 26, 26, 0.04), 0 4px 12px rgba(26, 26, 26, 0.08), 0 0 0 3px var(--amber-soft);
+}
+
+.map-node.clickable:focus-visible {
+  outline: 2px solid var(--teal);
+  outline-offset: 2px;
+}
+
+/* ── Node internals ──────────────────────────────────────────── */
+.mn-top {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.mn-name {
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mn-tag {
+  font-size: 8px;
+  font-weight: 600;
+  text-transform: uppercase;
+  padding: 1px 4px;
+  border-radius: var(--radius-xs);
+  background: var(--amber-soft);
+  color: var(--amber);
+  flex-shrink: 0;
+}
+
+.mn-badge {
+  font-size: 8px;
+  font-weight: 600;
+  padding: 1px 5px;
+  border-radius: var(--radius-xs);
+  background: var(--accent-soft);
+  color: var(--accent-text);
+  flex-shrink: 0;
+}
+
+.mn-metrics {
+  display: flex;
+  gap: 6px;
+  font-family: var(--mono);
+  font-size: var(--fs-xxs);
+  color: var(--ink-3);
+}
+
+.mn-metrics .bad {
+  color: var(--accent-text);
+  font-weight: 600;
+}
+
+.mn-metrics .warn {
+  color: var(--amber);
+  font-weight: 600;
+}
+
+.mn-detail {
+  font-size: var(--fs-xxs);
+  color: var(--ink-2);
+  margin-top: 2px;
+  font-family: var(--mono);
+}
+
+.mn-detail.critical {
+  color: var(--accent-text);
+  font-weight: 600;
+}
+
+.mn-detail.degraded {
+  color: var(--amber);
+}
+
+/* ── Health dot ──────────────────────────────────────────────── */
+.health-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: var(--good);
+}
+
+.health-dot.critical {
+  background: var(--accent);
+}
+
+.health-dot.degraded {
+  background: var(--amber);
+}
+
+/* ── Map legend ──────────────────────────────────────────────── */
+.map-legend {
+  display: flex;
+  gap: 16px;
+  font-size: var(--fs-xxs);
+  color: var(--ink-3);
+  margin-top: 8px;
+  max-width: 1100px;
+  margin-left: auto;
+  margin-right: auto;
+  flex-wrap: wrap;
+}
+
+.map-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.legend-line {
+  width: 20px;
+  height: 2px;
+  border-radius: 1px;
+  display: inline-block;
+}
+
+/* ── Incident strip ──────────────────────────────────────────── */
+.incident-strip {
+  max-width: 1100px;
+  margin: 0 auto;
+}
+
+.incident-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 14px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.incident-row:hover {
+  background: var(--panel-2);
+}
+
+.incident-row:focus-visible {
+  outline: 2px solid var(--teal);
+  outline-offset: 2px;
+}
+
+.ir-id {
+  font-family: var(--mono);
+  font-size: var(--fs-xs);
+  color: var(--ink-3);
+  min-width: 76px;
+}
+
+.ir-name {
+  font-weight: 600;
+  font-size: var(--fs-md);
+  flex: 1;
+}
+
+.ir-sev {
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: var(--radius-xs);
+}
+
+.ir-sev.critical {
+  background: var(--accent-soft);
+  color: var(--accent-text);
+}
+
+.ir-sev.high {
+  background: var(--accent-soft);
+  color: var(--accent-text);
+}
+
+.ir-sev.medium {
+  background: var(--amber-soft);
+  color: var(--amber);
+}
+
+.ir-sev.low {
+  background: var(--good-soft);
+  color: var(--good);
+}
+
+.ir-time {
+  font-family: var(--mono);
+  font-size: var(--fs-xs);
+  color: var(--ink-3);
+}
+
+/* ── Empty state ─────────────────────────────────────────────── */
+.map-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 200px;
+  gap: 8px;
+  color: var(--ink-3);
+  font-size: var(--fs-sm);
+}
+
+/* ── Reduced motion ──────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  .map-node {
+    transition: none;
+  }
+
+  .map-edges circle {
+    display: none;
+  }
+}
