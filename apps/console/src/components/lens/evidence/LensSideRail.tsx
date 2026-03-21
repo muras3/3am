@@ -9,7 +9,7 @@ interface SideNoteCardProps {
 }
 
 function SideNoteCard({ note }: SideNoteCardProps) {
-  const isPrimary = note.variant === "primary";
+  const isPrimary = note.kind === "confidence";
 
   return (
     <div
@@ -18,7 +18,7 @@ function SideNoteCard({ note }: SideNoteCardProps) {
       aria-label={note.title}
     >
       <div className="lens-ev-side-note-title">{note.title}</div>
-      <p className="lens-ev-side-note-content">{note.content}</p>
+      <p className="lens-ev-side-note-content">{note.text}</p>
     </div>
   );
 }

@@ -11,7 +11,7 @@
 import type { TelemetryStoreDriver, TelemetrySpan } from '../telemetry/interface.js'
 import { buildIncidentQueryFilter } from '../telemetry/interface.js'
 import type { TelemetryScope } from '../storage/interface.js'
-import type { BlastRadiusEntry, BlastRadiusRollup } from '@3amoncall/core/schemas/incident-detail-extension'
+import type { InternalBlastRadiusEntry, BlastRadiusRollup } from '@3amoncall/core/schemas/incident-detail-extension'
 
 // ── Thresholds ────────────────────────────────────────────────────────────
 
@@ -26,14 +26,14 @@ const DEGRADED_THRESHOLD = 0.01
 export async function computeBlastRadius(
   telemetryStore: TelemetryStoreDriver,
   telemetryScope: TelemetryScope,
-): Promise<{ entries: BlastRadiusEntry[]; rollup: BlastRadiusRollup }> {
+): Promise<{ entries: InternalBlastRadiusEntry[]; rollup: BlastRadiusRollup }> {
   const filter = buildIncidentQueryFilter(telemetryScope)
   const spans = await telemetryStore.querySpans(filter)
 
   // Group spans by serviceName
   const serviceGroups = groupSpansByService(spans)
 
-  const allEntries: BlastRadiusEntry[] = []
+  const allEntries: InternalBlastRadiusEntry[] = []
 
   for (const [serviceName, serviceSpans] of serviceGroups) {
     const totalSpans = serviceSpans.length

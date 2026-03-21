@@ -130,8 +130,8 @@ describe("Diagnosis flow (POST /api/diagnosis/:id)", () => {
     delete process.env["ALLOW_INSECURE_DEV_MODE"];
   });
 
-  // Test 1: valid DiagnosisResult → 200 → incident has diagnosisResult populated
-  it("POST valid DiagnosisResult → 200 and GET incident includes diagnosisResult", async () => {
+  // Test 1: valid DiagnosisResult → 200 → curated incident reflects diagnosis
+  it("POST valid DiagnosisResult → 200 and GET curated incident reflects diagnosis", async () => {
     const incidentId = await seedIncident(app);
     const diagnosisResult = makeDiagnosisResult(incidentId);
 
@@ -144,22 +144,21 @@ describe("Diagnosis flow (POST /api/diagnosis/:id)", () => {
     const postBody = await postRes.json() as { status: string };
     expect(postBody.status).toBe("ok");
 
-    // GET the incident and verify diagnosisResult was persisted
+    // GET the curated incident and verify diagnosis fields were projected
     const getRes = await app.request(`/api/incidents/${incidentId}`);
     expect(getRes.status).toBe(200);
     const getBody = await getRes.json() as {
       incidentId: string;
-      diagnosisResult?: DiagnosisResult;
+      headline: string;
+      action: { text: string };
+      state: { diagnosis: string };
     };
     expect(getBody.incidentId).toBe(incidentId);
-    expect(getBody.diagnosisResult).toBeDefined();
-    expect(getBody.diagnosisResult?.summary.what_happened).toBe(
-      "Stripe rate limit caused checkout timeouts.",
-    );
-    expect(getBody.diagnosisResult?.recommendation.immediate_action).toBe(
+    expect(getBody.state.diagnosis).toBe("ready");
+    expect(getBody.headline).toBe("Stripe rate limit caused checkout timeouts.");
+    expect(getBody.action.text).toBe(
       "Disable fixed retries and switch to exponential back-off.",
     );
-    expect(getBody.diagnosisResult?.metadata.incident_id).toBe(incidentId);
   });
 
   // Test 2: invalid body (missing required fields) → 400

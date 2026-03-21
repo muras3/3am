@@ -1,4 +1,6 @@
-import type { LogsSurface, LogClaim, LogEntry, ClaimType } from "../../../api/curated-types.js";
+import type { LogsSurface, LogClaim, LogEntry } from "../../../api/curated-types.js";
+
+type ClaimType = LogClaim["type"];
 
 // ── Type icons ────────────────────────────────────────────────
 const TYPE_ICON: Record<ClaimType, string> = {
@@ -75,8 +77,13 @@ function ClaimCluster({ claim }: ClaimClusterProps) {
         /* Absence evidence: show structured negative finding */
         <div className="lens-logs-absence-body">
           <p className="lens-logs-absence-text">
-            <em>Expected: {claim.label}. Observed: none.</em>
+            <em>
+              Expected: {claim.expected ?? claim.label}. Observed: {claim.observed ?? "none"}.
+            </em>
           </p>
+          {claim.explanation && (
+            <p className="lens-logs-absence-text">{claim.explanation}</p>
+          )}
         </div>
       ) : (
         /* Normal entries */

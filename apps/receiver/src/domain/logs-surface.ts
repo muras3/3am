@@ -9,7 +9,13 @@
 import type { TelemetryLog, TelemetryStoreDriver } from '../telemetry/interface.js'
 import { buildIncidentQueryFilter } from '../telemetry/interface.js'
 import type { TelemetryScope, AnomalousSignal } from '../storage/interface.js'
-import type { LogsSurface, LogCluster, LogEntry, LogClusterKey, EvidenceRef } from '@3amoncall/core/schemas/curated-evidence'
+import type {
+  CuratedLogsSurface,
+  LogCluster,
+  CuratedLogEntry,
+  LogClusterKey,
+  CuratedEvidenceRef,
+} from '@3amoncall/core/schemas/curated-evidence'
 import { LOG_KEYWORDS } from '../telemetry/constants.js'
 import { detectAbsences } from './absence-detector.js'
 
@@ -71,8 +77,8 @@ export async function buildLogsSurface(
   telemetryScope: TelemetryScope,
   anomalousSignals: AnomalousSignal[],
   spanMembership: string[],
-): Promise<{ surface: LogsSurface; evidenceRefs: Map<string, EvidenceRef> }> {
-  const evidenceRefs = new Map<string, EvidenceRef>()
+): Promise<{ surface: CuratedLogsSurface; evidenceRefs: Map<string, CuratedEvidenceRef> }> {
+  const evidenceRefs = new Map<string, CuratedEvidenceRef>()
 
   // 1. Query logs
   const filter = buildIncidentQueryFilter(telemetryScope)
@@ -88,13 +94,13 @@ export async function buildLogsSurface(
   }
 
   // 2 & 3. Build LogEntry for each log and classify
-  const logEntries: { entry: LogEntry; log: TelemetryLog; keywordHits: string[] }[] = []
+  const logEntries: { entry: CuratedLogEntry; log: TelemetryLog; keywordHits: string[] }[] = []
 
   for (const log of allLogs) {
     const signal = isSignalLog(log.severity, log.body)
     const keywords = findKeywordHits(log.body)
 
-    const entry: LogEntry = {
+    const entry: CuratedLogEntry = {
       refId: `${log.service}:${log.timestamp}:${log.bodyHash}`,
       timestamp: log.timestamp,
       severity: log.severity,
@@ -112,7 +118,7 @@ export async function buildLogsSurface(
   // then group with matching key components.
   // Group key = "${primaryService}|${severityDominant}|${hasTraceCorrelation}|${keywordHits.sort().join(',')}"
   const clusterMap = new Map<string, {
-    entries: LogEntry[]
+    entries: CuratedLogEntry[]
     keywordHitsSet: Set<string>
     service: string
     hasTraceCorrelation: boolean

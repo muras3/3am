@@ -1,22 +1,26 @@
 import { z } from "zod";
+import {
+  AnswerEvidenceRefSchema,
+  FollowupSchema,
+  NarrativeSideNoteSchema,
+} from "./console-narrative.js";
+import type { NarrativeAbsenceEvidenceSchema } from "./console-narrative.js";
+import { ProofRefSchema } from "./reasoning-structure.js";
+import { CuratedStateSchema } from "./runtime-map.js";
 
-// CuratedEvidenceResponse — GET /api/incidents/:id/evidence
-// All sub-schemas use .strict() to reject unknown keys at every nesting level.
-
-// ── Evidence Ref System ──────────────────────────────────────
-
-const EvidenceRefSchema = z.object({
+// Internal receiver-facing evidence ref system.
+export const CuratedEvidenceRefSchema = z.object({
   refId: z.string(),
   surface: z.enum(["traces", "metrics", "logs", "absences"]),
   groupId: z.string().optional(),
   isSmokingGun: z.boolean().optional(),
 }).strict();
 
-const EvidenceIndexSchema = z.object({
-  spans: z.record(z.string(), EvidenceRefSchema),
-  metrics: z.record(z.string(), EvidenceRefSchema),
-  logs: z.record(z.string(), EvidenceRefSchema),
-  absences: z.record(z.string(), EvidenceRefSchema),
+export const EvidenceIndexSchema = z.object({
+  spans: z.record(z.string(), CuratedEvidenceRefSchema),
+  metrics: z.record(z.string(), CuratedEvidenceRefSchema),
+  logs: z.record(z.string(), CuratedEvidenceRefSchema),
+  absences: z.record(z.string(), CuratedEvidenceRefSchema),
 }).strict();
 
 // ── Diagnosis-owned narrative slots ──────────────────────────
@@ -26,13 +30,13 @@ const EvidenceIndexSchema = z.object({
 
 // ── Baseline Context ─────────────────────────────────────────
 
-const BaselineSourceSchema = z.discriminatedUnion("kind", [
+export const BaselineSourceSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("same_route"), route: z.string(), service: z.string() }).strict(),
   z.object({ kind: z.literal("same_service"), service: z.string() }).strict(),
   z.object({ kind: z.literal("none") }).strict(),
 ]);
 
-const BaselineContextSchema = z.object({
+export const BaselineContextSchema = z.object({
   windowStart: z.string(),
   windowEnd: z.string(),
   sampleCount: z.number(),
@@ -42,8 +46,9 @@ const BaselineContextSchema = z.object({
 
 // ── Traces Surface ───────────────────────────────────────────
 
-const TraceSpanSchema = z.object({
+export const CuratedTraceSpanSchema = z.object({
   spanId: z.string(),
+  parentSpanId: z.string().optional(),
   refId: z.string(),
   spanName: z.string(),
   durationMs: z.number(),
@@ -57,7 +62,7 @@ const TraceSpanSchema = z.object({
   correlatedLogRefIds: z.array(z.string()),
 }).strict();
 
-const GroupedTraceSchema = z.object({
+export const CuratedGroupedTraceSchema = z.object({
   traceId: z.string(),
   groupId: z.string(),
   rootSpanName: z.string(),
@@ -65,25 +70,25 @@ const GroupedTraceSchema = z.object({
   durationMs: z.number(),
   status: z.enum(["ok", "error", "slow"]),
   startTimeMs: z.number(),
-  spans: z.array(TraceSpanSchema),
+  spans: z.array(CuratedTraceSpanSchema),
 }).strict();
 
-const TraceSurfaceSchema = z.object({
-  observed: z.array(GroupedTraceSchema),
-  expected: z.array(GroupedTraceSchema),
+export const CuratedTraceSurfaceSchema = z.object({
+  observed: z.array(CuratedGroupedTraceSchema),
+  expected: z.array(CuratedGroupedTraceSchema),
   smokingGunSpanId: z.string().optional(),
   baseline: BaselineContextSchema,
 }).strict();
 
 // ── Metrics Surface ──────────────────────────────────────────
 
-const MetricGroupKeySchema = z.object({
+export const MetricGroupKeySchema = z.object({
   service: z.string(),
   anomalyMagnitude: z.enum(["extreme", "significant", "moderate", "baseline"]),
   metricClass: z.enum(["error_rate", "latency", "throughput", "resource"]),
 }).strict();
 
-const MetricRowSchema = z.object({
+export const MetricRowSchema = z.object({
   refId: z.string(),
   name: z.string(),
   service: z.string(),
@@ -94,7 +99,7 @@ const MetricRowSchema = z.object({
   impactBar: z.number(),
 }).strict();
 
-const MetricGroupSchema = z.object({
+export const MetricGroupSchema = z.object({
   groupId: z.string(),
   groupKey: MetricGroupKeySchema,
   diagnosisLabel: z.string().optional(),
@@ -102,20 +107,20 @@ const MetricGroupSchema = z.object({
   rows: z.array(MetricRowSchema),
 }).strict();
 
-const MetricsSurfaceSchema = z.object({
+export const CuratedMetricsSurfaceSchema = z.object({
   groups: z.array(MetricGroupSchema),
 }).strict();
 
 // ── Logs Surface ─────────────────────────────────────────────
 
-const LogClusterKeySchema = z.object({
+export const LogClusterKeySchema = z.object({
   primaryService: z.string(),
   severityDominant: z.enum(["FATAL", "ERROR", "WARN", "INFO"]),
   hasTraceCorrelation: z.boolean(),
   keywordHits: z.array(z.string()),
 }).strict();
 
-const LogEntrySchema = z.object({
+export const CuratedLogEntrySchema = z.object({
   refId: z.string(),
   timestamp: z.string(),
   severity: z.string(),
@@ -125,17 +130,17 @@ const LogEntrySchema = z.object({
   spanId: z.string().optional(),
 }).strict();
 
-const LogClusterSchema = z.object({
+export const LogClusterSchema = z.object({
   clusterId: z.string(),
   clusterKey: LogClusterKeySchema,
   diagnosisLabel: z.string().optional(),
   diagnosisVerdict: z.string().optional(),
-  entries: z.array(LogEntrySchema),
+  entries: z.array(CuratedLogEntrySchema),
   signalCount: z.number(),
   noiseCount: z.number(),
 }).strict();
 
-const AbsenceEvidenceEntrySchema = z.object({
+export const AbsenceEvidenceEntrySchema = z.object({
   refId: z.string(),
   kind: z.literal("absence"),
   patternId: z.string(),
@@ -151,46 +156,162 @@ const AbsenceEvidenceEntrySchema = z.object({
   diagnosisExplanation: z.string().optional(),
 }).strict();
 
-const LogsSurfaceSchema = z.object({
+export const CuratedLogsSurfaceSchema = z.object({
   clusters: z.array(LogClusterSchema),
   absenceEvidence: z.array(AbsenceEvidenceEntrySchema),
 }).strict();
 
-// ── Top-level Response ───────────────────────────────────────
+// Public console-facing evidence response.
+export const EvidenceRefSchema = AnswerEvidenceRefSchema;
 
-export const CuratedEvidenceResponseSchema = z.object({
-  proofCards: z.array(z.unknown()),
-  qa: z.unknown().nullable(),
-  sideNotes: z.array(z.unknown()),
-  surfaces: z.object({
-    traces: TraceSurfaceSchema,
-    metrics: MetricsSurfaceSchema,
-    logs: LogsSurfaceSchema,
-  }).strict(),
-  evidenceIndex: EvidenceIndexSchema,
-  state: z.object({
-    diagnosis: z.enum(["ready", "pending", "unavailable"]),
-    baseline: z.enum(["ready", "insufficient", "unavailable"]),
-    evidenceDensity: z.enum(["rich", "sparse", "empty"]),
-  }).strict(),
+export const CorrelatedLogSchema = z.object({
+  timestamp: z.string(),
+  severity: z.string(),
+  body: z.string(),
 }).strict();
 
-// ── Exports ──────────────────────────────────────────────────
+export const TraceSpanSchema = z.object({
+  spanId: z.string(),
+  parentSpanId: z.string().optional(),
+  name: z.string(),
+  durationMs: z.number(),
+  status: z.enum(["ok", "error", "slow"]),
+  attributes: z.record(z.string(), z.unknown()),
+  correlatedLogs: z.array(CorrelatedLogSchema).optional(),
+}).strict();
 
-export type CuratedEvidenceResponse = z.infer<typeof CuratedEvidenceResponseSchema>;
+export const TraceGroupSchema = z.object({
+  traceId: z.string(),
+  route: z.string(),
+  status: z.number(),
+  durationMs: z.number(),
+  expectedDurationMs: z.number().optional(),
+  annotation: z.string().optional(),
+  spans: z.array(TraceSpanSchema),
+}).strict();
+
+export const TraceSurfaceSchema = z.object({
+  observed: z.array(TraceGroupSchema),
+  expected: z.array(TraceGroupSchema),
+  smokingGunSpanId: z.string().nullable(),
+}).strict();
+
+export const HypothesisMetricSchema = z.object({
+  name: z.string(),
+  value: z.string(),
+  expected: z.string(),
+  barPercent: z.number(),
+}).strict();
+
+export const HypothesisGroupSchema = z.object({
+  id: z.string(),
+  type: z.enum(["trigger", "cascade", "recovery", "absence"]),
+  claim: z.string(),
+  verdict: z.enum(["Confirmed", "Inferred"]),
+  metrics: z.array(HypothesisMetricSchema),
+}).strict();
+
+export const MetricsSurfaceSchema = z.object({
+  hypotheses: z.array(HypothesisGroupSchema),
+}).strict();
+
+export const LogEntrySchema = z.object({
+  timestamp: z.string(),
+  severity: z.enum(["error", "warn", "info"]),
+  body: z.string(),
+  signal: z.boolean(),
+}).strict();
+
+export const LogClaimSchema = z.object({
+  id: z.string(),
+  type: z.enum(["trigger", "cascade", "recovery", "absence"]),
+  label: z.string(),
+  count: z.number(),
+  expected: z.string().optional(),
+  observed: z.string().optional(),
+  explanation: z.string().optional(),
+  entries: z.array(LogEntrySchema),
+}).strict();
+
+export const LogsSurfaceSchema = z.object({
+  claims: z.array(LogClaimSchema),
+}).strict();
+
+export const ProofCardSchema = z.object({
+  id: ProofRefSchema.shape.cardId,
+  label: z.string(),
+  status: ProofRefSchema.shape.status,
+  summary: z.string(),
+  targetSurface: ProofRefSchema.shape.targetSurface,
+  evidenceRefs: z.array(ProofRefSchema.shape.evidenceRefs.element),
+}).strict();
+
+export const EvidenceSummarySchema = z.object({
+  traces: z.number(),
+  metrics: z.number(),
+  logs: z.number(),
+}).strict();
+
+export const QABlockSchema = z.object({
+  question: z.string(),
+  answer: z.string(),
+  evidenceRefs: z.array(EvidenceRefSchema),
+  evidenceSummary: EvidenceSummarySchema,
+  followups: z.array(FollowupSchema),
+  noAnswerReason: z.string().optional(),
+}).strict();
+
+export const SideNoteSchema = z.object({
+  title: z.string(),
+  text: z.string(),
+  kind: NarrativeSideNoteSchema.shape.kind,
+}).strict();
+
+export const EvidenceSurfacesSchema = z.object({
+  traces: TraceSurfaceSchema,
+  metrics: MetricsSurfaceSchema,
+  logs: LogsSurfaceSchema,
+}).strict();
+
+export const EvidenceResponseSchema = z.object({
+  proofCards: z.array(ProofCardSchema),
+  qa: QABlockSchema.nullable(),
+  surfaces: EvidenceSurfacesSchema,
+  sideNotes: z.array(SideNoteSchema),
+  state: CuratedStateSchema,
+}).strict();
+
 export type EvidenceIndex = z.infer<typeof EvidenceIndexSchema>;
-export type EvidenceRef = z.infer<typeof EvidenceRefSchema>;
+export type CuratedEvidenceRef = z.infer<typeof CuratedEvidenceRefSchema>;
 export type BaselineContext = z.infer<typeof BaselineContextSchema>;
 export type BaselineSource = z.infer<typeof BaselineSourceSchema>;
-export type TraceSurface = z.infer<typeof TraceSurfaceSchema>;
-export type GroupedTrace = z.infer<typeof GroupedTraceSchema>;
-export type TraceSpan = z.infer<typeof TraceSpanSchema>;
-export type MetricsSurface = z.infer<typeof MetricsSurfaceSchema>;
+export type CuratedTraceSurface = z.infer<typeof CuratedTraceSurfaceSchema>;
+export type CuratedGroupedTrace = z.infer<typeof CuratedGroupedTraceSchema>;
+export type CuratedTraceSpan = z.infer<typeof CuratedTraceSpanSchema>;
+export type CuratedMetricsSurface = z.infer<typeof CuratedMetricsSurfaceSchema>;
 export type MetricGroup = z.infer<typeof MetricGroupSchema>;
 export type MetricGroupKey = z.infer<typeof MetricGroupKeySchema>;
 export type MetricRow = z.infer<typeof MetricRowSchema>;
-export type LogsSurface = z.infer<typeof LogsSurfaceSchema>;
+export type CuratedLogsSurface = z.infer<typeof CuratedLogsSurfaceSchema>;
 export type LogCluster = z.infer<typeof LogClusterSchema>;
 export type LogClusterKey = z.infer<typeof LogClusterKeySchema>;
-export type LogEntry = z.infer<typeof LogEntrySchema>;
+export type CuratedLogEntry = z.infer<typeof CuratedLogEntrySchema>;
 export type AbsenceEvidenceEntry = z.infer<typeof AbsenceEvidenceEntrySchema>;
+export type EvidenceRef = z.infer<typeof EvidenceRefSchema>;
+export type CorrelatedLog = z.infer<typeof CorrelatedLogSchema>;
+export type TraceSpan = z.infer<typeof TraceSpanSchema>;
+export type TraceGroup = z.infer<typeof TraceGroupSchema>;
+export type TraceSurface = z.infer<typeof TraceSurfaceSchema>;
+export type HypothesisMetric = z.infer<typeof HypothesisMetricSchema>;
+export type HypothesisGroup = z.infer<typeof HypothesisGroupSchema>;
+export type MetricsSurface = z.infer<typeof MetricsSurfaceSchema>;
+export type LogEntry = z.infer<typeof LogEntrySchema>;
+export type LogClaim = z.infer<typeof LogClaimSchema>;
+export type LogsSurface = z.infer<typeof LogsSurfaceSchema>;
+export type ProofCard = z.infer<typeof ProofCardSchema>;
+export type EvidenceSummary = z.infer<typeof EvidenceSummarySchema>;
+export type QABlock = z.infer<typeof QABlockSchema>;
+export type SideNote = z.infer<typeof SideNoteSchema>;
+export type EvidenceSurfaces = z.infer<typeof EvidenceSurfacesSchema>;
+export type EvidenceResponse = z.infer<typeof EvidenceResponseSchema>;
+export type NarrativeAbsenceEvidence = z.infer<typeof NarrativeAbsenceEvidenceSchema>;

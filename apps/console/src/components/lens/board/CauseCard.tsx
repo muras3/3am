@@ -1,16 +1,17 @@
 import { Fragment } from "react";
-import type { CausalStep, CausalStepType } from "../../../api/curated-types.js";
+import type { CausalStep } from "../../../api/curated-types.js";
 
 interface Props {
   steps: CausalStep[];
 }
 
-function stepBorderClass(type: CausalStepType): string {
+function stepBorderClass(type: CausalStep["type"]): string {
   switch (type) {
     case "external": return "lens-board-chain-step-external";
     case "system":   return "lens-board-chain-step-system";
     case "incident": return "lens-board-chain-step-incident";
     case "impact":   return "lens-board-chain-step-impact";
+    default:         return "lens-board-chain-step-incident";
   }
 }
 

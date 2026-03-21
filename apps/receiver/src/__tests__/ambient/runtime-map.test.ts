@@ -207,16 +207,15 @@ describe('normalizePeerService', () => {
 // ── buildRuntimeMap tests ──────────────────────────────────────────────────
 
 describe('buildRuntimeMap', () => {
-  it('returns cold_start state for empty spans', async () => {
+  it('returns empty runtime map for empty spans', async () => {
     const store = makeMockTelemetryStore([])
     const storage = makeMockStorage()
 
     const result = await buildRuntimeMap(store, storage)
 
-    expect(result.state.coverage).toBe('cold_start')
+    expect(result.state.diagnosis).toBe('ready')
     expect(result.nodes).toEqual([])
     expect(result.edges).toEqual([])
-    expect(result.window.spanCount).toBe(0)
     expect(result.summary.activeIncidents).toBe(0)
     expect(result.summary.degradedNodes).toBe(0)
   })
@@ -375,7 +374,7 @@ describe('buildRuntimeMap', () => {
     expect(result.nodes.length).toBe(2)
     // 1 merged edge
     expect(result.edges.length).toBe(1)
-    expect(result.edges[0].requestCount).toBe(2)
+    expect(result.edges[0].trafficHint).toBe('2')
   })
 
   it('excludes self-loop edges', async () => {
@@ -490,11 +489,10 @@ describe('buildRuntimeMap', () => {
     expect(result.summary.degradedNodes).toBe(1) // /orders is degraded
     expect(result.summary.clusterReqPerSec).toBeGreaterThan(0)
     expect(result.summary.clusterP95Ms).toBe(50)
-    expect(result.state.coverage).toBe('normal')
+    expect(result.state.diagnosis).toBe('ready')
   })
 
-  it('assigns sparse coverage when few nodes', async () => {
-    // Single span → 1 node, < 2 nodes → sparse
+  it('keeps diagnosis state ready when few nodes', async () => {
     const span = makeSpan({
       spanId: 's1',
       spanKind: 2,
@@ -506,7 +504,7 @@ describe('buildRuntimeMap', () => {
 
     const result = await buildRuntimeMap(store, storage)
 
-    expect(result.state.coverage).toBe('sparse')
+    expect(result.state.diagnosis).toBe('ready')
   })
 
   it('assigns incidentId to matching nodes when open incident exists', async () => {
@@ -687,7 +685,6 @@ describe('buildRuntimeMap', () => {
 
     const result = await buildRuntimeMap(store, storage, 15) // 15 minute window
 
-    expect(result.window.endMs - result.window.startMs).toBeCloseTo(15 * 60 * 1000, -3)
-    expect(result.window.spanCount).toBe(1)
+    expect(result.nodes.length).toBe(1)
   })
 })

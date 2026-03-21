@@ -1,4 +1,6 @@
-import type { MetricsSurface, HypothesisGroup, ClaimType } from "../../../api/curated-types.js";
+import type { MetricsSurface, HypothesisGroup } from "../../../api/curated-types.js";
+
+type ClaimType = HypothesisGroup["type"];
 
 // ── Type icons ────────────────────────────────────────────────
 const TYPE_ICON: Record<ClaimType, string> = {
@@ -19,6 +21,8 @@ function barColor(type: ClaimType): string {
       return "var(--good)";
     case "absence":
       return "var(--teal)";
+    default:
+      return "var(--ink-3)";
   }
 }
 
@@ -32,6 +36,8 @@ function valueColor(type: ClaimType): string {
       return "var(--good)";
     case "absence":
       return "var(--teal)";
+    default:
+      return "var(--ink-3)";
   }
 }
 

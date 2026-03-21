@@ -222,8 +222,7 @@ export async function buildRuntimeMap(
       nodes: [],
       edges: [],
       incidents: [],
-      window: { startMs, endMs, spanCount: 0 },
-      state: { coverage: 'cold_start' },
+      state: { diagnosis: 'ready' },
     }
   }
 
@@ -299,6 +298,7 @@ export async function buildRuntimeMap(
       subtitle,
       status,
       metrics: { errorRate, p95Ms, reqPerSec },
+      badges: errorRate > 0 ? [`${Math.round(errorRate * 100)}% err`] : [],
     })
   }
 
@@ -311,7 +311,7 @@ export async function buildRuntimeMap(
       toNodeId: acc.toNodeId,
       kind: acc.kind,
       status: acc.hasError ? 'degraded' : 'healthy',
-      requestCount: acc.requestCount,
+      trafficHint: `${acc.requestCount}`,
     })
   }
 
@@ -326,7 +326,7 @@ export async function buildRuntimeMap(
       incidentId: incident.incidentId,
       label: incident.packet.scope.primaryService,
       severity: incident.packet.signalSeverity ?? 'medium',
-      openedAt: incident.openedAt,
+      openedAgo: formatOpenedAgo(incident.openedAt),
     })
 
     assignIncidentToNodes(nodes, incident)
@@ -339,16 +339,6 @@ export async function buildRuntimeMap(
   const clusterReqPerSec = entryPointNodes.reduce((sum, n) => sum + n.metrics.reqPerSec, 0)
   const clusterP95Ms = computeP95(allEntryPointDurations)
 
-  // ── Coverage state ──
-
-  const coverage = spans.length > 100 && nodes.length > 2
-    ? 'normal' as const
-    : spans.length > 0 && nodes.length <= 2
-      ? 'sparse' as const
-      : spans.length === 0
-        ? 'cold_start' as const
-        : 'normal' as const
-
   return {
     summary: {
       activeIncidents: openIncidents.length,
@@ -359,8 +349,7 @@ export async function buildRuntimeMap(
     nodes,
     edges,
     incidents,
-    window: { startMs, endMs, spanCount: spans.length },
-    state: { coverage },
+    state: { diagnosis: 'ready' },
   }
 }
 
@@ -446,4 +435,13 @@ function assignIncidentToNodes(nodes: RuntimeMapNode[], incident: Incident): voi
       }
     }
   }
+}
+
+function formatOpenedAgo(iso: string): string {
+  const diffMs = Date.now() - new Date(iso).getTime()
+  const diffMin = Math.max(0, Math.floor(diffMs / 60_000))
+  if (diffMin < 60) return `${diffMin}m`
+  const diffHours = Math.floor(diffMin / 60)
+  if (diffHours < 24) return `${diffHours}h`
+  return `${Math.floor(diffHours / 24)}d`
 }

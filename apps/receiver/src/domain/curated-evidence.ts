@@ -1,16 +1,23 @@
 /**
  * curated-evidence.ts — Orchestrator for GET /api/incidents/:id/evidence.
  *
- * Runs all 3 surface builders in parallel (traces, metrics, logs),
- * merges their EvidenceRef maps into a single EvidenceIndex,
- * and assembles the CuratedEvidenceResponse.
- *
- * proofCards, qa, and sideNotes are left empty — diagnosis Stage 2 fills them.
+ * Runs all 3 surface builders in parallel, keeps the deterministic internal
+ * surfaces in the receiver, and projects the public console contract from them.
  */
 
 import type { TelemetryStoreDriver } from '../telemetry/interface.js'
 import type { Incident } from '../storage/interface.js'
-import type { CuratedEvidenceResponse, EvidenceIndex } from '@3amoncall/core/schemas/curated-evidence'
+import type {
+  EvidenceResponse,
+  EvidenceIndex,
+  CuratedTraceSurface,
+  CuratedMetricsSurface,
+  CuratedLogsSurface,
+  EvidenceRef,
+  QABlock,
+  SideNote,
+  ConsoleNarrative,
+} from '@3amoncall/core'
 import { buildTraceSurface } from './trace-surface.js'
 import { buildMetricsSurface } from './metrics-surface.js'
 import { buildLogsSurface } from './logs-surface.js'
@@ -18,8 +25,7 @@ import { buildLogsSurface } from './logs-surface.js'
 export async function buildCuratedEvidence(
   incident: Incident,
   telemetryStore: TelemetryStoreDriver,
-): Promise<CuratedEvidenceResponse> {
-  // 1. Run all 3 surface builders in parallel
+): Promise<EvidenceResponse> {
   const [traceResult, metricsResult, logsResult] = await Promise.all([
     buildTraceSurface(incident, telemetryStore),
     buildMetricsSurface(
@@ -35,7 +41,6 @@ export async function buildCuratedEvidence(
     ),
   ])
 
-  // 2. Merge evidenceRefs from all surfaces into a single EvidenceIndex
   const evidenceIndex: EvidenceIndex = {
     spans: {},
     metrics: {},
@@ -59,8 +64,7 @@ export async function buildCuratedEvidence(
     }
   }
 
-  // 3. Determine state
-  const diagnosis: CuratedEvidenceResponse['state']['diagnosis'] =
+  const diagnosis: EvidenceResponse['state']['diagnosis'] =
     incident.diagnosisResult
       ? 'ready'
       : incident.diagnosisDispatchedAt
@@ -68,14 +72,13 @@ export async function buildCuratedEvidence(
         : 'unavailable'
 
   const baselineConfidence = traceResult.surface.baseline.confidence
-  const baseline: CuratedEvidenceResponse['state']['baseline'] =
+  const baseline: EvidenceResponse['state']['baseline'] =
     baselineConfidence === 'high' || baselineConfidence === 'medium'
       ? 'ready'
       : baselineConfidence === 'low'
         ? 'insufficient'
         : 'unavailable'
 
-  // 3b. Determine evidenceDensity
   const traceCount = traceResult.surface.observed.length
   const metricCount = metricsResult.surface.groups.reduce(
     (sum, g) => sum + g.rows.length, 0,
@@ -83,24 +86,158 @@ export async function buildCuratedEvidence(
   const logCount = logsResult.surface.clusters.reduce(
     (sum, c) => sum + c.entries.length, 0,
   )
-  const evidenceDensity: CuratedEvidenceResponse['state']['evidenceDensity'] =
+  const evidenceDensity: EvidenceResponse['state']['evidenceDensity'] =
     traceCount > 5 && metricCount > 3 && logCount > 10
       ? 'rich'
       : traceCount > 0 || metricCount > 0 || logCount > 0
         ? 'sparse'
         : 'empty'
 
-  // 4. Return assembled response
+  const narrative = incident.consoleNarrative
+
   return {
     proofCards: [],
-    qa: null,
-    sideNotes: [],
+    qa: buildQaBlock(narrative?.qa),
     surfaces: {
-      traces: traceResult.surface,
-      metrics: metricsResult.surface,
-      logs: logsResult.surface,
+      traces: toPublicTraceSurface(traceResult.surface),
+      metrics: toPublicMetricsSurface(metricsResult.surface),
+      logs: toPublicLogsSurface(logsResult.surface),
     },
-    evidenceIndex,
+    sideNotes: buildSideNotes(narrative?.sideNotes),
     state: { diagnosis, baseline, evidenceDensity },
   }
+}
+
+function toPublicTraceSurface(surface: CuratedTraceSurface): EvidenceResponse['surfaces']['traces'] {
+  return {
+    observed: surface.observed.map((trace) => ({
+      traceId: trace.traceId,
+      route: trace.rootSpanName,
+      status: trace.httpStatusCode ?? (trace.status === 'error' ? 500 : 200),
+      durationMs: trace.durationMs,
+      spans: trace.spans.map((span) => ({
+        spanId: span.spanId,
+        parentSpanId: span.parentSpanId,
+        name: span.spanName,
+        durationMs: span.durationMs,
+        status: span.status,
+        attributes: span.attributes,
+      })),
+    })),
+    expected: surface.expected.map((trace) => ({
+      traceId: trace.traceId,
+      route: trace.rootSpanName,
+      status: trace.httpStatusCode ?? 200,
+      durationMs: trace.durationMs,
+      spans: trace.spans.map((span) => ({
+        spanId: span.spanId,
+        parentSpanId: span.parentSpanId,
+        name: span.spanName,
+        durationMs: span.durationMs,
+        status: span.status,
+        attributes: span.attributes,
+      })),
+    })),
+    smokingGunSpanId: surface.smokingGunSpanId ?? null,
+  }
+}
+
+function toPublicMetricsSurface(surface: CuratedMetricsSurface): EvidenceResponse['surfaces']['metrics'] {
+  return {
+    hypotheses: surface.groups.map((group) => ({
+      id: group.groupId,
+      type: mapClaimType(group.groupKey.metricClass),
+      claim: group.diagnosisLabel ?? `${group.groupKey.service} ${group.groupKey.metricClass}`,
+      verdict: group.diagnosisVerdict === 'Confirmed' ? 'Confirmed' : 'Inferred',
+      metrics: group.rows.map((row) => ({
+        name: row.name,
+        value: String(row.observedValue),
+        expected: String(row.expectedValue),
+        barPercent: Math.round(row.impactBar * 100),
+      })),
+    })),
+  }
+}
+
+function toPublicLogsSurface(surface: CuratedLogsSurface): EvidenceResponse['surfaces']['logs'] {
+  return {
+    claims: [
+      ...surface.clusters.map((cluster) => ({
+        id: cluster.clusterId,
+        type: mapClaimType(cluster.clusterKey.keywordHits.join(',')),
+        label: cluster.diagnosisLabel ?? `${cluster.clusterKey.primaryService} ${cluster.clusterKey.severityDominant.toLowerCase()} logs`,
+        count: cluster.entries.length,
+        entries: cluster.entries.map((entry) => ({
+          timestamp: entry.timestamp,
+          severity: mapLogSeverity(entry.severity),
+          body: entry.body,
+          signal: entry.isSignal,
+        })),
+      })),
+      ...surface.absenceEvidence.map((absence) => ({
+        id: absence.patternId,
+        type: 'absence' as const,
+        label: absence.diagnosisLabel ?? absence.defaultLabel,
+        expected: absence.diagnosisExpected,
+        observed: absence.diagnosisExplanation ? 'none observed' : undefined,
+        explanation: absence.diagnosisExplanation,
+        count: 0,
+        entries: [],
+      })),
+    ],
+  }
+}
+
+function buildQaBlock(qa: ConsoleNarrative['qa'] | undefined): QABlock | null {
+  if (!qa) return null
+
+  return {
+    question: qa.question,
+    answer: qa.answer,
+    evidenceRefs: qa.answerEvidenceRefs,
+    evidenceSummary: summarizeEvidenceRefs(qa.answerEvidenceRefs),
+    followups: qa.followups,
+    ...(qa.noAnswerReason ? { noAnswerReason: qa.noAnswerReason } : {}),
+  }
+}
+
+function buildSideNotes(notes: ConsoleNarrative['sideNotes'] | undefined): SideNote[] {
+  if (!notes) return []
+  return notes.map((note) => ({
+    title: note.title,
+    text: note.text,
+    kind: note.kind,
+  }))
+}
+
+function summarizeEvidenceRefs(refs: EvidenceRef[]): QABlock['evidenceSummary'] {
+  const summary = { traces: 0, metrics: 0, logs: 0 }
+
+  for (const ref of refs) {
+    if (ref.kind === 'span') summary.traces += 1
+    if (ref.kind === 'metric' || ref.kind === 'metric_group') summary.metrics += 1
+    if (ref.kind === 'log' || ref.kind === 'log_cluster') summary.logs += 1
+  }
+
+  return summary
+}
+
+function mapClaimType(metricClassOrKeyword: string): 'trigger' | 'cascade' | 'recovery' | 'absence' {
+  if (metricClassOrKeyword.includes('error') || metricClassOrKeyword.includes('rate')) {
+    return 'trigger'
+  }
+  if (metricClassOrKeyword.includes('latency') || metricClassOrKeyword.includes('timeout')) {
+    return 'cascade'
+  }
+  if (metricClassOrKeyword.includes('absence')) {
+    return 'absence'
+  }
+  return 'recovery'
+}
+
+function mapLogSeverity(severity: string): 'error' | 'warn' | 'info' {
+  const upper = severity.toUpperCase()
+  if (upper === 'ERROR' || upper === 'FATAL') return 'error'
+  if (upper === 'WARN') return 'warn'
+  return 'info'
 }

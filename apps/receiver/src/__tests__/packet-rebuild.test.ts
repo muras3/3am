@@ -251,7 +251,7 @@ describe("Gate 2: membership accumulates across batches", () => {
     const { app, storage } = setupApp();
 
     const res1 = await postTraces(app, makeErrorBatch1());
-    const { incidentId } = (await res1.json()) as { incidentId: string };
+    const { incidentId } = (await res1.json()) as { incidentId: string; packetId: string };
 
     // Batch 1 contributed 1 span
     const incidentAfterBatch1 = await storage.getIncident(incidentId);
@@ -309,7 +309,7 @@ describe("Gate 2: membership accumulates across batches", () => {
     const { app } = setupApp();
 
     const res1 = await postTraces(app, makeErrorBatch1());
-    const { incidentId } = (await res1.json()) as { incidentId: string };
+    const { packetId } = (await res1.json()) as { incidentId: string; packetId: string };
 
     // Post metrics — now goes through evidence attachment pipeline
     await app.request("/v1/metrics", {
@@ -319,12 +319,13 @@ describe("Gate 2: membership accumulates across batches", () => {
     });
 
     // packet.evidence.changedMetrics should be populated
-    const incident = (await (await app.request(`/api/incidents/${incidentId}`)).json()) as {
-      packet: { evidence: { changedMetrics: unknown[] }; pointers: { metricRefs: string[] } };
+    const packet = (await (await app.request(`/api/packets/${packetId}`)).json()) as {
+      evidence: { changedMetrics: unknown[] };
+      pointers: { metricRefs: string[] };
     };
-    expect(incident.packet.evidence.changedMetrics.length).toBeGreaterThan(0);
+    expect(packet.evidence.changedMetrics.length).toBeGreaterThan(0);
     // pointers.metricRefs should also be populated
-    expect(incident.packet.pointers.metricRefs.length).toBeGreaterThan(0);
+    expect(packet.pointers.metricRefs.length).toBeGreaterThan(0);
   });
 });
 
@@ -427,16 +428,16 @@ describe("Gate 4: Regression — existing behaviour", () => {
 
   it("incident is created and returned on first error span (ADR 0034: no thin events)", async () => {
     const res = await postTraces(app, makeErrorBatch1());
-    const { incidentId } = (await res.json()) as { incidentId: string };
+    const { incidentId } = (await res.json()) as { incidentId: string; packetId: string };
 
     expect(incidentId).toBeTruthy();
     const incident = await storage.getIncident(incidentId);
     expect(incident).not.toBeNull();
   });
 
-  it("POST /api/diagnosis/:id saves diagnosisResult and GET returns it", async () => {
+  it("POST /api/diagnosis/:id saves diagnosisResult and curated incident reflects it", async () => {
     const res = await postTraces(app, makeErrorBatch1());
-    const { incidentId } = (await res.json()) as { incidentId: string };
+    const { incidentId } = (await res.json()) as { incidentId: string; packetId: string };
 
     const fixture = {
       summary: {
@@ -471,14 +472,16 @@ describe("Gate 4: Regression — existing behaviour", () => {
 
     const incidentRes = await app.request(`/api/incidents/${incidentId}`);
     const incident = (await incidentRes.json()) as {
-      diagnosisResult?: { summary: { what_happened: string } };
+      headline: string;
+      state: { diagnosis: string };
     };
-    expect(incident.diagnosisResult?.summary.what_happened).toBe("Test incident.");
+    expect(incident.state.diagnosis).toBe("ready");
+    expect(incident.headline).toBe("Test incident.");
   });
 
   it("POST /v1/metrics evidence attaches to matching incident", async () => {
     const res = await postTraces(app, makeErrorBatch1());
-    const { incidentId } = (await res.json()) as { incidentId: string };
+    const { packetId } = (await res.json()) as { incidentId: string; packetId: string };
 
     await app.request("/v1/metrics", {
       method: "POST",
@@ -486,15 +489,15 @@ describe("Gate 4: Regression — existing behaviour", () => {
       body: JSON.stringify(makeMetricsBatch()),
     });
 
-    const incident = (await (await app.request(`/api/incidents/${incidentId}`)).json()) as {
-      packet: { evidence: { changedMetrics: unknown[] } };
+    const packet = (await (await app.request(`/api/packets/${packetId}`)).json()) as {
+      evidence: { changedMetrics: unknown[] };
     };
-    expect(incident.packet.evidence.changedMetrics.length).toBeGreaterThan(0);
+    expect(packet.evidence.changedMetrics.length).toBeGreaterThan(0);
   });
 
   it("WARN/ERROR/FATAL logs attach; INFO logs are excluded", async () => {
     const res = await postTraces(app, makeErrorBatch1());
-    const { incidentId } = (await res.json()) as { incidentId: string };
+    const { packetId } = (await res.json()) as { incidentId: string; packetId: string };
 
     const logsPayload = {
       resourceLogs: [
@@ -537,16 +540,16 @@ describe("Gate 4: Regression — existing behaviour", () => {
       body: JSON.stringify(logsPayload),
     });
 
-    const incident = (await (await app.request(`/api/incidents/${incidentId}`)).json()) as {
-      packet: { evidence: { relevantLogs: unknown[] } };
+    const packet = (await (await app.request(`/api/packets/${packetId}`)).json()) as {
+      evidence: { relevantLogs: unknown[] };
     };
     // Only the ERROR log should be attached
-    expect(incident.packet.evidence.relevantLogs).toHaveLength(1);
+    expect(packet.evidence.relevantLogs).toHaveLength(1);
   });
 
   it("evidence from a non-matching service is ignored", async () => {
     const res = await postTraces(app, makeErrorBatch1());
-    const { incidentId } = (await res.json()) as { incidentId: string };
+    const { packetId } = (await res.json()) as { incidentId: string; packetId: string };
 
     // Metrics from a completely different service
     const otherServiceMetrics = {
@@ -580,10 +583,10 @@ describe("Gate 4: Regression — existing behaviour", () => {
       body: JSON.stringify(otherServiceMetrics),
     });
 
-    const incident = (await (await app.request(`/api/incidents/${incidentId}`)).json()) as {
-      packet: { evidence: { changedMetrics: unknown[] } };
+    const packet = (await (await app.request(`/api/packets/${packetId}`)).json()) as {
+      evidence: { changedMetrics: unknown[] };
     };
-    expect(incident.packet.evidence.changedMetrics).toHaveLength(0);
+    expect(packet.evidence.changedMetrics).toHaveLength(0);
   });
 
   it("Bearer token is required on /v1/traces when RECEIVER_AUTH_TOKEN is set", async () => {
