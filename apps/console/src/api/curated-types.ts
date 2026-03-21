@@ -1,266 +1,50 @@
 /**
- * Curated API types — the UI-facing contract for the Lens console.
+ * Curated API types — re-exported from @3amoncall/core.
  *
- * These types mirror the shapes defined in console-data-requirements.md §2.
- * The frontend consumes these directly; it does NOT infer, cluster, or compute
- * any of these values.
- *
- * TODO: When @3amoncall/core defines curated API schemas (receiver plan),
- * replace these local definitions with re-exports from @3amoncall/core.
- * This file exists because core doesn't have curated types yet and the
- * frontend needs to develop in parallel. The shapes here MUST stay aligned
- * with the design docs — any drift is a bug.
+ * Single source of truth for receiver, diagnosis, and frontend.
+ * See packages/core/src/schemas/curated-api.ts for definitions.
  */
-
-// ── Shared enums ──────────────────────────────────────────────
-
-export type NodeTier = "entry_point" | "runtime_unit" | "dependency";
-export type HealthStatus = "healthy" | "degraded" | "critical";
-export type EdgeKind = "internal" | "external";
-export type CausalStepType = "external" | "system" | "incident" | "impact";
-export type ProofCardStatus = "confirmed" | "inferred";
-export type EvidenceSurface = "traces" | "metrics" | "logs";
-export type ClaimType = "trigger" | "cascade" | "recovery" | "absence";
-export type SpanStatus = "ok" | "error" | "slow";
-
-/** §3.7 — Empty/Degraded state contract */
-export interface CuratedState {
-  diagnosis: "ready" | "pending" | "unavailable";
-  baseline: "ready" | "insufficient" | "unavailable";
-  evidenceDensity: "rich" | "sparse" | "empty";
-}
-
-// ── GET /api/runtime-map ──────────────────────────────────────
-
-export interface RuntimeMapResponse {
-  summary: RuntimeMapSummary;
-  nodes: MapNode[];
-  edges: MapEdge[];
-  incidents: MapIncident[];
-  state: Pick<CuratedState, "diagnosis">;
-}
-
-export interface RuntimeMapSummary {
-  activeIncidents: number;
-  degradedNodes: number;
-  clusterReqPerSec: number;
-  clusterP95Ms: number;
-}
-
-export interface MapNode {
-  id: string;
-  tier: NodeTier;
-  label: string;
-  subtitle: string;
-  status: HealthStatus;
-  metrics: Record<string, number>;
-  badges: string[];
-  incidentId?: string;
-  positionHint?: number;
-}
-
-export interface MapEdge {
-  fromNodeId: string;
-  toNodeId: string;
-  kind: EdgeKind;
-  status: HealthStatus;
-  label?: string;
-  trafficHint?: string;
-}
-
-export interface MapIncident {
-  incidentId: string;
-  label: string;
-  severity: string;
-  openedAgo: string;
-}
-
-// ── GET /api/incidents/:id (extended) ─────────────────────────
-
-export interface ExtendedIncident {
-  incidentId: string;
-  status: "open" | "closed";
-  severity: string;
-  openedAt: string;
-  closedAt?: string;
-  headline: string;
-  chips: IncidentChip[];
-  action: IncidentAction;
-  rootCauseHypothesis: string;
-  causalChain: CausalStep[];
-  operatorChecks: string[];
-  impactSummary: ImpactSummary;
-  blastRadius: BlastRadiusEntry[];
-  confidenceSummary: ConfidenceSummary;
-  evidenceSummary: EvidenceCounts;
-  state: CuratedState;
-}
-
-export interface IncidentChip {
-  type: "critical" | "system" | "external";
-  label: string;
-}
-
-export interface IncidentAction {
-  text: string;
-  rationale: string;
-  doNot: string;
-}
-
-export interface CausalStep {
-  type: CausalStepType;
-  tag: string;
-  title: string;
-  detail: string;
-}
-
-export interface ImpactSummary {
-  startedAt: string;
-  fullCascadeAt: string;
-  diagnosedAt: string;
-}
-
-export interface BlastRadiusEntry {
-  target: string;
-  status: HealthStatus;
-  impactValue: number;
-  label: string;
-}
-
-export interface ConfidenceSummary {
-  label: string;
-  value: number;
-  basis: string;
-  risk: string;
-}
-
-export interface EvidenceCounts {
-  traces: number;
-  traceErrors: number;
-  metrics: number;
-  logs: number;
-  logErrors: number;
-}
-
-// ── GET /api/incidents/:id/evidence ───────────────────────────
-
-export interface EvidenceResponse {
-  proofCards: ProofCard[];
-  qa: QABlock | null;
-  surfaces: EvidenceSurfaces;
-  sideNotes: SideNote[];
-  state: CuratedState;
-}
-
-export interface ProofCard {
-  id: string;
-  label: string;
-  status: ProofCardStatus;
-  summary: string;
-  targetSurface: EvidenceSurface;
-  evidenceRefs: EvidenceRef[];
-}
-
-export interface EvidenceRef {
-  kind: "span" | "metric" | "log" | "proof_card";
-  id: string;
-}
-
-export interface QABlock {
-  question: string;
-  answer: string;
-  evidenceRefs: EvidenceRef[];
-  evidenceSummary: { traces: number; metrics: number; logs: number };
-  followups: string[];
-  noAnswerReason?: string;
-}
-
-export interface EvidenceSurfaces {
-  traces: TraceSurface;
-  metrics: MetricsSurface;
-  logs: LogsSurface;
-}
-
-// ── Trace surface ─────────────────────────────────────────────
-
-export interface TraceSurface {
-  observed: TraceGroup[];
-  expected: TraceGroup[];
-  smokingGunSpanId: string | null;
-}
-
-export interface TraceGroup {
-  traceId: string;
-  route: string;
-  status: number;
-  durationMs: number;
-  expectedDurationMs?: number;
-  annotation?: string;
-  spans: TraceSpan[];
-}
-
-export interface TraceSpan {
-  spanId: string;
-  parentSpanId?: string;
-  name: string;
-  durationMs: number;
-  status: SpanStatus;
-  attributes: Record<string, unknown>;
-  correlatedLogs?: CorrelatedLog[];
-}
-
-export interface CorrelatedLog {
-  timestamp: string;
-  severity: string;
-  body: string;
-}
-
-// ── Metrics surface ───────────────────────────────────────────
-
-export interface MetricsSurface {
-  hypotheses: HypothesisGroup[];
-}
-
-export interface HypothesisGroup {
-  id: string;
-  type: ClaimType;
-  claim: string;
-  verdict: "Confirmed" | "Inferred";
-  metrics: HypothesisMetric[];
-}
-
-export interface HypothesisMetric {
-  name: string;
-  value: string;
-  expected: string;
-  barPercent: number;
-}
-
-// ── Logs surface ──────────────────────────────────────────────
-
-export interface LogsSurface {
-  claims: LogClaim[];
-}
-
-export interface LogClaim {
-  id: string;
-  type: ClaimType;
-  label: string;
-  count: number;
-  entries: LogEntry[];
-}
-
-export interface LogEntry {
-  timestamp: string;
-  severity: "error" | "warn" | "info";
-  body: string;
-  signal: boolean;
-}
-
-// ── Side notes ────────────────────────────────────────────────
-
-export interface SideNote {
-  title: string;
-  content: string;
-  variant?: "primary";
-}
+export type {
+  // Shared enums
+  NodeTier,
+  HealthStatus,
+  EdgeKind,
+  CausalStepType,
+  ProofCardStatus,
+  EvidenceSurface,
+  ClaimType,
+  SpanStatus,
+  CuratedState,
+  // Runtime map
+  RuntimeMapResponse,
+  RuntimeMapSummary,
+  MapNode,
+  MapEdge,
+  MapIncident,
+  // Extended incident
+  ExtendedIncident,
+  IncidentChip,
+  IncidentAction,
+  CausalStep,
+  ImpactSummary,
+  BlastRadiusEntry,
+  ConfidenceSummary,
+  EvidenceCounts,
+  // Evidence
+  EvidenceResponse,
+  ProofCard,
+  EvidenceRef,
+  QABlock,
+  EvidenceSurfaces,
+  TraceSurface,
+  TraceGroup,
+  TraceSpan,
+  CorrelatedLog,
+  MetricsSurface,
+  HypothesisGroup,
+  HypothesisMetric,
+  LogsSurface,
+  LogClaim,
+  LogEntry,
+  SideNote,
+} from "@3amoncall/core";
