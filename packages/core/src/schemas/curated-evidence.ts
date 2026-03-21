@@ -19,35 +19,10 @@ const EvidenceIndexSchema = z.object({
   absences: z.record(z.string(), EvidenceRefSchema),
 }).strict();
 
-// ── Diagnosis-owned type stubs ───────────────────────────────
-// Minimal shapes. Diagnosis plan will finalize these.
-
-const ProofCardSchema = z.object({
-  id: z.string(),
-  targetSurface: z.enum(["traces", "metrics", "logs"]),
-  evidenceRefIds: z.array(z.string()),
-  label: z.string().optional(),
-  status: z.string().optional(),
-  summary: z.string().optional(),
-}).strict();
-
-const QAFrameSchema = z.object({
-  question: z.string(),
-  answer: z.string(),
-  evidenceRefIds: z.array(z.string()),
-  confidence: z.object({
-    label: z.string(),
-    value: z.number(),
-  }).strict().optional(),
-  followups: z.array(z.string()),
-  noAnswerReason: z.string().optional(),
-}).strict();
-
-const SideNoteSchema = z.object({
-  title: z.string(),
-  body: z.string(),
-  kind: z.enum(["confidence", "uncertainty", "dependency", "context"]),
-}).strict();
+// ── Diagnosis-owned narrative slots ──────────────────────────
+// These shapes are NOT defined here. Diagnosis plan owns their contract.
+// Receiver returns empty stubs; diagnosis Stage 2 populates them.
+// The schema uses z.unknown() to avoid locking the shape prematurely.
 
 // ── Baseline Context ─────────────────────────────────────────
 
@@ -184,9 +159,9 @@ const LogsSurfaceSchema = z.object({
 // ── Top-level Response ───────────────────────────────────────
 
 export const CuratedEvidenceResponseSchema = z.object({
-  proofCards: z.array(ProofCardSchema),
-  qa: QAFrameSchema.nullable(),
-  sideNotes: z.array(SideNoteSchema),
+  proofCards: z.array(z.unknown()),
+  qa: z.unknown().nullable(),
+  sideNotes: z.array(z.unknown()),
   surfaces: z.object({
     traces: TraceSurfaceSchema,
     metrics: MetricsSurfaceSchema,
@@ -196,6 +171,7 @@ export const CuratedEvidenceResponseSchema = z.object({
   state: z.object({
     diagnosis: z.enum(["ready", "pending", "unavailable"]),
     baseline: z.enum(["ready", "insufficient", "unavailable"]),
+    evidenceDensity: z.enum(["rich", "sparse", "empty"]),
   }).strict(),
 }).strict();
 
@@ -204,9 +180,6 @@ export const CuratedEvidenceResponseSchema = z.object({
 export type CuratedEvidenceResponse = z.infer<typeof CuratedEvidenceResponseSchema>;
 export type EvidenceIndex = z.infer<typeof EvidenceIndexSchema>;
 export type EvidenceRef = z.infer<typeof EvidenceRefSchema>;
-export type ProofCard = z.infer<typeof ProofCardSchema>;
-export type QAFrame = z.infer<typeof QAFrameSchema>;
-export type SideNote = z.infer<typeof SideNoteSchema>;
 export type BaselineContext = z.infer<typeof BaselineContextSchema>;
 export type BaselineSource = z.infer<typeof BaselineSourceSchema>;
 export type TraceSurface = z.infer<typeof TraceSurfaceSchema>;

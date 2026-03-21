@@ -75,6 +75,21 @@ export async function buildCuratedEvidence(
         ? 'insufficient'
         : 'unavailable'
 
+  // 3b. Determine evidenceDensity
+  const traceCount = traceResult.surface.observed.length
+  const metricCount = metricsResult.surface.groups.reduce(
+    (sum, g) => sum + g.rows.length, 0,
+  )
+  const logCount = logsResult.surface.clusters.reduce(
+    (sum, c) => sum + c.entries.length, 0,
+  )
+  const evidenceDensity: CuratedEvidenceResponse['state']['evidenceDensity'] =
+    traceCount > 5 && metricCount > 3 && logCount > 10
+      ? 'rich'
+      : traceCount > 0 || metricCount > 0 || logCount > 0
+        ? 'sparse'
+        : 'empty'
+
   // 4. Return assembled response
   return {
     proofCards: [],
@@ -86,6 +101,6 @@ export async function buildCuratedEvidence(
       logs: logsResult.surface,
     },
     evidenceIndex,
-    state: { diagnosis, baseline },
+    state: { diagnosis, baseline, evidenceDensity },
   }
 }

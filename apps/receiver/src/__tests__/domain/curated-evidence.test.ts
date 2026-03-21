@@ -359,6 +359,7 @@ describe('buildCuratedEvidence', () => {
     expect(result.evidenceIndex.absences).toEqual({})
     expect(result.state.diagnosis).toBe('unavailable')
     expect(result.state.baseline).toBe('unavailable')
+    expect(result.state.evidenceDensity).toBe('empty')
   })
 
   it('calls all 3 surface builders with correct arguments', async () => {
@@ -379,6 +380,23 @@ describe('buildCuratedEvidence', () => {
       incident.anomalousSignals,
       incident.spanMembership,
     )
+  })
+
+  it('computes evidenceDensity as "empty" when all surfaces are empty', async () => {
+    const result = await buildCuratedEvidence(makeIncident(), makeMockStore())
+    expect(result.state.evidenceDensity).toBe('empty')
+  })
+
+  it('computes evidenceDensity as "sparse" when some evidence exists', async () => {
+    const traceSurface: TraceSurface = {
+      observed: [{ traceId: 't1', groupId: 'trace:t1', rootSpanName: 'GET /', durationMs: 100, status: 'ok', startTimeMs: 0, spans: [] }],
+      expected: [],
+      baseline: EMPTY_BASELINE_CONTEXT,
+    }
+    mockBuildTraceSurface.mockResolvedValue({ surface: traceSurface, evidenceRefs: new Map() })
+
+    const result = await buildCuratedEvidence(makeIncident(), makeMockStore())
+    expect(result.state.evidenceDensity).toBe('sparse')
   })
 
   it('prioritizes diagnosisResult over diagnosisDispatchedAt for state', async () => {
