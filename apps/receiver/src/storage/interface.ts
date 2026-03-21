@@ -1,4 +1,4 @@
-import type { IncidentPacket, DiagnosisResult, PlatformEvent, ThinEvent } from "@3amoncall/core";
+import type { IncidentPacket, DiagnosisResult, ConsoleNarrative, PlatformEvent, ThinEvent } from "@3amoncall/core";
 
 export interface AnomalousSignal {
   signal: string;       // e.g., "http_429", "http_500", "span_error", "slow_span", "exception"
@@ -67,6 +67,7 @@ export interface Incident {
   closedAt?: string;
   packet: IncidentPacket;
   diagnosisResult?: DiagnosisResult;
+  consoleNarrative?: ConsoleNarrative;
   diagnosisDispatchedAt?: string;     // ISO timestamp — set when diagnosis dispatch is claimed
   telemetryScope: TelemetryScope;
   spanMembership: string[];          // "traceId:spanId" compact ref set
@@ -98,6 +99,8 @@ export interface StorageDriver {
   updateIncidentStatus(id: string, status: "open" | "closed"): Promise<void>;
 
   appendDiagnosis(id: string, result: DiagnosisResult): Promise<void>;
+
+  appendConsoleNarrative(id: string, narrative: ConsoleNarrative): Promise<void>;
 
   listIncidents(opts: { limit: number; cursor?: string }): Promise<IncidentPage>;
 
