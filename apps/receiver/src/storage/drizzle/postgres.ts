@@ -100,6 +100,9 @@ export class PostgresAdapter implements StorageDriver {
     `);
     // Add new columns to existing tables (idempotent)
     await this.db.execute(drizzleSql`
+      ALTER TABLE incidents ADD COLUMN IF NOT EXISTS console_narrative JSONB
+    `);
+    await this.db.execute(drizzleSql`
       ALTER TABLE incidents ADD COLUMN IF NOT EXISTS telemetry_scope JSONB
     `);
     await this.db.execute(drizzleSql`
