@@ -14,7 +14,13 @@
 import type { TelemetryMetric, TelemetryStoreDriver } from '../telemetry/interface.js'
 import { buildIncidentQueryFilter } from '../telemetry/interface.js'
 import type { TelemetryScope, AnomalousSignal } from '../storage/interface.js'
-import type { MetricsSurface, MetricGroup, MetricRow, MetricGroupKey, EvidenceRef } from '@3amoncall/core/schemas/curated-evidence'
+import type {
+  CuratedMetricsSurface,
+  MetricGroup,
+  MetricRow,
+  MetricGroupKey,
+  CuratedEvidenceRef,
+} from '@3amoncall/core/schemas/curated-evidence'
 import { extractMetricValue, classifyMetric, scoreMetrics } from '../telemetry/scoring/metric-scorer.js'
 import { BASELINE_MULTIPLIER } from '../telemetry/constants.js'
 
@@ -175,7 +181,7 @@ export async function buildMetricsSurface(
   telemetryStore: TelemetryStoreDriver,
   telemetryScope: TelemetryScope,
   anomalousSignals: AnomalousSignal[],
-): Promise<{ surface: MetricsSurface; evidenceRefs: Map<string, EvidenceRef> }> {
+): Promise<{ surface: CuratedMetricsSurface; evidenceRefs: Map<string, CuratedEvidenceRef> }> {
   // 1. Query incident metrics
   const incidentFilter = buildIncidentQueryFilter(telemetryScope)
   const incidentMetrics = await telemetryStore.queryMetrics(incidentFilter)
@@ -305,7 +311,7 @@ export async function buildMetricsSurface(
   }
 
   // 9. Build evidenceRefs
-  const evidenceRefs = new Map<string, EvidenceRef>()
+  const evidenceRefs = new Map<string, CuratedEvidenceRef>()
   for (const group of groups) {
     for (const row of group.rows) {
       evidenceRefs.set(row.refId, {

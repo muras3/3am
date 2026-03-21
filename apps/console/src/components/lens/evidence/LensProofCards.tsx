@@ -9,7 +9,7 @@ interface Props {
 /** Icon character per proof card id pattern */
 function iconFor(id: string): string {
   if (id === "trigger") return "⚡";
-  if (id === "design") return "⚠";
+  if (id === "design_gap") return "⚠";
   if (id === "recovery") return "✓";
   return "●";
 }
@@ -17,7 +17,7 @@ function iconFor(id: string): string {
 /** Color variant for icon pill */
 function iconVariant(id: string): string {
   if (id === "trigger") return "accent";
-  if (id === "design") return "amber";
+  if (id === "design_gap") return "amber";
   if (id === "recovery") return "good";
   return "ink";
 }

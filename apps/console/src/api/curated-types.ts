@@ -2,26 +2,17 @@
  * Curated API types — re-exported from @3amoncall/core.
  *
  * Single source of truth for receiver, diagnosis, and frontend.
- * See packages/core/src/schemas/curated-api.ts for definitions.
+ * See packages/core/src/schemas/runtime-map.ts,
+ * packages/core/src/schemas/incident-detail-extension.ts,
+ * and packages/core/src/schemas/curated-evidence.ts.
  */
 export type {
-  // Shared enums
-  NodeTier,
-  HealthStatus,
-  EdgeKind,
-  CausalStepType,
-  ProofCardStatus,
-  EvidenceSurface,
-  ClaimType,
-  SpanStatus,
   CuratedState,
-  // Runtime map
   RuntimeMapResponse,
   RuntimeMapSummary,
-  MapNode,
-  MapEdge,
-  MapIncident,
-  // Extended incident
+  RuntimeMapNode as MapNode,
+  RuntimeMapEdge as MapEdge,
+  RuntimeMapIncident as MapIncident,
   ExtendedIncident,
   IncidentChip,
   IncidentAction,
@@ -30,7 +21,6 @@ export type {
   BlastRadiusEntry,
   ConfidenceSummary,
   EvidenceCounts,
-  // Evidence
   EvidenceResponse,
   ProofCard,
   EvidenceRef,
@@ -47,4 +37,5 @@ export type {
   LogClaim,
   LogEntry,
   SideNote,
+  Followup,
 } from "@3amoncall/core";

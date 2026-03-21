@@ -2,7 +2,7 @@ import { z } from "zod";
 
 // Evidence binding — links a claim in the Q&A answer to concrete evidence.
 // Each binding must have ≥1 concrete ref (span|log|metric|log_cluster|metric_group).
-const EvidenceBindingSchema = z.object({
+export const EvidenceBindingSchema = z.object({
   claim: z.string(),
   evidenceRefs: z.array(z.object({
     kind: z.enum(["span", "log", "metric", "log_cluster", "metric_group"]),
@@ -12,14 +12,14 @@ const EvidenceBindingSchema = z.object({
 
 // Follow-up question — diagnosis proposes the question and target surfaces.
 // Answerability is computed downstream (core pure function), not by diagnosis.
-const FollowupSchema = z.object({
+export const FollowupSchema = z.object({
   question: z.string(),
   targetEvidenceKinds: z.array(z.enum(["traces", "metrics", "logs"])).min(1),
 }).strict();
 
 // Answer-level evidence ref — flat link from answer to evidence surface.
 // Frontend uses this directly without aggregating claim-level bindings.
-const AnswerEvidenceRefSchema = z.object({
+export const AnswerEvidenceRefSchema = z.object({
   kind: z.enum(["span", "log", "metric", "log_cluster", "metric_group"]),
   id: z.string(),
 }).strict();
@@ -27,7 +27,7 @@ const AnswerEvidenceRefSchema = z.object({
 // QA Narrative — pre-generated question/answer with both answer-level
 // and claim-level evidence refs. Frontend uses answerEvidenceRefs directly;
 // evidenceBindings provide granular claim→evidence mapping for drill-down.
-const QANarrativeSchema = z.object({
+export const QANarrativeSchema = z.object({
   question: z.string(),
   answer: z.string(),
   answerEvidenceRefs: z.array(AnswerEvidenceRefSchema),
@@ -37,27 +37,27 @@ const QANarrativeSchema = z.object({
 }).strict();
 
 // Proof card narrative — wording only. Status comes from ProofRef (receiver).
-const ProofCardNarrativeSchema = z.object({
+export const ProofCardNarrativeSchema = z.object({
   id: z.enum(["trigger", "design_gap", "recovery"]),
   label: z.string(),
   summary: z.string(),
 }).strict();
 
 // Confidence summary — wording extraction only. No label or numeric value.
-const ConfidenceSummarySchema = z.object({
+export const NarrativeConfidenceSummarySchema = z.object({
   basis: z.string(),
   risk: z.string(),
 }).strict();
 
 // Side note — right-rail context for Evidence Studio.
-const SideNoteSchema = z.object({
+export const NarrativeSideNoteSchema = z.object({
   title: z.string(),
   text: z.string(),
   kind: z.enum(["confidence", "uncertainty", "dependency"]),
 }).strict();
 
 // Absence evidence — narrative labels for receiver-detected absences.
-const AbsenceEvidenceSchema = z.object({
+export const NarrativeAbsenceEvidenceSchema = z.object({
   id: z.string(),
   label: z.string(),
   expected: z.string(),
@@ -66,7 +66,7 @@ const AbsenceEvidenceSchema = z.object({
 }).strict();
 
 // Metadata — provenance for the narrative generation.
-const NarrativeMetadataSchema = z.object({
+export const NarrativeMetadataSchema = z.object({
   model: z.string(),
   prompt_version: z.string(),
   created_at: z.string(),
@@ -81,19 +81,19 @@ const NarrativeMetadataSchema = z.object({
 export const ConsoleNarrativeSchema = z.object({
   headline: z.string().max(120),
   whyThisAction: z.string(),
-  confidenceSummary: ConfidenceSummarySchema,
+  confidenceSummary: NarrativeConfidenceSummarySchema,
   proofCards: z.array(ProofCardNarrativeSchema).length(3),
   qa: QANarrativeSchema,
-  sideNotes: z.array(SideNoteSchema),
-  absenceEvidence: z.array(AbsenceEvidenceSchema),
+  sideNotes: z.array(NarrativeSideNoteSchema),
+  absenceEvidence: z.array(NarrativeAbsenceEvidenceSchema),
   metadata: NarrativeMetadataSchema,
 }).strict();
 
 export type ConsoleNarrative = z.infer<typeof ConsoleNarrativeSchema>;
 export type QANarrative = z.infer<typeof QANarrativeSchema>;
 export type ProofCardNarrative = z.infer<typeof ProofCardNarrativeSchema>;
-export type NarrativeConfidenceSummary = z.infer<typeof ConfidenceSummarySchema>;
-export type NarrativeSideNote = z.infer<typeof SideNoteSchema>;
-export type AbsenceEvidence = z.infer<typeof AbsenceEvidenceSchema>;
+export type NarrativeConfidenceSummary = z.infer<typeof NarrativeConfidenceSummarySchema>;
+export type NarrativeSideNote = z.infer<typeof NarrativeSideNoteSchema>;
+export type AbsenceEvidence = z.infer<typeof NarrativeAbsenceEvidenceSchema>;
 export type EvidenceBinding = z.infer<typeof EvidenceBindingSchema>;
 export type Followup = z.infer<typeof FollowupSchema>;

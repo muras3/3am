@@ -9,7 +9,7 @@
  */
 
 import type { TelemetrySpan, TelemetryStoreDriver } from '../telemetry/interface.js'
-import type { BaselineContext, BaselineSource } from '@3amoncall/core'
+import type { BaselineContext, BaselineSource } from '@3amoncall/core/schemas/curated-evidence'
 
 // ── Public Types ────────────────────────────────────────────────────────
 

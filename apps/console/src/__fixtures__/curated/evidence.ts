@@ -15,7 +15,7 @@ export const evidenceReady: EvidenceResponse = {
       ],
     },
     {
-      id: "design",
+      id: "design_gap",
       label: "Design Gap",
       status: "confirmed",
       summary: "No request batching in StripeClient. Error rate correlates 1:1 with traffic volume (r=0.97).",
@@ -39,15 +39,15 @@ export const evidenceReady: EvidenceResponse = {
       "to hit Stripe's 100 req/s limit. The lack of retry/backoff logic means every 429 cascades as a 500 " +
       "to the checkout endpoint.",
     evidenceRefs: [
-      { kind: "proof_card", id: "trigger" },
       { kind: "span", id: "a3f8c91d:stripe-charge-001" },
+      { kind: "metric_group", id: "hyp-trigger" },
     ],
     evidenceSummary: { traces: 12, metrics: 3, logs: 28 },
     followups: [
-      "Is there retry logic?",
-      "When exactly did this start?",
-      "What's the full blast radius?",
-      "Will batching actually fix this?",
+      { question: "Is there retry logic?", targetEvidenceKinds: ["logs", "traces"] },
+      { question: "When exactly did this start?", targetEvidenceKinds: ["traces", "logs"] },
+      { question: "What's the full blast radius?", targetEvidenceKinds: ["metrics"] },
+      { question: "Will batching actually fix this?", targetEvidenceKinds: ["metrics", "traces"] },
     ],
   },
   surfaces: {
@@ -196,16 +196,18 @@ export const evidenceReady: EvidenceResponse = {
   sideNotes: [
     {
       title: "Confidence",
-      content: "High confidence (85%). Stripe 429 responses correlate directly with traffic exceeding the rate limit. The 1:1 call pattern in StripeClient is deterministic.",
-      variant: "primary",
+      text: "High confidence (85%). Stripe 429 responses correlate directly with traffic exceeding the rate limit. The 1:1 call pattern in StripeClient is deterministic.",
+      kind: "confidence",
     },
     {
       title: "Uncertainty",
-      content: "Cannot confirm whether Stripe's rate limit was recently changed. The 100 req/s limit may be account-specific.",
+      text: "Cannot confirm whether Stripe's rate limit was recently changed. The 100 req/s limit may be account-specific.",
+      kind: "uncertainty",
     },
     {
       title: "Affected Dependencies",
-      content: "Stripe API (primary), PostgreSQL (secondary — connection pool pressure from retries).",
+      text: "Stripe API (primary), PostgreSQL (secondary — connection pool pressure from retries).",
+      kind: "dependency",
     },
   ],
   state: {

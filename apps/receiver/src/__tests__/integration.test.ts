@@ -363,8 +363,8 @@ describe("Receiver integration tests", () => {
     expect(body.items[0].rawState).toBeUndefined();
   });
 
-  // Test 4: GET /api/incidents/:id → 200, incidentId matches
-  it("GET /api/incidents/:id returns the incident", async () => {
+  // Test 4: GET /api/incidents/:id → 200, curated incidentId matches
+  it("GET /api/incidents/:id returns the curated incident", async () => {
     const traceRes = await app.request("/v1/traces", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -375,9 +375,8 @@ describe("Receiver integration tests", () => {
 
     const res = await app.request(`/api/incidents/${incidentId}`);
     expect(res.status).toBe(200);
-    const body = await res.json() as { incidentId: string; rawState?: unknown };
+    const body = await res.json() as { incidentId: string };
     expect(body.incidentId).toBe(incidentId);
-    expect(body.rawState).toBeUndefined();
   });
 
   // Test 5: GET /api/packets/:packetId → 200, schemaVersion is "incident-packet/v1alpha1"
@@ -441,8 +440,8 @@ describe("Receiver integration tests", () => {
     expect(res.status).toBe(400);
   });
 
-  // Test 8: GET /api/incidents/:id after diagnosis → response includes diagnosisResult
-  it("GET /api/incidents/:id after diagnosis includes diagnosisResult", async () => {
+  // Test 8: GET /api/incidents/:id after diagnosis → response reflects curated diagnosis fields
+  it("GET /api/incidents/:id after diagnosis includes curated diagnosis fields", async () => {
     const traceRes = await app.request("/v1/traces", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -460,11 +459,9 @@ describe("Receiver integration tests", () => {
 
     const res = await app.request(`/api/incidents/${incidentId}`);
     expect(res.status).toBe(200);
-    const body = await res.json() as { diagnosisResult?: { summary: { what_happened: string } } };
-    expect(body.diagnosisResult).toBeDefined();
-    expect(body.diagnosisResult?.summary.what_happened).toBe(
-      "Stripe 429s caused checkout 504s.",
-    );
+    const body = await res.json() as { headline: string; state: { diagnosis: string } };
+    expect(body.state.diagnosis).toBe("ready");
+    expect(body.headline).toBe("Stripe 429s caused checkout 504s.");
   });
 
   // GET /api/incidents limit validation (F-108)
@@ -769,7 +766,7 @@ describe("Receiver integration tests", () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(errorSpanPayload),
     });
-    const { incidentId } = await traceRes.json() as { incidentId: string };
+    const { packetId } = await traceRes.json() as { incidentId: string; packetId: string };
 
     const metricsPayload = {
       resourceMetrics: [{
@@ -801,10 +798,10 @@ describe("Receiver integration tests", () => {
     });
     expect(mRes.status).toBe(200);
 
-    const incident = await (await app.request(`/api/incidents/${incidentId}`)).json() as {
-      packet: { evidence: { changedMetrics: unknown[] } };
+    const packet = await (await app.request(`/api/packets/${packetId}`)).json() as {
+      evidence: { changedMetrics: unknown[] };
     };
-    expect(incident.packet.evidence.changedMetrics.length).toBeGreaterThan(0);
+    expect(packet.evidence.changedMetrics.length).toBeGreaterThan(0);
   });
 
   // POST /v1/logs (ERROR, same service/env, within window) → relevantLogs populated
@@ -814,7 +811,7 @@ describe("Receiver integration tests", () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(errorSpanPayload),
     });
-    const { incidentId } = await traceRes.json() as { incidentId: string };
+    const { packetId } = await traceRes.json() as { incidentId: string; packetId: string };
 
     const logsPayload = {
       resourceLogs: [{
@@ -843,10 +840,10 @@ describe("Receiver integration tests", () => {
     });
     expect(lRes.status).toBe(200);
 
-    const incident = await (await app.request(`/api/incidents/${incidentId}`)).json() as {
-      packet: { evidence: { relevantLogs: unknown[] } };
+    const packet = await (await app.request(`/api/packets/${packetId}`)).json() as {
+      evidence: { relevantLogs: unknown[] };
     };
-    expect(incident.packet.evidence.relevantLogs.length).toBeGreaterThan(0);
+    expect(packet.evidence.relevantLogs.length).toBeGreaterThan(0);
   });
 
   // POST /v1/logs with INFO only → relevantLogs stays empty
@@ -856,7 +853,7 @@ describe("Receiver integration tests", () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(errorSpanPayload),
     });
-    const { incidentId } = await traceRes.json() as { incidentId: string };
+    const { packetId } = await traceRes.json() as { incidentId: string; packetId: string };
 
     const logsPayload = {
       resourceLogs: [{
@@ -884,10 +881,10 @@ describe("Receiver integration tests", () => {
       body: JSON.stringify(logsPayload),
     });
 
-    const incident = await (await app.request(`/api/incidents/${incidentId}`)).json() as {
-      packet: { evidence: { relevantLogs: unknown[] } };
+    const packet = await (await app.request(`/api/packets/${packetId}`)).json() as {
+      evidence: { relevantLogs: unknown[] };
     };
-    expect(incident.packet.evidence.relevantLogs).toHaveLength(0);
+    expect(packet.evidence.relevantLogs).toHaveLength(0);
   });
 
   it("POST /v1/traces then /v1/platform-events attaches typed platform event and deterministic ref", async () => {
@@ -896,7 +893,7 @@ describe("Receiver integration tests", () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(errorSpanPayload),
     });
-    const { incidentId } = await traceRes.json() as { incidentId: string };
+    const { packetId } = await traceRes.json() as { incidentId: string; packetId: string };
 
     const event = {
       eventType: "deploy",
@@ -916,15 +913,13 @@ describe("Receiver integration tests", () => {
     });
     expect(platformRes.status).toBe(200);
 
-    const incident = await (await app.request(`/api/incidents/${incidentId}`)).json() as {
-      packet: {
-        evidence: { platformEvents: Array<typeof event> };
-        pointers: { platformLogRefs: string[] };
-      };
+    const packet = await (await app.request(`/api/packets/${packetId}`)).json() as {
+      evidence: { platformEvents: Array<typeof event> };
+      pointers: { platformLogRefs: string[] };
     };
 
-    expect(incident.packet.evidence.platformEvents).toEqual([event]);
-    expect(incident.packet.pointers.platformLogRefs).toEqual([
+    expect(packet.evidence.platformEvents).toEqual([event]);
+    expect(packet.pointers.platformLogRefs).toEqual([
       "2025-03-08T00:00:00.250Z:deploy:web",
     ]);
   });
@@ -961,15 +956,9 @@ describe("Receiver integration tests", () => {
     });
     expect(platformRes.status).toBe(200);
 
-    const incident = await (await app.request(`/api/incidents/${incidentId}`)).json() as {
-      packet: {
-        evidence: { platformEvents: unknown[] };
-        pointers: { platformLogRefs: string[] };
-      };
-    };
-
-    expect(incident.packet.evidence.platformEvents).toEqual([]);
-    expect(incident.packet.pointers.platformLogRefs).toEqual([]);
+    const incident = await storage.getIncident(incidentId);
+    expect(incident?.packet.evidence.platformEvents).toEqual([]);
+    expect(incident?.packet.pointers.platformLogRefs).toEqual([]);
   });
 
   it("POST /v1/platform-events attaches to the single best matching incident", async () => {
@@ -1032,16 +1021,12 @@ describe("Receiver integration tests", () => {
     });
     expect(platformRes.status).toBe(200);
 
-    const incident1 = await (await app.request(`/api/incidents/${incident1Id}`)).json() as {
-      packet: { evidence: { platformEvents: unknown[] } };
-    };
-    const incident2 = await (await app.request(`/api/incidents/${incident2Id}`)).json() as {
-      packet: { evidence: { platformEvents: Array<{ timestamp: string }> } };
-    };
+    const incident1 = await storage.getIncident(incident1Id);
+    const incident2 = await storage.getIncident(incident2Id);
 
-    expect(incident1.packet.evidence.platformEvents).toEqual([]);
-    expect(incident2.packet.evidence.platformEvents).toHaveLength(1);
-    expect(incident2.packet.evidence.platformEvents[0]?.timestamp).toBe("2025-03-08T00:07:00.000Z");
+    expect(incident1?.packet.evidence.platformEvents).toEqual([]);
+    expect(incident2?.packet.evidence.platformEvents).toHaveLength(1);
+    expect(incident2?.packet.evidence.platformEvents[0]?.timestamp).toBe("2025-03-08T00:07:00.000Z");
   });
 
   // POST /v1/metrics with no matching incident → 200 ok, no-op
@@ -1108,11 +1093,8 @@ describe("Receiver integration tests", () => {
     });
     const { incidentId } = await traceRes.json() as { incidentId: string };
 
-    // Verify stripe is in affectedDependencies
-    const incidentBefore = await (await app.request(`/api/incidents/${incidentId}`)).json() as {
-      packet: { scope: { affectedDependencies: string[] } };
-    };
-    expect(incidentBefore.packet.scope.affectedDependencies).toContain("stripe");
+    const incidentBefore = await storage.getIncident(incidentId);
+    expect(incidentBefore?.packet.scope.affectedDependencies).toContain("stripe");
 
     // Now send metrics from stripe
     const stripeMetrics = {
@@ -1138,10 +1120,8 @@ describe("Receiver integration tests", () => {
       body: JSON.stringify(stripeMetrics),
     });
 
-    const incidentAfter = await (await app.request(`/api/incidents/${incidentId}`)).json() as {
-      packet: { evidence: { changedMetrics: unknown[] } };
-    };
-    expect(incidentAfter.packet.evidence.changedMetrics.length).toBeGreaterThan(0);
+    const incidentAfter = await storage.getIncident(incidentId);
+    expect(incidentAfter?.packet.evidence.changedMetrics.length).toBeGreaterThan(0);
   });
 
   // Test 9: Two POST /v1/traces within 5min for same service/env → only 1 incident (ADR 0034: no ThinEvents)
@@ -1238,11 +1218,8 @@ describe("Receiver integration tests", () => {
     });
     const { incidentId } = await res.json() as { incidentId: string };
 
-    const incident = await (await app.request(`/api/incidents/${incidentId}`)).json() as {
-      packet: { scope: { primaryService: string } };
-    };
-
-    expect(incident.packet.scope.primaryService).toBe("checkout-api");
+    const incident = await storage.getIncident(incidentId);
+    expect(incident?.packet.scope.primaryService).toBe("checkout-api");
   });
 
   it("keeps primaryService immutable after later batches attach", async () => {
@@ -1314,15 +1291,9 @@ describe("Receiver integration tests", () => {
     const attachBody = await attachRes.json() as { incidentId: string };
     expect(attachBody.incidentId).toBe(incidentId);
 
-    const incident = await (await app.request(`/api/incidents/${incidentId}`)).json() as {
-      packet: {
-        scope: { primaryService: string };
-        triggerSignals: Array<{ entity: string }>;
-      };
-    };
-
-    expect(incident.packet.scope.primaryService).toBe("checkout-api");
-    expect(incident.packet.triggerSignals.some((signal) => signal.entity === "billing-worker")).toBe(true);
+    const incident = await storage.getIncident(incidentId);
+    expect(incident?.packet.scope.primaryService).toBe("checkout-api");
+    expect(incident?.packet.triggerSignals.some((signal) => signal.entity === "billing-worker")).toBe(true);
   });
 });
 
@@ -1677,17 +1648,12 @@ describe("Formation: dependency-based incident grouping (OC-1 to OC-6)", () => {
 
     expect(result.incidentId).toBeDefined();
 
-    const incident = await (await app.request(`/api/incidents/${result.incidentId}`)).json() as {
-      packet: {
-        scope: { primaryService: string; affectedDependencies: string[] };
-        evidence: { representativeTraces: Array<{ httpStatusCode?: number; serviceName: string }> };
-      };
-    };
+    const incident = await storage.getIncident(result.incidentId!);
 
-    expect(incident.packet.scope.primaryService).toBe("validation-web");
-    expect(incident.packet.scope.affectedDependencies).toContain("sendgrid");
+    expect(incident?.packet.scope.primaryService).toBe("validation-web");
+    expect(incident?.packet.scope.affectedDependencies).toContain("sendgrid");
     expect(
-      incident.packet.evidence.representativeTraces.some(
+      incident?.packet.evidence.representativeTraces.some(
         (trace) => trace.serviceName === "validation-web" && trace.httpStatusCode === 401,
       ),
     ).toBe(true);
@@ -1751,11 +1717,8 @@ describe("Formation: dependency-based incident grouping (OC-1 to OC-6)", () => {
     };
 
     const result = await postTraces(app, payload);
-    const incident = await (await app.request(`/api/incidents/${result.incidentId}`)).json() as {
-      packet: { scope: { primaryService: string } };
-    };
-
-    expect(incident.packet.scope.primaryService).toBe("validation-web");
+    const incident = await storage.getIncident(result.incidentId!);
+    expect(incident?.packet.scope.primaryService).toBe("validation-web");
   });
 
   // OC-10: SERVER 429-only batch appends anomalous signals to existing incident (evidence retention)
@@ -1801,28 +1764,34 @@ describe("Formation: dependency-based incident grouping (OC-1 to OC-6)", () => {
     }
 
     const { items } = await getIncidents(app);
-    const incident = items.find((item) => item.packet.scope.affectedDependencies.includes("sendgrid"));
+    const incident = items.find((item) => item.packet.scope.affectedDependencies.includes("sendgrid")) as
+      | {
+          packet: {
+            scope: { primaryService: string; affectedDependencies: string[] };
+            triggerSignals: Array<{ entity: string; signal: string }>;
+            evidence: {
+              representativeTraces: Array<{
+                serviceName: string
+                httpStatusCode?: number
+                spanStatusCode: number
+              }>
+            };
+          };
+        }
+      | undefined;
 
     expect(incident).toBeDefined();
     expect(incident?.packet.scope.primaryService).toBe("validation-web");
 
-    const incidentDetail = await (await app.request(`/api/incidents/${incident!.incidentId}`)).json() as {
-      packet: {
-        triggerSignals: Array<{ signal: string; entity: string }>;
-        scope: { primaryService: string; affectedDependencies: string[] };
-        evidence: { representativeTraces: Array<{ serviceName: string; httpStatusCode?: number; spanStatusCode: number }> };
-      };
-    };
-
-    expect(incidentDetail.packet.scope.primaryService).toBe("validation-web");
-    expect(incidentDetail.packet.scope.affectedDependencies).toContain("sendgrid");
+    expect(incident?.packet.scope.primaryService).toBe("validation-web");
+    expect(incident?.packet.scope.affectedDependencies).toContain("sendgrid");
     expect(
-      incidentDetail.packet.triggerSignals.some(
+      incident?.packet.triggerSignals.some(
         (signal) => signal.entity === "validation-web" && signal.signal === "http_401",
       ),
     ).toBe(true);
     expect(
-      incidentDetail.packet.evidence.representativeTraces.some(
+      incident?.packet.evidence.representativeTraces.some(
         (trace) =>
           trace.serviceName === "validation-web" &&
           trace.httpStatusCode === 401 &&
@@ -1907,11 +1876,8 @@ describe("Representative traces ranking: rebuild integration", () => {
       });
     }
 
-    const incident = await (await app.request(`/api/incidents/${incidentId}`)).json() as {
-      packet: { evidence: { representativeTraces: Array<{ spanId: string; httpStatusCode?: number }> } };
-    };
-
-    const traces = incident.packet.evidence.representativeTraces;
+    const incident = await storage.getIncident(incidentId);
+    const traces = incident?.packet.evidence.representativeTraces ?? [];
     expect(traces.length).toBeGreaterThan(0);
 
     // The anomalous span (HTTP 500) must appear first — it has the highest score
@@ -1967,11 +1933,8 @@ describe("Representative traces ranking: rebuild integration", () => {
       });
     }
 
-    const incident = await (await app.request(`/api/incidents/${incidentId}`)).json() as {
-      packet: { evidence: { representativeTraces: Array<{ httpStatusCode?: number; spanStatusCode: number }> } };
-    };
-
-    const traces = incident.packet.evidence.representativeTraces;
+    const incident = await storage.getIncident(incidentId);
+    const traces = incident?.packet.evidence.representativeTraces ?? [];
 
     // All attached anomalous spans should be present (either 429 or 500)
     const anomalousCount = traces.filter(
@@ -2000,10 +1963,8 @@ describe("Representative traces ranking: rebuild integration", () => {
     });
     const { incidentId } = await firstRes.json() as { incidentId: string };
 
-    const incidentAfterFirst = await (await app.request(`/api/incidents/${incidentId}`)).json() as {
-      packet: { evidence: { representativeTraces: Array<{ traceId: string; spanId: string }> } };
-    };
-    const tracesAfterFirst = incidentAfterFirst.packet.evidence.representativeTraces;
+    const incidentAfterFirst = await storage.getIncident(incidentId);
+    const tracesAfterFirst = incidentAfterFirst?.packet.evidence.representativeTraces ?? [];
 
     // Post the same content again (different spanId to avoid dedup by traceId+spanId,
     // but same anomaly score so ranking is deterministic)
@@ -2021,10 +1982,8 @@ describe("Representative traces ranking: rebuild integration", () => {
       body: JSON.stringify(batchPayload2),
     });
 
-    const incidentAfterSecond = await (await app.request(`/api/incidents/${incidentId}`)).json() as {
-      packet: { evidence: { representativeTraces: Array<{ traceId: string; spanId: string }> } };
-    };
-    const tracesAfterSecond = incidentAfterSecond.packet.evidence.representativeTraces;
+    const incidentAfterSecond = await storage.getIncident(incidentId);
+    const tracesAfterSecond = incidentAfterSecond?.packet.evidence.representativeTraces ?? [];
 
     // Both rebuilds must include the first span (it has max score and deterministic tiebreak)
     // The first span from tracesAfterFirst must still be present in tracesAfterSecond

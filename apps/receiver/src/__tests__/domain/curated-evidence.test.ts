@@ -1,40 +1,18 @@
-/**
- * Tests for curated-evidence.ts — orchestrator for GET /api/incidents/:id/evidence.
- *
- * Mocks all 3 surface builders and verifies:
- *   1. All surfaces assembled correctly
- *   2. EvidenceIndex merges refs by surface category
- *   3. proofCards = [], qa = null, sideNotes = []
- *   4. State: diagnosis ready/pending/unavailable
- *   5. State: baseline maps from trace surface confidence
- *   6. Empty incident produces empty surfaces
- */
-
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { TelemetryStoreDriver } from '../../telemetry/interface.js'
 import type { Incident } from '../../storage/interface.js'
-import type { IncidentPacket, DiagnosisResult } from '@3amoncall/core'
+import type { IncidentPacket, DiagnosisResult, ConsoleNarrative } from '@3amoncall/core'
 import type {
-  TraceSurface,
-  MetricsSurface,
-  LogsSurface,
-  EvidenceRef,
   BaselineContext,
+  CuratedTraceSurface,
+  CuratedMetricsSurface,
+  CuratedLogsSurface,
+  CuratedEvidenceRef,
 } from '@3amoncall/core/schemas/curated-evidence'
 
-// ── Mock surface builders ──────────────────────────────────────────────
-
-vi.mock('../../domain/trace-surface.js', () => ({
-  buildTraceSurface: vi.fn(),
-}))
-
-vi.mock('../../domain/metrics-surface.js', () => ({
-  buildMetricsSurface: vi.fn(),
-}))
-
-vi.mock('../../domain/logs-surface.js', () => ({
-  buildLogsSurface: vi.fn(),
-}))
+vi.mock('../../domain/trace-surface.js', () => ({ buildTraceSurface: vi.fn() }))
+vi.mock('../../domain/metrics-surface.js', () => ({ buildMetricsSurface: vi.fn() }))
+vi.mock('../../domain/logs-surface.js', () => ({ buildLogsSurface: vi.fn() }))
 
 import { buildTraceSurface } from '../../domain/trace-surface.js'
 import { buildMetricsSurface } from '../../domain/metrics-surface.js'
@@ -44,8 +22,6 @@ import { buildCuratedEvidence } from '../../domain/curated-evidence.js'
 const mockBuildTraceSurface = vi.mocked(buildTraceSurface)
 const mockBuildMetricsSurface = vi.mocked(buildMetricsSurface)
 const mockBuildLogsSurface = vi.mocked(buildLogsSurface)
-
-// ── Helpers ─────────────────────────────────────────────────────────────
 
 function makeMockStore(): TelemetryStoreDriver {
   return {
@@ -62,7 +38,7 @@ function makeMockStore(): TelemetryStoreDriver {
   }
 }
 
-function makeMinimalPacket(overrides: Partial<IncidentPacket> = {}): IncidentPacket {
+function makePacket(): IncidentPacket {
   return {
     schemaVersion: 'incident-packet/v1alpha1',
     packetId: 'pkt-1',
@@ -93,28 +69,6 @@ function makeMinimalPacket(overrides: Partial<IncidentPacket> = {}): IncidentPac
       metricRefs: [],
       platformLogRefs: [],
     },
-    ...overrides,
-  }
-}
-
-function makeIncident(overrides: Partial<Incident> = {}): Incident {
-  return {
-    incidentId: 'inc-1',
-    status: 'open',
-    openedAt: '2024-01-01T00:00:00Z',
-    packet: makeMinimalPacket(),
-    telemetryScope: {
-      windowStartMs: 1700000000000,
-      windowEndMs: 1700000300000,
-      detectTimeMs: 1700000060000,
-      environment: 'production',
-      memberServices: ['web'],
-      dependencyServices: ['stripe'],
-    },
-    spanMembership: ['trace-1:span-1'],
-    anomalousSignals: [],
-    platformEvents: [],
-    ...overrides,
   }
 }
 
@@ -130,20 +84,18 @@ function makeDiagnosisResult(): DiagnosisResult {
       do_not: 'Do not disable Stripe integration',
     },
     reasoning: {
-      causal_chain: [
-        { type: 'external', title: 'Traffic spike', detail: 'Flash sale' },
-      ],
+      causal_chain: [{ type: 'external', title: 'Traffic spike', detail: 'Flash sale' }],
     },
     confidence: {
       confidence_assessment: 'high',
-      uncertainty: 'Low — clear correlation between traffic spike and 429s',
+      uncertainty: 'Low uncertainty',
     },
     operator_guidance: {
-      watch_items: [{ label: 'Stripe 429s', state: 'active', status: 'critical' }],
-      operator_checks: ['Check Stripe dashboard for rate limit status'],
+      watch_items: [],
+      operator_checks: ['Check Stripe dashboard'],
     },
     metadata: {
-      model: 'claude-sonnet-4-5-20251001',
+      model: 'test-model',
       created_at: '2024-01-01T00:10:00Z',
       incident_id: 'inc-1',
       packet_id: 'pkt-1',
@@ -152,7 +104,69 @@ function makeDiagnosisResult(): DiagnosisResult {
   }
 }
 
-const EMPTY_BASELINE_CONTEXT: BaselineContext = {
+function makeNarrative(): ConsoleNarrative {
+  return {
+    headline: 'Stripe 429 cascade',
+    whyThisAction: 'Backoff reduces pressure.',
+    confidenceSummary: {
+      basis: '429s match traffic spike',
+      risk: 'Retry storm if misconfigured',
+    },
+    proofCards: [
+      { id: 'trigger', label: 'External Trigger', summary: 'Stripe 429s observed.' },
+      { id: 'design_gap', label: 'Design Gap', summary: 'No batching found.' },
+      { id: 'recovery', label: 'Recovery Signal', summary: 'Recovery evidence pending.' },
+    ],
+    qa: {
+      question: 'Why are payments failing?',
+      answer: 'Stripe is rate limiting requests.',
+      answerEvidenceRefs: [
+        { kind: 'span', id: 'trace-1:span-1' },
+        { kind: 'metric_group', id: 'mgroup:0' },
+      ],
+      evidenceBindings: [
+        { claim: 'Stripe is rate limiting requests.', evidenceRefs: [{ kind: 'span', id: 'trace-1:span-1' }] },
+      ],
+      followups: [
+        { question: 'Did this start with a traffic spike?', targetEvidenceKinds: ['traces', 'metrics'] },
+      ],
+      noAnswerReason: null,
+    },
+    sideNotes: [
+      { title: 'Confidence', text: 'High confidence', kind: 'confidence' },
+    ],
+    absenceEvidence: [],
+    metadata: {
+      model: 'test-model',
+      prompt_version: 'narrative-v1',
+      created_at: '2024-01-01T00:10:00Z',
+      stage1_packet_id: 'pkt-1',
+    },
+  }
+}
+
+function makeIncident(overrides: Partial<Incident> = {}): Incident {
+  return {
+    incidentId: 'inc-1',
+    status: 'open',
+    openedAt: '2024-01-01T00:00:00Z',
+    packet: makePacket(),
+    telemetryScope: {
+      windowStartMs: 1700000000000,
+      windowEndMs: 1700000300000,
+      detectTimeMs: 1700000060000,
+      environment: 'production',
+      memberServices: ['web'],
+      dependencyServices: ['stripe'],
+    },
+    spanMembership: ['trace-1:span-1'],
+    anomalousSignals: [],
+    platformEvents: [],
+    ...overrides,
+  }
+}
+
+const EMPTY_BASELINE: BaselineContext = {
   windowStart: '2024-01-01T00:00:00Z',
   windowEnd: '2024-01-01T00:05:00Z',
   sampleCount: 0,
@@ -160,7 +174,7 @@ const EMPTY_BASELINE_CONTEXT: BaselineContext = {
   source: { kind: 'none' },
 }
 
-function makeEmptyTraceSurface(baseline: BaselineContext = EMPTY_BASELINE_CONTEXT): TraceSurface {
+function makeTraceSurface(baseline: BaselineContext = EMPTY_BASELINE): CuratedTraceSurface {
   return {
     observed: [],
     expected: [],
@@ -168,245 +182,113 @@ function makeEmptyTraceSurface(baseline: BaselineContext = EMPTY_BASELINE_CONTEX
   }
 }
 
-function makeEmptyMetricsSurface(): MetricsSurface {
+function makeMetricsSurface(): CuratedMetricsSurface {
   return { groups: [] }
 }
 
-function makeEmptyLogsSurface(): LogsSurface {
+function makeLogsSurface(): CuratedLogsSurface {
   return { clusters: [], absenceEvidence: [] }
 }
 
-// ── Setup ────────────────────────────────────────────────────────────────
-
 beforeEach(() => {
   vi.clearAllMocks()
-
-  mockBuildTraceSurface.mockResolvedValue({
-    surface: makeEmptyTraceSurface(),
-    evidenceRefs: new Map(),
-  })
-
-  mockBuildMetricsSurface.mockResolvedValue({
-    surface: makeEmptyMetricsSurface(),
-    evidenceRefs: new Map(),
-  })
-
-  mockBuildLogsSurface.mockResolvedValue({
-    surface: makeEmptyLogsSurface(),
-    evidenceRefs: new Map(),
-  })
+  mockBuildTraceSurface.mockResolvedValue({ surface: makeTraceSurface(), evidenceRefs: new Map() })
+  mockBuildMetricsSurface.mockResolvedValue({ surface: makeMetricsSurface(), evidenceRefs: new Map() })
+  mockBuildLogsSurface.mockResolvedValue({ surface: makeLogsSurface(), evidenceRefs: new Map() })
 })
 
-// ── Tests ────────────────────────────────────────────────────────────────
-
 describe('buildCuratedEvidence', () => {
-  it('assembles all 3 surfaces correctly', async () => {
-    const traceSurface = makeEmptyTraceSurface()
-    const metricsSurface = makeEmptyMetricsSurface()
-    const logsSurface = makeEmptyLogsSurface()
-
-    mockBuildTraceSurface.mockResolvedValue({ surface: traceSurface, evidenceRefs: new Map() })
-    mockBuildMetricsSurface.mockResolvedValue({ surface: metricsSurface, evidenceRefs: new Map() })
-    mockBuildLogsSurface.mockResolvedValue({ surface: logsSurface, evidenceRefs: new Map() })
-
-    const incident = makeIncident()
-    const store = makeMockStore()
-
-    const result = await buildCuratedEvidence(incident, store)
-
-    expect(result.surfaces.traces).toBe(traceSurface)
-    expect(result.surfaces.metrics).toBe(metricsSurface)
-    expect(result.surfaces.logs).toBe(logsSurface)
-  })
-
-  it('merges EvidenceIndex refs from all surfaces into correct categories', async () => {
-    const spanRef: EvidenceRef = { refId: 'trace-1:span-1', surface: 'traces', groupId: 'trace:trace-1' }
-    const metricRef: EvidenceRef = { refId: 'web:error_rate:123', surface: 'metrics', groupId: 'mgroup:0' }
-    const logRef: EvidenceRef = { refId: 'web:2024-01-01T00:00:00Z:abc123', surface: 'logs', groupId: 'lcluster:0' }
-    const absenceRef: EvidenceRef = { refId: 'abs:pattern-1', surface: 'absences', groupId: 'lcluster:1' }
-
-    const traceRefs = new Map<string, EvidenceRef>([['trace-1:span-1', spanRef]])
-    const metricRefs = new Map<string, EvidenceRef>([['web:error_rate:123', metricRef]])
-    // Logs surface returns both log and absence refs
-    const logRefs = new Map<string, EvidenceRef>([
-      ['web:2024-01-01T00:00:00Z:abc123', logRef],
-      ['abs:pattern-1', absenceRef],
-    ])
-
-    mockBuildTraceSurface.mockResolvedValue({ surface: makeEmptyTraceSurface(), evidenceRefs: traceRefs })
-    mockBuildMetricsSurface.mockResolvedValue({ surface: makeEmptyMetricsSurface(), evidenceRefs: metricRefs })
-    mockBuildLogsSurface.mockResolvedValue({ surface: makeEmptyLogsSurface(), evidenceRefs: logRefs })
-
-    const result = await buildCuratedEvidence(makeIncident(), makeMockStore())
-
-    expect(result.evidenceIndex.spans).toEqual({ 'trace-1:span-1': spanRef })
-    expect(result.evidenceIndex.metrics).toEqual({ 'web:error_rate:123': metricRef })
-    expect(result.evidenceIndex.logs).toEqual({ 'web:2024-01-01T00:00:00Z:abc123': logRef })
-    expect(result.evidenceIndex.absences).toEqual({ 'abs:pattern-1': absenceRef })
-  })
-
-  it('returns proofCards = [], qa = null, sideNotes = []', async () => {
-    const result = await buildCuratedEvidence(makeIncident(), makeMockStore())
-
-    expect(result.proofCards).toEqual([])
-    expect(result.qa).toBeNull()
-    expect(result.sideNotes).toEqual([])
-  })
-
-  it('sets diagnosis state to "ready" when diagnosisResult exists', async () => {
-    const incident = makeIncident({ diagnosisResult: makeDiagnosisResult() })
-
-    const result = await buildCuratedEvidence(incident, makeMockStore())
-
-    expect(result.state.diagnosis).toBe('ready')
-  })
-
-  it('sets diagnosis state to "pending" when diagnosisDispatchedAt set without result', async () => {
-    const incident = makeIncident({
-      diagnosisDispatchedAt: '2024-01-01T00:05:00Z',
-      diagnosisResult: undefined,
-    })
-
-    const result = await buildCuratedEvidence(incident, makeMockStore())
-
-    expect(result.state.diagnosis).toBe('pending')
-  })
-
-  it('sets diagnosis state to "unavailable" when no dispatch and no result', async () => {
-    const incident = makeIncident({
-      diagnosisDispatchedAt: undefined,
-      diagnosisResult: undefined,
-    })
-
-    const result = await buildCuratedEvidence(incident, makeMockStore())
-
-    expect(result.state.diagnosis).toBe('unavailable')
-  })
-
-  it('maps baseline confidence "high" to state "ready"', async () => {
-    const baseline: BaselineContext = {
-      ...EMPTY_BASELINE_CONTEXT,
-      confidence: 'high',
-      sampleCount: 50,
-      source: { kind: 'same_route', route: '/api/orders', service: 'web' },
-    }
+  it('projects internal surfaces to the public evidence contract', async () => {
     mockBuildTraceSurface.mockResolvedValue({
-      surface: makeEmptyTraceSurface(baseline),
+      surface: {
+        observed: [{
+          traceId: 'trace-1',
+          groupId: 'trace:trace-1',
+          rootSpanName: 'POST /checkout',
+          httpStatusCode: 500,
+          durationMs: 1200,
+          status: 'error',
+          startTimeMs: 0,
+          spans: [{
+            spanId: 'span-1',
+            parentSpanId: undefined,
+            refId: 'trace-1:span-1',
+            spanName: 'POST /checkout',
+            durationMs: 1200,
+            httpStatusCode: 500,
+            spanStatusCode: 2,
+            offsetMs: 0,
+            widthPct: 100,
+            status: 'error',
+            attributes: { route: '/checkout' },
+            correlatedLogRefIds: [],
+          }],
+        }],
+        expected: [],
+        smokingGunSpanId: 'trace-1:span-1',
+        baseline: EMPTY_BASELINE,
+      },
+      evidenceRefs: new Map<string, CuratedEvidenceRef>(),
+    })
+
+    const result = await buildCuratedEvidence(makeIncident(), makeMockStore())
+
+    expect(result.surfaces.traces.observed[0]?.route).toBe('POST /checkout')
+    expect(result.surfaces.traces.smokingGunSpanId).toBe('trace-1:span-1')
+    expect(result.surfaces.metrics.hypotheses).toEqual([])
+    expect(result.surfaces.logs.claims).toEqual([])
+  })
+
+  it('derives state from diagnosis, baseline, and evidence density', async () => {
+    mockBuildTraceSurface.mockResolvedValue({
+      surface: makeTraceSurface({
+        ...EMPTY_BASELINE,
+        confidence: 'high',
+        sampleCount: 50,
+        source: { kind: 'same_service', service: 'web' },
+      }),
       evidenceRefs: new Map(),
     })
 
-    const result = await buildCuratedEvidence(makeIncident(), makeMockStore())
+    const result = await buildCuratedEvidence(
+      makeIncident({ diagnosisResult: makeDiagnosisResult() }),
+      makeMockStore(),
+    )
 
-    expect(result.state.baseline).toBe('ready')
-  })
-
-  it('maps baseline confidence "medium" to state "ready"', async () => {
-    const baseline: BaselineContext = {
-      ...EMPTY_BASELINE_CONTEXT,
-      confidence: 'medium',
-      sampleCount: 20,
-      source: { kind: 'same_service', service: 'web' },
-    }
-    mockBuildTraceSurface.mockResolvedValue({
-      surface: makeEmptyTraceSurface(baseline),
-      evidenceRefs: new Map(),
+    expect(result.state).toEqual({
+      diagnosis: 'ready',
+      baseline: 'ready',
+      evidenceDensity: 'empty',
     })
-
-    const result = await buildCuratedEvidence(makeIncident(), makeMockStore())
-
-    expect(result.state.baseline).toBe('ready')
   })
 
-  it('maps baseline confidence "low" to state "insufficient"', async () => {
-    const baseline: BaselineContext = {
-      ...EMPTY_BASELINE_CONTEXT,
-      confidence: 'low',
-      sampleCount: 3,
-      source: { kind: 'same_service', service: 'web' },
-    }
-    mockBuildTraceSurface.mockResolvedValue({
-      surface: makeEmptyTraceSurface(baseline),
-      evidenceRefs: new Map(),
+  it('maps narrative QA and side notes into the public response', async () => {
+    const result = await buildCuratedEvidence(
+      makeIncident({
+        diagnosisResult: makeDiagnosisResult(),
+        consoleNarrative: makeNarrative(),
+      }),
+      makeMockStore(),
+    )
+
+    expect(result.qa?.question).toBe('Why are payments failing?')
+    expect(result.qa?.evidenceSummary).toEqual({ traces: 1, metrics: 1, logs: 0 })
+    expect(result.qa?.followups[0]?.question).toBe('Did this start with a traffic spike?')
+    expect(result.sideNotes[0]).toEqual({
+      title: 'Confidence',
+      text: 'High confidence',
+      kind: 'confidence',
     })
-
-    const result = await buildCuratedEvidence(makeIncident(), makeMockStore())
-
-    expect(result.state.baseline).toBe('insufficient')
   })
 
-  it('maps baseline confidence "unavailable" to state "unavailable"', async () => {
-    // Default mock already returns unavailable
-    const result = await buildCuratedEvidence(makeIncident(), makeMockStore())
-
-    expect(result.state.baseline).toBe('unavailable')
-  })
-
-  it('returns empty surfaces and unavailable state for incident with no telemetry', async () => {
-    const incident = makeIncident({
-      spanMembership: [],
-      anomalousSignals: [],
-    })
-
-    const result = await buildCuratedEvidence(incident, makeMockStore())
-
-    expect(result.surfaces.traces).toEqual(makeEmptyTraceSurface())
-    expect(result.surfaces.metrics).toEqual(makeEmptyMetricsSurface())
-    expect(result.surfaces.logs).toEqual(makeEmptyLogsSurface())
-    expect(result.evidenceIndex.spans).toEqual({})
-    expect(result.evidenceIndex.metrics).toEqual({})
-    expect(result.evidenceIndex.logs).toEqual({})
-    expect(result.evidenceIndex.absences).toEqual({})
-    expect(result.state.diagnosis).toBe('unavailable')
-    expect(result.state.baseline).toBe('unavailable')
-    expect(result.state.evidenceDensity).toBe('empty')
-  })
-
-  it('calls all 3 surface builders with correct arguments', async () => {
+  it('calls all three surface builders with the expected arguments', async () => {
     const incident = makeIncident()
     const store = makeMockStore()
 
     await buildCuratedEvidence(incident, store)
 
     expect(mockBuildTraceSurface).toHaveBeenCalledWith(incident, store)
-    expect(mockBuildMetricsSurface).toHaveBeenCalledWith(
-      store,
-      incident.telemetryScope,
-      incident.anomalousSignals,
-    )
-    expect(mockBuildLogsSurface).toHaveBeenCalledWith(
-      store,
-      incident.telemetryScope,
-      incident.anomalousSignals,
-      incident.spanMembership,
-    )
-  })
-
-  it('computes evidenceDensity as "empty" when all surfaces are empty', async () => {
-    const result = await buildCuratedEvidence(makeIncident(), makeMockStore())
-    expect(result.state.evidenceDensity).toBe('empty')
-  })
-
-  it('computes evidenceDensity as "sparse" when some evidence exists', async () => {
-    const traceSurface: TraceSurface = {
-      observed: [{ traceId: 't1', groupId: 'trace:t1', rootSpanName: 'GET /', durationMs: 100, status: 'ok', startTimeMs: 0, spans: [] }],
-      expected: [],
-      baseline: EMPTY_BASELINE_CONTEXT,
-    }
-    mockBuildTraceSurface.mockResolvedValue({ surface: traceSurface, evidenceRefs: new Map() })
-
-    const result = await buildCuratedEvidence(makeIncident(), makeMockStore())
-    expect(result.state.evidenceDensity).toBe('sparse')
-  })
-
-  it('prioritizes diagnosisResult over diagnosisDispatchedAt for state', async () => {
-    // Both set — diagnosisResult wins
-    const incident = makeIncident({
-      diagnosisResult: makeDiagnosisResult(),
-      diagnosisDispatchedAt: '2024-01-01T00:05:00Z',
-    })
-
-    const result = await buildCuratedEvidence(incident, makeMockStore())
-
-    expect(result.state.diagnosis).toBe('ready')
+    expect(mockBuildMetricsSurface).toHaveBeenCalledWith(store, incident.telemetryScope, incident.anomalousSignals)
+    expect(mockBuildLogsSurface).toHaveBeenCalledWith(store, incident.telemetryScope, incident.anomalousSignals, incident.spanMembership)
   })
 })

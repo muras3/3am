@@ -2,7 +2,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { buildTraceSurface } from '../../domain/trace-surface.js'
 import type { TelemetrySpan, TelemetryStoreDriver } from '../../telemetry/interface.js'
 import type { Incident } from '../../storage/interface.js'
-import type { IncidentPacket, BaselineContext } from '@3amoncall/core'
+import type { IncidentPacket } from '@3amoncall/core'
+import type { BaselineContext } from '@3amoncall/core/schemas/curated-evidence'
 
 // ── Mock baseline-selector ─────────────────────────────────────────────
 

@@ -11,20 +11,12 @@ function EvidenceRefLink({ ref: evidenceRef }: { ref: EvidenceRef }) {
   const search = useSearch({ from: "__root__" }) as LensSearchParams;
 
   function handleClick() {
-    if (evidenceRef.kind === "proof_card") {
-      void navigate({
-        to: "/",
-        search: { ...search, proof: evidenceRef.id },
-        replace: true,
-      });
-      return;
-    }
-
-    // For span/metric/log refs, navigate to appropriate tab
     const tabMap: Record<string, "traces" | "metrics" | "logs"> = {
       span: "traces",
       metric: "metrics",
       log: "logs",
+      metric_group: "metrics",
+      log_cluster: "logs",
     };
     const tab = tabMap[evidenceRef.kind] ?? search.tab;
     void navigate({
@@ -143,13 +135,13 @@ export function QAFrame({ qa }: Props) {
         <div className="lens-ev-qa-followups" role="group" aria-label="Follow-up questions">
           {qa.followups.map((q) => (
             <button
-              key={q}
+              key={q.question}
               className="lens-ev-qa-chip"
               type="button"
               // noop per plan — follow-up transport not yet defined
               onClick={() => undefined}
             >
-              {q}
+              {q.question}
             </button>
           ))}
         </div>

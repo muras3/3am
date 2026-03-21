@@ -10,7 +10,12 @@ import type { TelemetrySpan, TelemetryStoreDriver } from '../telemetry/interface
 import { buildIncidentQueryFilter } from '../telemetry/interface.js'
 import type { Incident } from '../storage/interface.js'
 import { spanMembershipKey } from '../storage/interface.js'
-import type { TraceSurface, GroupedTrace, TraceSpan, EvidenceRef } from '@3amoncall/core/schemas/curated-evidence'
+import type {
+  CuratedTraceSurface,
+  CuratedGroupedTrace,
+  CuratedTraceSpan,
+  CuratedEvidenceRef,
+} from '@3amoncall/core/schemas/curated-evidence'
 import { selectBaseline } from './baseline-selector.js'
 
 // ── Constants ────────────────────────────────────────────────────────────
@@ -109,12 +114,13 @@ function findRootSpan(spans: TelemetrySpan[]): TelemetrySpan {
   )
 }
 
-function buildTraceSpan(span: TelemetrySpan, rootStartTimeMs: number, rootDurationMs: number): TraceSpan {
+function buildTraceSpan(span: TelemetrySpan, rootStartTimeMs: number, rootDurationMs: number): CuratedTraceSpan {
   const offsetMs = span.startTimeMs - rootStartTimeMs
   const widthPct = rootDurationMs > 0 ? (span.durationMs / rootDurationMs) * 100 : 0
 
   return {
     spanId: span.spanId,
+    parentSpanId: span.parentSpanId,
     refId: `${span.traceId}:${span.spanId}`,
     spanName: span.spanName,
     durationMs: span.durationMs,
@@ -129,12 +135,12 @@ function buildTraceSpan(span: TelemetrySpan, rootStartTimeMs: number, rootDurati
   }
 }
 
-function buildGroupedTrace(traceId: string, spans: TelemetrySpan[]): GroupedTrace {
+function buildGroupedTrace(traceId: string, spans: TelemetrySpan[]): CuratedGroupedTrace {
   const root = findRootSpan(spans)
   const rootDurationMs = root.durationMs
   const rootStartTimeMs = root.startTimeMs
 
-  const traceSpans: TraceSpan[] = spans.map((s) =>
+  const traceSpans: CuratedTraceSpan[] = spans.map((s) =>
     buildTraceSpan(s, rootStartTimeMs, rootDurationMs),
   )
 
@@ -155,8 +161,8 @@ function buildGroupedTrace(traceId: string, spans: TelemetrySpan[]): GroupedTrac
 export async function buildTraceSurface(
   incident: Incident,
   telemetryStore: TelemetryStoreDriver,
-): Promise<{ surface: TraceSurface; evidenceRefs: Map<string, EvidenceRef> }> {
-  const evidenceRefs = new Map<string, EvidenceRef>()
+): Promise<{ surface: CuratedTraceSurface; evidenceRefs: Map<string, CuratedEvidenceRef> }> {
+  const evidenceRefs = new Map<string, CuratedEvidenceRef>()
 
   // ── Observed traces ──────────────────────────────────────────────────
 
@@ -171,7 +177,7 @@ export async function buildTraceSurface(
 
   // Group by traceId
   const observedGroups = groupSpansByTrace(incidentSpans)
-  let observedTraces: GroupedTrace[] = []
+  let observedTraces: CuratedGroupedTrace[] = []
   for (const [traceId, spans] of observedGroups) {
     observedTraces.push(buildGroupedTrace(traceId, spans))
   }
@@ -218,7 +224,7 @@ export async function buildTraceSurface(
   })
 
   const baselineGroups = groupSpansByTrace(baselineResult.spans)
-  const expectedTraces: GroupedTrace[] = []
+  const expectedTraces: CuratedGroupedTrace[] = []
   for (const [traceId, spans] of baselineGroups) {
     expectedTraces.push(buildGroupedTrace(traceId, spans))
   }

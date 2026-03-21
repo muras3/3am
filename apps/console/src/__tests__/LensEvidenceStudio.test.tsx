@@ -210,7 +210,7 @@ describe("LensEvidenceStudio — proof card click updates navigation", () => {
     expect(mockNavigate).toHaveBeenCalledWith(
       expect.objectContaining({
         search: expect.objectContaining({
-          proof: "design",
+          proof: "design_gap",
           tab: "metrics",
         }),
       }),

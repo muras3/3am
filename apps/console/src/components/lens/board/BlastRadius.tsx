@@ -1,10 +1,10 @@
-import type { BlastRadiusEntry, HealthStatus } from "../../../api/curated-types.js";
+import type { BlastRadiusEntry } from "../../../api/curated-types.js";
 
 interface Props {
   entries: BlastRadiusEntry[];
 }
 
-function statusModifier(status: HealthStatus): string {
+function statusModifier(status: BlastRadiusEntry["status"]): string {
   if (status === "critical") return "critical";
   if (status === "degraded") return "degraded";
   return "healthy";

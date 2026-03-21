@@ -2,21 +2,21 @@ import { z } from "zod";
 
 // Evidence reference — deterministic link from proof card to telemetry.
 // Receiver produces these; diagnosis and frontend never invent IDs.
-const EvidenceRefSchema = z.object({
+export const NarrativeEvidenceRefSchema = z.object({
   kind: z.enum(["span", "log", "metric", "log_cluster", "metric_group"]),
   id: z.string(),
 }).strict();
 
 // Proof card reference — receiver-provided, status confirmed by receiver.
-const ProofRefSchema = z.object({
+export const ProofRefSchema = z.object({
   cardId: z.enum(["trigger", "design_gap", "recovery"]),
   targetSurface: z.enum(["traces", "metrics", "logs"]),
-  evidenceRefs: z.array(EvidenceRefSchema),
+  evidenceRefs: z.array(NarrativeEvidenceRefSchema),
   status: z.enum(["confirmed", "inferred", "pending"]),
 }).strict();
 
 // Absence candidate — receiver searched for patterns and reports match count.
-const AbsenceCandidateSchema = z.object({
+export const AbsenceCandidateSchema = z.object({
   id: z.string(),
   patterns: z.array(z.string()),
   searchWindow: z.object({
@@ -27,7 +27,7 @@ const AbsenceCandidateSchema = z.object({
 }).strict();
 
 // Evidence counts — deterministic tallies from telemetry store.
-const EvidenceCountsSchema = z.object({
+export const NarrativeEvidenceCountsSchema = z.object({
   traces: z.number().int().min(0),
   traceErrors: z.number().int().min(0),
   metrics: z.number().int().min(0),
@@ -36,7 +36,7 @@ const EvidenceCountsSchema = z.object({
 }).strict();
 
 // Blast radius target — receiver-computed impact per service/route.
-const BlastRadiusTargetSchema = z.object({
+export const BlastRadiusTargetSchema = z.object({
   targetId: z.string(),
   label: z.string(),
   status: z.enum(["critical", "degraded", "healthy"]),
@@ -45,14 +45,14 @@ const BlastRadiusTargetSchema = z.object({
 }).strict();
 
 // Timeline summary — key timestamps from packet window.
-const TimelineSummarySchema = z.object({
+export const TimelineSummarySchema = z.object({
   startedAt: z.string(),
   fullCascadeAt: z.string().nullable(),
   diagnosedAt: z.string().nullable(),
 }).strict();
 
 // Q&A context — which evidence surfaces have data for answering questions.
-const QAContextSchema = z.object({
+export const QAContextSchema = z.object({
   availableEvidenceKinds: z.array(z.enum(["traces", "metrics", "logs"])),
 }).strict();
 
@@ -63,7 +63,7 @@ const QAContextSchema = z.object({
  */
 export const ReasoningStructureSchema = z.object({
   incidentId: z.string(),
-  evidenceCounts: EvidenceCountsSchema,
+  evidenceCounts: NarrativeEvidenceCountsSchema,
   blastRadius: z.array(BlastRadiusTargetSchema),
   proofRefs: z.array(ProofRefSchema),
   absenceCandidates: z.array(AbsenceCandidateSchema),
@@ -73,8 +73,8 @@ export const ReasoningStructureSchema = z.object({
 
 export type ReasoningStructure = z.infer<typeof ReasoningStructureSchema>;
 export type ProofRef = z.infer<typeof ProofRefSchema>;
-export type NarrativeEvidenceRef = z.infer<typeof EvidenceRefSchema>;
+export type NarrativeEvidenceRef = z.infer<typeof NarrativeEvidenceRefSchema>;
 export type AbsenceCandidate = z.infer<typeof AbsenceCandidateSchema>;
-export type NarrativeEvidenceCounts = z.infer<typeof EvidenceCountsSchema>;
+export type NarrativeEvidenceCounts = z.infer<typeof NarrativeEvidenceCountsSchema>;
 export type BlastRadiusTarget = z.infer<typeof BlastRadiusTargetSchema>;
 export type QAContext = z.infer<typeof QAContextSchema>;

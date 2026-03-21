@@ -11,7 +11,7 @@
 import type { TelemetryLog, TelemetryStoreDriver } from '../telemetry/interface.js'
 import { buildIncidentQueryFilter } from '../telemetry/interface.js'
 import type { TelemetryScope, AnomalousSignal } from '../storage/interface.js'
-import type { AbsenceEvidenceEntry, EvidenceRef } from '@3amoncall/core/schemas/curated-evidence'
+import type { AbsenceEvidenceEntry, CuratedEvidenceRef } from '@3amoncall/core/schemas/curated-evidence'
 
 // ── Pattern Definitions ─────────────────────────────────────────────────
 
@@ -85,9 +85,9 @@ export async function detectAbsences(
   telemetryStore: TelemetryStoreDriver,
   telemetryScope: TelemetryScope,
   anomalousSignals: AnomalousSignal[],
-): Promise<{ entries: AbsenceEvidenceEntry[]; evidenceRefs: Map<string, EvidenceRef> }> {
+): Promise<{ entries: AbsenceEvidenceEntry[]; evidenceRefs: Map<string, CuratedEvidenceRef> }> {
   const entries: AbsenceEvidenceEntry[] = []
-  const evidenceRefs = new Map<string, EvidenceRef>()
+  const evidenceRefs = new Map<string, CuratedEvidenceRef>()
 
   // Build search window
   const searchWindow = {
