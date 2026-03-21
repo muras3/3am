@@ -1,6 +1,7 @@
 import type {
   IncidentPacket,
   DiagnosisResult,
+  ConsoleNarrative,
   ChangedMetric,
   RepresentativeTrace,
 } from "@3amoncall/core";
@@ -22,16 +23,16 @@ import type {
 export function buildIncidentWorkspaceVM(
   incident: Incident,
 ): IncidentWorkspaceVM | undefined {
-  const { diagnosisResult: dr, packet } = incident;
+  const { diagnosisResult: dr, consoleNarrative: cn, packet } = incident;
   if (!dr) return undefined;
 
   return {
     incidentId: incident.incidentId,
-    headline: dr.summary.what_happened,
+    headline: cn?.headline ?? dr.summary.what_happened,
     chips: buildChips(packet, dr),
     action: {
       primaryText: compactAction(dr.recommendation.immediate_action),
-      rationale: compactSentence(dr.recommendation.action_rationale_short, 160),
+      rationale: cn?.whyThisAction ?? compactSentence(dr.recommendation.action_rationale_short, 160),
       doNot: compactSentence(dr.recommendation.do_not, 180),
     },
     cause: {
@@ -41,7 +42,7 @@ export function buildIncidentWorkspaceVM(
     evidence: buildEvidenceEntryVM(packet),
     timeline: buildImpactTimelineVM(packet),
     copilot: {
-      confidence: dr.confidence.confidence_assessment,
+      confidence: cn?.confidenceSummary.basis ?? dr.confidence.confidence_assessment,
       uncertainty: dr.confidence.uncertainty,
       operatorCheck: dr.operator_guidance.operator_checks[0] ?? "\u2014",
     },
@@ -243,6 +244,39 @@ export function buildSpanDetailVM(
 }
 
 export function buildProofCardsV4(incident: Incident): ProofCardV4VM[] {
+  const cn = incident.consoleNarrative;
+
+  // If ConsoleNarrative is available, use its proof card narratives
+  // (status comes from ProofRef in ReasoningStructure, not from ConsoleNarrative)
+  if (cn) {
+    return cn.proofCards.map((card) => {
+      const iconMap: Record<string, { icon: string; iconClass: ProofCardV4VM["iconClass"] }> = {
+        trigger: { icon: "\u26A1", iconClass: "accent" },
+        design_gap: { icon: "\u26A0", iconClass: "amber" },
+        recovery: { icon: "\u2713", iconClass: "good" },
+      };
+      const tabMap: Record<string, TabKey> = {
+        trigger: "traces",
+        design_gap: "metrics",
+        recovery: "logs",
+      };
+      const { icon, iconClass } = iconMap[card.id] ?? { icon: "?", iconClass: "teal" as const };
+      return {
+        id: card.id,
+        label: card.label,
+        summary: card.summary,
+        evidence: "",
+        targetTab: tabMap[card.id] ?? "traces",
+        icon,
+        iconClass,
+        // Status is pending as fallback — will be overridden by ProofRef.status
+        // when the receiver provides ReasoningStructure in the API response
+        status: "inferred" as const,
+      };
+    });
+  }
+
+  // Fallback: derive from stage 1 DiagnosisResult (existing heuristic)
   const dr = incident.diagnosisResult;
   const packet = incident.packet;
 
@@ -257,7 +291,7 @@ export function buildProofCardsV4(incident: Incident): ProofCardV4VM[] {
     summary: externalStep?.title ?? firstSignal?.signal ?? "Unknown trigger",
     evidence: externalStep?.detail ?? firstSignal?.entity ?? "",
     targetTab: "traces",
-    icon: "⚡",
+    icon: "\u26A1",
     iconClass: "accent",
     status: externalStep ? "confirmed" : firstSignal ? "inferred" : "pending",
   };
@@ -271,7 +305,7 @@ export function buildProofCardsV4(incident: Incident): ProofCardV4VM[] {
       "Design gap analysis pending",
     evidence: designStep?.detail ?? "",
     targetTab: "metrics",
-    icon: "⚠",
+    icon: "\u26A0",
     iconClass: "amber",
     status: designStep ? "confirmed" : dr ? "inferred" : "pending",
   };
@@ -296,7 +330,7 @@ export function buildProofCardsV4(incident: Incident): ProofCardV4VM[] {
     summary: recoverySummary,
     evidence: firstWatch?.status ?? "",
     targetTab: "logs",
-    icon: "✓",
+    icon: "\u2713",
     iconClass: "good",
     status: recoveryStatus,
   };
@@ -309,8 +343,10 @@ export function buildEvidenceStudioV4VM(
   tabCounts: Record<TabKey, number>,
 ): EvidenceStudioV4VM {
   const dr = incident.diagnosisResult;
+  const cn = incident.consoleNarrative;
 
-  const title = dr?.summary?.what_happened
+  const title = cn?.headline
+    ?? dr?.summary?.what_happened
     ?? `Incident — ${incident.packet.scope.primaryService}`;
 
   const signalSeverity = incident.packet.signalSeverity;
@@ -321,29 +357,45 @@ export function buildEvidenceStudioV4VM(
         ? "warning"
         : "info";
 
+  // Prefer ConsoleNarrative sideNotes when available
   const sideNotes: SideNoteVM[] = [];
+  const accentMap: Record<string, SideNoteVM["accent"]> = {
+    confidence: "teal",
+    uncertainty: "amber",
+    dependency: "amber",
+  };
 
-  if (dr) {
-    sideNotes.push({
-      title: "Confidence",
-      text: dr.confidence.confidence_assessment,
-      accent: "teal",
-    });
-    if (dr.confidence.uncertainty) {
+  if (cn?.sideNotes.length) {
+    for (const note of cn.sideNotes) {
       sideNotes.push({
-        title: "Uncertainty",
-        text: dr.confidence.uncertainty,
+        title: note.title,
+        text: note.text,
+        accent: accentMap[note.kind] ?? "teal",
+      });
+    }
+  } else {
+    if (dr) {
+      sideNotes.push({
+        title: "Confidence",
+        text: dr.confidence.confidence_assessment,
+        accent: "teal",
+      });
+      if (dr.confidence.uncertainty) {
+        sideNotes.push({
+          title: "Uncertainty",
+          text: dr.confidence.uncertainty,
+          accent: "amber",
+        });
+      }
+    }
+
+    if (incident.packet.scope.affectedDependencies.length > 0) {
+      sideNotes.push({
+        title: "External Dependencies",
+        text: incident.packet.scope.affectedDependencies.join(", "),
         accent: "amber",
       });
     }
-  }
-
-  if (incident.packet.scope.affectedDependencies.length > 0) {
-    sideNotes.push({
-      title: "External Dependencies",
-      text: incident.packet.scope.affectedDependencies.join(", "),
-      accent: "amber",
-    });
   }
 
   return {

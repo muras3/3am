@@ -1,6 +1,7 @@
 export type {
   IncidentPacket,
   DiagnosisResult,
+  ConsoleNarrative,
   CausalChainStep,
   ChangedMetric,
   RelevantLog,
@@ -8,7 +9,7 @@ export type {
   RepresentativeTrace,
 } from "@3amoncall/core";
 
-import type { IncidentPacket, DiagnosisResult } from "@3amoncall/core";
+import type { IncidentPacket, DiagnosisResult, ConsoleNarrative } from "@3amoncall/core";
 
 export interface Incident {
   incidentId: string;
@@ -17,6 +18,7 @@ export interface Incident {
   closedAt?: string;
   packet: IncidentPacket;
   diagnosisResult?: DiagnosisResult;
+  consoleNarrative?: ConsoleNarrative;
 }
 
 export interface IncidentPage {
