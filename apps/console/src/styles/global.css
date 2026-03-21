@@ -2,9 +2,8 @@
 @import "./tokens.css";
 @import "./reset.css";
 @import "./animations.css";
-@import "./shell.css";
-@import "./board.css";
-@import "./evidence-studio.css";
+@import "./lens.css";
+@import "./map.css";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 
