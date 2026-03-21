@@ -4,7 +4,7 @@ import { LensShell } from "../components/lens/LensShell.js";
 
 // ── Mock router ───────────────────────────────────────────────
 
-let mockSearch = { level: 0, tab: "traces", incidentId: undefined as string | undefined, proof: undefined, targetId: undefined };
+let mockSearch = { level: 0, tab: "traces", incidentId: undefined as string | undefined, proof: undefined as string | undefined, targetId: undefined as string | undefined };
 const mockNavigate = vi.fn();
 
 vi.mock("@tanstack/react-router", () => ({
