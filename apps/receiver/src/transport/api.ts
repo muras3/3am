@@ -1,7 +1,17 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
-import { DiagnosisResultSchema, type DiagnosisResult } from "@3amoncall/core";
+import {
+  DiagnosisResultSchema,
+  type DiagnosisResult,
+  type RuntimeMapResponse as LegacyRuntimeMapResponse,
+  type ExtendedIncident,
+  type EvidenceResponse,
+  type ClaimType,
+} from "@3amoncall/core";
+import type { RuntimeMapResponse as InternalRuntimeMapResponse } from "@3amoncall/core/schemas/runtime-map";
+import type { IncidentDetailExtension } from "@3amoncall/core/schemas/incident-detail-extension";
+import type { CuratedEvidenceResponse } from "@3amoncall/core/schemas/curated-evidence";
 import { jwtCookieSetter, jwtCookieValidator } from "../middleware/session-cookie.js";
 import { rateLimiter } from "../middleware/rate-limit.js";
 import type { Incident, IncidentPage, StorageDriver } from "../storage/interface.js";
@@ -10,6 +20,9 @@ import type { SpanBuffer } from "../ambient/span-buffer.js";
 import type { TelemetryStoreDriver } from "../telemetry/interface.js";
 import { buildIncidentQueryFilter } from "../telemetry/interface.js";
 import { computeServices, computeActivity } from "../ambient/service-aggregator.js";
+import { buildRuntimeMap } from "../ambient/runtime-map.js";
+import { buildIncidentDetailExtension } from "../domain/incident-detail-extension.js";
+import { buildCuratedEvidence } from "../domain/curated-evidence.js";
 
 const CHAT_MAX_HISTORY = 10;
 const CHAT_MAX_MESSAGE_CHARS = 500;
@@ -36,6 +49,265 @@ function toIncidentPageResponse(page: IncidentPage): IncidentPageResponse {
   return {
     items: page.items.map(toIncidentResponse),
     nextCursor: page.nextCursor,
+  };
+}
+
+function formatOpenedAgo(iso: string): string {
+  const diffMs = Date.now() - new Date(iso).getTime();
+  const diffMin = Math.max(0, Math.floor(diffMs / 60_000));
+  if (diffMin < 60) return `${diffMin}m`;
+  const diffHours = Math.floor(diffMin / 60);
+  if (diffHours < 24) return `${diffHours}h`;
+  return `${Math.floor(diffHours / 24)}d`;
+}
+
+function inferConfidenceLabelAndValue(text: string): { label: string; value: number } {
+  const lower = text.toLowerCase();
+  if (lower.includes("high")) return { label: "High confidence", value: 0.85 };
+  if (lower.includes("medium")) return { label: "Medium confidence", value: 0.6 };
+  if (lower.includes("low")) return { label: "Low confidence", value: 0.35 };
+  return { label: "Inferred confidence", value: 0.5 };
+}
+
+function chainTag(type: string): string {
+  switch (type) {
+    case "external":
+      return "External Trigger";
+    case "system":
+      return "Design Gap";
+    case "incident":
+      return "Cascade";
+    case "impact":
+      return "User Impact";
+    default:
+      return "Observation";
+  }
+}
+
+function mapSeverity(severity: Incident["packet"]["signalSeverity"]): string {
+  return severity ?? "medium";
+}
+
+function mapRuntimeMapResponse(result: InternalRuntimeMapResponse): LegacyRuntimeMapResponse {
+  return {
+    summary: result.summary,
+    nodes: result.nodes.map((node) => ({
+      id: node.id,
+      tier: node.tier,
+      label: node.label,
+      subtitle: node.subtitle,
+      status: node.status,
+      metrics: {
+        errorRate: node.metrics.errorRate,
+        p95Ms: node.metrics.p95Ms,
+        reqPerSec: node.metrics.reqPerSec,
+      },
+      badges: node.metrics.errorRate > 0 ? [`${Math.round(node.metrics.errorRate * 100)}% err`] : [],
+      incidentId: node.incidentId,
+    })),
+    edges: result.edges.map((edge) => ({
+      fromNodeId: edge.fromNodeId,
+      toNodeId: edge.toNodeId,
+      kind: edge.kind,
+      status: edge.status,
+      trafficHint: `${edge.requestCount}`,
+    })),
+    incidents: result.incidents.map((incident) => ({
+      incidentId: incident.incidentId,
+      label: incident.label,
+      severity: incident.severity,
+      openedAgo: formatOpenedAgo(incident.openedAt),
+    })),
+    state: {
+      diagnosis: result.state.coverage === "cold_start" ? "unavailable" : "ready",
+    },
+  };
+}
+
+function mapExtendedIncident(
+  incident: Incident,
+  extension: IncidentDetailExtension,
+): ExtendedIncident {
+  const dr = incident.diagnosisResult;
+  const severity = mapSeverity(incident.packet.signalSeverity);
+  const confidence = inferConfidenceLabelAndValue(
+    dr?.confidence.confidence_assessment ?? "medium confidence",
+  );
+  const basis =
+    extension.confidencePrimitives.correlations[0] !== undefined
+      ? `${extension.confidencePrimitives.correlations[0].metricName} on ${extension.confidencePrimitives.correlations[0].service} correlates ${extension.confidencePrimitives.correlations[0].correlationValue.toFixed(2)}`
+      : dr?.confidence.confidence_assessment ?? "";
+
+  const chips: ExtendedIncident["chips"] = [];
+  const topBlast = extension.blastRadius[0];
+  if (topBlast) {
+    chips.push({ type: "critical", label: topBlast.displayValue });
+  }
+  const firstSignal = incident.anomalousSignals[0];
+  if (firstSignal) {
+    chips.push({
+      type: firstSignal.signal.includes("429") ? "external" : "system",
+      label: firstSignal.signal,
+    });
+  }
+  const firstDependency = incident.packet.scope.affectedDependencies[0];
+  if (firstDependency) {
+    chips.push({ type: "system", label: firstDependency });
+  }
+
+  const blastRadius: ExtendedIncident["blastRadius"] = extension.blastRadius.map((entry) => ({
+    target: entry.label,
+    status: entry.status,
+    impactValue: entry.impactValue,
+    label: entry.displayValue,
+  }));
+  if (extension.blastRadiusRollup.healthyCount > 0) {
+    blastRadius.push({
+      target: extension.blastRadiusRollup.label,
+      status: "healthy",
+      impactValue: 0,
+      label: "ok",
+    });
+  }
+
+  return {
+    incidentId: incident.incidentId,
+    status: incident.status,
+    severity,
+    openedAt: incident.openedAt,
+    closedAt: incident.closedAt,
+    headline: dr?.summary.what_happened ?? "",
+    chips,
+    action: {
+      text: dr?.recommendation.immediate_action ?? "",
+      rationale: dr?.recommendation.action_rationale_short ?? "",
+      doNot: dr?.recommendation.do_not ?? "",
+    },
+    rootCauseHypothesis: dr?.summary.root_cause_hypothesis ?? "",
+    causalChain: dr?.reasoning.causal_chain.map((step) => ({
+      type: step.type,
+      tag: chainTag(step.type),
+      title: step.title,
+      detail: step.detail,
+    })) ?? [],
+    operatorChecks: dr?.operator_guidance.operator_checks ?? [],
+    impactSummary: {
+      startedAt: extension.impactSummary.startedAt,
+      fullCascadeAt: extension.impactSummary.fullCascadeAt ?? "",
+      diagnosedAt: extension.impactSummary.diagnosedAt ?? "",
+    },
+    blastRadius,
+    confidenceSummary: {
+      label: confidence.label,
+      value: confidence.value,
+      basis,
+      risk: dr?.confidence.uncertainty ?? "",
+    },
+    evidenceSummary: {
+      traces: extension.evidenceSummary.traces,
+      traceErrors: extension.evidenceSummary.traceErrors,
+      metrics: extension.evidenceSummary.metrics,
+      logs: extension.evidenceSummary.logs,
+      logErrors: extension.evidenceSummary.logErrors,
+    },
+    state: extension.state,
+  };
+}
+
+function mapClaimType(metricClassOrKeyword: string): ClaimType {
+  if (metricClassOrKeyword.includes("error") || metricClassOrKeyword.includes("rate")) {
+    return "trigger";
+  }
+  if (metricClassOrKeyword.includes("latency") || metricClassOrKeyword.includes("timeout")) {
+    return "cascade";
+  }
+  if (metricClassOrKeyword.includes("absence")) {
+    return "absence";
+  }
+  return "recovery";
+}
+
+function mapLogSeverity(severity: string): "error" | "warn" | "info" {
+  const upper = severity.toUpperCase();
+  if (upper === "ERROR" || upper === "FATAL") return "error";
+  if (upper === "WARN") return "warn";
+  return "info";
+}
+
+function mapEvidenceResponse(result: CuratedEvidenceResponse): EvidenceResponse {
+  return {
+    proofCards: [],
+    qa: null,
+    sideNotes: [],
+    surfaces: {
+      traces: {
+        observed: result.surfaces.traces.observed.map((trace) => ({
+          traceId: trace.traceId,
+          route: trace.rootSpanName,
+          status: trace.httpStatusCode ?? (trace.status === "error" ? 500 : 200),
+          durationMs: trace.durationMs,
+          spans: trace.spans.map((span) => ({
+            spanId: span.spanId,
+            name: span.spanName,
+            durationMs: span.durationMs,
+            status: span.status,
+            attributes: span.attributes,
+          })),
+        })),
+        expected: result.surfaces.traces.expected.map((trace) => ({
+          traceId: trace.traceId,
+          route: trace.rootSpanName,
+          status: trace.httpStatusCode ?? 200,
+          durationMs: trace.durationMs,
+          spans: trace.spans.map((span) => ({
+            spanId: span.spanId,
+            name: span.spanName,
+            durationMs: span.durationMs,
+            status: span.status,
+            attributes: span.attributes,
+          })),
+        })),
+        smokingGunSpanId: result.surfaces.traces.smokingGunSpanId ?? null,
+      },
+      metrics: {
+        hypotheses: result.surfaces.metrics.groups.map((group) => ({
+          id: group.groupId,
+          type: mapClaimType(group.groupKey.metricClass),
+          claim: group.diagnosisLabel ?? `${group.groupKey.service} ${group.groupKey.metricClass}`,
+          verdict: group.diagnosisVerdict === "Confirmed" ? "Confirmed" : "Inferred",
+          metrics: group.rows.map((row) => ({
+            name: row.name,
+            value: String(row.observedValue),
+            expected: String(row.expectedValue),
+            barPercent: Math.round(row.impactBar * 100),
+          })),
+        })),
+      },
+      logs: {
+        claims: [
+          ...result.surfaces.logs.clusters.map((cluster) => ({
+            id: cluster.clusterId,
+            type: mapClaimType(cluster.clusterKey.keywordHits.join(",")),
+            label: cluster.diagnosisLabel ?? `${cluster.clusterKey.primaryService} ${cluster.clusterKey.severityDominant.toLowerCase()} logs`,
+            count: cluster.entries.length,
+            entries: cluster.entries.map((entry) => ({
+              timestamp: entry.timestamp,
+              severity: mapLogSeverity(entry.severity),
+              body: entry.body,
+              signal: entry.isSignal,
+            })),
+          })),
+          ...result.surfaces.logs.absenceEvidence.map((absence) => ({
+            id: absence.patternId,
+            type: "absence" as const,
+            label: absence.diagnosisLabel ?? absence.defaultLabel,
+            count: 0,
+            entries: [],
+          })),
+        ],
+      },
+    },
+    state: result.state,
   };
 }
 
@@ -119,7 +391,22 @@ export function createApiRouter(storage: StorageDriver, spanBuffer: SpanBuffer |
     if (incident === null) {
       return c.json({ error: "not found" }, 404);
     }
-    return c.json(toIncidentResponse(incident));
+    const base = toIncidentResponse(incident);
+    const extension = await buildIncidentDetailExtension(incident, telemetryStore);
+    return c.json({
+      ...base,
+      ...mapExtendedIncident(incident, extension),
+    });
+  });
+
+  app.get("/api/incidents/:id/evidence", async (c) => {
+    const id = c.req.param("id");
+    const incident = await storage.getIncident(id);
+    if (incident === null) {
+      return c.json({ error: "not found" }, 404);
+    }
+    const result = await buildCuratedEvidence(incident, telemetryStore);
+    return c.json(mapEvidenceResponse(result));
   });
 
   app.get("/api/packets/:packetId", async (c) => {
@@ -212,6 +499,15 @@ export function createApiRouter(storage: StorageDriver, spanBuffer: SpanBuffer |
   });
 
   // ── Ambient read-model routes (ADR 0029) ─────────────────────────────────────
+
+  app.get("/api/runtime-map", async (c) => {
+    const windowStr = c.req.query("windowMinutes");
+    const windowMinutes = windowStr !== undefined ? parseInt(windowStr, 10) : undefined;
+    const validWindow = windowMinutes !== undefined && !Number.isNaN(windowMinutes) && windowMinutes > 0
+      ? windowMinutes : undefined;
+    const result = await buildRuntimeMap(telemetryStore, storage, validWindow);
+    return c.json(mapRuntimeMapResponse(result));
+  });
 
   app.get("/api/services", (c) => {
     if (!spanBuffer) return c.json([]);
