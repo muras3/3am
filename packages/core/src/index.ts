@@ -5,3 +5,6 @@ export * from "./schemas/thin-event.js";
 export * from "./schemas/extracted-span.js";
 export * from "./schemas/anomalous-signal.js";
 export * from "./schemas/curated-api.js";
+export * from "./schemas/reasoning-structure.js";
+export * from "./schemas/console-narrative.js";
+export * from "./schemas/narrative-utils.js";

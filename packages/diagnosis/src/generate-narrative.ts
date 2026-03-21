@@ -1,0 +1,46 @@
+import type {
+  DiagnosisResult,
+  ReasoningStructure,
+  ConsoleNarrative,
+} from "@3amoncall/core";
+import { buildNarrativePrompt } from "./narrative-prompt.js";
+import { parseNarrative } from "./parse-narrative.js";
+import { callModel } from "./model-client.js";
+
+export type GenerateNarrativeOptions = {
+  /** Model to use for narrative generation. Defaults to claude-haiku-4-5-20251001. */
+  model?: string;
+  /** Prompt version identifier. Defaults to "narrative-v1". */
+  promptVersion?: string;
+};
+
+const DEFAULT_MODEL = "claude-haiku-4-5-20251001";
+const DEFAULT_PROMPT_VERSION = "narrative-v1";
+const MAX_TOKENS = 4096;
+
+/**
+ * Stage 2: Console Narrative Generation.
+ *
+ * Takes stage 1 DiagnosisResult + receiver's ReasoningStructure and
+ * generates operator-readable narrative for the console UI.
+ *
+ * This function generates WORDING ONLY — no judgments, classifications,
+ * or numeric values. All deterministic data comes from the inputs.
+ */
+export async function generateConsoleNarrative(
+  diagnosisResult: DiagnosisResult,
+  context: ReasoningStructure,
+  options?: GenerateNarrativeOptions,
+): Promise<ConsoleNarrative> {
+  const model = options?.model ?? DEFAULT_MODEL;
+  const promptVersion = options?.promptVersion ?? DEFAULT_PROMPT_VERSION;
+
+  const prompt = buildNarrativePrompt(diagnosisResult, context);
+  const raw = await callModel(prompt, { model, maxTokens: MAX_TOKENS });
+
+  return parseNarrative(raw, {
+    model,
+    promptVersion,
+    stage1PacketId: diagnosisResult.metadata.packet_id,
+  }, context);
+}

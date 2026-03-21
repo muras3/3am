@@ -9,7 +9,7 @@ import { drizzle } from "drizzle-orm/postgres-js";
 import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import { eq, desc, lt, and, sql as drizzleSql, count } from "drizzle-orm";
 import { pgTable, text, timestamp, serial, jsonb } from "drizzle-orm/pg-core";
-import type { IncidentPacket, DiagnosisResult, PlatformEvent, ThinEvent } from "@3amoncall/core";
+import type { IncidentPacket, DiagnosisResult, ConsoleNarrative, PlatformEvent, ThinEvent } from "@3amoncall/core";
 import type {
   AnomalousSignal,
   Incident,
@@ -36,6 +36,7 @@ const pgIncidents = pgTable("incidents", {
   closedAt: text("closed_at"),
   packet: jsonb("packet").notNull(),
   diagnosisResult: jsonb("diagnosis_result"),
+  consoleNarrative: jsonb("console_narrative"),
   rawState: jsonb("raw_state"),                   // kept nullable for lazy migration (DJ-6)
   telemetryScope: jsonb("telemetry_scope"),
   spanMembership: jsonb("span_membership"),
@@ -86,6 +87,7 @@ export class PostgresAdapter implements StorageDriver {
         closed_at          TEXT,
         packet             JSONB NOT NULL,
         diagnosis_result   JSONB,
+        console_narrative  JSONB,
         raw_state          JSONB,
         telemetry_scope    JSONB,
         span_membership    JSONB,
@@ -173,6 +175,9 @@ export class PostgresAdapter implements StorageDriver {
     if (row.diagnosisResult) {
       incident.diagnosisResult = row.diagnosisResult as DiagnosisResult;
     }
+    if (row.consoleNarrative) {
+      incident.consoleNarrative = row.consoleNarrative as ConsoleNarrative;
+    }
     if (row.diagnosisDispatchedAt) {
       incident.diagnosisDispatchedAt = row.diagnosisDispatchedAt.toISOString();
     }
@@ -217,6 +222,13 @@ export class PostgresAdapter implements StorageDriver {
     await this.db
       .update(pgIncidents)
       .set({ diagnosisResult: result, updatedAt: new Date() })
+      .where(eq(pgIncidents.incidentId, id));
+  }
+
+  async appendConsoleNarrative(id: string, narrative: ConsoleNarrative): Promise<void> {
+    await this.db
+      .update(pgIncidents)
+      .set({ consoleNarrative: narrative, updatedAt: new Date() })
       .where(eq(pgIncidents.incidentId, id));
   }
 

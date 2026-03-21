@@ -16,6 +16,7 @@ export const incidents = sqliteTable("incidents", {
   closedAt: text("closed_at"),
   packet: text("packet").notNull(),           // JSON string of IncidentPacket
   diagnosisResult: text("diagnosis_result"),  // JSON string of DiagnosisResult | null
+  consoleNarrative: text("console_narrative"), // JSON string of ConsoleNarrative | null
   rawState: text("raw_state"),                // JSON string — kept nullable for lazy migration (DJ-6)
   telemetryScope: text("telemetry_scope"),    // JSON string of TelemetryScope | null
   spanMembership: text("span_membership"),    // JSON string of string[] | null
