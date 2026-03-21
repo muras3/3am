@@ -9,6 +9,18 @@
     ".": {
       "import": "./dist/index.js",
       "types": "./dist/index.d.ts"
+    },
+    "./schemas/curated-evidence": {
+      "import": "./dist/schemas/curated-evidence.js",
+      "types": "./dist/schemas/curated-evidence.d.ts"
+    },
+    "./schemas/runtime-map": {
+      "import": "./dist/schemas/runtime-map.js",
+      "types": "./dist/schemas/runtime-map.d.ts"
+    },
+    "./schemas/incident-detail-extension": {
+      "import": "./dist/schemas/incident-detail-extension.js",
+      "types": "./dist/schemas/incident-detail-extension.d.ts"
     }
   },
   "scripts": {

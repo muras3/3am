@@ -7,7 +7,7 @@
 
 import type { TelemetrySpan, TelemetryStoreDriver, TelemetryQueryFilter } from '../telemetry/interface.js'
 import type { StorageDriver, Incident } from '../storage/interface.js'
-import type { RuntimeMapResponse, RuntimeMapNode, RuntimeMapEdge, RuntimeMapIncident } from '@3amoncall/core'
+import type { RuntimeMapResponse, RuntimeMapNode, RuntimeMapEdge, RuntimeMapIncident } from '@3amoncall/core/schemas/runtime-map'
 import { normalizeDependency } from '../domain/formation.js'
 
 // ── Node ID normalization ──────────────────────────────────────────────────

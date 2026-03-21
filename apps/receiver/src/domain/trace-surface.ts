@@ -10,7 +10,7 @@ import type { TelemetrySpan, TelemetryStoreDriver } from '../telemetry/interface
 import { buildIncidentQueryFilter } from '../telemetry/interface.js'
 import type { Incident } from '../storage/interface.js'
 import { spanMembershipKey } from '../storage/interface.js'
-import type { TraceSurface, GroupedTrace, TraceSpan, EvidenceRef } from '@3amoncall/core'
+import type { TraceSurface, GroupedTrace, TraceSpan, EvidenceRef } from '@3amoncall/core/schemas/curated-evidence'
 import { selectBaseline } from './baseline-selector.js'
 
 // ── Constants ────────────────────────────────────────────────────────────

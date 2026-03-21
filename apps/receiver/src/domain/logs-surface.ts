@@ -9,7 +9,7 @@
 import type { TelemetryLog, TelemetryStoreDriver } from '../telemetry/interface.js'
 import { buildIncidentQueryFilter } from '../telemetry/interface.js'
 import type { TelemetryScope, AnomalousSignal } from '../storage/interface.js'
-import type { LogsSurface, LogCluster, LogEntry, LogClusterKey, EvidenceRef } from '@3amoncall/core'
+import type { LogsSurface, LogCluster, LogEntry, LogClusterKey, EvidenceRef } from '@3amoncall/core/schemas/curated-evidence'
 import { LOG_KEYWORDS } from '../telemetry/constants.js'
 import { detectAbsences } from './absence-detector.js'
 

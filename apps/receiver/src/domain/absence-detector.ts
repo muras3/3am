@@ -11,7 +11,7 @@
 import type { TelemetryLog, TelemetryStoreDriver } from '../telemetry/interface.js'
 import { buildIncidentQueryFilter } from '../telemetry/interface.js'
 import type { TelemetryScope, AnomalousSignal } from '../storage/interface.js'
-import type { AbsenceEvidenceEntry, EvidenceRef } from '@3amoncall/core'
+import type { AbsenceEvidenceEntry, EvidenceRef } from '@3amoncall/core/schemas/curated-evidence'
 
 // ── Pattern Definitions ─────────────────────────────────────────────────
 

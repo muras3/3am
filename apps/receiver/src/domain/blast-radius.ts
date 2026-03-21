@@ -11,7 +11,7 @@
 import type { TelemetryStoreDriver, TelemetrySpan } from '../telemetry/interface.js'
 import { buildIncidentQueryFilter } from '../telemetry/interface.js'
 import type { TelemetryScope } from '../storage/interface.js'
-import type { BlastRadiusEntry, BlastRadiusRollup } from '@3amoncall/core'
+import type { BlastRadiusEntry, BlastRadiusRollup } from '@3amoncall/core/schemas/incident-detail-extension'
 
 // ── Thresholds ────────────────────────────────────────────────────────────
 

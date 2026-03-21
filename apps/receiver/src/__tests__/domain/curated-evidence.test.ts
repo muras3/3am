@@ -13,15 +13,14 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { TelemetryStoreDriver } from '../../telemetry/interface.js'
 import type { Incident } from '../../storage/interface.js'
+import type { IncidentPacket, DiagnosisResult } from '@3amoncall/core'
 import type {
-  IncidentPacket,
   TraceSurface,
   MetricsSurface,
   LogsSurface,
   EvidenceRef,
   BaselineContext,
-  DiagnosisResult,
-} from '@3amoncall/core'
+} from '@3amoncall/core/schemas/curated-evidence'
 
 // ── Mock surface builders ──────────────────────────────────────────────
 

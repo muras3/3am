@@ -10,7 +10,7 @@
 
 import type { TelemetryStoreDriver } from '../telemetry/interface.js'
 import type { Incident } from '../storage/interface.js'
-import type { CuratedEvidenceResponse, EvidenceIndex } from '@3amoncall/core'
+import type { CuratedEvidenceResponse, EvidenceIndex } from '@3amoncall/core/schemas/curated-evidence'
 import { buildTraceSurface } from './trace-surface.js'
 import { buildMetricsSurface } from './metrics-surface.js'
 import { buildLogsSurface } from './logs-surface.js'
