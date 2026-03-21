@@ -89,6 +89,33 @@
   font-feature-settings: "tnum" 1, "ss01" 1;
 }
 
+/* ── Shared UI elements (migrated from shell.css) ─────────── */
+.topbar-logo {
+  font-size: 14px; font-weight: 700; letter-spacing: -0.03em;
+  color: var(--ink);
+  display: flex; align-items: center; gap: 6px;
+}
+.topbar-logo .pulse {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--accent);
+  animation: pulse-glow 2s ease-in-out infinite;
+}
+.topbar-sep { width: 1px; height: 20px; background: var(--line); }
+.severity-badge {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 2px 8px; border-radius: var(--radius-sm);
+  background: var(--accent-soft);
+  color: var(--accent-text);
+  font-size: 11px; font-weight: 600; text-transform: uppercase;
+}
+.severity-badge::before {
+  content: ''; width: 6px; height: 6px; border-radius: 50%;
+  background: var(--accent);
+}
+.severity-badge[data-severity="medium"]::before { background: var(--amber); }
+.severity-badge[data-severity="low"]::before { background: var(--teal); }
+.severity-badge[data-severity="unknown"]::before { background: var(--ink-3); }
+
 .env-tag {
   font-size: var(--fs-xs);
   font-weight: 500;

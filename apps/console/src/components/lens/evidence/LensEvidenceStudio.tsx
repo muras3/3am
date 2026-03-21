@@ -7,6 +7,9 @@ import { LensProofCards } from "./LensProofCards.js";
 import { QAFrame } from "./QAFrame.js";
 import { LensEvidenceTabs } from "./LensEvidenceTabs.js";
 import { LensSideRail } from "./LensSideRail.js";
+import { LensTracesView } from "./LensTracesView.js";
+import { LensMetricsView } from "./LensMetricsView.js";
+import { LensLogsView } from "./LensLogsView.js";
 
 interface Props {
   incidentId: string;
@@ -80,7 +83,6 @@ export function LensEvidenceStudio({ incidentId }: Props) {
       {/* Content grid: main + side rail */}
       <div className="lens-ev-grid">
         <div className="lens-ev-main">
-          {/* Traces panel — F-5 will replace placeholder */}
           <div
             role="tabpanel"
             id="ev-panel-traces"
@@ -88,10 +90,9 @@ export function LensEvidenceStudio({ incidentId }: Props) {
             className="lens-ev-view"
             hidden={tab !== "traces"}
           >
-            <div className="level-placeholder">Traces — coming in F-5</div>
+            <LensTracesView surface={evidence.surfaces.traces} />
           </div>
 
-          {/* Metrics panel — F-5 will replace placeholder */}
           <div
             role="tabpanel"
             id="ev-panel-metrics"
@@ -99,10 +100,9 @@ export function LensEvidenceStudio({ incidentId }: Props) {
             className="lens-ev-view"
             hidden={tab !== "metrics"}
           >
-            <div className="level-placeholder">Metrics — coming in F-5</div>
+            <LensMetricsView surface={evidence.surfaces.metrics} />
           </div>
 
-          {/* Logs panel — F-5 will replace placeholder */}
           <div
             role="tabpanel"
             id="ev-panel-logs"
@@ -110,7 +110,7 @@ export function LensEvidenceStudio({ incidentId }: Props) {
             className="lens-ev-view"
             hidden={tab !== "logs"}
           >
-            <div className="level-placeholder">Logs — coming in F-5</div>
+            <LensLogsView surface={evidence.surfaces.logs} />
           </div>
         </div>
 

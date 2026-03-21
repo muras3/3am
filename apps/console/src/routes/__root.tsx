@@ -1,14 +1,8 @@
-import { lazy, Suspense } from "react";
+import { Suspense } from "react";
 import { createRootRouteWithContext } from "@tanstack/react-router";
 import type { QueryClient } from "@tanstack/react-query";
-import { AppShell } from "../components/shell/AppShell.js";
 import { parseIncidentId } from "../lib/incidentId.js";
-
-const LensShell = lazy(() =>
-  import("../components/lens/LensShell.js").then((m) => ({ default: m.LensShell })),
-);
-
-const useLensUI = import.meta.env?.VITE_LENS_UI === "true";
+import { LensShell } from "../components/lens/LensShell.js";
 
 export interface RouterContext {
   queryClient: QueryClient;
@@ -46,12 +40,6 @@ function parseOptionalString(value: unknown): string | undefined {
 export const rootRoute = createRootRouteWithContext<RouterContext>()({
   validateSearch: (search: Record<string, unknown>): LensSearchParams => {
     const incidentId = parseIncidentId(search["incidentId"]);
-
-    if (!useLensUI) {
-      // Gate off: strip unknown params, return only incidentId with defaults
-      return { incidentId, level: 0, tab: "traces" };
-    }
-
     const level = parseLensLevel(search["level"]);
     // Auto-derive level from incidentId when level is not explicitly set
     const effectiveLevel: LensLevel =
@@ -65,12 +53,9 @@ export const rootRoute = createRootRouteWithContext<RouterContext>()({
       targetId: parseOptionalString(search["targetId"]),
     };
   },
-  component: () =>
-    useLensUI ? (
-      <Suspense fallback={null}>
-        <LensShell />
-      </Suspense>
-    ) : (
-      <AppShell />
-    ),
+  component: () => (
+    <Suspense fallback={null}>
+      <LensShell />
+    </Suspense>
+  ),
 });
