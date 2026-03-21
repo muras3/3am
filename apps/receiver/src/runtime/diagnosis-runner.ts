@@ -1,9 +1,14 @@
 import { diagnose, generateConsoleNarrative } from "@3amoncall/diagnosis";
 import type { ReasoningStructure } from "@3amoncall/core";
-import type { StorageDriver } from "../storage/interface.js";
+import type { StorageDriver, Incident } from "../storage/interface.js";
+import type { TelemetryStoreDriver } from "../telemetry/interface.js";
+import { buildReasoningStructure } from "../domain/reasoning-structure-builder.js";
 
 export class DiagnosisRunner {
-  constructor(private readonly storage: StorageDriver) {}
+  constructor(
+    private readonly storage: StorageDriver,
+    private readonly telemetryStore: TelemetryStoreDriver,
+  ) {}
 
   async run(incidentId: string): Promise<boolean> {
     if (!process.env["ANTHROPIC_API_KEY"]) {
@@ -23,7 +28,7 @@ export class DiagnosisRunner {
       await this.storage.appendDiagnosis(incidentId, result);
 
       // Stage 2: console narrative generation (graceful degradation — failure does not affect stage 1)
-      await this.runNarrativeGeneration(incidentId, result);
+      await this.runNarrativeGeneration(incident, result);
 
       return true;
     } catch (err) {
@@ -33,38 +38,59 @@ export class DiagnosisRunner {
   }
 
   /**
-   * Stage 2: generate console narrative from stage 1 result + receiver context.
-   * Wrapped in try/catch — if this fails, stage 1 result is already stored.
+   * Re-run stage 2 only for an incident that already has a stage 1 result.
+   * CLI / ops use only — not exposed to console UI.
    */
-  private async runNarrativeGeneration(
-    incidentId: string,
-    diagnosisResult: Awaited<ReturnType<typeof diagnose>>,
-  ): Promise<void> {
-    try {
-      const reasoningStructure = await this.buildReasoningStructure(incidentId);
-      if (!reasoningStructure) {
-        console.warn(`[diagnosis-runner] could not build reasoning structure for ${incidentId} — skipping narrative`);
-        return;
-      }
-
-      const narrative = await generateConsoleNarrative(diagnosisResult, reasoningStructure);
-      await this.storage.appendConsoleNarrative(incidentId, narrative);
-    } catch (err) {
-      console.warn(`[diagnosis-runner] narrative generation failed for ${incidentId} (stage 1 result preserved):`, err);
+  async rerunNarrative(incidentId: string): Promise<boolean> {
+    const incident = await this.storage.getIncident(incidentId);
+    if (!incident) {
+      console.warn(`[diagnosis-runner] incident ${incidentId} not found`);
+      return false;
     }
+    if (!incident.diagnosisResult) {
+      console.warn(`[diagnosis-runner] incident ${incidentId} has no stage 1 result — cannot re-run narrative`);
+      return false;
+    }
+
+    await this.runNarrativeGeneration(incident, incident.diagnosisResult);
+    // Check if narrative was saved
+    const updated = await this.storage.getIncident(incidentId);
+    return updated?.consoleNarrative != null;
   }
 
   /**
-   * Build ReasoningStructure from incident data.
-   * TODO: This is a placeholder. The full implementation belongs to the receiver plan
-   * and will compute proof refs, blast radius, absence candidates, etc. from
-   * TelemetryStore data. For now, returns null to skip narrative generation.
+   * Stage 2: generate console narrative from stage 1 result + receiver context.
+   * Wrapped in try/catch — if this fails, stage 1 result is already stored.
+   * Includes 1 automatic retry on LLM failure.
    */
-  private async buildReasoningStructure(
-    _incidentId: string,
-  ): Promise<ReasoningStructure | null> {
-    // Receiver plan will implement this.
-    // Until then, narrative generation is skipped gracefully.
-    return null;
+  private async runNarrativeGeneration(
+    incident: Incident,
+    diagnosisResult: Awaited<ReturnType<typeof diagnose>>,
+  ): Promise<void> {
+    const incidentId = incident.incidentId;
+    try {
+      const reasoningStructure = await buildReasoningStructure(
+        incident,
+        this.telemetryStore,
+      );
+
+      const tryGenerate = async (): Promise<void> => {
+        const narrative = await generateConsoleNarrative(diagnosisResult, reasoningStructure);
+        await this.storage.appendConsoleNarrative(incidentId, narrative);
+      };
+
+      try {
+        await tryGenerate();
+      } catch (firstErr) {
+        console.warn(`[diagnosis-runner] narrative generation failed for ${incidentId}, retrying once:`, firstErr);
+        try {
+          await tryGenerate();
+        } catch (retryErr) {
+          console.error(`[diagnosis-runner] narrative generation retry also failed for ${incidentId} (stage 1 result preserved):`, retryErr);
+        }
+      }
+    } catch (err) {
+      console.warn(`[diagnosis-runner] could not build reasoning structure for ${incidentId}:`, err);
+    }
   }
 }

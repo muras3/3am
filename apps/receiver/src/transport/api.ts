@@ -16,6 +16,7 @@ import { computeServices, computeActivity } from "../ambient/service-aggregator.
 import { buildRuntimeMap } from "../ambient/runtime-map.js";
 import { buildExtendedIncident } from "../domain/incident-detail-extension.js";
 import { buildCuratedEvidence } from "../domain/curated-evidence.js";
+import type { DiagnosisRunner } from "../runtime/diagnosis-runner.js";
 
 const CHAT_MAX_HISTORY = 10;
 const CHAT_MAX_MESSAGE_CHARS = 500;
@@ -93,7 +94,7 @@ function validateChatBody(body: unknown): { message: string; history: ChatTurn[]
 const apiBodyLimit = (maxSize: number) =>
   bodyLimit({ maxSize, onError: (c) => c.json({ error: "payload too large" }, 413) });
 
-export function createApiRouter(storage: StorageDriver, spanBuffer: SpanBuffer | undefined, telemetryStore: TelemetryStoreDriver): Hono {
+export function createApiRouter(storage: StorageDriver, spanBuffer: SpanBuffer | undefined, telemetryStore: TelemetryStoreDriver, diagnosisRunner?: DiagnosisRunner): Hono {
   const app = new Hono();
 
   // JWT session cookie for chat endpoint (B-11)
@@ -312,6 +313,19 @@ export function createApiRouter(storage: StorageDriver, spanBuffer: SpanBuffer |
 
     return c.json({ correlated, contextual });
   });
+
+  // ── Internal ops endpoint: regenerate stage 2 narrative ───────────────
+  // CLI / ops script only. NOT UI-facing. Console UI must not call this.
+  if (diagnosisRunner) {
+    app.post("/api/incidents/:id/regenerate-narrative", async (c) => {
+      const id = c.req.param("id");
+      const success = await diagnosisRunner.rerunNarrative(id);
+      if (success) {
+        return c.json({ ok: true });
+      }
+      return c.json({ ok: false, error: "narrative regeneration failed" }, 500);
+    });
+  }
 
   return app;
 }

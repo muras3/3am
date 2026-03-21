@@ -143,7 +143,7 @@ export function createApp(storage?: StorageDriver, options?: AppOptions): Hono {
   const telemetryStore = options?.telemetryStore ?? new MemoryTelemetryAdapter();
 
   // DiagnosisRunner: inline LLM diagnosis (ADR 0034 — replaces GitHub Actions dispatch)
-  const runner = new DiagnosisRunner(store);
+  const runner = new DiagnosisRunner(store, telemetryStore);
 
   // Diagnosis quiet period: defer diagnosis until evidence accumulates.
   // Dual trigger: generation threshold OR max wait time (whichever fires first).
@@ -181,7 +181,7 @@ export function createApp(storage?: StorageDriver, options?: AppOptions): Hono {
   });
 
   app.route("/", createIngestRouter(store, spanBuffer, telemetryStore, diagnosisConfig, runner));
-  app.route("/", createApiRouter(store, spanBuffer, telemetryStore));
+  app.route("/", createApiRouter(store, spanBuffer, telemetryStore, runner));
 
   // Static serving for the Console SPA (ADR 0028)
   const consoleDist = options?.consoleDist ?? process.env["CONSOLE_DIST_PATH"];

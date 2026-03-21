@@ -6,6 +6,7 @@
  */
 
 import type { TelemetryStoreDriver } from '../telemetry/interface.js'
+import { buildIncidentQueryFilter } from '../telemetry/interface.js'
 import type { Incident } from '../storage/interface.js'
 import type {
   EvidenceResponse,
@@ -26,7 +27,9 @@ export async function buildCuratedEvidence(
   incident: Incident,
   telemetryStore: TelemetryStoreDriver,
 ): Promise<EvidenceResponse> {
-  const [traceResult, metricsResult, logsResult] = await Promise.all([
+  const incidentFilter = buildIncidentQueryFilter(incident.telemetryScope)
+
+  const [traceResult, metricsResult, logsResult, rawSpans, rawMetrics, rawLogs] = await Promise.all([
     buildTraceSurface(incident, telemetryStore),
     buildMetricsSurface(
       telemetryStore,
@@ -39,6 +42,10 @@ export async function buildCuratedEvidence(
       incident.anomalousSignals,
       incident.spanMembership,
     ),
+    // Canonical counts — same query source as incident-detail-extension.ts
+    telemetryStore.querySpans(incidentFilter),
+    telemetryStore.queryMetrics(incidentFilter),
+    telemetryStore.queryLogs(incidentFilter),
   ])
 
   const evidenceIndex: EvidenceIndex = {
@@ -79,13 +86,11 @@ export async function buildCuratedEvidence(
         ? 'insufficient'
         : 'unavailable'
 
-  const traceCount = traceResult.surface.observed.length
-  const metricCount = metricsResult.surface.groups.reduce(
-    (sum, g) => sum + g.rows.length, 0,
-  )
-  const logCount = logsResult.surface.clusters.reduce(
-    (sum, c) => sum + c.entries.length, 0,
-  )
+  // Canonical counts: unique traceId, raw metric rows, raw log entries
+  // Must match ExtendedIncident.evidenceSummary (incident-detail-extension.ts)
+  const traceCount = new Set(rawSpans.map(s => s.traceId)).size
+  const metricCount = rawMetrics.length
+  const logCount = rawLogs.length
   const evidenceDensity: EvidenceResponse['state']['evidenceDensity'] =
     traceCount > 5 && metricCount > 3 && logCount > 10
       ? 'rich'
