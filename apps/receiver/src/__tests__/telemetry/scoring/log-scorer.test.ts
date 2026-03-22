@@ -71,7 +71,7 @@ describe('scoreLogs', () => {
 
       const result = scoreLogs([fatalLog], DETECT_TIME_MS, new Set())
       expect(result).toHaveLength(1)
-      expect(result[0].score).toBeCloseTo(LOG_SEVERITY_WEIGHTS['FATAL'])
+      expect(result[0]!.score).toBeCloseTo(LOG_SEVERITY_WEIGHTS['FATAL']!)
     })
   })
 
@@ -90,7 +90,7 @@ describe('scoreLogs', () => {
       const result = scoreLogs([log], DETECT_TIME_MS, new Set())
       // temporal_proximity = exp(0) = 1.0
       // score = 2.0 * 1.0 * 1.0 = 2.0
-      expect(result[0].score).toBeCloseTo(2.0)
+      expect(result[0]!.score).toBeCloseTo(2.0)
     })
 
     it('decays with known delta-t values', () => {
@@ -115,8 +115,8 @@ describe('scoreLogs', () => {
       const expectedScore300 = 2.0 * Math.exp(-TEMPORAL_LAMBDA * 300)
       const expectedScore1800 = 2.0 * Math.exp(-TEMPORAL_LAMBDA * 1800)
 
-      expect(result300[0].score).toBeCloseTo(expectedScore300, 4)
-      expect(result1800[0].score).toBeCloseTo(expectedScore1800, 4)
+      expect(result300[0]!.score).toBeCloseTo(expectedScore300, 4)
+      expect(result1800[0]!.score).toBeCloseTo(expectedScore1800, 4)
     })
 
     it('decays symmetrically for logs after detect time', () => {
@@ -135,7 +135,7 @@ describe('scoreLogs', () => {
       const resultAfter = scoreLogs([logAfter], DETECT_TIME_MS, new Set())
 
       // Both should have the same score (symmetric about detect time)
-      expect(resultBefore[0].score).toBeCloseTo(resultAfter[0].score)
+      expect(resultBefore[0]!.score).toBeCloseTo(resultAfter[0]!.score)
     })
   })
 
@@ -154,7 +154,7 @@ describe('scoreLogs', () => {
 
       const result = scoreLogs(logs, DETECT_TIME_MS, new Set())
       expect(result).toHaveLength(1)
-      expect(result[0].groupCount).toBe(3)
+      expect(result[0]!.groupCount).toBe(3)
     })
 
     it('selects representative with highest severity', () => {
@@ -167,7 +167,7 @@ describe('scoreLogs', () => {
 
       const result = scoreLogs(logs, DETECT_TIME_MS, new Set())
       expect(result).toHaveLength(1)
-      expect(result[0].severity).toBe('ERROR')
+      expect(result[0]!.severity).toBe('ERROR')
     })
 
     it('selects earliest timestamp when severities are equal', () => {
@@ -180,7 +180,7 @@ describe('scoreLogs', () => {
 
       const result = scoreLogs(logs, DETECT_TIME_MS, new Set())
       expect(result).toHaveLength(1)
-      expect(result[0].startTimeMs).toBe(DETECT_TIME_MS)
+      expect(result[0]!.startTimeMs).toBe(DETECT_TIME_MS)
     })
 
     it('applies count_factor = 1 + log2(count)', () => {
@@ -192,8 +192,8 @@ describe('scoreLogs', () => {
 
       const result = scoreLogs(logs, DETECT_TIME_MS, new Set())
       // score = severity(2.0) * temporal(1.0) * count_factor(4.0) = 8.0
-      expect(result[0].score).toBeCloseTo(8.0)
-      expect(result[0].groupCount).toBe(8)
+      expect(result[0]!.score).toBeCloseTo(8.0)
+      expect(result[0]!.groupCount).toBe(8)
     })
 
     it('handles all logs having the same bodyHash', () => {
@@ -206,9 +206,9 @@ describe('scoreLogs', () => {
 
       const result = scoreLogs(logs, DETECT_TIME_MS, new Set())
       expect(result).toHaveLength(1)
-      expect(result[0].groupCount).toBe(3)
+      expect(result[0]!.groupCount).toBe(3)
       // Representative should be FATAL (highest severity)
-      expect(result[0].severity).toBe('FATAL')
+      expect(result[0]!.severity).toBe('FATAL')
     })
   })
 
@@ -248,7 +248,7 @@ describe('scoreLogs', () => {
       const resultWithSet = scoreLogs([log], DETECT_TIME_MS, anomalousTraceIds)
       const resultEmpty = scoreLogs([log], DETECT_TIME_MS, new Set())
 
-      expect(resultWithSet[0].score).toBeCloseTo(resultEmpty[0].score)
+      expect(resultWithSet[0]!.score).toBeCloseTo(resultEmpty[0]!.score)
     })
 
     it('does not add bonus when traceId is undefined', () => {
@@ -261,8 +261,8 @@ describe('scoreLogs', () => {
       const result = scoreLogs([log], DETECT_TIME_MS, anomalousTraceIds)
 
       // score should be purely severity * temporal * count, no trace bonus
-      const expected = LOG_SEVERITY_WEIGHTS['ERROR'] * 1.0 * 1.0
-      expect(result[0].score).toBeCloseTo(expected)
+      const expected = LOG_SEVERITY_WEIGHTS['ERROR']! * 1.0 * 1.0
+      expect(result[0]!.score).toBeCloseTo(expected)
     })
   })
 
@@ -311,8 +311,8 @@ describe('scoreLogs', () => {
         })
         const result = scoreLogs([log], DETECT_TIME_MS, new Set())
         // Should have keyword bonus added to base score
-        const baseScore = LOG_SEVERITY_WEIGHTS['ERROR'] * 1.0 * 1.0
-        expect(result[0].score).toBeCloseTo(baseScore + KEYWORD_BONUS)
+        const baseScore = LOG_SEVERITY_WEIGHTS['ERROR']! * 1.0 * 1.0
+        expect(result[0]!.score).toBeCloseTo(baseScore + KEYWORD_BONUS)
       }
     })
 
@@ -323,8 +323,8 @@ describe('scoreLogs', () => {
       })
 
       const result = scoreLogs([log], DETECT_TIME_MS, new Set())
-      const expectedBase = LOG_SEVERITY_WEIGHTS['ERROR'] * 1.0 * 1.0
-      expect(result[0].score).toBeCloseTo(expectedBase)
+      const expectedBase = LOG_SEVERITY_WEIGHTS['ERROR']! * 1.0 * 1.0
+      expect(result[0]!.score).toBeCloseTo(expectedBase)
     })
   })
 
@@ -349,7 +349,7 @@ describe('scoreLogs', () => {
 
       // severity(3.0) * temporal(1.0) * count_factor(1.0) + trace(2.0) + keyword(1.0)
       const expected = 3.0 * 1.0 * 1.0 + TRACE_CORRELATION_BONUS + KEYWORD_BONUS
-      expect(result[0].score).toBeCloseTo(expected)
+      expect(result[0]!.score).toBeCloseTo(expected)
     })
 
     it('sorts results by score descending', () => {
@@ -375,9 +375,9 @@ describe('scoreLogs', () => {
       ]
 
       const result = scoreLogs(logs, DETECT_TIME_MS, new Set())
-      expect(result[0].severity).toBe('FATAL')
-      expect(result[1].severity).toBe('ERROR')
-      expect(result[2].severity).toBe('WARN')
+      expect(result[0]!.severity).toBe('FATAL')
+      expect(result[1]!.severity).toBe('ERROR')
+      expect(result[2]!.severity).toBe('WARN')
     })
 
     it('uses timestamp ascending as tie-breaker', () => {
@@ -398,7 +398,7 @@ describe('scoreLogs', () => {
       const result = scoreLogs([log1, log2], DETECT_TIME_MS, new Set())
       // Both have same |delta| = 5000ms, so same temporal proximity and same score
       // Tie-break: earlier startTimeMs first
-      expect(result[0].startTimeMs).toBeLessThan(result[1].startTimeMs)
+      expect(result[0]!.startTimeMs).toBeLessThan(result[1]!.startTimeMs)
     })
   })
 
@@ -423,14 +423,14 @@ describe('scoreLogs', () => {
       expect(result).toHaveLength(1)
       // Severity weight for DEBUG is 0 (not in LOG_SEVERITY_WEIGHTS)
       // score = 0 * temporal * count = 0
-      expect(result[0].score).toBe(0)
+      expect(result[0]!.score).toBe(0)
     })
 
     it('handles single log correctly', () => {
       const log = makeLog({ bodyHash: 'hash_single_log0' })
       const result = scoreLogs([log], DETECT_TIME_MS, new Set())
       expect(result).toHaveLength(1)
-      expect(result[0].groupCount).toBe(1)
+      expect(result[0]!.groupCount).toBe(1)
     })
 
     it('handles very large time delta without numerical issues', () => {
@@ -441,9 +441,9 @@ describe('scoreLogs', () => {
 
       const result = scoreLogs([log], DETECT_TIME_MS, new Set())
       expect(result).toHaveLength(1)
-      expect(Number.isFinite(result[0].score)).toBe(true)
+      expect(Number.isFinite(result[0]!.score)).toBe(true)
       // Score should be very small due to temporal decay
-      expect(result[0].score).toBeGreaterThanOrEqual(0)
+      expect(result[0]!.score).toBeGreaterThanOrEqual(0)
     })
 
     it('handles multiple groups with different bodyHashes', () => {
@@ -472,13 +472,13 @@ describe('scoreLogs', () => {
       })
 
       const result = scoreLogs([log], DETECT_TIME_MS, new Set())
-      expect(result[0].service).toBe('payment-service')
-      expect(result[0].environment).toBe('staging')
-      expect(result[0].severity).toBe('ERROR')
-      expect(result[0].body).toBe('Payment failed: timeout')
-      expect(result[0].traceId).toBe('trace123')
-      expect(result[0].spanId).toBe('span456')
-      expect(result[0].attributes).toEqual({ key: 'value' })
+      expect(result[0]!.service).toBe('payment-service')
+      expect(result[0]!.environment).toBe('staging')
+      expect(result[0]!.severity).toBe('ERROR')
+      expect(result[0]!.body).toBe('Payment failed: timeout')
+      expect(result[0]!.traceId).toBe('trace123')
+      expect(result[0]!.spanId).toBe('span456')
+      expect(result[0]!.attributes).toEqual({ key: 'value' })
     })
   })
 })

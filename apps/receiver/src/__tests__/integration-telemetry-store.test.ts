@@ -883,7 +883,7 @@ describe("TelemetryStore integration tests (ADR 0032 Step 4+5)", () => {
 
       const incident = (await storage.getIncident(incidentId))!;
       expect(incident.platformEvents.length).toBe(1);
-      expect(incident.platformEvents[0].eventType).toBe("deploy");
+      expect(incident.platformEvents[0]!.eventType).toBe("deploy");
     });
 
     it("rebuildSnapshots includes platformEvents in packet.evidence", async () => {
@@ -906,7 +906,7 @@ describe("TelemetryStore integration tests (ADR 0032 Step 4+5)", () => {
       // rebuildSnapshots is called as part of platform event ingest
       const incident = (await storage.getIncident(incidentId))!;
       expect(incident.packet.evidence.platformEvents.length).toBe(1);
-      expect(incident.packet.evidence.platformEvents[0].eventType).toBe(
+      expect(incident.packet.evidence.platformEvents[0]!.eventType).toBe(
         "config_change",
       );
 

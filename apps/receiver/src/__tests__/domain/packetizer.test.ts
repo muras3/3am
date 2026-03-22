@@ -99,7 +99,7 @@ describe('createPacket', () => {
   })
 
   it('triggerSignals[0].signal is "http_500"', () => {
-    expect(packet.triggerSignals[0].signal).toBe('http_500')
+    expect(packet.triggerSignals[0]!.signal).toBe('http_500')
   })
 
   it('evidence.representativeTraces has length 2 (all spans)', () => {
@@ -236,7 +236,7 @@ describe('createPacket — initialMembership', () => {
   it('initialMembership.anomalousSignals contains signals from anomalous spans', () => {
     const { initialMembership } = createPacket('inc_1', '2023-11-14T22:13:20.000Z', spans)
     expect(initialMembership.anomalousSignals.length).toBeGreaterThan(0)
-    expect(initialMembership.anomalousSignals[0].signal).toBe('http_500')
+    expect(initialMembership.anomalousSignals[0]!.signal).toBe('http_500')
   })
 
   it('initialMembership.telemetryScope.dependencyServices includes peerService values', () => {
@@ -261,8 +261,8 @@ describe('buildAnomalousSignals', () => {
       makeSpan({ httpStatusCode: 429, spanStatusCode: 0, traceId: 't2', spanId: 's2' }),
     ]
     const signals = buildAnomalousSignals(anomalousSpans)
-    expect(signals[0].signal).toBe('http_500')
-    expect(signals[1].signal).toBe('http_429')
+    expect(signals[0]!.signal).toBe('http_500')
+    expect(signals[1]!.signal).toBe('http_429')
   })
 
   it('maps exception to "exception" signal', () => {
@@ -270,7 +270,7 @@ describe('buildAnomalousSignals', () => {
       makeSpan({ exceptionCount: 3, spanStatusCode: 2, traceId: 't1', spanId: 's1' }),
     ]
     const signals = buildAnomalousSignals(anomalousSpans)
-    expect(signals[0].signal).toBe('exception')
+    expect(signals[0]!.signal).toBe('exception')
   })
 
   it('maps spanStatusCode=2 without httpStatusCode to "span_error"', () => {
@@ -278,7 +278,7 @@ describe('buildAnomalousSignals', () => {
       makeSpan({ spanStatusCode: 2, traceId: 't1', spanId: 's1' }),
     ]
     const signals = buildAnomalousSignals(anomalousSpans)
-    expect(signals[0].signal).toBe('span_error')
+    expect(signals[0]!.signal).toBe('span_error')
   })
 })
 

@@ -234,9 +234,9 @@ describe('buildRuntimeMap', () => {
     const result = await buildRuntimeMap(store, storage)
 
     expect(result.nodes.length).toBe(1)
-    expect(result.nodes[0].tier).toBe('entry_point')
-    expect(result.nodes[0].id).toBe('route:api:GET:/users')
-    expect(result.nodes[0].label).toBe('GET /users')
+    expect(result.nodes[0]!.tier).toBe('entry_point')
+    expect(result.nodes[0]!.id).toBe('route:api:GET:/users')
+    expect(result.nodes[0]!.label).toBe('GET /users')
     expect(result.edges).toEqual([])
   })
 
@@ -256,15 +256,15 @@ describe('buildRuntimeMap', () => {
     expect(result.nodes.length).toBe(2)
     const unit = result.nodes.find((n) => n.tier === 'runtime_unit')!
     const dep = result.nodes.find((n) => n.tier === 'dependency')!
-    expect(unit.id).toBe('unit:api:stripe.charges.create')
-    expect(dep.id).toBe('dep:stripe')
-    expect(dep.label).toBe('stripe')
+    expect(unit!.id).toBe('unit:api:stripe.charges.create')
+    expect(dep!.id).toBe('dep:stripe')
+    expect(dep!.label).toBe('stripe')
 
     // Should have 1 edge: unit → dependency
     expect(result.edges.length).toBe(1)
-    expect(result.edges[0].fromNodeId).toBe(unit.id)
-    expect(result.edges[0].toNodeId).toBe(dep.id)
-    expect(result.edges[0].kind).toBe('external')
+    expect(result.edges[0]!.fromNodeId).toBe(unit!.id)
+    expect(result.edges[0]!.toNodeId).toBe(dep!.id)
+    expect(result.edges[0]!.kind).toBe('external')
   })
 
   it('collapses multiple spans with same route into 1 node with aggregated metrics', async () => {
@@ -285,7 +285,7 @@ describe('buildRuntimeMap', () => {
     const result = await buildRuntimeMap(store, storage)
 
     expect(result.nodes.length).toBe(1)
-    const node = result.nodes[0]
+    const node = result.nodes[0]!
     expect(node.metrics.errorRate).toBeCloseTo(0.1, 5) // 1/10
     expect(node.metrics.p95Ms).toBe(100) // p95 of [10..100]
     expect(node.metrics.reqPerSec).toBeGreaterThan(0)
@@ -315,8 +315,8 @@ describe('buildRuntimeMap', () => {
     const storage = makeMockStorage()
 
     const result = await buildRuntimeMap(store, storage)
-    expect(result.nodes[0].status).toBe('critical')
-    expect(result.nodes[0].metrics.errorRate).toBeCloseTo(0.05, 5)
+    expect(result.nodes[0]!.status).toBe('critical')
+    expect(result.nodes[0]!.metrics.errorRate).toBeCloseTo(0.05, 5)
   })
 
   it('sets status to degraded when errorRate >= 0.01 but < 0.05', async () => {
@@ -343,7 +343,7 @@ describe('buildRuntimeMap', () => {
     const storage = makeMockStorage()
 
     const result = await buildRuntimeMap(store, storage)
-    expect(result.nodes[0].status).toBe('degraded')
+    expect(result.nodes[0]!.status).toBe('degraded')
   })
 
   it('deduplicates edges with same from/to', async () => {
@@ -374,7 +374,7 @@ describe('buildRuntimeMap', () => {
     expect(result.nodes.length).toBe(2)
     // 1 merged edge
     expect(result.edges.length).toBe(1)
-    expect(result.edges[0].trafficHint).toBe('2')
+    expect(result.edges[0]!.trafficHint).toBe('2')
   })
 
   it('excludes self-loop edges', async () => {
@@ -432,9 +432,9 @@ describe('buildRuntimeMap', () => {
 
     expect(result.nodes.length).toBe(2)
     expect(result.edges.length).toBe(1)
-    expect(result.edges[0].fromNodeId).toBe('route:api:POST:/checkout')
-    expect(result.edges[0].toNodeId).toBe('unit:api:process-payment')
-    expect(result.edges[0].kind).toBe('internal')
+    expect(result.edges[0]!.fromNodeId).toBe('route:api:POST:/checkout')
+    expect(result.edges[0]!.toNodeId).toBe('unit:api:process-payment')
+    expect(result.edges[0]!.kind).toBe('internal')
   })
 
   it('calculates summary correctly', async () => {
@@ -545,7 +545,7 @@ describe('buildRuntimeMap', () => {
 
     // incidents list should have the open incident
     expect(result.incidents.length).toBe(1)
-    expect(result.incidents[0].incidentId).toBe('inc-1')
+    expect(result.incidents[0]!.incidentId).toBe('inc-1')
   })
 
   it('does not assign closed incidents to nodes', async () => {
@@ -563,7 +563,7 @@ describe('buildRuntimeMap', () => {
 
     const result = await buildRuntimeMap(store, storage)
 
-    const node = result.nodes[0]
+    const node = result.nodes[0]!
     expect(node.incidentId).toBeUndefined()
     expect(result.incidents.length).toBe(0)
     expect(result.summary.activeIncidents).toBe(0)
@@ -592,8 +592,8 @@ describe('buildRuntimeMap', () => {
     const storage = makeMockStorage()
 
     const result = await buildRuntimeMap(store, storage)
-    expect(result.nodes[0].metrics.errorRate).toBeCloseTo(0.05, 5)
-    expect(result.nodes[0].status).toBe('critical')
+    expect(result.nodes[0]!.metrics.errorRate).toBeCloseTo(0.05, 5)
+    expect(result.nodes[0]!.status).toBe('critical')
   })
 
   it('treats spanStatusCode=2 as error', async () => {
@@ -618,7 +618,7 @@ describe('buildRuntimeMap', () => {
     const storage = makeMockStorage()
 
     const result = await buildRuntimeMap(store, storage)
-    expect(result.nodes[0].metrics.errorRate).toBeCloseTo(0.05, 5)
+    expect(result.nodes[0]!.metrics.errorRate).toBeCloseTo(0.05, 5)
   })
 
   it('treats exceptionCount > 0 as error', async () => {
@@ -641,7 +641,7 @@ describe('buildRuntimeMap', () => {
     const storage = makeMockStorage()
 
     const result = await buildRuntimeMap(store, storage)
-    expect(result.nodes[0].metrics.errorRate).toBeCloseTo(0.05, 5)
+    expect(result.nodes[0]!.metrics.errorRate).toBeCloseTo(0.05, 5)
   })
 
   it('creates runtime_unit for INTERNAL spans', async () => {
@@ -657,8 +657,8 @@ describe('buildRuntimeMap', () => {
     const result = await buildRuntimeMap(store, storage)
 
     expect(result.nodes.length).toBe(1)
-    expect(result.nodes[0].tier).toBe('runtime_unit')
-    expect(result.nodes[0].id).toBe('unit:api:db.query')
+    expect(result.nodes[0]!.tier).toBe('runtime_unit')
+    expect(result.nodes[0]!.id).toBe('unit:api:db.query')
   })
 
   it('creates runtime_unit for spans with no spanKind', async () => {
@@ -674,8 +674,8 @@ describe('buildRuntimeMap', () => {
     const result = await buildRuntimeMap(store, storage)
 
     expect(result.nodes.length).toBe(1)
-    expect(result.nodes[0].tier).toBe('runtime_unit')
-    expect(result.nodes[0].id).toBe('unit:worker:background.task')
+    expect(result.nodes[0]!.tier).toBe('runtime_unit')
+    expect(result.nodes[0]!.id).toBe('unit:worker:background.task')
   })
 
   it('window reflects query parameters', async () => {

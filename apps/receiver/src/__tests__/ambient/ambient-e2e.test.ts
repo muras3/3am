@@ -253,7 +253,7 @@ describe("Ambient read model E2E", () => {
 
     // Verify latest-first: each item ts should be >= the next
     for (let i = 0; i < body.length - 1; i++) {
-      expect(body[i].ts).toBeGreaterThanOrEqual(body[i + 1].ts);
+      expect(body[i]!.ts).toBeGreaterThanOrEqual(body[i + 1]!.ts);
     }
   });
 });

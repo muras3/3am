@@ -35,9 +35,9 @@ describe('computeServices', () => {
     )
     const result = computeServices(spans, now)
     expect(result.length).toBe(1)
-    expect(result[0].name).toBe('api')
-    expect(result[0].health).toBe('healthy')
-    expect(result[0].errorRate).toBe(0)
+    expect(result[0]!.name).toBe('api')
+    expect(result[0]!.health).toBe('healthy')
+    expect(result[0]!.errorRate).toBe(0)
   })
 
   it('returns degraded when errorRate >= 0.01', () => {
@@ -50,8 +50,8 @@ describe('computeServices', () => {
     spans.push(makeSpan({ spanId: 'err-0', httpStatusCode: 500, ingestedAt: now - 50_000, startTimeMs: now - 50_000 }))
 
     const result = computeServices(spans, now)
-    expect(result[0].errorRate).toBeCloseTo(0.01, 5)
-    expect(result[0].health).toBe('degraded')
+    expect(result[0]!.errorRate).toBeCloseTo(0.01, 5)
+    expect(result[0]!.health).toBe('degraded')
   })
 
   it('returns critical when errorRate >= 0.05', () => {
@@ -64,8 +64,8 @@ describe('computeServices', () => {
     spans.push(makeSpan({ spanId: 'err-0', httpStatusCode: 500, ingestedAt: now - 50_000, startTimeMs: now - 50_000 }))
 
     const result = computeServices(spans, now)
-    expect(result[0].errorRate).toBeCloseTo(0.05, 5)
-    expect(result[0].health).toBe('critical')
+    expect(result[0]!.errorRate).toBeCloseTo(0.05, 5)
+    expect(result[0]!.health).toBe('critical')
   })
 
   it('returns degraded when p95Ms >= 2000', () => {
@@ -80,8 +80,8 @@ describe('computeServices', () => {
     spans.push(makeSpan({ spanId: 'slow-1', durationMs: 2500, ingestedAt: now - 50_000, startTimeMs: now - 50_000 }))
 
     const result = computeServices(spans, now)
-    expect(result[0].p95Ms).toBe(2500)
-    expect(result[0].health).toBe('degraded')
+    expect(result[0]!.p95Ms).toBe(2500)
+    expect(result[0]!.health).toBe('degraded')
   })
 
   it('returns critical when p95Ms >= 5000', () => {
@@ -96,8 +96,8 @@ describe('computeServices', () => {
     spans.push(makeSpan({ spanId: 'slow-1', durationMs: 6000, ingestedAt: now - 50_000, startTimeMs: now - 50_000 }))
 
     const result = computeServices(spans, now)
-    expect(result[0].p95Ms).toBe(6000)
-    expect(result[0].health).toBe('critical')
+    expect(result[0]!.p95Ms).toBe(6000)
+    expect(result[0]!.health).toBe('critical')
   })
 
   it('error via 429 counts as error', () => {
@@ -109,7 +109,7 @@ describe('computeServices', () => {
     spans.push(makeSpan({ spanId: 'rate-limited', httpStatusCode: 429, ingestedAt: now - 50_000, startTimeMs: now - 50_000 }))
 
     const result = computeServices(spans, now)
-    expect(result[0].errorRate).toBeCloseTo(0.05, 5)
+    expect(result[0]!.errorRate).toBeCloseTo(0.05, 5)
   })
 
   it('error via spanStatusCode=2 counts as error', () => {
@@ -121,7 +121,7 @@ describe('computeServices', () => {
     spans.push(makeSpan({ spanId: 'status-err', spanStatusCode: 2, ingestedAt: now - 50_000, startTimeMs: now - 50_000 }))
 
     const result = computeServices(spans, now)
-    expect(result[0].errorRate).toBeCloseTo(0.05, 5)
+    expect(result[0]!.errorRate).toBeCloseTo(0.05, 5)
   })
 
   it('error via exceptionCount > 0 counts as error', () => {
@@ -133,14 +133,14 @@ describe('computeServices', () => {
     spans.push(makeSpan({ spanId: 'exc-err', exceptionCount: 2, ingestedAt: now - 50_000, startTimeMs: now - 50_000 }))
 
     const result = computeServices(spans, now)
-    expect(result[0].errorRate).toBeCloseTo(0.05, 5)
+    expect(result[0]!.errorRate).toBeCloseTo(0.05, 5)
   })
 
   it('trend array has length 6', () => {
     const now = 1700000300000
     const spans = [makeSpan({ ingestedAt: now - 50_000, startTimeMs: now - 50_000 })]
     const result = computeServices(spans, now)
-    expect(result[0].trend).toHaveLength(6)
+    expect(result[0]!.trend).toHaveLength(6)
   })
 
   it('trend is oldest-first with correct req/s values', () => {
@@ -165,17 +165,17 @@ describe('computeServices', () => {
     spans.push(makeSpan({ spanId: 'b5-2', ingestedAt: now - 30_000, startTimeMs: now - 30_000 }))
 
     const result = computeServices(spans, now)
-    const trend = result[0].trend
+    const trend = result[0]!.trend
     expect(trend).toHaveLength(6)
     // bucket 0,1,2,4 = 0 spans
-    expect(trend[0]).toBe(0)
-    expect(trend[1]).toBe(0)
-    expect(trend[2]).toBe(0)
-    expect(trend[4]).toBe(0)
+    expect(trend[0]!).toBe(0)
+    expect(trend[1]!).toBe(0)
+    expect(trend[2]!).toBe(0)
+    expect(trend[4]!).toBe(0)
     // bucket 3 = 2/60
-    expect(trend[3]).toBeCloseTo(2 / 60, 5)
+    expect(trend[3]!).toBeCloseTo(2 / 60, 5)
     // bucket 5 = 3/60
-    expect(trend[5]).toBeCloseTo(3 / 60, 5)
+    expect(trend[5]!).toBeCloseTo(3 / 60, 5)
   })
 
   it('aggregates multiple services independently', () => {
@@ -213,8 +213,8 @@ describe('computeActivity', () => {
     const result = computeActivity(spans, 5)
     expect(result.length).toBe(5)
     // latest first
-    expect(result[0].ts).toBe(1700000000000 + 9000)
-    expect(result[4].ts).toBe(1700000000000 + 5000)
+    expect(result[0]!.ts).toBe(1700000000000 + 9000)
+    expect(result[4]!.ts).toBe(1700000000000 + 5000)
   })
 
   it('sets anomalous correctly based on isAnomalous()', () => {
@@ -223,8 +223,8 @@ describe('computeActivity', () => {
       makeSpan({ spanId: 'err', httpStatusCode: 500, startTimeMs: 1700000001000, ingestedAt: 1700000001000 }),
     ]
     const result = computeActivity(spans, 10)
-    expect(result[0].anomalous).toBe(false) // 200
-    expect(result[1].anomalous).toBe(true)  // 500
+    expect(result[0]!.anomalous).toBe(false) // 200
+    expect(result[1]!.anomalous).toBe(true)  // 500
   })
 
   it('sets route to "" when httpRoute is undefined', () => {
@@ -232,7 +232,7 @@ describe('computeActivity', () => {
       makeSpan({ httpRoute: undefined, startTimeMs: 1700000000000, ingestedAt: 1700000000000 }),
     ]
     const result = computeActivity(spans, 10)
-    expect(result[0].route).toBe('')
+    expect(result[0]!.route).toBe('')
   })
 
   it('preserves undefined httpStatus when httpStatusCode is undefined', () => {
@@ -240,7 +240,7 @@ describe('computeActivity', () => {
       makeSpan({ httpStatusCode: undefined, startTimeMs: 1700000000000, ingestedAt: 1700000000000 }),
     ]
     const result = computeActivity(spans, 10)
-    expect(result[0].httpStatus).toBeUndefined()
+    expect(result[0]!.httpStatus).toBeUndefined()
   })
 
   it('sorts by health severity desc, reqPerSec desc, name asc', () => {
@@ -253,9 +253,9 @@ describe('computeActivity', () => {
     ]
     const result = computeServices(spans, now)
     expect(result.map((s) => s.name)).toEqual(['svc-b', 'svc-a', 'svc-c'])
-    expect(result[0].health).toBe('critical')
-    expect(result[1].health).toBe('degraded')
-    expect(result[2].health).toBe('healthy')
+    expect(result[0]!.health).toBe('critical')
+    expect(result[1]!.health).toBe('degraded')
+    expect(result[2]!.health).toBe('healthy')
   })
 
   it('maps all RecentActivity fields correctly', () => {
@@ -270,7 +270,7 @@ describe('computeActivity', () => {
       ingestedAt: 1700000005000,
     })
     const result = computeActivity([span], 10)
-    expect(result[0]).toEqual({
+    expect(result[0]!).toEqual({
       ts: 1700000005000,
       service: 'payments',
       route: '/checkout',

@@ -160,7 +160,7 @@ describe('detectAbsences', () => {
     const result = await detectAbsences(store, scope, signals)
 
     expect(result.entries).toHaveLength(1)
-    expect(result.entries[0].patternId).toBe('no-health-check-failure')
+    expect(result.entries[0]!.patternId).toBe('no-health-check-failure')
   })
 
   it('builds EvidenceRef map for detected absences', async () => {
@@ -209,7 +209,7 @@ describe('detectAbsences', () => {
 
     const result = await detectAbsences(store, scope, signals)
 
-    const entry = result.entries[0] // health check
+    const entry = result.entries[0]! // health check
     expect(entry.defaultLabel).toContain(new Date(scope.windowStartMs).toISOString())
     expect(entry.defaultLabel).toContain(new Date(scope.windowEndMs).toISOString())
   })

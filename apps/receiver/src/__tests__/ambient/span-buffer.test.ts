@@ -56,7 +56,7 @@ describe('SpanBuffer', () => {
 
     const result = buf.getAll(now)
     expect(result.length).toBe(1)
-    expect(result[0].spanId).toBe('fresh')
+    expect(result[0]!.spanId).toBe('fresh')
   })
 
   it('includes spans within TTL', () => {
@@ -66,7 +66,7 @@ describe('SpanBuffer', () => {
     buf.push(makeSpan({ spanId: 'boundary', ingestedAt: now - 300_000 }))
     const result = buf.getAll(now)
     expect(result.length).toBe(1)
-    expect(result[0].spanId).toBe('boundary')
+    expect(result[0]!.spanId).toBe('boundary')
   })
 
   it('filters mixed TTL spans correctly', () => {

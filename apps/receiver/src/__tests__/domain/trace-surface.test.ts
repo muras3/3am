@@ -159,7 +159,7 @@ describe('buildTraceSurface', () => {
     const { surface } = await buildTraceSurface(incident, store)
 
     expect(surface.observed).toHaveLength(1)
-    const trace = surface.observed[0]
+    const trace = surface.observed[0]!
     expect(trace.traceId).toBe('trace-1')
     expect(trace.rootSpanName).toBe('GET /api/orders')
     expect(trace.durationMs).toBe(100)
@@ -201,8 +201,8 @@ describe('buildTraceSurface', () => {
 
     const { surface } = await buildTraceSurface(incident, store)
 
-    expect(surface.observed[0].status).toBe('error')
-    const errChild = surface.observed[0].spans.find((s) => s.spanId === 'err-child')!
+    expect(surface.observed[0]!.status).toBe('error')
+    const errChild = surface.observed[0]!.spans.find((s) => s.spanId === 'err-child')!
     expect(errChild.status).toBe('error')
   })
 
@@ -222,8 +222,8 @@ describe('buildTraceSurface', () => {
 
     const { surface } = await buildTraceSurface(incident, store)
 
-    expect(surface.observed[0].status).toBe('slow')
-    expect(surface.observed[0].spans[0].status).toBe('slow')
+    expect(surface.observed[0]!.status).toBe('slow')
+    expect(surface.observed[0]!.spans[0]!.status).toBe('slow')
   })
 
   // ── Test 4: Normal trace → status "ok" ──
@@ -244,8 +244,8 @@ describe('buildTraceSurface', () => {
 
     const { surface } = await buildTraceSurface(incident, store)
 
-    expect(surface.observed[0].status).toBe('ok')
-    expect(surface.observed[0].spans[0].status).toBe('ok')
+    expect(surface.observed[0]!.status).toBe('ok')
+    expect(surface.observed[0]!.spans[0]!.status).toBe('ok')
   })
 
   // ── Test 5: smokingGunSpanId selects highest-scored span ──
@@ -351,8 +351,8 @@ describe('buildTraceSurface', () => {
 
     expect(surface.baseline).toEqual(baselineContext)
     expect(surface.expected).toHaveLength(1)
-    expect(surface.expected[0].traceId).toBe('baseline-trace')
-    expect(surface.expected[0].groupId).toBe('trace:baseline-trace')
+    expect(surface.expected[0]!.traceId).toBe('baseline-trace')
+    expect(surface.expected[0]!.groupId).toBe('trace:baseline-trace')
 
     // Verify selectBaseline was called with correct args
     expect(mockSelectBaseline).toHaveBeenCalledWith(store, {
@@ -501,9 +501,9 @@ describe('buildTraceSurface', () => {
     const { surface } = await buildTraceSurface(incident, store)
 
     expect(surface.observed).toHaveLength(3)
-    expect(surface.observed[0].status).toBe('error')
-    expect(surface.observed[1].status).toBe('slow')
-    expect(surface.observed[2].status).toBe('ok')
+    expect(surface.observed[0]!.status).toBe('error')
+    expect(surface.observed[1]!.status).toBe('slow')
+    expect(surface.observed[2]!.status).toBe('ok')
   })
 
   // ── Only incident-bound spans are included ──
@@ -530,7 +530,7 @@ describe('buildTraceSurface', () => {
     const { surface } = await buildTraceSurface(incident, store)
 
     expect(surface.observed).toHaveLength(1)
-    expect(surface.observed[0].traceId).toBe('trace-1')
+    expect(surface.observed[0]!.traceId).toBe('trace-1')
   })
 
   // ── httpRoute falls back to undefined when affectedRoutes is empty ──

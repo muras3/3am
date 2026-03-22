@@ -85,10 +85,10 @@ export function runTelemetryStoreSuite(
 
         const result = await driver.querySpans({ startMs: 0, endMs: 2000 });
         expect(result).toHaveLength(1);
-        expect(result[0].traceId).toBe("trace_001");
-        expect(result[0].spanId).toBe("span_001");
-        expect(result[0].serviceName).toBe("web");
-        expect(result[0].durationMs).toBe(100);
+        expect(result[0]!.traceId).toBe("trace_001");
+        expect(result[0]!.spanId).toBe("span_001");
+        expect(result[0]!.serviceName).toBe("web");
+        expect(result[0]!.durationMs).toBe(100);
       });
 
       it("UPSERT dedup on (traceId, spanId) — last write wins", async () => {
@@ -99,7 +99,7 @@ export function runTelemetryStoreSuite(
 
         const result = await driver.querySpans({ startMs: 0, endMs: 2000 });
         expect(result).toHaveLength(1);
-        expect(result[0].durationMs).toBe(200);
+        expect(result[0]!.durationMs).toBe(200);
       });
 
       it("accumulates spans with different keys across calls", async () => {
@@ -123,11 +123,11 @@ export function runTelemetryStoreSuite(
         await driver.ingestSpans([span]);
 
         const result = await driver.querySpans({ startMs: 0, endMs: 2000 });
-        expect(result[0].parentSpanId).toBe("parent_001");
-        expect(result[0].httpRoute).toBe("/checkout");
-        expect(result[0].httpStatusCode).toBe(500);
-        expect(result[0].peerService).toBe("stripe");
-        expect(result[0].attributes).toEqual({ "http.method": "POST" });
+        expect(result[0]!.parentSpanId).toBe("parent_001");
+        expect(result[0]!.httpRoute).toBe("/checkout");
+        expect(result[0]!.httpStatusCode).toBe(500);
+        expect(result[0]!.peerService).toBe("stripe");
+        expect(result[0]!.attributes).toEqual({ "http.method": "POST" });
       });
 
       it("handles empty array without error", async () => {
@@ -144,8 +144,8 @@ export function runTelemetryStoreSuite(
 
         const result = await driver.queryMetrics({ startMs: 0, endMs: 2000 });
         expect(result).toHaveLength(1);
-        expect(result[0].name).toBe("http.duration");
-        expect(result[0].summary).toEqual({ count: 10, sum: 500 });
+        expect(result[0]!.name).toBe("http.duration");
+        expect(result[0]!.summary).toEqual({ count: 10, sum: 500 });
       });
 
       it("UPSERT dedup on (service, name, startTimeMs) — last write wins", async () => {
@@ -156,7 +156,7 @@ export function runTelemetryStoreSuite(
 
         const result = await driver.queryMetrics({ startMs: 0, endMs: 2000 });
         expect(result).toHaveLength(1);
-        expect(result[0].summary).toEqual({ count: 15 });
+        expect(result[0]!.summary).toEqual({ count: 15 });
       });
 
       it("accumulates metrics with different keys across calls", async () => {
@@ -183,8 +183,8 @@ export function runTelemetryStoreSuite(
 
         const result = await driver.queryLogs({ startMs: 0, endMs: 2000 });
         expect(result).toHaveLength(1);
-        expect(result[0].severity).toBe("ERROR");
-        expect(result[0].body).toBe("Connection refused");
+        expect(result[0]!.severity).toBe("ERROR");
+        expect(result[0]!.body).toBe("Connection refused");
       });
 
       it("UPSERT dedup on (service, timestamp, bodyHash) — last write wins", async () => {
@@ -195,7 +195,7 @@ export function runTelemetryStoreSuite(
 
         const result = await driver.queryLogs({ startMs: 0, endMs: 2000 });
         expect(result).toHaveLength(1);
-        expect(result[0].severityNumber).toBe(21);
+        expect(result[0]!.severityNumber).toBe(21);
       });
 
       it("accumulates logs with different keys across calls", async () => {
@@ -213,8 +213,8 @@ export function runTelemetryStoreSuite(
         await driver.ingestLogs([log]);
 
         const result = await driver.queryLogs({ startMs: 0, endMs: 2000 });
-        expect(result[0].traceId).toBe("trace_corr");
-        expect(result[0].spanId).toBe("span_corr");
+        expect(result[0]!.traceId).toBe("trace_corr");
+        expect(result[0]!.spanId).toBe("span_corr");
       });
 
       it("handles empty array without error", async () => {
@@ -266,7 +266,7 @@ export function runTelemetryStoreSuite(
           environment: "production",
         });
         expect(result).toHaveLength(1);
-        expect(result[0].environment).toBe("production");
+        expect(result[0]!.environment).toBe("production");
       });
 
       it("returns empty for non-matching filter", async () => {
@@ -307,7 +307,7 @@ export function runTelemetryStoreSuite(
           services: ["api"],
         });
         expect(result).toHaveLength(1);
-        expect(result[0].service).toBe("api");
+        expect(result[0]!.service).toBe("api");
       });
 
       it("filters by environment", async () => {
@@ -321,7 +321,7 @@ export function runTelemetryStoreSuite(
           environment: "staging",
         });
         expect(result).toHaveLength(1);
-        expect(result[0].environment).toBe("staging");
+        expect(result[0]!.environment).toBe("staging");
       });
 
       it("returns empty for non-matching filter", async () => {
@@ -343,7 +343,7 @@ export function runTelemetryStoreSuite(
 
         const result = await driver.queryLogs({ startMs: 1000, endMs: 1500 });
         expect(result).toHaveLength(1);
-        expect(result[0].bodyHash).toBe("h2");
+        expect(result[0]!.bodyHash).toBe("h2");
       });
 
       it("filters by services array", async () => {
@@ -357,7 +357,7 @@ export function runTelemetryStoreSuite(
           services: ["web"],
         });
         expect(result).toHaveLength(1);
-        expect(result[0].service).toBe("web");
+        expect(result[0]!.service).toBe("web");
       });
 
       it("filters by environment", async () => {
@@ -371,7 +371,7 @@ export function runTelemetryStoreSuite(
           environment: "production",
         });
         expect(result).toHaveLength(1);
-        expect(result[0].environment).toBe("production");
+        expect(result[0]!.environment).toBe("production");
       });
 
       it("returns empty for non-matching filter", async () => {
@@ -389,10 +389,10 @@ export function runTelemetryStoreSuite(
 
         const snapshots = await driver.getSnapshots("inc_001");
         expect(snapshots).toHaveLength(1);
-        expect(snapshots[0].incidentId).toBe("inc_001");
-        expect(snapshots[0].snapshotType).toBe("traces");
-        expect(snapshots[0].data).toEqual([{ traceId: "t1" }]);
-        expect(snapshots[0].updatedAt).toBeDefined();
+        expect(snapshots[0]!.incidentId).toBe("inc_001");
+        expect(snapshots[0]!.snapshotType).toBe("traces");
+        expect(snapshots[0]!.data).toEqual([{ traceId: "t1" }]);
+        expect(snapshots[0]!.updatedAt).toBeDefined();
       });
 
       it("updates existing snapshot on same (incidentId, type)", async () => {
@@ -401,7 +401,7 @@ export function runTelemetryStoreSuite(
 
         const snapshots = await driver.getSnapshots("inc_001");
         expect(snapshots).toHaveLength(1);
-        expect(snapshots[0].data).toEqual([{ traceId: "t2" }, { traceId: "t3" }]);
+        expect(snapshots[0]!.data).toEqual([{ traceId: "t2" }, { traceId: "t3" }]);
       });
 
       it("stores multiple snapshot types per incident", async () => {
@@ -438,7 +438,7 @@ export function runTelemetryStoreSuite(
 
         const snapshots = await driver.getSnapshots("inc_001");
         expect(snapshots).toHaveLength(1);
-        expect(snapshots[0].data).toEqual({ t: 1 });
+        expect(snapshots[0]!.data).toEqual({ t: 1 });
       });
     });
 
@@ -495,15 +495,15 @@ export function runTelemetryStoreSuite(
 
         const spans = await driver.querySpans({ startMs: 0, endMs: Number.MAX_SAFE_INTEGER });
         expect(spans).toHaveLength(1);
-        expect(spans[0].spanId).toBe("new");
+        expect(spans[0]!.spanId).toBe("new");
 
         const metrics = await driver.queryMetrics({ startMs: 0, endMs: Number.MAX_SAFE_INTEGER });
         expect(metrics).toHaveLength(1);
-        expect(metrics[0].name).toBe("new_m");
+        expect(metrics[0]!.name).toBe("new_m");
 
         const logs = await driver.queryLogs({ startMs: 0, endMs: Number.MAX_SAFE_INTEGER });
         expect(logs).toHaveLength(1);
-        expect(logs[0].bodyHash).toBe("new_l");
+        expect(logs[0]!.bodyHash).toBe("new_l");
       });
 
       it("keeps rows with ingestedAt >= cutoff", async () => {

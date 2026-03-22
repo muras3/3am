@@ -153,13 +153,13 @@ describe('extractMetricEvidence', () => {
     const result = extractMetricEvidence(body)
 
     expect(result).toHaveLength(1)
-    expect(result[0].name).toBe('http.server.request.duration')
-    expect(result[0].service).toBe('svc-a')
-    expect(result[0].environment).toBe('production')
-    expect(result[0].startTimeMs).toBe(BASE_TIME_MS)
+    expect(result[0]!.name).toBe('http.server.request.duration')
+    expect(result[0]!.service).toBe('svc-a')
+    expect(result[0]!.environment).toBe('production')
+    expect(result[0]!.startTimeMs).toBe(BASE_TIME_MS)
 
     // histogram summary must include count/sum/min/max but NOT bucket arrays
-    const summary = result[0].summary as Record<string, unknown>
+    const summary = result[0]!.summary as Record<string, unknown>
     expect(summary.count).toBe('42')
     expect(summary.sum).toBe(1234.5)
     expect(summary.min).toBe(1.0)
@@ -179,8 +179,8 @@ describe('extractMetricEvidence', () => {
     })
     const result = extractMetricEvidence(body)
     expect(result).toHaveLength(1)
-    expect(result[0].name).toBe('process.cpu.usage')
-    expect((result[0].summary as Record<string, unknown>).asDouble).toBe(0.42)
+    expect(result[0]!.name).toBe('process.cpu.usage')
+    expect((result[0]!.summary as Record<string, unknown>).asDouble).toBe(0.42)
   })
 
   it('falls back to timeUnixNano when startTimeUnixNano is missing', () => {
@@ -193,7 +193,7 @@ describe('extractMetricEvidence', () => {
     })
     const result = extractMetricEvidence(body)
     expect(result).toHaveLength(1)
-    expect(result[0].startTimeMs).toBe(BASE_TIME_MS)
+    expect(result[0]!.startTimeMs).toBe(BASE_TIME_MS)
   })
 
   it('drops datapoints where both timestamp fields are missing', () => {
@@ -231,25 +231,25 @@ describe('extractLogEvidence', () => {
     const body = makeResourceLogs({ severityNumber: 17, bodyString: 'checkout failed' })
     const result = extractLogEvidence(body)
     expect(result).toHaveLength(1)
-    expect(result[0].severity).toBe('ERROR')
-    expect(result[0].body).toBe('checkout failed')
-    expect(result[0].service).toBe('svc-a')
-    expect(result[0].environment).toBe('production')
-    expect(result[0].attributes).toMatchObject({ orderId: expect.anything() })
+    expect(result[0]!.severity).toBe('ERROR')
+    expect(result[0]!.body).toBe('checkout failed')
+    expect(result[0]!.service).toBe('svc-a')
+    expect(result[0]!.environment).toBe('production')
+    expect(result[0]!.attributes).toMatchObject({ orderId: expect.anything() })
   })
 
   it('extracts a WARN log (severityNumber 13)', () => {
     const body = makeResourceLogs({ severityNumber: 13 })
     const result = extractLogEvidence(body)
     expect(result).toHaveLength(1)
-    expect(result[0].severity).toBe('WARN')
+    expect(result[0]!.severity).toBe('WARN')
   })
 
   it('extracts a FATAL log (severityNumber 21)', () => {
     const body = makeResourceLogs({ severityNumber: 21 })
     const result = extractLogEvidence(body)
     expect(result).toHaveLength(1)
-    expect(result[0].severity).toBe('FATAL')
+    expect(result[0]!.severity).toBe('FATAL')
   })
 
   it('excludes INFO logs (severityNumber 12)', () => {
@@ -276,8 +276,8 @@ describe('extractLogEvidence', () => {
     const body = makeResourceLogs({ severityNumber: 17, bodyOther: { kvlistValue: { values: [] } } })
     const result = extractLogEvidence(body)
     expect(result).toHaveLength(1)
-    expect(typeof result[0].body).toBe('string')
-    expect(result[0].body).toContain('kvlistValue')
+    expect(typeof result[0]!.body).toBe('string')
+    expect(result[0]!.body).toContain('kvlistValue')
   })
 
   it('returns empty array for empty resourceLogs', () => {
@@ -310,7 +310,7 @@ describe('extractLogEvidence', () => {
     }
     const result = extractLogEvidence(bodyWithObserved)
     expect(result).toHaveLength(1)
-    expect(result[0].startTimeMs).toBe(BASE_TIME_MS)
+    expect(result[0]!.startTimeMs).toBe(BASE_TIME_MS)
   })
 
   it('excludes log records with no timeUnixNano and no observedTimeUnixNano', () => {
