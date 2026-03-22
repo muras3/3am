@@ -49,21 +49,19 @@ function validateOutputSize(result: DiagnosisResult): void {
   checkStr("confidence.confidence_assessment", result.confidence.confidence_assessment, MAX_STRING);
   checkStr("confidence.uncertainty", result.confidence.uncertainty, MAX_STRING);
 
-  for (let i = 0; i < causal_chain.length; i++) {
-    const step = causal_chain[i];
+  for (const [i, step] of causal_chain.entries()) {
     checkStr(`causal_chain[${i}].title`, step.title, MAX_STRING);
     checkStr(`causal_chain[${i}].detail`, step.detail, MAX_DETAIL);
   }
 
-  for (let i = 0; i < watch_items.length; i++) {
-    const item = watch_items[i];
+  for (const [i, item] of watch_items.entries()) {
     checkStr(`watch_items[${i}].label`, item.label, MAX_STRING);
     checkStr(`watch_items[${i}].state`, item.state, MAX_STRING);
     checkStr(`watch_items[${i}].status`, item.status, MAX_STRING);
   }
 
-  for (let i = 0; i < operator_checks.length; i++) {
-    checkStr(`operator_checks[${i}]`, operator_checks[i], MAX_STRING);
+  for (const [i, check] of operator_checks.entries()) {
+    checkStr(`operator_checks[${i}]`, check, MAX_STRING);
   }
 }
 
