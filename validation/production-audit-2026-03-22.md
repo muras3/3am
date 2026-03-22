@@ -234,3 +234,61 @@ LLM output (required)
 ```
 
 This means any incident without a completed Stage 2 LLM call shows empty proof cards, empty side notes, and default-labeled absence evidence — even though the receiver has already computed all the structural data needed to populate these sections.
+
+---
+
+## 3rd Audit — 2026-03-22 04:12 UTC
+
+**Deploy:** latest develop (includes A-1/A-2/A-3 fixes: deterministic fallback for proof cards, side notes, float rounding)
+**Incidents tested:**
+- `inc_4a512528` — diagnosis: `ready` (Stage 1 + Stage 2 complete)
+- `inc_b8ccbdea` — diagnosis: `unavailable` (no LLM at all)
+
+### Fixed since 2nd audit
+
+| # | Issue | Status | Detail |
+|---|-------|--------|--------|
+| A-1 | Proof cards dependency inversion | **Fixed** | 3 cards (Trigger Evidence / Design Gap / Recovery Path) now render from deterministic `proofRefs` even without LLM. Diagnosed incident shows CONFIRMED/INFERRED badges. Undiagnosed incident shows same 3 cards with deterministic status. |
+| A-2 | Side notes dependency inversion | **Fixed** | Diagnosed: Confidence ("High 90%") + Uncertainty + External Dependencies. Undiagnosed: External Dependencies ("stripe") from `packet.scope`. Deterministic fallback working. |
+| NEW-2 | Incident headline overflow | **Fixed** | `overflow: hidden / text-overflow: ellipsis / white-space: nowrap` — headlines truncate with "..." |
+| NEW-3 | Metrics expected float overflow | **Fixed** | `expected: 3077.7`, `expected: 0.114` — properly rounded |
+
+### Remaining issues
+
+| # | Priority | Issue | Detail |
+|---|----------|-------|--------|
+| R-1 | **P2** | L1 undiagnosed shows empty boxes | Headline, Immediate Action ("Why:" only), Root Cause Hypothesis, Causal Chain — all empty. Boxes render with labels but no content. These are LLM-dependent (Stage 1) so emptiness is correct, but the empty boxes should show a "Diagnosis pending" placeholder instead of blank space |
+| R-2 | **P2** | L0 incident name inconsistent | INC-ED9F387E and INC-4A512528 show headline (truncated with ellipsis). INC-B8CCBDEA shows "validation-web" (no headline because diagnosis unavailable). Correct behavior but visually inconsistent — undiagnosed incidents look sparse |
+| R-3 | **P2** | Operator Check card empty (undiagnosed) | Card title "Operator Check" renders but no items. Should show "Awaiting diagnosis" placeholder |
+| R-4 | **Info** | L0 stats still zero (Req/s, P95) | SpanBuffer expired (5min TTL). By design, but worth noting |
+| R-5 | **Info** | L0 map empty | Same SpanBuffer TTL reason. "No traffic observed yet." |
+| P1-3 | P1 | Q&A null | Still null — Q&A is inherently LLM-dependent, correct behavior |
+| A-3 | **P2** | Absence evidence label write-back | Not verifiable in this audit — need diagnosed incident with narrative absence labels to compare |
+
+### Mock compliance score
+
+**Diagnosed incident (inc_4a512528):**
+
+| Level | Items | Pass | Score |
+|-------|-------|------|-------|
+| L0 | 15 | 13 | 87% |
+| L1 | 17 | 16 | 94% |
+| L2 | 10 | 8 | 80% |
+| Navigation | 6 | 5 | 83% |
+| Tokens | 7 | 7 | 100% |
+| **Total** | **55** | **49** | **89%** |
+
+**Undiagnosed incident (inc_b8ccbdea):**
+
+| Level | Items | Pass | Score |
+|-------|-------|------|-------|
+| L1 | 17 | 9 | 53% |
+| L2 | 10 | 7 | 70% |
+
+Undiagnosed L1 has 8 items that are inherently LLM-dependent (headline, action, root cause, causal chain, operator checks). Excluding these, the **structural compliance (boxes, layout, navigation, design tokens) is 100%**. The "boxes" are all present — they're just empty. Adding "Diagnosis pending" placeholders would bring L1 undiagnosed to 100% structural compliance.
+
+### Overall assessment
+
+The dependency inversion fixes (A-1, A-2) fundamentally changed the degraded path experience. Evidence Studio now shows proof cards, side notes, and properly formatted data even without any LLM involvement. The mock compliance for diagnosed incidents is **89%** (up from 76% in the initial audit and 58% pre-CSS-fix).
+
+Remaining gap to 90%+ is placeholders for empty LLM-dependent sections (R-1, R-3) — these are UI polish, not architectural issues. The structural integrity principle — "LLM fills boxes, doesn't create them" — is now correctly implemented.
