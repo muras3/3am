@@ -21,6 +21,10 @@
     "./schemas/incident-detail-extension": {
       "import": "./dist/schemas/incident-detail-extension.js",
       "types": "./dist/schemas/incident-detail-extension.d.ts"
+    },
+    "./schemas/reasoning-structure": {
+      "import": "./dist/schemas/reasoning-structure.js",
+      "types": "./dist/schemas/reasoning-structure.d.ts"
     }
   },
   "scripts": {

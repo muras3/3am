@@ -14,19 +14,23 @@ import type {
   CuratedMetricsSurface,
   CuratedLogsSurface,
   EvidenceRef,
+  ProofCard,
   QABlock,
   SideNote,
   ConsoleNarrative,
+  ProofCardNarrative,
+  ProofRef,
 } from '@3amoncall/core'
 import { buildTraceSurface } from './trace-surface.js'
 import { buildMetricsSurface } from './metrics-surface.js'
 import { buildLogsSurface } from './logs-surface.js'
+import { buildReasoningStructure } from './reasoning-structure-builder.js'
 
 export async function buildCuratedEvidence(
   incident: Incident,
   telemetryStore: TelemetryStoreDriver,
 ): Promise<EvidenceResponse> {
-  const [traceResult, metricsResult, logsResult] = await Promise.all([
+  const [traceResult, metricsResult, logsResult, reasoningStructure] = await Promise.all([
     buildTraceSurface(incident, telemetryStore),
     buildMetricsSurface(
       telemetryStore,
@@ -39,6 +43,7 @@ export async function buildCuratedEvidence(
       incident.anomalousSignals,
       incident.spanMembership,
     ),
+    buildReasoningStructure(incident, telemetryStore),
   ])
 
   const evidenceIndex: EvidenceIndex = {
@@ -102,7 +107,7 @@ export async function buildCuratedEvidence(
   const narrative = incident.consoleNarrative
 
   return {
-    proofCards: [],
+    proofCards: buildProofCards(narrative?.proofCards, reasoningStructure.proofRefs),
     qa: buildQaBlock(narrative?.qa),
     surfaces: {
       traces: toPublicTraceSurface(traceResult.surface),
@@ -195,6 +200,27 @@ function toPublicLogsSurface(surface: CuratedLogsSurface): EvidenceResponse['sur
       })),
     ],
   }
+}
+
+function buildProofCards(
+  narrativeCards: ProofCardNarrative[] | undefined,
+  proofRefs: ProofRef[],
+): ProofCard[] {
+  if (!narrativeCards) return []
+
+  const refMap = new Map(proofRefs.map((r) => [r.cardId, r]))
+
+  return narrativeCards.map((card) => {
+    const ref = refMap.get(card.id)
+    return {
+      id: card.id,
+      label: card.label,
+      status: ref?.status ?? 'pending',
+      summary: card.summary,
+      targetSurface: ref?.targetSurface ?? 'traces',
+      evidenceRefs: ref?.evidenceRefs ?? [],
+    }
+  })
 }
 
 function buildQaBlock(qa: ConsoleNarrative['qa'] | undefined): QABlock | null {
