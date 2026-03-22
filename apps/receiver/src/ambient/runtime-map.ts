@@ -76,7 +76,7 @@ function computeP95(durations: number[]): number {
   if (durations.length === 0) return 0
   const sorted = [...durations].sort((a, b) => a - b)
   const idx = Math.ceil(sorted.length * 0.95) - 1
-  return sorted[Math.max(0, idx)]
+  return sorted[Math.max(0, idx)] ?? 0
 }
 
 // ── Node status ────────────────────────────────────────────────────────────
@@ -360,7 +360,7 @@ export async function buildRuntimeMap(
 
   const entryPointNodes = nodes.filter((n) => n.tier === 'entry_point')
   const degradedNodes = nodes.filter((n) => n.status !== 'healthy').length
-  const clusterReqPerSec = entryPointNodes.reduce((sum, n) => sum + n.metrics.reqPerSec, 0)
+  const clusterReqPerSec = entryPointNodes.reduce((sum, n) => sum + (n.metrics.reqPerSec ?? 0), 0)
   const clusterP95Ms = computeP95(allEntryPointDurations)
 
   return {

@@ -233,7 +233,7 @@ export async function extractTelemetryLogs(body: unknown): Promise<TelemetryLog[
 
   const results: TelemetryLog[] = pending.map((p, i) => {
     const { rawBody: _rawBody, ...rest } = p
-    return { ...rest, bodyHash: hashes[i] }
+    return { ...rest, bodyHash: hashes[i] ?? '' }
   })
 
   return results

@@ -114,10 +114,12 @@ function hasShortWindowRepetition(spans: ExtractedSpan[]): boolean {
 
   for (let left = 0; left < sorted.length; left++) {
     let right = left
-    while (
-      right < sorted.length &&
-      sorted[right].startTimeMs - sorted[left].startTimeMs <= DEPENDENCY_AUTH_FAILURE_WINDOW_MS
-    ) {
+    const leftSpan = sorted[left]
+    if (leftSpan === undefined) continue
+    while (right < sorted.length) {
+      const rightSpan = sorted[right]
+      if (rightSpan === undefined) break
+      if (rightSpan.startTimeMs - leftSpan.startTimeMs > DEPENDENCY_AUTH_FAILURE_WINDOW_MS) break
       right += 1
     }
     if (right - left >= DEPENDENCY_AUTH_FAILURE_MIN_REPETITIONS) {

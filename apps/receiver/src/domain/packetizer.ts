@@ -238,7 +238,8 @@ export function selectRepresentativeTraces(spans: ExtractedSpan[]): Representati
         // Try to find a score=0 Phase 2 pick (Case 1)
         let replacedIdx = -1
         for (let i = selected.length - 1; i >= phase2Start; i--) {
-          if (scoreSpan(selected[i]) === 0) {
+          const candidate = selected[i]
+          if (candidate !== undefined && scoreSpan(candidate) === 0) {
             replacedIdx = i
             break
           }

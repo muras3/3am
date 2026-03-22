@@ -362,9 +362,10 @@ export class PostgresAdapter implements StorageDriver {
       .limit(opts.limit)
       .offset(offset);
 
-    const [{ total }] = await this.db
+    const totalRows = await this.db
       .select({ total: count() })
       .from(pgIncidents);
+    const total = totalRows[0]?.total ?? 0;
 
     const nextOffset = offset + opts.limit;
     return {

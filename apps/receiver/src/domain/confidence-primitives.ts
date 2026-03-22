@@ -196,8 +196,10 @@ function buildTemporalDistribution(
   const counts = new Array<number>(bucketStarts.length).fill(0)
   for (const ts of timestamps) {
     for (let i = 0; i < bucketStarts.length; i++) {
-      if (ts >= bucketStarts[i] && ts < bucketStarts[i] + bucketWidth) {
-        counts[i]++
+      const bucketStart = bucketStarts[i]
+      if (bucketStart !== undefined && ts >= bucketStart && ts < bucketStart + bucketWidth) {
+        const cur = counts[i]
+        if (cur !== undefined) counts[i] = cur + 1
         break
       }
     }
@@ -221,16 +223,25 @@ function buildMetricBucketDistribution(
 
   for (let idx = 0; idx < timestamps.length; idx++) {
     const ts = timestamps[idx]
+    if (ts === undefined) continue
+    const val = values[idx]
+    if (val === undefined) continue
     for (let i = 0; i < bucketStarts.length; i++) {
-      if (ts >= bucketStarts[i] && ts < bucketStarts[i] + bucketWidth) {
-        sums[i] += values[idx]
-        counts[i]++
+      const bucketStart = bucketStarts[i]
+      if (bucketStart !== undefined && ts >= bucketStart && ts < bucketStart + bucketWidth) {
+        const curSum = sums[i]
+        const curCount = counts[i]
+        if (curSum !== undefined) sums[i] = curSum + val
+        if (curCount !== undefined) counts[i] = curCount + 1
         break
       }
     }
   }
 
-  return sums.map((sum, i) => (counts[i] > 0 ? sum / counts[i] : 0))
+  return sums.map((sum, i) => {
+    const c = counts[i]
+    return c !== undefined && c > 0 ? sum / c : 0
+  })
 }
 
 // ── Baseline confidence classification ────────────────────────────────────

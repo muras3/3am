@@ -18,7 +18,7 @@ function computeP95(durations: number[]): number {
   if (durations.length === 0) return 0
   const sorted = [...durations].sort((a, b) => a - b)
   const idx = Math.ceil(sorted.length * 0.95) - 1
-  return sorted[idx]
+  return sorted[Math.max(0, idx)] ?? 0
 }
 
 function computeHealth(errorRate: number, p95Ms: number): 'healthy' | 'degraded' | 'critical' {
@@ -36,7 +36,8 @@ function computeTrend(spans: BufferedSpan[], now: number): number[] {
     if (offset < 0) continue
     const bucketIdx = Math.floor(offset / BUCKET_MS)
     if (bucketIdx >= 0 && bucketIdx < TREND_BUCKETS) {
-      buckets[bucketIdx]++
+      const cur = buckets[bucketIdx]
+      if (cur !== undefined) buckets[bucketIdx] = cur + 1
     }
   }
 

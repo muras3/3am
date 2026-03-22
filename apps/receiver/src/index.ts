@@ -59,18 +59,18 @@ export interface AppOptions {
    *  the SPA at "/" and falls back to index.html for unknown paths.
    *  Can also be set via CONSOLE_DIST_PATH env var.
    */
-  consoleDist?: string;
+  consoleDist?: string | undefined;
   /** SpanBuffer instance for the ambient read model (ADR 0029). */
-  spanBuffer?: SpanBuffer;
+  spanBuffer?: SpanBuffer | undefined;
   /** TelemetryStore instance for scored evidence selection (ADR 0032).
    *  When not provided, a MemoryTelemetryAdapter is auto-created (DJ-3).
    */
-  telemetryStore?: TelemetryStoreDriver;
+  telemetryStore?: TelemetryStoreDriver | undefined;
   /**
    * Pre-resolved auth token from resolveAuthToken().
    * When provided, createApp skips env-var lookup and uses this directly.
    */
-  resolvedAuthToken?: string | null;
+  resolvedAuthToken?: string | null | undefined;
 }
 
 export function createApp(storage?: StorageDriver, options?: AppOptions): Hono {
