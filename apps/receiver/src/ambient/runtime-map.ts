@@ -215,13 +215,20 @@ export async function buildRuntimeMap(
   const filter: TelemetryQueryFilter = { startMs, endMs }
   const spans = await telemetryStore.querySpans(filter)
 
-  // Cold start: no spans at all
+  // Cold start: no spans — still show DB incidents so operators can navigate
   if (spans.length === 0) {
+    const incidentPage = await storage.listIncidents({ limit: 100 })
+    const openIncidents = incidentPage.items.filter((i) => i.status === 'open')
     return {
-      summary: { activeIncidents: 0, degradedNodes: 0, clusterReqPerSec: 0, clusterP95Ms: 0 },
+      summary: { activeIncidents: openIncidents.length, degradedNodes: 0, clusterReqPerSec: 0, clusterP95Ms: 0 },
       nodes: [],
       edges: [],
-      incidents: [],
+      incidents: openIncidents.map((i) => ({
+        incidentId: i.incidentId,
+        label: i.packet.scope.primaryService,
+        severity: i.packet.signalSeverity ?? 'medium',
+        openedAgo: formatOpenedAgo(i.openedAt),
+      })),
       state: { diagnosis: 'ready' },
     }
   }

@@ -79,10 +79,12 @@ export async function buildCuratedEvidence(
         ? 'insufficient'
         : 'unavailable'
 
-  // Derive counts from surface results to avoid duplicate queries.
-  // Canonical rule: unique traceId count, metric row count, log entry count.
-  // Trace: each observed group has a unique traceId, so group count = unique trace count.
-  // Metrics/logs: sum rows across groups to get raw-equivalent counts.
+  // Evidence density uses CURATED counts (what the operator sees in Evidence Studio),
+  // not raw telemetry counts. These intentionally differ from
+  // ExtendedIncident.evidenceSummary which reports raw ingested counts (unique
+  // traceIds, raw metric rows, raw log entries). The two endpoints serve
+  // different purposes: evidenceSummary shows data volume, evidenceDensity
+  // reflects curated analytical depth. Do NOT require exact-match between them.
   const traceCount = new Set(traceResult.surface.observed.map(t => t.traceId)).size
   const metricCount = metricsResult.surface.groups.reduce(
     (sum, g) => sum + g.rows.length, 0,
@@ -142,7 +144,10 @@ function toPublicTraceSurface(surface: CuratedTraceSurface): EvidenceResponse['s
         attributes: span.attributes,
       })),
     })),
-    smokingGunSpanId: surface.smokingGunSpanId ?? null,
+    // Internal CuratedTraceSurface stores smokingGunSpanId as "traceId:spanId"
+    // but the public TraceSurface spans only have spanId. Extract just the
+    // spanId part so the frontend can match it against span rows.
+    smokingGunSpanId: extractSpanId(surface.smokingGunSpanId) ?? null,
   }
 }
 
@@ -244,4 +249,15 @@ function mapLogSeverity(severity: string): 'error' | 'warn' | 'info' {
   if (upper === 'ERROR' || upper === 'FATAL') return 'error'
   if (upper === 'WARN') return 'warn'
   return 'info'
+}
+
+/**
+ * Extracts the spanId from a potentially composite "traceId:spanId" format.
+ * If the value contains a colon, returns the part after the last colon.
+ * If no colon, returns the value as-is.
+ */
+function extractSpanId(compositeId: string | undefined): string | undefined {
+  if (!compositeId) return undefined
+  const colonIdx = compositeId.lastIndexOf(':')
+  return colonIdx >= 0 ? compositeId.slice(colonIdx + 1) : compositeId
 }
