@@ -116,7 +116,7 @@ describe('buildLogsSurface', () => {
     )
     expect(cluster).toBeDefined()
     // timeout keyword hit → isSignal should be true even for WARN
-    expect(cluster!.entries[0].isSignal).toBe(true)
+    expect(cluster!.entries[0]!.isSignal).toBe(true)
   })
 
   it('hasTraceCorrelation when traceId matches spanMembership', async () => {
@@ -203,8 +203,8 @@ describe('buildLogsSurface', () => {
 
     const result = await buildLogsSurface(store, scope, [], [])
 
-    const cluster = result.surface.clusters[0]
-    const entry = cluster.entries[0]
+    const cluster = result.surface.clusters[0]!
+    const entry = cluster.entries[0]!
 
     const ref = result.evidenceRefs.get(entry.refId)
     expect(ref).toBeDefined()
@@ -228,7 +228,7 @@ describe('buildLogsSurface', () => {
 
     const result = await buildLogsSurface(store, scope, [], [])
 
-    const entry = result.surface.clusters[0].entries[0]
+    const entry = result.surface.clusters[0]!.entries[0]!
     expect(entry.refId).toBe('web:2025-03-07T16:05:00.000Z:abcdef1234567890')
   })
 
@@ -247,8 +247,8 @@ describe('buildLogsSurface', () => {
     const result = await buildLogsSurface(store, scope, [], [])
 
     // First cluster should have the highest signalCount
-    expect(result.surface.clusters[0].signalCount).toBeGreaterThanOrEqual(
-      result.surface.clusters[result.surface.clusters.length - 1].signalCount,
+    expect(result.surface.clusters[0]!.signalCount).toBeGreaterThanOrEqual(
+      result.surface.clusters[result.surface.clusters.length - 1]!.signalCount,
     )
   })
 
@@ -340,7 +340,7 @@ describe('buildLogsSurface', () => {
 
     const result = await buildLogsSurface(store, scope, [], spanMembership)
 
-    const cluster = result.surface.clusters[0]
+    const cluster = result.surface.clusters[0]!
     expect(cluster.clusterKey.hasTraceCorrelation).toBe(false)
   })
 })

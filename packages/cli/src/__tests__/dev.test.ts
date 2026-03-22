@@ -82,7 +82,7 @@ describe("runDev", () => {
     mockExecSync.mockReturnValue(Buffer.from("Docker version 24.0.0"));
     mockExistsSync.mockReturnValue(false);
     mockReadFileSync.mockImplementation(makeReadFileMock("0.1.0"));
-    mockSpawnSync.mockReturnValue({ status: 0, error: undefined } as ReturnType<typeof childProcess.spawnSync>);
+    mockSpawnSync.mockReturnValue({ status: 0 } as ReturnType<typeof childProcess.spawnSync>);
 
     delete process.env["ANTHROPIC_API_KEY"];
 
@@ -100,7 +100,7 @@ describe("runDev", () => {
     mockExecSync.mockReturnValue(Buffer.from("Docker version 24.0.0"));
     mockExistsSync.mockReturnValue(false);
     mockReadFileSync.mockImplementation(makeReadFileMock("0.1.0"));
-    mockSpawnSync.mockReturnValue({ status: 0, error: undefined } as ReturnType<typeof childProcess.spawnSync>);
+    mockSpawnSync.mockReturnValue({ status: 0 } as ReturnType<typeof childProcess.spawnSync>);
 
     delete process.env["ANTHROPIC_API_KEY"];
 
@@ -118,7 +118,7 @@ describe("runDev", () => {
     mockExecSync.mockReturnValue(Buffer.from("Docker version 24.0.0"));
     mockExistsSync.mockReturnValue(false);
     mockReadFileSync.mockImplementation(makeReadFileMock("0.1.0"));
-    mockSpawnSync.mockReturnValue({ status: 0, error: undefined } as ReturnType<typeof childProcess.spawnSync>);
+    mockSpawnSync.mockReturnValue({ status: 0 } as ReturnType<typeof childProcess.spawnSync>);
 
     process.env["ANTHROPIC_API_KEY"] = "test-key-123";
 
@@ -136,7 +136,7 @@ describe("runDev", () => {
     mockExecSync.mockReturnValue(Buffer.from("Docker version 24.0.0"));
     mockExistsSync.mockReturnValue(true);
     mockReadFileSync.mockImplementation(makeReadFileMock("0.1.0", "ANTHROPIC_API_KEY=dotenv-key-456\n"));
-    mockSpawnSync.mockReturnValue({ status: 0, error: undefined } as ReturnType<typeof childProcess.spawnSync>);
+    mockSpawnSync.mockReturnValue({ status: 0 } as ReturnType<typeof childProcess.spawnSync>);
 
     delete process.env["ANTHROPIC_API_KEY"];
 
@@ -154,7 +154,7 @@ describe("runDev", () => {
     mockExecSync.mockReturnValue(Buffer.from("Docker version 24.0.0"));
     mockExistsSync.mockReturnValue(false);
     mockReadFileSync.mockImplementation(makeReadFileMock("0.1.0"));
-    mockSpawnSync.mockReturnValue({ status: 0, error: undefined } as ReturnType<typeof childProcess.spawnSync>);
+    mockSpawnSync.mockReturnValue({ status: 0 } as ReturnType<typeof childProcess.spawnSync>);
 
     delete process.env["ANTHROPIC_API_KEY"];
 
@@ -171,7 +171,7 @@ describe("runDev", () => {
     mockExecSync.mockReturnValue(Buffer.from("Docker version 24.0.0"));
     mockExistsSync.mockReturnValue(false);
     mockReadFileSync.mockImplementation(makeReadFileMock("1.2.3"));
-    mockSpawnSync.mockReturnValue({ status: 0, error: undefined } as ReturnType<typeof childProcess.spawnSync>);
+    mockSpawnSync.mockReturnValue({ status: 0 } as ReturnType<typeof childProcess.spawnSync>);
 
     delete process.env["ANTHROPIC_API_KEY"];
 
@@ -190,7 +190,7 @@ describe("runDev", () => {
     mockExistsSync.mockReturnValue(false);
     // Simulate unreadable package.json (e.g. wrong path after publish)
     mockReadFileSync.mockImplementation(makeReadFileMock(null));
-    mockSpawnSync.mockReturnValue({ status: 0, error: undefined } as ReturnType<typeof childProcess.spawnSync>);
+    mockSpawnSync.mockReturnValue({ status: 0 } as ReturnType<typeof childProcess.spawnSync>);
 
     delete process.env["ANTHROPIC_API_KEY"];
 

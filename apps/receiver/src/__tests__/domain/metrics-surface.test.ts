@@ -72,10 +72,10 @@ describe('buildMetricsSurface', () => {
     const { surface } = await buildMetricsSurface(store, makeScope(), [])
 
     expect(surface.groups.length).toBeGreaterThanOrEqual(1)
-    const group = surface.groups[0]
+    const group = surface.groups[0]!
     expect(group.groupKey.anomalyMagnitude).toBe('extreme')
-    expect(group.rows[0].zScore).not.toBeNull()
-    expect(Math.abs(group.rows[0].zScore!)).toBeGreaterThan(3)
+    expect(group.rows[0]!.zScore).not.toBeNull()
+    expect(Math.abs(group.rows[0]!.zScore!)).toBeGreaterThan(3)
   })
 
   it('groups metrics by (service, anomalyMagnitude, metricClass)', async () => {
@@ -124,9 +124,9 @@ describe('buildMetricsSurface', () => {
     const { surface } = await buildMetricsSurface(store, makeScope(), [])
 
     expect(surface.groups.length).toBe(1)
-    const row = surface.groups[0].rows[0]
+    const row = surface.groups[0]!.rows[0]!
     expect(row.zScore).toBeNull()
-    expect(surface.groups[0].groupKey.anomalyMagnitude).toBe('baseline')
+    expect(surface.groups[0]!.groupKey.anomalyMagnitude).toBe('baseline')
     expect(row.expectedValue).toBe('N/A')
   })
 
@@ -162,7 +162,7 @@ describe('buildMetricsSurface', () => {
     const store = makeMockStore(incident, baseline)
     const { surface } = await buildMetricsSurface(store, makeScope(), [])
 
-    const row = surface.groups[0].rows[0]
+    const row = surface.groups[0]!.rows[0]!
     // expected = 100, observed = 150, deviation = (150 - 100) / 100 = 0.5
     expect(row.deviation).toBeCloseTo(0.5, 5)
     expect(row.observedValue).toBe(150)
@@ -243,9 +243,9 @@ describe('buildMetricsSurface', () => {
 
     expect(surface.groups.length).toBe(2)
     // extreme should come first
-    expect(surface.groups[0].groupKey.anomalyMagnitude).toBe('extreme')
+    expect(surface.groups[0]!.groupKey.anomalyMagnitude).toBe('extreme')
     // moderate should come second
-    expect(surface.groups[1].groupKey.anomalyMagnitude).toBe('moderate')
+    expect(surface.groups[1]!.groupKey.anomalyMagnitude).toBe('moderate')
   })
 
   it('builds evidenceRef map correctly', async () => {
@@ -284,7 +284,7 @@ describe('buildMetricsSurface', () => {
     const store = makeMockStore(incident, baseline)
     const { surface } = await buildMetricsSurface(store, makeScope(), [])
 
-    const row = surface.groups[0].rows[0]
+    const row = surface.groups[0]!.rows[0]!
     expect(row.zScore).toBeNull()
     // impactBar should be min(1, score/10) — not zero
     expect(row.impactBar).toBeGreaterThanOrEqual(0)
@@ -302,7 +302,7 @@ describe('buildMetricsSurface', () => {
     const { surface } = await buildMetricsSurface(store, makeScope(), [])
 
     for (let i = 0; i < surface.groups.length; i++) {
-      expect(surface.groups[i].groupId).toBe(`mgroup:${i}`)
+      expect(surface.groups[i]!.groupId).toBe(`mgroup:${i}`)
     }
   })
 
@@ -335,7 +335,7 @@ describe('buildMetricsSurface', () => {
     const store = makeMockStore(incident, baseline)
     const { surface } = await buildMetricsSurface(store, makeScope(), [])
 
-    const row = surface.groups[0].rows[0]
+    const row = surface.groups[0]!.rows[0]!
     expect(row.refId).toBe('my-svc:req.latency:1700000012345')
     expect(row.service).toBe('my-svc')
     expect(row.name).toBe('req.latency')

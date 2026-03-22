@@ -16,7 +16,8 @@
     "stylelint": "^17.5.0",
     "stylelint-config-standard": "^40.0.0",
     "tsx": "^4.0.0",
-    "turbo": "^2.x"
+    "turbo": "^2.x",
+    "typescript": "5.9.3"
   },
   "pnpm": {
     "onlyBuiltDependencies": [

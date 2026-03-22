@@ -101,7 +101,7 @@ export function spearmanCorrelation(xs: number[], ys: number[]): number {
 
   let sumD2 = 0
   for (let i = 0; i < n; i++) {
-    const d = rankX[i] - rankY[i]
+    const d = (rankX[i] ?? 0) - (rankY[i] ?? 0)
     sumD2 += d * d
   }
 
@@ -126,11 +126,13 @@ function computeRanks(values: number[]): number[] {
   while (i < n) {
     // Find the extent of the tie group
     let j = i
-    while (j < n && indexed[j].value === indexed[i].value) j++
+    const iEntry = indexed[i]
+    while (j < n && indexed[j]?.value === iEntry?.value) j++
     // Average rank for this tie group (1-based ranks)
     const avgRank = (i + 1 + j) / 2
     for (let k = i; k < j; k++) {
-      ranks[indexed[k].index] = avgRank
+      const kEntry = indexed[k]
+      if (kEntry !== undefined) ranks[kEntry.index] = avgRank
     }
     i = j
   }
@@ -201,8 +203,10 @@ function buildTemporalDistribution(
   const counts = new Array<number>(bucketStarts.length).fill(0)
   for (const ts of timestamps) {
     for (let i = 0; i < bucketStarts.length; i++) {
-      if (ts >= bucketStarts[i] && ts < bucketStarts[i] + bucketWidth) {
-        counts[i]++
+      const bucketStart = bucketStarts[i]
+      if (bucketStart !== undefined && ts >= bucketStart && ts < bucketStart + bucketWidth) {
+        const cur = counts[i]
+        if (cur !== undefined) counts[i] = cur + 1
         break
       }
     }
@@ -291,6 +295,7 @@ export function scoreMetrics(
 
     // Class weight
     const sampleMetric = groupMetrics_[0]
+    if (sampleMetric === undefined) continue
     const metricClass = classifyMetric(sampleMetric.name)
     const classWeight = METRIC_CLASS_WEIGHTS[metricClass] ?? 0.5
 

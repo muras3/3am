@@ -178,7 +178,7 @@ describe('extractSpans', () => {
   it('extracts correct span fields from a valid OTLP payload', () => {
     const spans = extractSpans(validPayload)
     expect(spans).toHaveLength(1)
-    const span = spans[0]
+    const span = spans[0]!
     expect(span.serviceName).toBe('api-service')
     expect(span.environment).toBe('production')
     expect(span.traceId).toBe('abc123')
@@ -192,29 +192,29 @@ describe('extractSpans', () => {
 
   it('extracts peerService from peer.service attribute (ADR 0023)', () => {
     const spans = extractSpans(validPayload)
-    expect(spans[0].peerService).toBe('stripe')
+    expect(spans[0]!.peerService).toBe('stripe')
   })
 
   it('extracts exceptionCount from exception events (ADR 0023)', () => {
     const spans = extractSpans(validPayload)
-    expect(spans[0].exceptionCount).toBe(1)
+    expect(spans[0]!.exceptionCount).toBe(1)
   })
 
   it('sets exceptionCount=0 when no exception events', () => {
     const payloadNoEvents = {
       ...validPayload,
       resourceSpans: [{
-        ...validPayload.resourceSpans[0],
+        ...validPayload.resourceSpans[0]!,
         scopeSpans: [{
           spans: [{
-            ...validPayload.resourceSpans[0].scopeSpans[0].spans[0],
+            ...validPayload.resourceSpans[0]!.scopeSpans[0]!.spans[0]!,
             events: [],
           }],
         }],
       }],
     }
     const spans = extractSpans(payloadNoEvents)
-    expect(spans[0].exceptionCount).toBe(0)
+    expect(spans[0]!.exceptionCount).toBe(0)
   })
 
   it('returns [] for null payload', () => {
@@ -243,7 +243,7 @@ describe('extractSpans', () => {
       }],
     }
     const spans = extractSpans(payload)
-    expect(spans[0].spanKind).toBe(2)
+    expect(spans[0]!.spanKind).toBe(2)
   })
 
   it('sets spanKind to undefined when span.kind is absent', () => {
@@ -260,7 +260,7 @@ describe('extractSpans', () => {
       }],
     }
     const spans = extractSpans(payload)
-    expect(spans[0].spanKind).toBeUndefined()
+    expect(spans[0]!.spanKind).toBeUndefined()
   })
 })
 

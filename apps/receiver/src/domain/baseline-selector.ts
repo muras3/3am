@@ -97,10 +97,12 @@ function selectRepresentativeTraces(spans: TelemetrySpan[]): TelemetrySpan[] {
   // Compute median
   const sorted = [...traceDurations].sort((a, b) => a.totalDuration - b.totalDuration)
   const mid = Math.floor(sorted.length / 2)
+  const midEntry = sorted[mid]
+  const prevEntry = sorted[mid - 1]
   const median =
     sorted.length % 2 === 0
-      ? (sorted[mid - 1].totalDuration + sorted[mid].totalDuration) / 2
-      : sorted[mid].totalDuration
+      ? ((prevEntry?.totalDuration ?? 0) + (midEntry?.totalDuration ?? 0)) / 2
+      : (midEntry?.totalDuration ?? 0)
 
   // Sort by distance from median, pick top MAX_TRACES
   traceDurations.sort(

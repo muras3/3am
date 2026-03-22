@@ -57,8 +57,10 @@ function findKeywordHits(body: string): string[] {
   const lower = body.toLowerCase()
   const hits: string[] = []
   for (let i = 0; i < LOG_KEYWORDS.length; i++) {
-    if (lower.includes(KEYWORD_PATTERNS[i])) {
-      hits.push(LOG_KEYWORDS[i])
+    const pattern = KEYWORD_PATTERNS[i]
+    const keyword = LOG_KEYWORDS[i]
+    if (pattern !== undefined && keyword !== undefined && lower.includes(pattern)) {
+      hits.push(keyword)
     }
   }
   return hits

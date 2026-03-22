@@ -62,7 +62,7 @@ export const curatedQueries = {
           })
         : () => apiFetch<EvidenceResponse>(`/api/incidents/${encodeIncidentId(id)}/evidence`),
       staleTime: 30_000,
-      refetchInterval: useFixtures ? false : undefined,
+      ...(useFixtures && { refetchInterval: false as const }),
       enabled: !!id,
     }),
 };

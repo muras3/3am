@@ -320,9 +320,10 @@ export class SQLiteAdapter implements StorageDriver {
       .limit(opts.limit)
       .offset(offset);
 
-    const [{ count }] = await this.db
+    const countRows = await this.db
       .select({ count: sql<number>`count(*)` })
       .from(incidents);
+    const count = countRows[0]?.count ?? 0;
 
     const nextOffset = offset + opts.limit;
     return {

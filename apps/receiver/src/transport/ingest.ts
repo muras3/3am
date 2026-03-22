@@ -274,7 +274,7 @@ export function createIngestRouter(storage: StorageDriver, spanBuffer: SpanBuffe
     // evidence-only batches that have no trigger-eligible spans (e.g. SERVER 429).
     const anchorSpans = triggerSpans.length > 0 ? triggerSpans : signalSpans;
     const formationKey = buildFormationKey(anchorSpans);
-    const signalTimeMs = anchorSpans[0].startTimeMs;
+    const signalTimeMs = anchorSpans[0]?.startTimeMs ?? 0;
 
     // Find existing open incident for this formation key within window.
     // Phase C: paginate through all pages (cursor loop) so matches are not
@@ -307,7 +307,7 @@ export function createIngestRouter(storage: StorageDriver, spanBuffer: SpanBuffe
     // Use signal time (not server clock) so formation window is anchored to telemetry
     const openedAt = existing
       ? existing.openedAt
-      : new Date(triggerSpans[0].startTimeMs).toISOString();
+      : new Date(triggerSpans[0]?.startTimeMs ?? 0).toISOString();
 
     if (isNew) {
       // Pass all spans (not just anomalous) so the packet captures the full

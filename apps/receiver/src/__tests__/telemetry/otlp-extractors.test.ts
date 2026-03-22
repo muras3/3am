@@ -123,20 +123,20 @@ describe('extractTelemetryMetrics', () => {
     })
     const result = extractTelemetryMetrics(body)
     expect(result).toHaveLength(2)
-    expect(result[0].startTimeMs).toBe(BASE_TIME_MS)
-    expect(result[1].startTimeMs).toBe(SECOND_TIME_MS)
+    expect(result[0]!.startTimeMs).toBe(BASE_TIME_MS)
+    expect(result[1]!.startTimeMs).toBe(SECOND_TIME_MS)
   })
 
   it('extracts histogram datapoint and compresses (drops bucket arrays)', () => {
     const body = makeResourceMetrics({})
     const result = extractTelemetryMetrics(body)
     expect(result).toHaveLength(1)
-    expect(result[0].name).toBe('http.server.request.duration')
-    expect(result[0].service).toBe('svc-a')
-    expect(result[0].environment).toBe('production')
-    expect(result[0].startTimeMs).toBe(BASE_TIME_MS)
+    expect(result[0]!.name).toBe('http.server.request.duration')
+    expect(result[0]!.service).toBe('svc-a')
+    expect(result[0]!.environment).toBe('production')
+    expect(result[0]!.startTimeMs).toBe(BASE_TIME_MS)
 
-    const summary = result[0].summary as Record<string, unknown>
+    const summary = result[0]!.summary as Record<string, unknown>
     expect(summary.count).toBe('42')
     expect(summary.sum).toBe(1234.5)
     expect(summary.min).toBe(1.0)
@@ -158,8 +158,8 @@ describe('extractTelemetryMetrics', () => {
     })
     const result = extractTelemetryMetrics(body)
     expect(result).toHaveLength(2)
-    expect((result[0].summary as Record<string, unknown>).asDouble).toBe(0.42)
-    expect((result[1].summary as Record<string, unknown>).asDouble).toBe(0.85)
+    expect((result[0]!.summary as Record<string, unknown>).asDouble).toBe(0.42)
+    expect((result[1]!.summary as Record<string, unknown>).asDouble).toBe(0.85)
   })
 
   it('extracts sum datapoints', () => {
@@ -173,13 +173,13 @@ describe('extractTelemetryMetrics', () => {
     })
     const result = extractTelemetryMetrics(body)
     expect(result).toHaveLength(1)
-    expect((result[0].summary as Record<string, unknown>).asInt).toBe('100')
+    expect((result[0]!.summary as Record<string, unknown>).asInt).toBe('100')
   })
 
   it('extracts service.name from resource attributes', () => {
     const body = makeResourceMetrics({ serviceName: 'payment-svc' })
     const result = extractTelemetryMetrics(body)
-    expect(result[0].service).toBe('payment-svc')
+    expect(result[0]!.service).toBe('payment-svc')
   })
 
   it('uses timeUnixNano for startTimeMs (observation time priority)', () => {
@@ -194,7 +194,7 @@ describe('extractTelemetryMetrics', () => {
       },
     })
     const result = extractTelemetryMetrics(body)
-    expect(result[0].startTimeMs).toBe(BASE_TIME_MS) // uses timeUnixNano
+    expect(result[0]!.startTimeMs).toBe(BASE_TIME_MS) // uses timeUnixNano
   })
 
   it('falls back to startTimeUnixNano when timeUnixNano is missing', () => {
@@ -209,7 +209,7 @@ describe('extractTelemetryMetrics', () => {
     })
     const result = extractTelemetryMetrics(body)
     expect(result).toHaveLength(1)
-    expect(result[0].startTimeMs).toBe(BASE_TIME_MS)
+    expect(result[0]!.startTimeMs).toBe(BASE_TIME_MS)
   })
 
   it('drops datapoints with no timestamps', () => {
@@ -226,8 +226,8 @@ describe('extractTelemetryMetrics', () => {
     const body = makeResourceMetrics({})
     const result = extractTelemetryMetrics(body)
     const after = Date.now()
-    expect(result[0].ingestedAt).toBeGreaterThanOrEqual(before)
-    expect(result[0].ingestedAt).toBeLessThanOrEqual(after)
+    expect(result[0]!.ingestedAt).toBeGreaterThanOrEqual(before)
+    expect(result[0]!.ingestedAt).toBeLessThanOrEqual(after)
   })
 
   it('skips resources with no service.name', () => {
@@ -268,8 +268,8 @@ describe('extractTelemetryMetrics', () => {
     }
     const result = extractTelemetryMetrics(body)
     expect(result).toHaveLength(2)
-    expect(result[0].name).toBe('metric_a')
-    expect(result[1].name).toBe('metric_b')
+    expect(result[0]!.name).toBe('metric_a')
+    expect(result[1]!.name).toBe('metric_b')
   })
 })
 
@@ -285,28 +285,28 @@ describe('extractTelemetryLogs', () => {
     })
     const result = await extractTelemetryLogs(body)
     expect(result).toHaveLength(1)
-    expect(result[0].severity).toBe('ERROR')
-    expect(result[0].severityNumber).toBe(17)
-    expect(result[0].body).toBe('checkout failed')
-    expect(result[0].service).toBe('svc-a')
-    expect(result[0].environment).toBe('production')
-    expect(result[0].traceId).toBe('abcdef0123456789abcdef0123456789')
-    expect(result[0].spanId).toBe('abcdef0123456789')
+    expect(result[0]!.severity).toBe('ERROR')
+    expect(result[0]!.severityNumber).toBe(17)
+    expect(result[0]!.body).toBe('checkout failed')
+    expect(result[0]!.service).toBe('svc-a')
+    expect(result[0]!.environment).toBe('production')
+    expect(result[0]!.traceId).toBe('abcdef0123456789abcdef0123456789')
+    expect(result[0]!.spanId).toBe('abcdef0123456789')
   })
 
   it('preserves severityNumber as a number', async () => {
     const body = makeResourceLogs({ severityNumber: 21 })
     const result = await extractTelemetryLogs(body)
-    expect(result[0].severityNumber).toBe(21)
-    expect(result[0].severity).toBe('FATAL')
+    expect(result[0]!.severityNumber).toBe(21)
+    expect(result[0]!.severity).toBe('FATAL')
   })
 
   it('extracts WARN severity (severityNumber 13)', async () => {
     const body = makeResourceLogs({ severityNumber: 13 })
     const result = await extractTelemetryLogs(body)
     expect(result).toHaveLength(1)
-    expect(result[0].severity).toBe('WARN')
-    expect(result[0].severityNumber).toBe(13)
+    expect(result[0]!.severity).toBe('WARN')
+    expect(result[0]!.severityNumber).toBe(13)
   })
 
   it('filters out severity below WARN (severityNumber < 13)', async () => {
@@ -325,8 +325,8 @@ describe('extractTelemetryLogs', () => {
       spanId: 'abcdef0123456789',
     })
     const result = await extractTelemetryLogs(body)
-    expect(result[0].traceId).toBe('abcdef0123456789abcdef0123456789')
-    expect(result[0].spanId).toBe('abcdef0123456789')
+    expect(result[0]!.traceId).toBe('abcdef0123456789abcdef0123456789')
+    expect(result[0]!.spanId).toBe('abcdef0123456789')
   })
 
   it('normalizes base64-encoded traceId to hex (protobuf transport)', async () => {
@@ -335,11 +335,11 @@ describe('extractTelemetryLogs', () => {
     const traceIdBase64 = 'q83vASNFZ4mrze8BI0VniQ=='
     const body = makeResourceLogs({ traceId: traceIdBase64 })
     const result = await extractTelemetryLogs(body)
-    expect(result[0].traceId).toBeDefined()
+    expect(result[0]!.traceId).toBeDefined()
     // Should be hex, not base64
-    expect(result[0].traceId).toMatch(/^[0-9a-f]+$/)
+    expect(result[0]!.traceId).toMatch(/^[0-9a-f]+$/)
     // The base64 should convert to the correct hex
-    expect(result[0].traceId).toBe('abcdef0123456789abcdef0123456789')
+    expect(result[0]!.traceId).toBe('abcdef0123456789abcdef0123456789')
   })
 
   it('normalizes base64-encoded spanId to hex', async () => {
@@ -348,23 +348,23 @@ describe('extractTelemetryLogs', () => {
     const spanIdBase64 = 'q83vASNFZ4k='
     const body = makeResourceLogs({ spanId: spanIdBase64 })
     const result = await extractTelemetryLogs(body)
-    expect(result[0].spanId).toBeDefined()
-    expect(result[0].spanId).toMatch(/^[0-9a-f]+$/)
-    expect(result[0].spanId).toBe('abcdef0123456789')
+    expect(result[0]!.spanId).toBeDefined()
+    expect(result[0]!.spanId).toMatch(/^[0-9a-f]+$/)
+    expect(result[0]!.spanId).toBe('abcdef0123456789')
   })
 
   it('sets traceId/spanId to undefined when not present', async () => {
     const body = makeResourceLogs({})
     const result = await extractTelemetryLogs(body)
-    expect(result[0].traceId).toBeUndefined()
-    expect(result[0].spanId).toBeUndefined()
+    expect(result[0]!.traceId).toBeUndefined()
+    expect(result[0]!.spanId).toBeUndefined()
   })
 
   it('computes bodyHash as 16-char hex string', async () => {
     const body = makeResourceLogs({ bodyString: 'Connection refused to 10.0.1.5:5432' })
     const result = await extractTelemetryLogs(body)
-    expect(result[0].bodyHash).toHaveLength(16)
-    expect(result[0].bodyHash).toMatch(/^[0-9a-f]{16}$/)
+    expect(result[0]!.bodyHash).toHaveLength(16)
+    expect(result[0]!.bodyHash).toMatch(/^[0-9a-f]{16}$/)
   })
 
   it('produces same bodyHash for structurally identical messages', async () => {
@@ -372,7 +372,7 @@ describe('extractTelemetryLogs', () => {
     const body2 = makeResourceLogs({ bodyString: 'Connection refused to 10.0.1.6:5432 after 5000ms' })
     const result1 = await extractTelemetryLogs(body1)
     const result2 = await extractTelemetryLogs(body2)
-    expect(result1[0].bodyHash).toBe(result2[0].bodyHash)
+    expect(result1[0]!.bodyHash).toBe(result2[0]!.bodyHash)
   })
 
   it('falls back to observedTimeUnixNano when timeUnixNano is missing', async () => {
@@ -396,7 +396,7 @@ describe('extractTelemetryLogs', () => {
     }
     const result = await extractTelemetryLogs(body)
     expect(result).toHaveLength(1)
-    expect(result[0].startTimeMs).toBe(BASE_TIME_MS)
+    expect(result[0]!.startTimeMs).toBe(BASE_TIME_MS)
   })
 
   it('excludes logs with no timestamp', async () => {
@@ -431,7 +431,7 @@ describe('extractTelemetryLogs', () => {
       ],
     })
     const result = await extractTelemetryLogs(body)
-    expect(result[0].attributes).toMatchObject({
+    expect(result[0]!.attributes).toMatchObject({
       orderId: expect.anything(),
       userId: expect.anything(),
     })
@@ -442,15 +442,15 @@ describe('extractTelemetryLogs', () => {
     const body = makeResourceLogs({})
     const result = await extractTelemetryLogs(body)
     const after = Date.now()
-    expect(result[0].ingestedAt).toBeGreaterThanOrEqual(before)
-    expect(result[0].ingestedAt).toBeLessThanOrEqual(after)
+    expect(result[0]!.ingestedAt).toBeGreaterThanOrEqual(before)
+    expect(result[0]!.ingestedAt).toBeLessThanOrEqual(after)
   })
 
   it('JSON.stringify non-string body values', async () => {
     const body = makeResourceLogs({ bodyOther: { kvlistValue: { values: [] } } })
     const result = await extractTelemetryLogs(body)
     expect(result).toHaveLength(1)
-    expect(typeof result[0].body).toBe('string')
-    expect(result[0].body).toContain('kvlistValue')
+    expect(typeof result[0]!.body).toBe('string')
+    expect(result[0]!.body).toContain('kvlistValue')
   })
 })

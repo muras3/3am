@@ -192,7 +192,7 @@ describe('scoreMetrics', () => {
     const result = scoreMetrics(incident, baseline, [], defaultWindow)
     expect(result).toHaveLength(1)
     // z ≈ 30 / sqrt(50) ≈ 4.243, score ≈ 4.243 * 0.8 ≈ 3.394
-    expect(result[0].score).toBeCloseTo(3.394, 1)
+    expect(result[0]!.score).toBeCloseTo(3.394, 1)
   })
 
   it('uses volume heuristic fallback when baseline < MIN_BASELINE_DATAPOINTS', () => {
@@ -211,7 +211,7 @@ describe('scoreMetrics', () => {
 
     const result = scoreMetrics(incident, baseline, [], defaultWindow)
     expect(result).toHaveLength(1)
-    expect(result[0].score).toBeCloseTo(0.8, 1)
+    expect(result[0]!.score).toBeCloseTo(0.8, 1)
   })
 
   it('uses volume heuristic when baseline stddev is zero', () => {
@@ -231,7 +231,7 @@ describe('scoreMetrics', () => {
 
     const result = scoreMetrics(incident, baseline, [], defaultWindow)
     expect(result).toHaveLength(1)
-    expect(result[0].score).toBeCloseTo(0.4, 1)
+    expect(result[0]!.score).toBeCloseTo(0.4, 1)
   })
 
   it('handles empty baseline (no baseline data)', () => {
@@ -242,7 +242,7 @@ describe('scoreMetrics', () => {
     const result = scoreMetrics(incident, [], [], defaultWindow)
     expect(result).toHaveLength(1)
     // No baseline mean → baseline mean=0 → volume heuristic: min(10, 50) * 0.8
-    expect(result[0].score).toBeGreaterThan(0)
+    expect(result[0]!.score).toBeGreaterThan(0)
   })
 
   it('returns empty array for empty incident metrics', () => {
@@ -260,7 +260,7 @@ describe('scoreMetrics', () => {
 
     const result = scoreMetrics(incident, baseline, [], defaultWindow)
     expect(result).toHaveLength(1)
-    expect(result[0].score).toBeGreaterThan(0)
+    expect(result[0]!.score).toBeGreaterThan(0)
   })
 
   it('does not divide by zero when baseline stddev is 0', () => {
@@ -275,7 +275,7 @@ describe('scoreMetrics', () => {
 
     const result = scoreMetrics(incident, baseline, [], defaultWindow)
     expect(result).toHaveLength(1)
-    expect(Number.isFinite(result[0].score)).toBe(true)
+    expect(Number.isFinite(result[0]!.score)).toBe(true)
   })
 
   // ---------------------------------------------------------------------------
@@ -305,7 +305,7 @@ describe('scoreMetrics', () => {
     const errorResult = scoreMetrics(errorIncident, errorBaseline, [], defaultWindow)
     const throughputResult = scoreMetrics(throughputIncident, throughputBaseline, [], defaultWindow)
 
-    expect(errorResult[0].score).toBeGreaterThan(throughputResult[0].score)
+    expect(errorResult[0]!.score).toBeGreaterThan(throughputResult[0]!.score)
   })
 
   it('uses weight 0.5 for unclassified metrics', () => {
@@ -322,7 +322,7 @@ describe('scoreMetrics', () => {
     expect(result).toHaveLength(1)
     // Baseline: [90, 100, 110] → mean=100, stddev=sqrt(200/3)≈8.165
     // z = (130-100)/8.165 ≈ 3.674, score = 3.674 * 0.5 ≈ 1.837
-    expect(result[0].score).toBeCloseTo(1.837, 1)
+    expect(result[0]!.score).toBeCloseTo(1.837, 1)
   })
 
   // ---------------------------------------------------------------------------
@@ -369,7 +369,7 @@ describe('scoreMetrics', () => {
       { startMs: baseMs, endMs: windowEnd },
     )
 
-    expect(withBonus[0].score).toBeGreaterThanOrEqual(withoutBonus[0].score)
+    expect(withBonus[0]!.score).toBeGreaterThanOrEqual(withoutBonus[0]!.score)
   })
 
   it('does not add Spearman bonus when metric has < 5 datapoints', () => {
@@ -400,7 +400,7 @@ describe('scoreMetrics', () => {
     )
 
     // Should be the same since < 5 datapoints → no bonus
-    expect(withSignals[0].score).toBeCloseTo(withoutSignals[0].score)
+    expect(withSignals[0]!.score).toBeCloseTo(withoutSignals[0]!.score)
   })
 
   // ---------------------------------------------------------------------------
@@ -441,9 +441,9 @@ describe('scoreMetrics', () => {
     const result = scoreMetrics(incident, baseline, [], defaultWindow)
     expect(result).toHaveLength(2)
     // error_rate (weight=1.0) should score higher than throughput (weight=0.6)
-    expect(result[0].name).toBe('http.error_rate')
-    expect(result[1].name).toBe('http.request.count')
-    expect(result[0].score).toBeGreaterThan(result[1].score)
+    expect(result[0]!.name).toBe('http.error_rate')
+    expect(result[1]!.name).toBe('http.request.count')
+    expect(result[0]!.score).toBeGreaterThan(result[1]!.score)
   })
 
   // ---------------------------------------------------------------------------
@@ -462,7 +462,7 @@ describe('scoreMetrics', () => {
 
     const result = scoreMetrics(incident, baseline, [], defaultWindow)
     expect(result).toHaveLength(1)
-    expect(result[0].score).toBeGreaterThan(0)
+    expect(result[0]!.score).toBeGreaterThan(0)
   })
 
   it('skips metrics with non-extractable values', () => {
@@ -506,5 +506,6 @@ describe('scoreMetrics', () => {
     expect(apiResult).toBeDefined()
     // payment z-score is higher → should score higher
     expect(paymentResult!.score).toBeGreaterThan(apiResult!.score)
+
   })
 })

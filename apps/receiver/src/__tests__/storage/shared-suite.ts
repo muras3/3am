@@ -400,8 +400,8 @@ export function runStorageSuite(
 
       const incident = await driver.getIncident(packet.incidentId);
       expect(incident?.anomalousSignals).toHaveLength(2);
-      expect(incident?.anomalousSignals[0].signal).toBe("http_429");
-      expect(incident?.anomalousSignals[1].signal).toBe("slow_span");
+      expect(incident?.anomalousSignals[0]?.signal).toBe("http_429");
+      expect(incident?.anomalousSignals[1]?.signal).toBe("slow_span");
     });
 
     it("appendAnomalousSignals caps at MAX_ANOMALOUS_SIGNALS (B-12)", async () => {
@@ -428,7 +428,7 @@ export function runStorageSuite(
       expect(incident?.anomalousSignals.length).toBeLessThanOrEqual(MAX_ANOMALOUS_SIGNALS);
       // Newest signals should be kept, oldest dropped
       expect(incident?.anomalousSignals[0]?.signal).toBe("sig_50");
-      expect(incident?.anomalousSignals[incident.anomalousSignals.length - 1]?.signal).toBe(
+      expect(incident?.anomalousSignals[incident!.anomalousSignals.length - 1]?.signal).toBe(
         `sig_${MAX_ANOMALOUS_SIGNALS + 49}`,
       );
     });

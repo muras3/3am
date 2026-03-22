@@ -74,7 +74,7 @@ describe("Phase 1: top guarantee", () => {
     // Phase 1 gets only 1, Phase 2/3 fills the rest
     const guaranteed = result.filter((r) => r.score > 0)
     expect(guaranteed).toHaveLength(1)
-    expect(guaranteed[0].id).toBe("a1")
+    expect(guaranteed[0]!.id).toBe("a1")
   })
 
   it("guaranteed items are not subject to diversity key caps", () => {
@@ -144,10 +144,10 @@ describe("Phase 2: service diversity", () => {
 
     // Phase 1: a1. Phase 2: a2 picked first (both unseen, a2 sorted first by id),
     // then b1 (unseen svc-B)
-    expect(result[0].id).toBe("a1")
+    expect(result[0]!.id).toBe("a1")
     // a2 comes before b1 in score-sorted order (same score, "a2" < "b1")
-    expect(result[1].id).toBe("a2")
-    expect(result[2].id).toBe("b1")
+    expect(result[1]!.id).toBe("a2")
+    expect(result[2]!.id).toBe("b1")
   })
 
   it("dynamic preference: once a service appears in Phase 2, next iteration prefers new services", () => {
@@ -313,7 +313,7 @@ describe("edge cases", () => {
     const items = [makeItem({ id: "a1", score: 0, service: "svc-A" })]
     const result = fill(items, { maxItems: 10 })
     expect(result).toHaveLength(1)
-    expect(result[0].id).toBe("a1")
+    expect(result[0]!.id).toBe("a1")
   })
 
   it("maxItems=0 → returns empty", () => {

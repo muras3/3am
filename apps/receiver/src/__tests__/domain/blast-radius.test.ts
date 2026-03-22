@@ -130,13 +130,13 @@ describe('computeBlastRadius', () => {
 
     // Only degraded/critical entries (sorted by impactValue desc)
     expect(result.entries).toHaveLength(2)
-    expect(result.entries[0].targetId).toBe('service:payment-service')
-    expect(result.entries[0].status).toBe('critical')
-    expect(result.entries[0].impactValue).toBe(0.6)
+    expect(result.entries[0]!.targetId).toBe('service:payment-service')
+    expect(result.entries[0]!.status).toBe('critical')
+    expect(result.entries[0]!.impactValue).toBe(0.6)
 
-    expect(result.entries[1].targetId).toBe('service:user-service')
-    expect(result.entries[1].status).toBe('degraded')
-    expect(result.entries[1].impactValue).toBe(0.02)
+    expect(result.entries[1]!.targetId).toBe('service:user-service')
+    expect(result.entries[1]!.status).toBe('degraded')
+    expect(result.entries[1]!.impactValue).toBe(0.02)
 
     // Healthy services go to rollup
     expect(result.rollup.healthyCount).toBe(1)
@@ -197,8 +197,8 @@ describe('computeBlastRadius', () => {
     const result = await computeBlastRadius(telemetryStore, scope)
 
     expect(result.entries).toHaveLength(1)
-    expect(result.entries[0].status).toBe('critical')
-    expect(result.entries[0].impactValue).toBe(0.5)
+    expect(result.entries[0]!.status).toBe('critical')
+    expect(result.entries[0]!.impactValue).toBe(0.5)
   })
 
   it('detects errors from exceptionCount > 0', async () => {
@@ -221,8 +221,8 @@ describe('computeBlastRadius', () => {
     const result = await computeBlastRadius(telemetryStore, scope)
 
     expect(result.entries).toHaveLength(1)
-    expect(result.entries[0].status).toBe('critical')
-    expect(result.entries[0].impactValue).toBeCloseTo(0.3)
+    expect(result.entries[0]!.status).toBe('critical')
+    expect(result.entries[0]!.impactValue).toBeCloseTo(0.3)
   })
 
   it('degraded threshold: error rate at exactly 1% is degraded', async () => {
@@ -244,8 +244,8 @@ describe('computeBlastRadius', () => {
     const result = await computeBlastRadius(telemetryStore, scope)
 
     expect(result.entries).toHaveLength(1)
-    expect(result.entries[0].status).toBe('degraded')
-    expect(result.entries[0].impactValue).toBe(0.01)
-    expect(result.entries[0].displayValue).toBe('1%')
+    expect(result.entries[0]!.status).toBe('degraded')
+    expect(result.entries[0]!.impactValue).toBe(0.01)
+    expect(result.entries[0]!.displayValue).toBe('1%')
   })
 })

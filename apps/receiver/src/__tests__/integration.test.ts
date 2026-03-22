@@ -359,8 +359,8 @@ describe("Receiver integration tests", () => {
     expect(res.status).toBe(200);
     const body = await res.json() as { items: Array<{ incidentId: string; rawState?: unknown }> };
     expect(body.items).toHaveLength(1);
-    expect(typeof body.items[0].incidentId).toBe("string");
-    expect(body.items[0].rawState).toBeUndefined();
+    expect(typeof body.items[0]!.incidentId).toBe("string");
+    expect(body.items[0]!.rawState).toBeUndefined();
   });
 
   // Test 4: GET /api/incidents/:id → 200, curated incidentId matches
@@ -1468,7 +1468,7 @@ describe("Formation: dependency-based incident grouping (OC-1 to OC-6)", () => {
     expect(r2.incidentId).toBe(r1.incidentId);
 
     // Packet composition checks
-    const incident = items[0];
+    const incident = items[0]!;
     expect(incident.packet.scope.affectedServices).toContain("api-service");
     expect(incident.packet.scope.affectedServices).toContain("checkout-service");
     expect(incident.packet.scope.affectedDependencies).toContain("stripe");
@@ -1600,7 +1600,7 @@ describe("Formation: dependency-based incident grouping (OC-1 to OC-6)", () => {
 
     const { items } = await getIncidents(app);
     expect(items).toHaveLength(1);
-    expect(items[0].packet.scope.primaryService).toBe("checkout-service");
+    expect(items[0]!.packet.scope.primaryService).toBe("checkout-service");
   });
 
   // OC-11: INTERNAL 429 spans (OTel SDK version quirk: SERVER reported as INTERNAL) do not trigger
@@ -1881,8 +1881,8 @@ describe("Representative traces ranking: rebuild integration", () => {
     expect(traces.length).toBeGreaterThan(0);
 
     // The anomalous span (HTTP 500) must appear first — it has the highest score
-    expect(traces[0].spanId).toBe("rank-anomaly");
-    expect(traces[0].httpStatusCode).toBe(500);
+    expect(traces[0]!.spanId).toBe("rank-anomaly");
+    expect(traces[0]!.httpStatusCode).toBe(500);
   });
 
   // Test 2: Ranking maintained after attach + rebuild
@@ -1992,7 +1992,7 @@ describe("Representative traces ranking: rebuild integration", () => {
 
     // The top span from the first rebuild must still appear in the second rebuild
     // (determinism guarantee: same traceId+spanId key → same position)
-    const firstTopSpanId = tracesAfterFirst[0].spanId;
+    const firstTopSpanId = tracesAfterFirst[0]!.spanId;
     const secondSpanIds = tracesAfterSecond.map((t) => t.spanId);
     expect(secondSpanIds).toContain(firstTopSpanId);
 

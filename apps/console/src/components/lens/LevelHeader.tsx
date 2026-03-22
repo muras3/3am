@@ -3,9 +3,9 @@ import type { LensLevel } from "../../routes/__root.js";
 
 interface LevelHeaderProps {
   level: LensLevel;
-  incidentId?: string;
-  severity?: string;
-  openedAt?: string;
+  incidentId?: string | undefined;
+  severity?: string | undefined;
+  openedAt?: string | undefined;
   zoomTo: (level: LensLevel, trigger?: HTMLElement, incidentId?: string) => void;
 }
 

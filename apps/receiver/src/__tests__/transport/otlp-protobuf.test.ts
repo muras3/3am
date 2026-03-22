@@ -69,13 +69,13 @@ describe('decodeTraces', () => {
     }
 
     expect(result.resourceSpans).toHaveLength(1)
-    const rs = result.resourceSpans[0]
+    const rs = result.resourceSpans[0]!
     expect(rs.resource.attributes).toContainEqual({
       key: 'service.name',
       value: expect.objectContaining({ stringValue: 'svc-a' }),
     })
 
-    const span = rs.scopeSpans[0].spans[0]
+    const span = rs.scopeSpans[0]!.spans[0]!
     expect(span.traceId).toBe('a3ce929d0e0e47364bf92f3577b34da6') // hex, not base64
     expect(span.spanId).toBe('00f067aa0ba902b7')                  // hex, not base64
     expect(span.status.code).toBe(2)
@@ -105,7 +105,7 @@ describe('decodeTraces', () => {
     const result = decodeTraces(buf) as {
       resourceSpans: { scopeSpans: { spans: { parentSpanId: string }[] }[] }[]
     }
-    const span = result.resourceSpans[0].scopeSpans[0].spans[0]
+    const span = result.resourceSpans[0]!.scopeSpans[0]!.spans[0]!
     expect(span.parentSpanId).toBe('11a067bb0ca903c8') // hex, not base64
   })
 
@@ -132,7 +132,7 @@ describe('decodeTraces', () => {
     const result = decodeTraces(buf) as {
       resourceSpans: { scopeSpans: { spans: { startTimeUnixNano: unknown }[] }[] }[]
     }
-    const nano = result.resourceSpans[0].scopeSpans[0].spans[0].startTimeUnixNano
+    const nano = result.resourceSpans[0]!.scopeSpans[0]!.spans[0]!.startTimeUnixNano
     expect(typeof nano).toBe('string')
     expect(nano).toBe('1741392000000000000')
   })
