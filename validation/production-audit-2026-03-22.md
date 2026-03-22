@@ -181,3 +181,56 @@
 ### Overall assessment
 
 The CSS fix was the single highest-impact change — L2 Evidence Studio went from an unstyled text wall to a functional evidence viewer with waterfall bars, metric comparison bars, styled tabs, and log clusters. Entry point tier classification and short IDs also improved L0 significantly. Remaining work is primarily backend (proof cards, Q&A, side notes) and display formatting (float rounding, headline overflow).
+
+---
+
+## Design Document Compliance Audit
+
+Cross-checked `console-shared-assumptions.md`, `console-data-requirements.md`, and related plans against the actual implementation. Findings below.
+
+### Architecture Violations — Layer Responsibility
+
+| # | Severity | Issue | File | Detail |
+|---|----------|-------|------|--------|
+| A-1 | **Critical** | Proof card dependency inversion | `curated-evidence.ts:209` | `buildProofCards()` returns `[]` when `narrativeCards` (LLM Stage 2) is absent, discarding `proofRefs` (deterministic, always available). Design says receiver owns proof reference structure; LLM only adds wording. Dependency direction is inverted — LLM output is the prerequisite, deterministic data is the supplement. Should be the opposite. |
+| A-2 | **Critical** | Side notes dependency inversion | `curated-evidence.ts:239` | `buildSideNotes()` returns `[]` when `narrative.sideNotes` is absent. Confidence (`diagnosisResult.confidence.confidence_assessment`), uncertainty (`diagnosisResult.confidence.uncertainty`), and affected dependencies (`incident.packet.scope`) are all available from Stage 1 or raw data. No deterministic fallback exists. |
+| A-3 | **High** | Absence evidence label write-back missing | `curated-evidence.ts:191–199` | Design says "receiver で候補生成、diagnosis でラベル付与". Schema fields `diagnosisLabel` / `diagnosisExpected` / `diagnosisExplanation` exist on `AbsenceEvidenceEntry`. However, `consoleNarrative.absenceEvidence` (LLM labels) is never joined back into the absence entries before public projection. All absence evidence permanently shows `defaultLabel`, even when Stage 2 has produced labels. |
+| A-4 | **High** | Confidence summary: no numeric value path | `diagnosis-result.ts:38–43` | Design specifies `confidenceSummary.value` as `[0, 1]` numeric. `DiagnosisResult.confidence` only has `confidence_assessment` (string). No numeric confidence value exists anywhere in the schema. The `ExtendedIncident.confidenceSummary.value` field requires a number that cannot be derived from Stage 1 output. |
+
+### API Contract Violations
+
+| # | Severity | Issue | File | Detail |
+|---|----------|-------|------|--------|
+| C-1 | **Medium** | Node ID format diverges from design | `runtime-map.ts:144,159,177` | Design: `route:POST:/checkout` (2-3 segments). Actual: `route:payment-service:POST:/checkout` (4 segments, service-namespaced). `dep:` prefix is an implementation invention not in the design doc. |
+| C-2 | **Medium** | Blast radius drops fields | `incident-detail-extension.ts:136–141` | Design §3.3 specifies `targetId` (scoped URI like `service:payment-service`), `impactMetric`, and `displayValue`. Implementation maps to simplified `target` (plain string), drops `impactMetric` and `displayValue`. |
+| C-3 | **Low** | Edge status never `critical` | `runtime-map.ts:332` | Design: edges have `status: healthy | degraded | critical`. Implementation: `hasError ? 'degraded' : 'healthy'` — binary only, `critical` never assigned. |
+| C-4 | **Medium** | Q&A triple connection not enforced | `curated-evidence.ts:226`, schema | Design: "question → grounded answer → supporting evidence の 3 点が常に接続される". `QABlockSchema.evidenceRefs` allows empty array (no `min(1)`). Ref validation checks against `proofRefs` (internal), not `evidenceIndex` (public surface the frontend resolves against). Dangling refs possible. |
+
+### Compliant Areas (no violations)
+
+| Area | Status | Detail |
+|------|--------|--------|
+| Old API coexistence (§3.8) | **Compliant** | Frontend consumes only curated endpoints. Raw endpoints exist but are not imported by console components. |
+| Frontend inference prohibition (§5) | **Compliant** | No map inference, blast radius computation, claim clustering, or absence detection in frontend code. All domain computation is in receiver. |
+| Runtime map response shape (§2) | **Compliant** | `nodes[].status`, `subtitle`, `metrics`, `badges` all present and correctly shaped. |
+| Design token compliance | **Compliant** | All fonts, colors, radii match CLAUDE.md tokens. |
+
+### Root Cause Pattern
+
+Violations A-1, A-2, A-3 share the same structural defect: **LLM output is treated as a prerequisite instead of an enhancement layer.** The design documents explicitly separate deterministic (receiver) and narrative (diagnosis) responsibilities, but the implementation gates deterministic data behind LLM completion.
+
+The correct pattern:
+
+```
+Deterministic fallback (always available)
+  └── LLM enhancement (overlays wording when available)
+```
+
+The implemented pattern:
+
+```
+LLM output (required)
+  └── Deterministic data (merged as supplement, discarded if LLM absent)
+```
+
+This means any incident without a completed Stage 2 LLM call shows empty proof cards, empty side notes, and default-labeled absence evidence — even though the receiver has already computed all the structural data needed to populate these sections.
