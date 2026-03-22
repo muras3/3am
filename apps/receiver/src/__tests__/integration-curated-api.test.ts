@@ -754,9 +754,9 @@ describe('Integration: Curated API assembly (§6)', () => {
     // For pipeline tests we mock the LLM calls
     beforeEach(() => {
       vi.mock('@3amoncall/diagnosis', async (importOriginal) => {
-        const original = await importOriginal<typeof import('@3amoncall/diagnosis')>()
+        const original = await importOriginal()
         return {
-          ...original,
+          ...(original as Record<string, unknown>),
           diagnose: vi.fn().mockResolvedValue(makeDiagnosisResult()),
           generateConsoleNarrative: vi.fn().mockResolvedValue(makeNarrative()),
         }
