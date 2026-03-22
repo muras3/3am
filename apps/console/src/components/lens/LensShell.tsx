@@ -31,15 +31,18 @@ export function LensShell() {
   const isFirstRender = useRef(true);
 
   const zoomTo = useCallback(
-    (targetLevel: LensLevel, triggerElement?: HTMLElement) => {
+    (targetLevel: LensLevel, triggerElement?: HTMLElement, targetIncidentId?: string) => {
       if (triggerElement) {
         lastTriggerRef.current = triggerElement;
       }
 
+      // Use provided incidentId (from map click) or keep current
+      const resolvedIncidentId = targetIncidentId ?? search.incidentId;
+
       // Build full search params — going back strips deeper-level params
       const next: LensSearchParams = {
         level: targetLevel,
-        incidentId: targetLevel >= 1 ? search.incidentId : undefined,
+        incidentId: targetLevel >= 1 ? resolvedIncidentId : undefined,
         tab: targetLevel >= 2 ? search.tab : "traces",
         proof: targetLevel >= 2 ? search.proof : undefined,
         targetId: targetLevel >= 2 ? search.targetId : undefined,
@@ -51,7 +54,7 @@ export function LensShell() {
         replace: true,
       });
     },
-    [navigate],
+    [navigate, search.incidentId, search.tab, search.proof, search.targetId],
   );
 
   // Focus management on level change

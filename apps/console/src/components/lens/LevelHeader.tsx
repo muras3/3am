@@ -6,7 +6,7 @@ interface LevelHeaderProps {
   incidentId?: string;
   severity?: string;
   openedAt?: string;
-  zoomTo: (level: LensLevel, trigger?: HTMLElement) => void;
+  zoomTo: (level: LensLevel, trigger?: HTMLElement, incidentId?: string) => void;
 }
 
 /**

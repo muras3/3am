@@ -5,7 +5,7 @@ import { MapNode } from "./MapNode.js";
 interface Props {
   nodes: MapNodeType[];
   edges: MapEdge[];
-  zoomTo: (level: LensLevel, trigger?: HTMLElement) => void;
+  zoomTo: (level: LensLevel, trigger?: HTMLElement, incidentId?: string) => void;
 }
 
 // Layout constants (matching the mock's 1100x380 coordinate space)

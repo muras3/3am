@@ -20,7 +20,7 @@ function makeClient() {
 
 function renderMapView(
   queryClient: QueryClient,
-  zoomTo: (level: LensLevel, trigger?: HTMLElement) => void = vi.fn(),
+  zoomTo: (level: LensLevel, trigger?: HTMLElement, incidentId?: string) => void = vi.fn(),
 ) {
   return render(
     <QueryClientProvider client={queryClient}>
@@ -146,7 +146,7 @@ describe("MapView — keyboard navigation", () => {
 
     fireEvent.keyDown(nodeEl, { key: "Enter" });
 
-    expect(zoomTo).toHaveBeenCalledWith(1, expect.any(HTMLElement));
+    expect(zoomTo).toHaveBeenCalledWith(1, expect.any(HTMLElement), clickableNode!.incidentId);
   });
 
   it("pressing Space on a clickable node triggers zoomTo(1)", () => {
@@ -162,7 +162,7 @@ describe("MapView — keyboard navigation", () => {
 
     fireEvent.keyDown(nodeEl, { key: " " });
 
-    expect(zoomTo).toHaveBeenCalledWith(1, expect.any(HTMLElement));
+    expect(zoomTo).toHaveBeenCalledWith(1, expect.any(HTMLElement), clickableNode!.incidentId);
   });
 
   it("pressing Enter on an incident row triggers zoomTo(1)", () => {
@@ -177,7 +177,7 @@ describe("MapView — keyboard navigation", () => {
 
     fireEvent.keyDown(rowEl, { key: "Enter" });
 
-    expect(zoomTo).toHaveBeenCalledWith(1, expect.any(HTMLElement));
+    expect(zoomTo).toHaveBeenCalledWith(1, expect.any(HTMLElement), firstIncident.incidentId);
   });
 
   it("clicking an incident row triggers zoomTo(1)", () => {
@@ -192,7 +192,7 @@ describe("MapView — keyboard navigation", () => {
 
     fireEvent.click(rowEl);
 
-    expect(zoomTo).toHaveBeenCalledWith(1, expect.any(HTMLElement));
+    expect(zoomTo).toHaveBeenCalledWith(1, expect.any(HTMLElement), firstIncident.incidentId);
   });
 });
 

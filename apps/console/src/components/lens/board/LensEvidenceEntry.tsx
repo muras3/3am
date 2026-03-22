@@ -4,7 +4,7 @@ import type { LensLevel } from "../../../routes/__root.js";
 interface Props {
   counts: EvidenceCounts;
   impact: ImpactSummary;
-  zoomTo: (level: LensLevel, trigger?: HTMLElement) => void;
+  zoomTo: (level: LensLevel, trigger?: HTMLElement, incidentId?: string) => void;
 }
 
 function formatTime(iso: string): string {

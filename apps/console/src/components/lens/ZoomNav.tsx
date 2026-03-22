@@ -3,7 +3,7 @@ import type { LensLevel } from "../../routes/__root.js";
 interface ZoomNavProps {
   level: LensLevel;
   incidentId?: string;
-  zoomTo: (level: LensLevel, trigger?: HTMLElement) => void;
+  zoomTo: (level: LensLevel, trigger?: HTMLElement, incidentId?: string) => void;
 }
 
 const CRUMBS = [

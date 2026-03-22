@@ -13,7 +13,7 @@ import { LensLogsView } from "./LensLogsView.js";
 
 interface Props {
   incidentId: string;
-  zoomTo: (level: LensLevel, trigger?: HTMLElement) => void;
+  zoomTo: (level: LensLevel, trigger?: HTMLElement, incidentId?: string) => void;
 }
 
 /**
@@ -75,7 +75,7 @@ export function LensEvidenceStudio({ incidentId }: Props) {
       <LensProofCards cards={evidence.proofCards} />
 
       {/* Q&A frame */}
-      <QAFrame qa={evidence.qa} />
+      <QAFrame qa={evidence.qa} diagnosisState={evidence.state.diagnosis} />
 
       {/* Tab bar */}
       <LensEvidenceTabs surfaces={evidence.surfaces} />

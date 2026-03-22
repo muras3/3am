@@ -6,7 +6,7 @@ import { MapGraph } from "./MapGraph.js";
 import { IncidentStrip } from "./IncidentStrip.js";
 
 interface Props {
-  zoomTo: (level: LensLevel, trigger?: HTMLElement) => void;
+  zoomTo: (level: LensLevel, trigger?: HTMLElement, incidentId?: string) => void;
 }
 
 /**
