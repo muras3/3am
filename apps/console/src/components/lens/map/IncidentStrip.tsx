@@ -3,7 +3,7 @@ import type { LensLevel } from "../../../routes/__root.js";
 
 interface Props {
   incidents: MapIncident[];
-  zoomTo: (level: LensLevel, trigger?: HTMLElement) => void;
+  zoomTo: (level: LensLevel, trigger?: HTMLElement, incidentId?: string) => void;
 }
 
 /**
@@ -35,18 +35,18 @@ function IncidentRow({
   zoomTo,
 }: {
   incident: MapIncident;
-  zoomTo: (level: LensLevel, trigger?: HTMLElement) => void;
+  zoomTo: (level: LensLevel, trigger?: HTMLElement, incidentId?: string) => void;
 }) {
   const sevNorm = incident.severity.toLowerCase();
 
   function handleClick(e: React.MouseEvent<HTMLDivElement>) {
-    zoomTo(1, e.currentTarget);
+    zoomTo(1, e.currentTarget, incident.incidentId);
   }
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
     if (e.key === "Enter" || e.key === " ") {
       e.preventDefault();
-      zoomTo(1, e.currentTarget as HTMLElement);
+      zoomTo(1, e.currentTarget as HTMLElement, incident.incidentId);
     }
   }
 

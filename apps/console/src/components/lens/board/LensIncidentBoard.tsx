@@ -13,7 +13,7 @@ import { DiagnosisPending } from "./DiagnosisPending.js";
 
 interface Props {
   incidentId: string;
-  zoomTo: (level: LensLevel, trigger?: HTMLElement) => void;
+  zoomTo: (level: LensLevel, trigger?: HTMLElement, incidentId?: string) => void;
 }
 
 export function LensIncidentBoard({ incidentId, zoomTo }: Props) {

@@ -4,7 +4,7 @@ import type { LensLevel } from "../../../routes/__root.js";
 interface Props {
   node: MapNodeType;
   style: React.CSSProperties;
-  zoomTo: (level: LensLevel, trigger?: HTMLElement) => void;
+  zoomTo: (level: LensLevel, trigger?: HTMLElement, incidentId?: string) => void;
 }
 
 /**
@@ -22,14 +22,14 @@ export function MapNode({ node, style, zoomTo }: Props) {
 
   function handleClick(e: React.MouseEvent<HTMLDivElement>) {
     if (isClickable) {
-      zoomTo(1, e.currentTarget);
+      zoomTo(1, e.currentTarget, node.incidentId);
     }
   }
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
     if (isClickable && (e.key === "Enter" || e.key === " ")) {
       e.preventDefault();
-      zoomTo(1, e.currentTarget as HTMLElement);
+      zoomTo(1, e.currentTarget as HTMLElement, node.incidentId);
     }
   }
 

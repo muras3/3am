@@ -4,6 +4,7 @@ import type { LensSearchParams } from "../../../routes/__root.js";
 
 interface Props {
   qa: QABlock | null;
+  diagnosisState?: "ready" | "pending" | "unavailable";
 }
 
 function EvidenceRefLink({ ref: evidenceRef }: { ref: EvidenceRef }) {
@@ -63,12 +64,15 @@ function EvidenceRefLink({ ref: evidenceRef }: { ref: EvidenceRef }) {
  * Shows question + teal-soft answer box + evidence refs + follow-up chips.
  * When qa is null or has noAnswerReason, shows degraded state.
  */
-export function QAFrame({ qa }: Props) {
+export function QAFrame({ qa, diagnosisState }: Props) {
   if (!qa) {
+    const message = diagnosisState === "ready"
+      ? "Narrative is being generated. Evidence surfaces are available below."
+      : "Diagnosis not available yet. Evidence is being collected.";
     return (
       <div className="lens-ev-qa-frame lens-ev-qa-empty" role="region" aria-label="Question and answer">
         <div className="lens-ev-qa-empty-msg">
-          Diagnosis not available yet. Evidence is being collected.
+          {message}
         </div>
       </div>
     );
