@@ -22,8 +22,11 @@ export class DiagnosisRunner {
         return false;
       }
 
-      // Stage 1: incident diagnosis
-      const result = await diagnose(incident.packet);
+      // Stage 1: incident diagnosis (DIAGNOSIS_MODEL env var overrides default model)
+      const diagnosisModel = process.env["DIAGNOSIS_MODEL"];
+      const result = diagnosisModel
+        ? await diagnose(incident.packet, { model: diagnosisModel })
+        : await diagnose(incident.packet);
       await this.storage.appendDiagnosis(incidentId, result);
 
       // Stage 2: console narrative generation (graceful degradation — failure does not affect stage 1)
@@ -71,7 +74,11 @@ export class DiagnosisRunner {
       );
 
       const tryGenerate = async (): Promise<void> => {
-        const narrative = await generateConsoleNarrative(diagnosisResult, reasoningStructure);
+        // NARRATIVE_MODEL env var overrides default model (e.g. claude-haiku-4-5-20251001 for faster execution)
+        const narrativeModel = process.env["NARRATIVE_MODEL"];
+        const narrative = narrativeModel
+          ? await generateConsoleNarrative(diagnosisResult, reasoningStructure, { model: narrativeModel })
+          : await generateConsoleNarrative(diagnosisResult, reasoningStructure);
         await this.storage.appendConsoleNarrative(incidentId, narrative);
       };
 
