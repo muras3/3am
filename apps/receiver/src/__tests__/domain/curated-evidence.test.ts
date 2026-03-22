@@ -234,7 +234,8 @@ describe('buildCuratedEvidence', () => {
     const result = await buildCuratedEvidence(makeIncident(), makeMockStore())
 
     expect(result.surfaces.traces.observed[0]?.route).toBe('POST /checkout')
-    expect(result.surfaces.traces.smokingGunSpanId).toBe('trace-1:span-1')
+    // extractSpanId extracts spanId from "traceId:spanId" composite format
+    expect(result.surfaces.traces.smokingGunSpanId).toBe('span-1')
     expect(result.surfaces.metrics.hypotheses).toEqual([])
     expect(result.surfaces.logs.claims).toEqual([])
   })
