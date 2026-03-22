@@ -36,7 +36,7 @@ program
   .description("Start local 3amoncall Receiver via Docker (Requires Docker Desktop)")
   .option("--port <number>", "Port to expose (default: 3333)", parseInt)
   .action((options: { port?: number }) => {
-    runDev({ port: options.port });
+    runDev(options.port != null ? { port: options.port } : {});
   });
 
 program.parse(process.argv);

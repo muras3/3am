@@ -23,7 +23,7 @@ describe("LensTracesView", () => {
   it("renders span names from observed traces", () => {
     render(<LensTracesView surface={traces} />);
     // First observed group has 3 spans
-    const firstGroup = traces.observed[0];
+    const firstGroup = traces.observed[0]!;
     for (const span of firstGroup.spans) {
       expect(screen.getAllByText(span.name).length).toBeGreaterThan(0);
     }
@@ -34,7 +34,7 @@ describe("LensTracesView", () => {
     const gunRow = document.querySelector(".smoking-gun");
     expect(gunRow).not.toBeNull();
     // The smoking gun span should contain the matching span name
-    const smokingSpan = traces.observed[0].spans.find(
+    const smokingSpan = traces.observed[0]!.spans.find(
       (s) => s.spanId === traces.smokingGunSpanId,
     );
     expect(smokingSpan).toBeDefined();
@@ -129,7 +129,7 @@ describe("LensTracesView", () => {
 
   it("span rows carry data-target-id matching spanId", () => {
     render(<LensTracesView surface={traces} />);
-    const firstSpan = traces.observed[0].spans[0];
+    const firstSpan = traces.observed[0]!.spans[0]!;
     const el = document.querySelector(`[data-target-id="${firstSpan.spanId}"]`);
     expect(el).not.toBeNull();
   });
@@ -189,13 +189,13 @@ describe("LensMetricsView", () => {
 
   it("shows metric names", () => {
     render(<LensMetricsView surface={metrics} />);
-    const firstName = metrics.hypotheses[0].metrics[0].name;
+    const firstName = metrics.hypotheses[0]!.metrics[0]!.name;
     expect(screen.getAllByText(firstName).length).toBeGreaterThan(0);
   });
 
   it("shows expected values in metric rows", () => {
     render(<LensMetricsView surface={metrics} />);
-    const firstExpected = metrics.hypotheses[0].metrics[0].expected;
+    const firstExpected = metrics.hypotheses[0]!.metrics[0]!.expected;
     // Expected text rendered as "expected: X"
     const els = document.querySelectorAll(".lens-metrics-metric-expected");
     expect(els.length).toBeGreaterThan(0);

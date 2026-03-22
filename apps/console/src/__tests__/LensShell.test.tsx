@@ -1,10 +1,11 @@
 import { render, screen, fireEvent } from "@testing-library/react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { LensShell } from "../components/lens/LensShell.js";
+import type { LensSearchParams } from "../routes/__root.js";
 
 // ── Mock router ───────────────────────────────────────────────
 
-let mockSearch = { level: 0, tab: "traces", incidentId: undefined as string | undefined, proof: undefined as string | undefined, targetId: undefined as string | undefined };
+let mockSearch: LensSearchParams = { level: 0, tab: "traces" };
 const mockNavigate = vi.fn();
 
 vi.mock("@tanstack/react-router", () => ({
@@ -42,7 +43,7 @@ vi.mock("../components/lens/map/MapView.js", () => ({
 }));
 
 beforeEach(() => {
-  mockSearch = { level: 0, tab: "traces", incidentId: undefined, proof: undefined, targetId: undefined };
+  mockSearch = { level: 0, tab: "traces", incidentId: undefined };
   mockNavigate.mockClear();
 });
 
@@ -58,41 +59,41 @@ describe("LensShell — zoom navigation", () => {
   it("sets level 0 as active by default", () => {
     render(<LensShell />);
     const levels = document.querySelectorAll(".level");
-    expect(levels[0].classList.contains("active")).toBe(true);
-    expect(levels[1].classList.contains("active")).toBe(false);
-    expect(levels[2].classList.contains("active")).toBe(false);
+    expect(levels[0]!.classList.contains("active")).toBe(true);
+    expect(levels[1]!.classList.contains("active")).toBe(false);
+    expect(levels[2]!.classList.contains("active")).toBe(false);
   });
 
   it("sets level 1 as active when level=1", () => {
-    mockSearch = { level: 1, tab: "traces", incidentId: "inc_test", proof: undefined, targetId: undefined };
+    mockSearch = { level: 1, tab: "traces", incidentId: "inc_test" };
     render(<LensShell />);
     const levels = document.querySelectorAll(".level");
-    expect(levels[0].classList.contains("zoomed-past")).toBe(true);
-    expect(levels[1].classList.contains("active")).toBe(true);
+    expect(levels[0]!.classList.contains("zoomed-past")).toBe(true);
+    expect(levels[1]!.classList.contains("active")).toBe(true);
   });
 
   it("sets level 2 as active when level=2", () => {
-    mockSearch = { level: 2, tab: "traces", incidentId: "inc_test", proof: undefined, targetId: undefined };
+    mockSearch = { level: 2, tab: "traces", incidentId: "inc_test" };
     render(<LensShell />);
     const levels = document.querySelectorAll(".level");
-    expect(levels[0].classList.contains("zoomed-past")).toBe(true);
-    expect(levels[1].classList.contains("zoomed-past")).toBe(true);
-    expect(levels[2].classList.contains("active")).toBe(true);
+    expect(levels[0]!.classList.contains("zoomed-past")).toBe(true);
+    expect(levels[1]!.classList.contains("zoomed-past")).toBe(true);
+    expect(levels[2]!.classList.contains("active")).toBe(true);
   });
 
   it("marks inactive levels with aria-hidden", () => {
-    mockSearch = { level: 1, tab: "traces", incidentId: "inc_test", proof: undefined, targetId: undefined };
+    mockSearch = { level: 1, tab: "traces", incidentId: "inc_test" };
     render(<LensShell />);
     const levels = document.querySelectorAll(".level");
-    expect(levels[0].getAttribute("aria-hidden")).toBe("true");
-    expect(levels[1].getAttribute("aria-hidden")).toBe("false");
-    expect(levels[2].getAttribute("aria-hidden")).toBe("true");
+    expect(levels[0]!.getAttribute("aria-hidden")).toBe("true");
+    expect(levels[1]!.getAttribute("aria-hidden")).toBe("false");
+    expect(levels[2]!.getAttribute("aria-hidden")).toBe("true");
   });
 });
 
 describe("LensShell — zoom breadcrumb interaction", () => {
   it("navigates to level 1 via breadcrumb", () => {
-    mockSearch = { level: 0, tab: "traces", incidentId: "inc_test", proof: undefined, targetId: undefined };
+    mockSearch = { level: 0, tab: "traces", incidentId: "inc_test" };
     render(<LensShell />);
     fireEvent.click(screen.getByTestId("crumb-1"));
     expect(mockNavigate).toHaveBeenCalledWith(
@@ -123,7 +124,7 @@ describe("LensShell — zoom breadcrumb interaction", () => {
 
 describe("LensShell — Escape key", () => {
   it("goes back one level on Escape from level 1", () => {
-    mockSearch = { level: 1, tab: "traces", incidentId: "inc_test", proof: undefined, targetId: undefined };
+    mockSearch = { level: 1, tab: "traces", incidentId: "inc_test" };
     render(<LensShell />);
     fireEvent.keyDown(document, { key: "Escape" });
     expect(mockNavigate).toHaveBeenCalledWith(
@@ -134,7 +135,7 @@ describe("LensShell — Escape key", () => {
   });
 
   it("goes back one level on Escape from level 2", () => {
-    mockSearch = { level: 2, tab: "traces", incidentId: "inc_test", proof: undefined, targetId: undefined };
+    mockSearch = { level: 2, tab: "traces", incidentId: "inc_test" };
     render(<LensShell />);
     fireEvent.keyDown(document, { key: "Escape" });
     expect(mockNavigate).toHaveBeenCalledWith(
@@ -145,7 +146,7 @@ describe("LensShell — Escape key", () => {
   });
 
   it("does nothing on Escape at level 0", () => {
-    mockSearch = { level: 0, tab: "traces", incidentId: undefined, proof: undefined, targetId: undefined };
+    mockSearch = { level: 0, tab: "traces", incidentId: undefined };
     render(<LensShell />);
     fireEvent.keyDown(document, { key: "Escape" });
     expect(mockNavigate).not.toHaveBeenCalled();
@@ -154,7 +155,7 @@ describe("LensShell — Escape key", () => {
 
 describe("LensShell — back button interaction", () => {
   it("navigates back via level header back button", () => {
-    mockSearch = { level: 1, tab: "traces", incidentId: "inc_test", proof: undefined, targetId: undefined };
+    mockSearch = { level: 1, tab: "traces", incidentId: "inc_test" };
     render(<LensShell />);
     fireEvent.click(screen.getByTestId("back-btn-1"));
     expect(mockNavigate).toHaveBeenCalledWith(

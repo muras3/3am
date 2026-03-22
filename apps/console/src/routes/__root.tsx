@@ -14,11 +14,11 @@ export type LensLevel = 0 | 1 | 2;
 export type EvidenceTab = "traces" | "metrics" | "logs";
 
 export interface LensSearchParams {
-  incidentId?: string;
+  incidentId?: string | undefined;
   level: LensLevel;
   tab: EvidenceTab;
-  proof?: string;
-  targetId?: string;
+  proof?: string | undefined;
+  targetId?: string | undefined;
 }
 
 function parseLensLevel(value: unknown): LensLevel {

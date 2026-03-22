@@ -22,8 +22,6 @@ let mockSearch: LensSearchParams = {
   level: 2,
   tab: "traces",
   incidentId: "inc_0892",
-  proof: undefined,
-  targetId: undefined,
 };
 const mockNavigate = vi.fn();
 
@@ -69,8 +67,6 @@ beforeEach(() => {
     level: 2,
     tab: "traces" as const,
     incidentId: "inc_0892",
-    proof: undefined,
-    targetId: undefined,
   };
   mockNavigate.mockClear();
 });

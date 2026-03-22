@@ -56,6 +56,7 @@ export function LensEvidenceTabs({ surfaces }: Props) {
     if (nextIndex !== null) {
       e.preventDefault();
       const tab = TABS[nextIndex];
+      if (!tab) return;
       activateTab(tab.id);
       tabRefs.current[nextIndex]?.focus();
     }

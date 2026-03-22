@@ -2,7 +2,7 @@ import type { LensLevel } from "../../routes/__root.js";
 
 interface ZoomNavProps {
   level: LensLevel;
-  incidentId?: string;
+  incidentId?: string | undefined;
   zoomTo: (level: LensLevel, trigger?: HTMLElement, incidentId?: string) => void;
 }
 
