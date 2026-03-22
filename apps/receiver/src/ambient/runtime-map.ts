@@ -108,7 +108,7 @@ interface EdgeAccumulator {
   toNodeId: string
   kind: 'internal' | 'external'
   requestCount: number
-  hasError: boolean
+  errorCount: number
 }
 
 // ── Node derivation from a single span ─────────────────────────────────────
@@ -333,7 +333,7 @@ export async function buildRuntimeMap(
       fromNodeId: acc.fromNodeId,
       toNodeId: acc.toNodeId,
       kind: acc.kind,
-      status: acc.hasError ? 'degraded' : 'healthy',
+      status: computeStatus(acc.requestCount > 0 ? acc.errorCount / acc.requestCount : 0),
       trafficHint: `${acc.requestCount}`,
     })
   }
@@ -415,7 +415,7 @@ function accumulateEdge(
   const existing = map.get(key)
   if (existing) {
     existing.requestCount++
-    if (isError) existing.hasError = true
+    if (isError) existing.errorCount++
     // Escalate kind to "external" if any contributing edge is external
     if (kind === 'external') existing.kind = 'external'
   } else {
@@ -424,7 +424,7 @@ function accumulateEdge(
       toNodeId,
       kind,
       requestCount: 1,
-      hasError: isError,
+      errorCount: isError ? 1 : 0,
     })
   }
 }
