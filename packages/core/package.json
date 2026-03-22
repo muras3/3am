@@ -31,7 +31,7 @@
     "build": "tsc",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "lint": "eslint src"
+    "lint": "eslint src --max-warnings 0"
   },
   "dependencies": {
     "zod": "^3.x"
