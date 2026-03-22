@@ -694,17 +694,33 @@ describe('Integration: Curated API assembly (§6)', () => {
       expect(result.qa!.answer.length).toBeGreaterThan(0)
     })
 
-    it('diagnosed-incident-proofcards-3: proofCards has 3 items after narrative', async () => {
-      // Currently proofCards are returned as [] from buildCuratedEvidence
-      // because the narrative merging for proofCards is not yet wired.
-      // This test validates the narrative fixture itself has 3 proofCards.
-      const narrative = makeNarrative()
-      expect(narrative.proofCards).toHaveLength(3)
-      expect(narrative.proofCards.map((c) => c.id)).toEqual([
+    it('diagnosed-incident-proofcards-3: buildCuratedEvidence returns 3 proofCards when narrative present', async () => {
+      await seedRichTelemetry(telemetryStore)
+      const incident = makeIncident({
+        diagnosisResult: makeDiagnosisResult(),
+        consoleNarrative: makeNarrative(),
+        anomalousSignals: [
+          makeSignal({ signal: 'http_429', entity: 'web' }),
+          makeSignal({ signal: 'http_500', entity: 'web', spanId: 'span-err-1' }),
+        ],
+      })
+
+      const result = await buildCuratedEvidence(incident, telemetryStore)
+      EvidenceResponseSchema.strict().parse(result)
+
+      expect(result.proofCards).toHaveLength(3)
+      expect(result.proofCards.map((c) => c.id)).toEqual([
         'trigger',
         'design_gap',
         'recovery',
       ])
+      // Each card has label, summary from narrative + status, targetSurface from reasoning
+      for (const card of result.proofCards) {
+        expect(card.label).toBeTruthy()
+        expect(card.summary).toBeTruthy()
+        expect(['confirmed', 'inferred', 'pending']).toContain(card.status)
+        expect(['traces', 'metrics', 'logs']).toContain(card.targetSurface)
+      }
     })
 
     it('proof-card-ref-resolution: proofRefs reference valid surfaces', async () => {
