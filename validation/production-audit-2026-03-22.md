@@ -142,3 +142,42 @@
 - **Design tokens**: Background, fonts, accent/teal/amber semantic colors all correct across L0 and L1
 - **Diagnosis quality**: Comprehensive output — 85% confidence, 5-step causal chain, 7 operator checks, detailed root cause hypothesis
 - **L2 DOM structure**: All Evidence Studio components are correctly built in the DOM. The CSS fix is a 1-character change (`}`) that will unlock the entire L2 visual rendering
+
+---
+
+## Re-audit — 2026-03-22 03:20 UTC
+
+**Deploy:** latest develop (includes CSS fix, entry_point tier logic, stats aggregation, short ID)
+**Incident:** `inc_b8ccbdea-9473-4344-a044-42a370e8ea16` (diagnosis state: `unavailable` — not yet triggered)
+
+### Fixed since initial audit
+
+| # | Issue | Status |
+|---|-------|--------|
+| P0-1 | Evidence Studio CSS broken | **Fixed** — waterfall bars, tabs (flex layout + active underline), metric bars, trace headers, log cluster headers all render correctly |
+| P1-5 | Entry Points tier empty | **Fixed** — stripe.charge, checkout.request, orders.request now in ENTRY POINTS tier; payment.charge in RUNTIME UNITS; stripe in DEPENDENCIES |
+| P2-6 | Stats Req/s, P95 always zero | **Partially fixed** — values now populated (Req/s, P95 4288ms), but formatting broken (see NEW-1) |
+| P2-9 | Incident ID full UUID | **Fixed** — now `INC-B8CCBDEA` (short format) |
+
+### New issues found
+
+| # | Priority | Issue | Detail |
+|---|----------|-------|--------|
+| NEW-1 | **P1** | Req/s raw float overflow | `1.062777777777778` displayed — 15 decimal places. Should round to 1-2 decimals (e.g. `1.06`) |
+| NEW-2 | **P1** | Old incident headline overflows list row | INC-4A512528 row in ACTIVE INCIDENTS strip shows full diagnosis headline text below the row, breaking L0 layout. Headline text should be truncated or not shown in the list |
+| NEW-3 | **P2** | Metrics expected values raw float | `expected: 3077.718120805369`, `expected: 0.11409395973154363` — no rounding. Should display 2-3 significant digits |
+| NEW-4 | **Info** | Diagnosis not triggered | `state.diagnosis: "unavailable"` — L1 shows empty headline, action, causal chain, root cause, operator checks. Expected if diagnosis hasn't run yet |
+
+### Unchanged issues
+
+| # | Priority | Issue |
+|---|----------|-------|
+| P1-2 | P1 | Proof Cards empty (`proofCards: []`) |
+| P1-3 | P1 | Q&A null (Stage 2 not implemented) |
+| P1-4 | P1 | Side Notes empty (`sideNotes: []`) |
+| P2-7 | P2 | Incident name "validation-web" (headline not used in list) |
+| P2-8 | P2 | Blast radius "unknown_service:node" |
+
+### Overall assessment
+
+The CSS fix was the single highest-impact change — L2 Evidence Studio went from an unstyled text wall to a functional evidence viewer with waterfall bars, metric comparison bars, styled tabs, and log clusters. Entry point tier classification and short IDs also improved L0 significantly. Remaining work is primarily backend (proof cards, Q&A, side notes) and display formatting (float rounding, headline overflow).
