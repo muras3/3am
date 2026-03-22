@@ -195,6 +195,9 @@ Murase の最も強い点は、抽象設計を実装可能な contract に落と
 - `200 OK` を返すだけの stub で green でも安心しない
 - local happy path だけでなく、failure path と boundary path があるか確認する
 - auth, payload size, strict validation, persistence, callback を必ず疑う
+- テストのアサーションは設計ドキュメント（shared-assumptions, data-requirements）の contract に準拠すること。実装の現在の挙動に合わせてはならない
+- optional 依存（LLM, 外部 API, Stage 2 結果）を持つ関数は、依存なしで deterministic fallback が動作するテストを必須とする
+- 「依存なし → 空配列 → green」は degraded path テストとして認めない。設計が非空を要求するならテストも非空をアサートする
 
 ### Anti-Pattern To Avoid
 
