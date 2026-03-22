@@ -114,6 +114,8 @@ jobs:
         run: pnpm --filter @3amoncall/console typecheck:e2e
       - name: Lint console
         run: pnpm --filter @3amoncall/console lint
+      - name: Lint CSS (console)
+        run: pnpm --filter @3amoncall/console lint:css
 
       # receiver bundle (depends on console build for turbo.json task graph)
       - name: Bundle receiver
