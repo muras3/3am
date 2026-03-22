@@ -106,6 +106,19 @@ export async function buildCuratedEvidence(
 
   const narrative = incident.consoleNarrative
 
+  // A-3: Write back LLM absence labels to the logs surface before public projection
+  if (narrative?.absenceEvidence) {
+    const labelMap = new Map(narrative.absenceEvidence.map((a) => [a.id, a]))
+    for (const absence of logsResult.surface.absenceEvidence) {
+      const labels = labelMap.get(absence.patternId)
+      if (labels) {
+        absence.diagnosisLabel = labels.label
+        absence.diagnosisExpected = labels.expected
+        absence.diagnosisExplanation = labels.explanation
+      }
+    }
+  }
+
   return {
     proofCards: buildProofCards(narrative?.proofCards, reasoningStructure.proofRefs),
     qa: buildQaBlock(narrative?.qa),
@@ -114,7 +127,7 @@ export async function buildCuratedEvidence(
       metrics: toPublicMetricsSurface(metricsResult.surface),
       logs: toPublicLogsSurface(logsResult.surface),
     },
-    sideNotes: buildSideNotes(narrative?.sideNotes),
+    sideNotes: buildSideNotes(narrative?.sideNotes, incident),
     state: { diagnosis, baseline, evidenceDensity },
   }
 }
@@ -165,8 +178,8 @@ function toPublicMetricsSurface(surface: CuratedMetricsSurface): EvidenceRespons
       verdict: group.diagnosisVerdict === 'Confirmed' ? 'Confirmed' : 'Inferred',
       metrics: group.rows.map((row) => ({
         name: row.name,
-        value: String(row.observedValue),
-        expected: String(row.expectedValue),
+        value: formatMetricValue(row.observedValue),
+        expected: formatMetricValue(row.expectedValue),
         barPercent: Math.round(row.impactBar * 100),
       })),
     })),
@@ -206,21 +219,42 @@ function buildProofCards(
   narrativeCards: ProofCardNarrative[] | undefined,
   proofRefs: ProofRef[],
 ): ProofCard[] {
-  if (!narrativeCards) return []
-
   const refMap = new Map(proofRefs.map((r) => [r.cardId, r]))
 
-  return narrativeCards.map((card) => {
-    const ref = refMap.get(card.id)
-    return {
-      id: card.id,
-      label: card.label,
-      status: ref?.status ?? 'pending',
-      summary: card.summary,
-      targetSurface: ref?.targetSurface ?? 'traces',
-      evidenceRefs: ref?.evidenceRefs ?? [],
-    }
-  })
+  // When narrative is available, merge wording (narrative) with evidence (proofRefs)
+  if (narrativeCards) {
+    return narrativeCards.map((card) => {
+      const ref = refMap.get(card.id)
+      return {
+        id: card.id,
+        label: card.label,
+        status: ref?.status ?? 'pending',
+        summary: card.summary,
+        targetSurface: ref?.targetSurface ?? 'traces',
+        evidenceRefs: ref?.evidenceRefs ?? [],
+      }
+    })
+  }
+
+  // Deterministic fallback: generate proof cards from proofRefs alone (no LLM wording)
+  if (proofRefs.length === 0) return []
+  return proofRefs.map((ref) => ({
+    id: ref.cardId,
+    label: defaultProofCardLabel(ref.cardId),
+    status: ref.status,
+    summary: '',
+    targetSurface: ref.targetSurface,
+    evidenceRefs: ref.evidenceRefs,
+  }))
+}
+
+function defaultProofCardLabel(cardId: string): string {
+  switch (cardId) {
+    case 'trigger': return 'Trigger Evidence'
+    case 'design_gap': return 'Design Gap'
+    case 'recovery': return 'Recovery Path'
+    default: return cardId
+  }
 }
 
 function buildQaBlock(qa: ConsoleNarrative['qa'] | undefined): QABlock | null {
@@ -236,13 +270,46 @@ function buildQaBlock(qa: ConsoleNarrative['qa'] | undefined): QABlock | null {
   }
 }
 
-function buildSideNotes(notes: ConsoleNarrative['sideNotes'] | undefined): SideNote[] {
-  if (!notes) return []
-  return notes.map((note) => ({
-    title: note.title,
-    text: note.text,
-    kind: note.kind,
-  }))
+function buildSideNotes(
+  notes: ConsoleNarrative['sideNotes'] | undefined,
+  incident: Incident,
+): SideNote[] {
+  if (notes && notes.length > 0) {
+    return notes.map((note) => ({
+      title: note.title,
+      text: note.text,
+      kind: note.kind,
+    }))
+  }
+
+  // Deterministic fallback from stage 1 + raw data
+  const result: SideNote[] = []
+  const diag = incident.diagnosisResult
+
+  if (diag?.confidence.confidence_assessment) {
+    result.push({
+      title: 'Confidence',
+      text: diag.confidence.confidence_assessment,
+      kind: 'confidence',
+    })
+  }
+  if (diag?.confidence.uncertainty) {
+    result.push({
+      title: 'Uncertainty',
+      text: diag.confidence.uncertainty,
+      kind: 'uncertainty',
+    })
+  }
+  const deps = incident.packet.scope.affectedDependencies
+  if (deps.length > 0) {
+    result.push({
+      title: 'External Dependencies',
+      text: deps.join(', '),
+      kind: 'dependency',
+    })
+  }
+
+  return result
 }
 
 function summarizeEvidenceRefs(refs: EvidenceRef[]): QABlock['evidenceSummary'] {
@@ -255,6 +322,14 @@ function summarizeEvidenceRefs(refs: EvidenceRef[]): QABlock['evidenceSummary'] 
   }
 
   return summary
+}
+
+function formatMetricValue(value: number | string): string {
+  if (typeof value === 'string') return value
+  if (Number.isInteger(value)) return String(value)
+  if (Math.abs(value) >= 100) return value.toFixed(1)
+  if (Math.abs(value) >= 1) return value.toFixed(2)
+  return value.toPrecision(3)
 }
 
 function mapClaimType(metricClassOrKeyword: string): 'trigger' | 'cascade' | 'recovery' | 'absence' {
