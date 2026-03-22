@@ -312,6 +312,10 @@
   font-weight: 600;
   font-size: var(--fs-md);
   flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .ir-sev {

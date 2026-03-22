@@ -31,13 +31,13 @@ export function StatsBar({ summary }: Props) {
       </div>
       <div className="stat-block">
         <span className="stat-value" data-testid="stat-req-per-sec">
-          {summary.clusterReqPerSec}
+          {Math.round(summary.clusterReqPerSec)}
         </span>
         <span className="stat-label">Req/s (cluster)</span>
       </div>
       <div className="stat-block">
         <span className="stat-value" data-testid="stat-p95">
-          {summary.clusterP95Ms}ms
+          {Math.round(summary.clusterP95Ms)}ms
         </span>
         <span className="stat-label">P95 Latency</span>
       </div>
