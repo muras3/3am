@@ -153,6 +153,21 @@ function deriveFromSpan(span: TelemetrySpan): SpanDerivation {
     }
   }
 
+  // SERVER span without httpRoute — fallback: use spanName if it looks like a route
+  if (spanKind === SPAN_KIND_SERVER && !span.httpRoute && span.spanName) {
+    const normalizedName = normalizeSpanName(span.spanName)
+    const nodeId = `route:${span.serviceName}:${normalizedName}`
+    return {
+      primaryNode: {
+        nodeId,
+        tier: 'entry_point',
+        label: normalizedName,
+      },
+      extraNodes: [],
+      directEdges: [],
+    }
+  }
+
   // CLIENT span with peerService → runtime_unit + dependency
   if (spanKind === SPAN_KIND_CLIENT && span.peerService) {
     const normalizedPeer = normalizePeerService(span.peerService)
@@ -225,7 +240,8 @@ export async function buildRuntimeMap(
       edges: [],
       incidents: openIncidents.map((i) => ({
         incidentId: i.incidentId,
-        label: i.packet.scope.primaryService,
+        label: i.diagnosisResult?.summary.what_happened
+          ?? i.packet.scope.primaryService,
         severity: i.packet.signalSeverity ?? 'medium',
         openedAgo: formatOpenedAgo(i.openedAt),
       })),
@@ -331,7 +347,8 @@ export async function buildRuntimeMap(
   for (const incident of openIncidents) {
     incidents.push({
       incidentId: incident.incidentId,
-      label: incident.packet.scope.primaryService,
+      label: incident.diagnosisResult?.summary.what_happened
+        ?? incident.packet.scope.primaryService,
       severity: incident.packet.signalSeverity ?? 'medium',
       openedAgo: formatOpenedAgo(incident.openedAt),
     })

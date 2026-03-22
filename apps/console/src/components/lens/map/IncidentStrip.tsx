@@ -6,6 +6,10 @@ interface Props {
   zoomTo: (level: LensLevel, trigger?: HTMLElement, incidentId?: string) => void;
 }
 
+function formatShortId(id: string): string {
+  return "INC-" + id.replace("inc_", "").slice(0, 8).toUpperCase();
+}
+
 /**
  * IncidentStrip — list of active incident rows below the map.
  * Each row is clickable → zooms to Level 1 (Incident Board).
@@ -61,7 +65,7 @@ function IncidentRow({
       onKeyDown={handleKeyDown}
     >
       <span className={`health-dot ${sevNorm === "critical" || sevNorm === "high" ? "critical" : sevNorm === "medium" ? "degraded" : ""}`} />
-      <span className="ir-id">{incident.incidentId.replace("inc_", "INC-").toUpperCase()}</span>
+      <span className="ir-id">{formatShortId(incident.incidentId)}</span>
       <span className="ir-name">{incident.label}</span>
       <span className={`ir-sev ${sevNorm}`}>{incident.severity}</span>
       <span className="ir-time">{incident.openedAgo} ago</span>
