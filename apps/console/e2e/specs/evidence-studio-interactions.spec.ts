@@ -14,11 +14,17 @@ async function gotoEvidenceStudio(
   const incidentId = await gotoFirstIncident(page);
   // Navigate directly to level=2 so LensShell renders LensEvidenceStudio
   await page.goto(`/?incidentId=${incidentId}&level=2&tab=traces`);
-  // Wait for the studio to finish loading (loading state disappears)
+  // Wait for either the studio content OR error state to appear
   await page.waitForFunction(
-    "!document.querySelector('.lens-ev-loading')",
-    { timeout: 10_000 },
+    "document.querySelector('.lens-ev-studio') || document.querySelector('.lens-ev-error')",
+    { timeout: 15_000 },
   );
+  // If the error state appeared, the evidence API failed — surface the error
+  const error = page.locator(".lens-ev-error");
+  if (await error.count() > 0) {
+    const errorText = await error.textContent();
+    throw new Error(`Evidence Studio loaded with error: ${errorText}`);
+  }
   return incidentId;
 }
 

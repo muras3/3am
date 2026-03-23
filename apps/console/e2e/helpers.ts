@@ -14,7 +14,13 @@ async function listIncidents(page: Page): Promise<E2EIncidentSummary[]> {
   const res = await page.request.get("/api/incidents?limit=20", {
     headers: { Authorization: `Bearer ${E2E_TOKEN}` },
   });
-  const data = (await res.json()) as { items: E2EIncidentSummary[] };
+  if (!res.ok()) {
+    throw new Error(`[E2E] listIncidents failed: ${res.status()} ${res.statusText()} — ${await res.text()}`);
+  }
+  const data = (await res.json()) as { items?: E2EIncidentSummary[] };
+  if (!data.items) {
+    throw new Error(`[E2E] listIncidents: response has no 'items' field — got: ${JSON.stringify(data).slice(0, 200)}`);
+  }
   return data.items;
 }
 
