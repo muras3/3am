@@ -36,7 +36,7 @@ export default defineConfig({
     command:
       "VITE_RECEIVER_BASE_URL=http://localhost:4319 pnpm dev --port 5174",
     url: "http://localhost:5174",
-    reuseExistingServer: false,
+    reuseExistingServer: !process.env["CI"],
     timeout: 30_000,
   },
 });

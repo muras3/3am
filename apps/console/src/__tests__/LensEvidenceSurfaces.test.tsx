@@ -252,13 +252,8 @@ describe("LensTracesView — span detail content", () => {
   });
 
   it("span without attributes or correlatedLogs is NOT expandable (no role=button)", () => {
-    // baseline spans have no extra attrs
-    const spanWithoutDetail = traces.expected[0]?.spans.find(
-      (s) => !s.attributes || Object.keys(s.attributes ?? {}).length === 0,
-    );
-    // In the fixture, baseline-stripe-001 has {"http.status_code": 200} but
-    // baseline spans are in the expected group. We test a minimal surface
-    // where all spans have no attributes and no correlatedLogs.
+    // We test a minimal surface where all spans have no attributes
+    // and no correlatedLogs — such spans should NOT be expandable.
     const minimalSurface = {
       observed: [
         {
