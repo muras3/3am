@@ -6,6 +6,7 @@ import { curatedQueries } from "../api/queries.js";
 import {
   extendedIncidentReady,
   extendedIncidentPending,
+  extendedIncidentSparse,
 } from "../__fixtures__/curated/extended-incident.js";
 import type { LensLevel } from "../routes/__root.js";
 
@@ -30,7 +31,7 @@ function renderBoard(
 // ── Tests ─────────────────────────────────────────────────────
 
 describe("LensIncidentBoard — diagnosis pending", () => {
-  it("renders DiagnosisPending when state.diagnosis is pending", () => {
+  it("renders DiagnosisPending banner when state.diagnosis is pending", () => {
     const qc = makeClient();
     qc.setQueryData(
       curatedQueries.extendedIncident("inc_0892").queryKey,
@@ -40,15 +41,17 @@ describe("LensIncidentBoard — diagnosis pending", () => {
     expect(screen.getByText(/Diagnosis in progress/)).toBeInTheDocument();
   });
 
-  it("does not render board sections when pending", () => {
+  it("keeps board sections rendered with state fallback copy when pending", () => {
     const qc = makeClient();
     qc.setQueryData(
       curatedQueries.extendedIncident("inc_0892").queryKey,
       extendedIncidentPending,
     );
     renderBoard("inc_0892", vi.fn(), qc);
-    expect(screen.queryByText(/Immediate Action/i)).not.toBeInTheDocument();
-    expect(screen.queryByText(/Blast Radius/i)).not.toBeInTheDocument();
+    expect(screen.getAllByText(/Immediate Action/i).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/Blast Radius/i).length).toBeGreaterThan(0);
+    expect(screen.getByText("Diagnosis pending for this incident.")).toBeInTheDocument();
+    expect(screen.getByText("Causal chain will populate when diagnosis completes.")).toBeInTheDocument();
   });
 });
 
@@ -67,6 +70,7 @@ describe("LensIncidentBoard — diagnosis ready", () => {
     expect(
       screen.getByText(/Stripe API rate limit cascade causing payment failures/),
     ).toBeInTheDocument();
+    expect(screen.getAllByText("INC-0892").length).toBeGreaterThan(0);
   });
 
   it("renders Immediate Action section", () => {
@@ -234,5 +238,21 @@ describe("LensEvidenceEntry", () => {
     const btn = screen.getByRole("button", { name: /Open Evidence Studio/ });
     fireEvent.keyDown(btn, { key: " " });
     expect(zoomTo).toHaveBeenCalledWith(2, expect.anything());
+  });
+});
+
+describe("LensIncidentBoard — sparse diagnosis", () => {
+  it("renders sparse state note without collapsing the board", () => {
+    const qc = makeClient();
+    qc.setQueryData(
+      curatedQueries.extendedIncident("inc_0892").queryKey,
+      extendedIncidentSparse,
+    );
+
+    renderBoard("inc_0892", vi.fn(), qc);
+
+    expect(screen.getAllByText("Sparse evidence returned.").length).toBeGreaterThan(0);
+    expect(screen.getByText("Low confidence")).toBeInTheDocument();
+    expect(screen.getByText("Check external dependency status pages")).toBeInTheDocument();
   });
 });

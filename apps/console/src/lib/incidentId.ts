@@ -7,3 +7,10 @@ export function parseIncidentId(value: unknown): string | undefined {
 export function encodeIncidentId(incidentId: string): string {
   return encodeURIComponent(incidentId);
 }
+
+export function formatShortIncidentId(incidentId: string): string {
+  const normalized = incidentId.startsWith("inc_")
+    ? incidentId.slice(4)
+    : incidentId.replace(/^INC-/, "");
+  return `INC-${normalized.slice(0, 8).toUpperCase()}`;
+}

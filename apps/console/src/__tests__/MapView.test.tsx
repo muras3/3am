@@ -3,7 +3,10 @@ import { describe, it, expect, vi } from "vitest";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MapView } from "../components/lens/map/MapView.js";
 import { curatedQueries } from "../api/queries.js";
-import { runtimeMapReady } from "../__fixtures__/curated/runtime-map.js";
+import {
+  runtimeMapReady,
+  runtimeMapUnavailable,
+} from "../__fixtures__/curated/runtime-map.js";
 import type { LensLevel } from "../routes/__root.js";
 
 // ── Stub TanStack Router (MapView doesn't use it directly, but sub-components may) ──
@@ -72,7 +75,7 @@ describe("MapView — map nodes", () => {
     renderMapView(queryClient);
 
     const entryNodes = document.querySelectorAll(".map-node.n-entry");
-    const expectedCount = runtimeMapReady.nodes.filter((n) => n.tier === "entry_point").length;
+    const expectedCount = runtimeMapReady.nodes.filter((n: (typeof runtimeMapReady.nodes)[number]) => n.tier === "entry_point").length;
     expect(entryNodes).toHaveLength(expectedCount);
   });
 
@@ -83,7 +86,7 @@ describe("MapView — map nodes", () => {
     renderMapView(queryClient);
 
     const unitNodes = document.querySelectorAll(".map-node.n-unit");
-    const expectedCount = runtimeMapReady.nodes.filter((n) => n.tier === "runtime_unit").length;
+    const expectedCount = runtimeMapReady.nodes.filter((n: (typeof runtimeMapReady.nodes)[number]) => n.tier === "runtime_unit").length;
     expect(unitNodes).toHaveLength(expectedCount);
   });
 
@@ -94,7 +97,7 @@ describe("MapView — map nodes", () => {
     renderMapView(queryClient);
 
     const depNodes = document.querySelectorAll(".map-node.n-dep");
-    const expectedCount = runtimeMapReady.nodes.filter((n) => n.tier === "dependency").length;
+    const expectedCount = runtimeMapReady.nodes.filter((n: (typeof runtimeMapReady.nodes)[number]) => n.tier === "dependency").length;
     expect(depNodes).toHaveLength(expectedCount);
   });
 
@@ -105,7 +108,7 @@ describe("MapView — map nodes", () => {
     renderMapView(queryClient);
 
     const criticalNodes = document.querySelectorAll(".map-node.n-critical");
-    const expectedCount = runtimeMapReady.nodes.filter((n) => n.status === "critical").length;
+    const expectedCount = runtimeMapReady.nodes.filter((n: (typeof runtimeMapReady.nodes)[number]) => n.status === "critical").length;
     expect(criticalNodes).toHaveLength(expectedCount);
   });
 });
@@ -129,6 +132,33 @@ describe("MapView — incident strip", () => {
 
     expect(screen.getByText("Stripe Rate Limit Cascade")).toBeInTheDocument();
   });
+
+  it("keeps active incidents shell visible when there are no incidents", () => {
+    const queryClient = makeClient();
+    queryClient.setQueryData(curatedQueries.runtimeMap().queryKey, runtimeMapUnavailable);
+
+    renderMapView(queryClient);
+
+    expect(screen.getAllByText("Active Incidents").length).toBeGreaterThan(1);
+    expect(screen.getByTestId("incident-strip")).toBeInTheDocument();
+    expect(screen.getByTestId("incident-row-empty")).toBeInTheDocument();
+  });
+});
+
+describe("MapView — empty map shell", () => {
+  it("keeps the map frame, tier labels, and legend when no nodes are returned", () => {
+    const queryClient = makeClient();
+    queryClient.setQueryData(curatedQueries.runtimeMap().queryKey, runtimeMapUnavailable);
+
+    renderMapView(queryClient);
+
+    expect(screen.getByLabelText("Runtime dependency map")).toBeInTheDocument();
+    expect(screen.getByText("Entry Points")).toBeInTheDocument();
+    expect(screen.getByText("Runtime Units")).toBeInTheDocument();
+    expect(screen.getByText("Dependencies")).toBeInTheDocument();
+    expect(screen.getByText("Observed from spans")).toBeInTheDocument();
+    expect(screen.getByTestId("map-empty-state")).toHaveTextContent("No traffic observed yet.");
+  });
 });
 
 describe("MapView — keyboard navigation", () => {
@@ -140,7 +170,7 @@ describe("MapView — keyboard navigation", () => {
     renderMapView(queryClient, zoomTo);
 
     // Find a node with incidentId (clickable)
-    const clickableNode = runtimeMapReady.nodes.find((n) => !!n.incidentId);
+    const clickableNode = runtimeMapReady.nodes.find((n: (typeof runtimeMapReady.nodes)[number]) => !!n.incidentId);
     expect(clickableNode).toBeDefined();
     const nodeEl = screen.getByTestId(`map-node-${clickableNode!.id}`);
 
@@ -156,7 +186,7 @@ describe("MapView — keyboard navigation", () => {
 
     renderMapView(queryClient, zoomTo);
 
-    const clickableNode = runtimeMapReady.nodes.find((n) => !!n.incidentId);
+    const clickableNode = runtimeMapReady.nodes.find((n: (typeof runtimeMapReady.nodes)[number]) => !!n.incidentId);
     expect(clickableNode).toBeDefined();
     const nodeEl = screen.getByTestId(`map-node-${clickableNode!.id}`);
 

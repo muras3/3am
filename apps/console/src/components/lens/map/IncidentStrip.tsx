@@ -1,13 +1,10 @@
 import type { MapIncident } from "../../../api/curated-types.js";
 import type { LensLevel } from "../../../routes/__root.js";
+import { formatShortIncidentId } from "../../../lib/incidentId.js";
 
 interface Props {
   incidents: MapIncident[];
   zoomTo: (level: LensLevel, trigger?: HTMLElement, incidentId?: string) => void;
-}
-
-function formatShortId(id: string): string {
-  return "INC-" + id.replace("inc_", "").slice(0, 8).toUpperCase();
 }
 
 /**
@@ -18,9 +15,13 @@ export function IncidentStrip({ incidents, zoomTo }: Props) {
   if (incidents.length === 0) {
     return (
       <div className="incident-strip" data-testid="incident-strip">
-        <p style={{ color: "var(--ink-3)", fontSize: "var(--fs-sm)", padding: "8px 14px" }}>
-          No active incidents.
-        </p>
+        <div className="incident-row incident-row-empty" data-testid="incident-row-empty">
+          <span className="health-dot" aria-hidden="true" />
+          <span className="ir-id">STATE</span>
+          <span className="ir-name">No active incidents returned.</span>
+          <span className="ir-sev empty">Ready</span>
+          <span className="ir-time">0 open</span>
+        </div>
       </div>
     );
   }
@@ -65,7 +66,7 @@ function IncidentRow({
       onKeyDown={handleKeyDown}
     >
       <span className={`health-dot ${sevNorm === "critical" || sevNorm === "high" ? "critical" : sevNorm === "medium" ? "degraded" : ""}`} />
-      <span className="ir-id">{formatShortId(incident.incidentId)}</span>
+      <span className="ir-id">{formatShortIncidentId(incident.incidentId)}</span>
       <span className="ir-name">{incident.label}</span>
       <span className={`ir-sev ${sevNorm}`}>{incident.severity}</span>
       <span className="ir-time">{incident.openedAgo} ago</span>

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import type { LensLevel } from "../../routes/__root.js";
+import { formatShortIncidentId } from "../../lib/incidentId.js";
 
 interface LevelHeaderProps {
   level: LensLevel;
@@ -51,7 +52,7 @@ export function LevelHeader({
         </button>
         <span className="topbar-sep" />
         {incidentId && (
-          <span className="level-header-id">{incidentId.replace("inc_", "INC-")}</span>
+          <span className="level-header-id">{formatShortIncidentId(incidentId)}</span>
         )}
         {severity && (
           <span className="severity-badge" data-severity={severity}>
@@ -72,7 +73,7 @@ export function LevelHeader({
         onClick={(e) => zoomTo(1, e.currentTarget)}
         aria-label="Back to Incident"
       >
-        ← {incidentId ? incidentId.replace("inc_", "INC-") : "Incident"}
+        ← {incidentId ? formatShortIncidentId(incidentId) : "Incident"}
       </button>
       <span className="topbar-sep" />
       <span className="level-header-title">Evidence Studio</span>
@@ -113,11 +114,11 @@ function Duration({ openedAt }: { openedAt: string }) {
   return <span className="level-header-duration">{text}</span>;
 }
 
-function formatDuration(openedAt: string): string {
+export function formatDuration(openedAt: string): string {
   const elapsed = Math.max(0, Date.now() - new Date(openedAt).getTime());
   const s = Math.floor(elapsed / 1000);
   const m = Math.floor(s / 60);
   const h = Math.floor(m / 60);
   if (h > 0) return `${h}h ${m % 60}m`;
-  return `${m}m ${s % 60}s`;
+  return `Duration: ${m}m ${s % 60}s`;
 }

@@ -49,7 +49,7 @@ export function MapNode({ node, style, zoomTo }: Props) {
       <div className="mn-top">
         <span className={`health-dot${node.status !== "healthy" ? ` ${node.status}` : ""}`} />
         <span className="mn-name">{node.label}</span>
-        {node.badges.map((badge, i) => (
+        {node.badges.map((badge: string, i: number) => (
           <span key={i} className={badge === "external" ? "mn-tag" : "mn-badge"}>
             {badge}
           </span>

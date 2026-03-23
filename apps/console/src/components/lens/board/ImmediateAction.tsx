@@ -1,10 +1,17 @@
-import type { IncidentAction } from "../../../api/curated-types.js";
+import type { CuratedState, IncidentAction } from "../../../api/curated-types.js";
+import { sectionFallback } from "./board-state.js";
 
 interface Props {
   action: IncidentAction;
+  state: CuratedState;
 }
 
-export function ImmediateAction({ action }: Props) {
+export function ImmediateAction({ action, state }: Props) {
+  const text = action.text.trim() || sectionFallback(state, "action");
+  const rationale =
+    action.rationale.trim() || sectionFallback(state, "action");
+  const doNot = action.doNot.trim();
+
   return (
     <div className="lens-board-action-hero">
       <div className="lens-board-action-eyebrow">
@@ -16,13 +23,17 @@ export function ImmediateAction({ action }: Props) {
         </svg>
         Immediate Action
       </div>
-      <div className="lens-board-action-text">{action.text}</div>
+      <div className="lens-board-action-text">{text}</div>
       <div className="lens-board-action-why">
-        <strong>Why:</strong> {action.rationale}
+        <strong>Why:</strong> {rationale}
       </div>
-      {action.doNot && (
+      {doNot ? (
         <div className="lens-board-action-donot">
-          <strong>Do not:</strong> {action.doNot}
+          <strong>Do not:</strong> {doNot}
+        </div>
+      ) : (
+        <div className="lens-board-action-donot lens-board-action-donot-empty">
+          <strong>Do not:</strong> No contrary guidance returned.
         </div>
       )}
     </div>
