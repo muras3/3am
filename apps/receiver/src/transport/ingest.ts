@@ -246,7 +246,7 @@ export function createIngestRouter(storage: StorageDriver, spanBuffer: SpanBuffe
         exceptionCount: s.exceptionCount,
         httpMethod: s.httpMethod,
         spanKind: s.spanKind,
-        attributes: {},
+        attributes: s.attributes ?? {},
         ingestedAt: now,
       }));
       await telemetryStore.ingestSpans(telemetrySpans);

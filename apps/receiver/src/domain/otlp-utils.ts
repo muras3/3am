@@ -51,6 +51,61 @@ export function getStringAttr(attrs: unknown, key: string): string {
 }
 
 /**
+ * Allowlist of OTLP attribute keys to persist in TelemetryStore.
+ * Bounds payload size while retaining diagnostically significant fields.
+ */
+const ATTRIBUTE_ALLOWLIST = new Set([
+  'http.route',
+  'http.response.status_code',
+  'http.request.method',
+  'peer.service',
+  'url.full',
+  'url.path',
+  'db.system',
+  'db.statement',
+  'rpc.system',
+  'rpc.method',
+  'messaging.system',
+  'error.type',
+  'exception.type',
+  'exception.message',
+  'http.url',
+  'http.status_code',
+  'http.method',
+  'x-ratelimit-limit',
+  'x-ratelimit-remaining',
+  'retry-after',
+  'span.status',
+])
+
+/**
+ * Convert an OTLP key-value attributes array to a flat Record<string, unknown>.
+ * Only keys in ATTRIBUTE_ALLOWLIST are retained; all others are discarded.
+ */
+export function flattenOtlpAttributes(attrs: unknown): Record<string, unknown> {
+  if (!isArray(attrs)) return {}
+  const result: Record<string, unknown> = {}
+  for (const attr of attrs) {
+    if (!isRecord(attr)) continue
+    const key = attr['key']
+    if (typeof key !== 'string') continue
+    if (!ATTRIBUTE_ALLOWLIST.has(key)) continue
+    const val = attr['value']
+    if (!isRecord(val)) continue
+    if ('stringValue' in val) {
+      result[key] = val['stringValue']
+    } else if ('intValue' in val) {
+      result[key] = val['intValue']
+    } else if ('doubleValue' in val) {
+      result[key] = val['doubleValue']
+    } else if ('boolValue' in val) {
+      result[key] = val['boolValue']
+    }
+  }
+  return result
+}
+
+/**
  * Normalize a traceId/spanId value to lowercase hex.
  *
  * OTLP JSON transport uses lowercase hex strings. OTLP protobuf transport

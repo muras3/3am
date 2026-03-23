@@ -16,6 +16,7 @@ export const ExtractedSpanSchema = z.object({
   parentSpanId: z.string().optional(),
   spanName: z.string().optional(),
   httpMethod: z.string().optional(),
+  attributes: z.record(z.string(), z.unknown()).optional(),
 }).strict();
 
 export type ExtractedSpan = z.infer<typeof ExtractedSpanSchema>;
