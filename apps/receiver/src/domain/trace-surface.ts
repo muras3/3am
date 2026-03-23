@@ -22,7 +22,8 @@ import { selectBaseline } from './baseline-selector.js'
 
 const SLOW_SPAN_THRESHOLD_MS = 5_000
 const MAX_OBSERVED_TRACES = 10
-const MAX_CORRELATED_LOGS_PER_SPAN = 5
+const MAX_CORRELATED_LOGS_PER_SPAN = 4
+const CORRELATED_LOG_WINDOW_MS = 2_000
 
 // ── Span Status Helpers ──────────────────────────────────────────────────
 
@@ -119,50 +120,43 @@ function logRefId(log: TelemetryLog): string {
   return `${log.service}:${log.timestamp}:${log.bodyHash}`
 }
 
-function buildCorrelatedLogIndex(
-  logs: TelemetryLog[],
-): {
-  bySpanKey: Map<string, string[]>
-  byTraceId: Map<string, string[]>
-} {
-  const bySpanKey = new Map<string, string[]>()
-  const byTraceId = new Map<string, string[]>()
+function buildCorrelatedLogRefs(span: TelemetrySpan, logs: TelemetryLog[]): string[] {
+  const windowStartMs = span.startTimeMs - CORRELATED_LOG_WINDOW_MS
+  const windowEndMs = span.startTimeMs + span.durationMs + CORRELATED_LOG_WINDOW_MS
 
-  for (const log of logs) {
-    const refId = logRefId(log)
-
-    if (log.traceId && !log.spanId) {
-      const traceRefs = byTraceId.get(log.traceId) ?? []
-      if (traceRefs.length < MAX_CORRELATED_LOGS_PER_SPAN) {
-        traceRefs.push(refId)
-      }
-      byTraceId.set(log.traceId, traceRefs)
-    }
-
-    if (log.traceId && log.spanId) {
-      const spanKey = `${log.traceId}:${log.spanId}`
-      const spanRefs = bySpanKey.get(spanKey) ?? []
-      if (spanRefs.length < MAX_CORRELATED_LOGS_PER_SPAN) {
-        spanRefs.push(refId)
-      }
-      bySpanKey.set(spanKey, spanRefs)
-    }
-  }
-
-  return { bySpanKey, byTraceId }
+  return logs
+    .filter((log) => log.startTimeMs >= windowStartMs && log.startTimeMs <= windowEndMs)
+    .map((log) => ({
+      refId: logRefId(log),
+      rank:
+        log.spanId === span.spanId && log.traceId === span.traceId
+          ? 0
+          : log.traceId === span.traceId
+            ? 1
+            : log.service === span.serviceName
+              ? 2
+              : 3,
+      timeDistanceMs: Math.abs(log.startTimeMs - span.startTimeMs),
+      startTimeMs: log.startTimeMs,
+    }))
+    .sort((a, b) => {
+      if (a.rank !== b.rank) return a.rank - b.rank
+      if (a.timeDistanceMs !== b.timeDistanceMs) return a.timeDistanceMs - b.timeDistanceMs
+      if (a.startTimeMs !== b.startTimeMs) return a.startTimeMs - b.startTimeMs
+      return a.refId.localeCompare(b.refId)
+    })
+    .slice(0, MAX_CORRELATED_LOGS_PER_SPAN)
+    .map((log) => log.refId)
 }
 
 function buildTraceSpan(
   span: TelemetrySpan,
   rootStartTimeMs: number,
   rootDurationMs: number,
-  correlatedLogs: { bySpanKey: Map<string, string[]>; byTraceId: Map<string, string[]> },
+  logs: TelemetryLog[],
 ): CuratedTraceSpan {
   const offsetMs = span.startTimeMs - rootStartTimeMs
   const widthPct = rootDurationMs > 0 ? (span.durationMs / rootDurationMs) * 100 : 0
-  const spanKey = `${span.traceId}:${span.spanId}`
-  const exactRefs = correlatedLogs.bySpanKey.get(spanKey) ?? []
-  const fallbackRefs = exactRefs.length > 0 ? [] : (correlatedLogs.byTraceId.get(span.traceId) ?? [])
 
   return {
     spanId: span.spanId,
@@ -177,21 +171,21 @@ function buildTraceSpan(
     status: classifySpanStatus(span.httpStatusCode, span.spanStatusCode, span.durationMs),
     peerService: span.peerService,
     attributes: span.attributes,
-    correlatedLogRefIds: (exactRefs.length > 0 ? exactRefs : fallbackRefs).slice(0, MAX_CORRELATED_LOGS_PER_SPAN),
+    correlatedLogRefIds: buildCorrelatedLogRefs(span, logs),
   }
 }
 
 function buildGroupedTrace(
   traceId: string,
   spans: TelemetrySpan[],
-  correlatedLogs: { bySpanKey: Map<string, string[]>; byTraceId: Map<string, string[]> },
+  logs: TelemetryLog[],
 ): CuratedGroupedTrace {
   const root = findRootSpan(spans)
   const rootDurationMs = root.durationMs
   const rootStartTimeMs = root.startTimeMs
 
   const traceSpans: CuratedTraceSpan[] = spans.map((s) =>
-    buildTraceSpan(s, rootStartTimeMs, rootDurationMs, correlatedLogs),
+    buildTraceSpan(s, rootStartTimeMs, rootDurationMs, logs),
   )
 
   return {
@@ -221,7 +215,6 @@ export async function buildTraceSurface(
     telemetryStore.querySpans(filter),
     telemetryStore.queryLogs(filter),
   ])
-  const correlatedLogs = buildCorrelatedLogIndex(allLogs)
 
   // Filter to incident-bound spans only
   const membershipSet = new Set(incident.spanMembership)
@@ -233,7 +226,7 @@ export async function buildTraceSurface(
   const observedGroups = groupSpansByTrace(incidentSpans)
   let observedTraces: CuratedGroupedTrace[] = []
   for (const [traceId, spans] of observedGroups) {
-    observedTraces.push(buildGroupedTrace(traceId, spans, correlatedLogs))
+    observedTraces.push(buildGroupedTrace(traceId, spans, allLogs))
   }
 
   // Sort by status severity (error first, then slow, then ok),
@@ -280,7 +273,7 @@ export async function buildTraceSurface(
   const baselineGroups = groupSpansByTrace(baselineResult.spans)
   const expectedTraces: CuratedGroupedTrace[] = []
   for (const [traceId, spans] of baselineGroups) {
-    expectedTraces.push(buildGroupedTrace(traceId, spans, correlatedLogs))
+    expectedTraces.push(buildGroupedTrace(traceId, spans, allLogs))
   }
 
   // ── Build EvidenceRefs ───────────────────────────────────────────────

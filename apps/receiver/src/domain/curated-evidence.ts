@@ -13,7 +13,6 @@ import type {
   CuratedTraceSurface,
   CuratedMetricsSurface,
   CuratedLogsSurface,
-  CorrelatedLog,
   EvidenceRef,
   ProofCard,
   QABlock,
@@ -21,6 +20,7 @@ import type {
   ConsoleNarrative,
   ProofCardNarrative,
   ProofRef,
+  NarrativeEvidenceCounts,
 } from '@3amoncall/core'
 import { buildTraceSurface } from './trace-surface.js'
 import { buildMetricsSurface } from './metrics-surface.js'
@@ -122,7 +122,7 @@ export async function buildCuratedEvidence(
 
   return {
     proofCards: buildProofCards(narrative?.proofCards, reasoningStructure.proofRefs),
-    qa: buildQaBlock(narrative?.qa),
+    qa: buildQaBlock(incident, narrative?.qa, reasoningStructure.proofRefs, reasoningStructure.evidenceCounts),
     surfaces: {
       traces: toPublicTraceSurface(traceResult.surface, logsResult.surface),
       metrics: toPublicMetricsSurface(metricsResult.surface),
@@ -138,8 +138,11 @@ function toPublicTraceSurface(
   logsSurface: CuratedLogsSurface,
 ): EvidenceResponse['surfaces']['traces'] {
   const expectedReference = surface.expected[0]
-  const correlatedLogsBySpan = buildCorrelatedLogsBySpan(logsSurface)
-  const correlatedLogsByTrace = buildCorrelatedLogsByTrace(logsSurface)
+  const logsByRefId = new Map(
+    logsSurface.clusters.flatMap((cluster) =>
+      cluster.entries.map((entry) => [entry.refId, entry] as const),
+    ),
+  )
 
   return {
     observed: surface.observed.map((trace) => ({
@@ -158,9 +161,17 @@ function toPublicTraceSurface(
         durationMs: span.durationMs,
         status: span.status,
         attributes: span.attributes,
-        correlatedLogs: correlatedLogsBySpan.get(span.spanId)
-          ?? correlatedLogsByTrace.get(trace.traceId)
-          ?? undefined,
+        correlatedLogs: span.correlatedLogRefIds.length > 0
+          ? span.correlatedLogRefIds
+            .map((refId) => logsByRefId.get(refId))
+            .filter((entry): entry is NonNullable<typeof entry> => entry !== undefined)
+            .map((entry) => ({
+              refId: entry.refId,
+              timestamp: entry.timestamp,
+              severity: mapLogSeverity(entry.severity),
+              body: entry.body,
+            }))
+          : undefined,
       })),
     })),
     expected: surface.expected.map((trace) => ({
@@ -196,46 +207,6 @@ function buildObservedAnnotation(
 
 function buildExpectedAnnotation(baseline: CuratedTraceSurface['baseline']): string {
   return `Expected behavior from ${baseline.windowStart} to ${baseline.windowEnd} (${baseline.sampleCount} samples, ${baseline.confidence} confidence).`
-}
-
-function buildCorrelatedLogsBySpan(logsSurface: CuratedLogsSurface): Map<string, CorrelatedLog[]> {
-  const result = new Map<string, CorrelatedLog[]>()
-
-  for (const cluster of logsSurface.clusters) {
-    for (const entry of cluster.entries) {
-      if (!entry.spanId) continue
-      const existing = result.get(entry.spanId) ?? []
-      if (existing.length >= 3) continue
-      existing.push({
-        timestamp: entry.timestamp,
-        severity: entry.severity,
-        body: entry.body,
-      })
-      result.set(entry.spanId, existing)
-    }
-  }
-
-  return result
-}
-
-function buildCorrelatedLogsByTrace(logsSurface: CuratedLogsSurface): Map<string, CorrelatedLog[]> {
-  const result = new Map<string, CorrelatedLog[]>()
-
-  for (const cluster of logsSurface.clusters) {
-    for (const entry of cluster.entries) {
-      if (!entry.traceId) continue
-      const existing = result.get(entry.traceId) ?? []
-      if (existing.length >= 3) continue
-      existing.push({
-        timestamp: entry.timestamp,
-        severity: entry.severity,
-        body: entry.body,
-      })
-      result.set(entry.traceId, existing)
-    }
-  }
-
-  return result
 }
 
 function toPublicMetricsSurface(surface: CuratedMetricsSurface): EvidenceResponse['surfaces']['metrics'] {
@@ -289,32 +260,32 @@ function buildProofCards(
   proofRefs: ProofRef[],
 ): ProofCard[] {
   const refMap = new Map(proofRefs.map((r) => [r.cardId, r]))
+  const orderedIds = ['trigger', 'design_gap', 'recovery'] as const
 
-  // When narrative is available, merge wording (narrative) with evidence (proofRefs)
-  if (narrativeCards) {
-    return narrativeCards.map((card) => {
-      const ref = refMap.get(card.id)
+  return orderedIds.map((cardId) => {
+    const ref = refMap.get(cardId)
+    const narrativeCard = narrativeCards?.find((card) => card.id === cardId)
+
+    if (narrativeCard) {
       return {
-        id: card.id,
-        label: card.label,
+        id: cardId,
+        label: narrativeCard.label,
         status: ref?.status ?? 'pending',
-        summary: card.summary,
-        targetSurface: ref?.targetSurface ?? 'traces',
+        summary: narrativeCard.summary,
+        targetSurface: ref?.targetSurface ?? defaultProofCardSurface(cardId),
         evidenceRefs: ref?.evidenceRefs ?? [],
       }
-    })
-  }
+    }
 
-  // Deterministic fallback: generate proof cards from proofRefs alone (no LLM wording)
-  if (proofRefs.length === 0) return []
-  return proofRefs.map((ref) => ({
-    id: ref.cardId,
-    label: defaultProofCardLabel(ref.cardId),
-    status: ref.status,
-    summary: '',
-    targetSurface: ref.targetSurface,
-    evidenceRefs: ref.evidenceRefs,
-  }))
+    return {
+      id: cardId,
+      label: defaultProofCardLabel(cardId),
+      status: ref?.status ?? 'pending',
+      summary: defaultProofCardSummary(cardId, ref),
+      targetSurface: ref?.targetSurface ?? defaultProofCardSurface(cardId),
+      evidenceRefs: ref?.evidenceRefs ?? [],
+    }
+  })
 }
 
 function defaultProofCardLabel(cardId: string): string {
@@ -326,16 +297,81 @@ function defaultProofCardLabel(cardId: string): string {
   }
 }
 
-function buildQaBlock(qa: ConsoleNarrative['qa'] | undefined): QABlock | null {
-  if (!qa) return null
+function defaultProofCardSurface(cardId: string): ProofCard['targetSurface'] {
+  switch (cardId) {
+    case 'trigger':
+      return 'traces'
+    case 'design_gap':
+      return 'logs'
+    case 'recovery':
+      return 'logs'
+    default:
+      return 'traces'
+  }
+}
 
+function defaultProofCardSummary(cardId: string, ref: ProofRef | undefined): string {
+  const evidenceCount = ref?.evidenceRefs.length ?? 0
+  const surface = ref?.targetSurface ?? defaultProofCardSurface(cardId)
+
+  switch (cardId) {
+    case 'trigger':
+      return evidenceCount > 0
+        ? `${evidenceCount} deterministic ${surface} reference(s) capture the trigger path.`
+        : 'Trigger evidence slot is reserved and remains visible even while supporting evidence is still being assembled.'
+    case 'design_gap':
+      return evidenceCount > 0
+        ? `${evidenceCount} deterministic ${surface} reference(s) describe the suspected design gap.`
+        : 'Design-gap evidence is sparse right now, but this proof lane stays visible by contract.'
+    case 'recovery':
+      return evidenceCount > 0
+        ? `${evidenceCount} deterministic ${surface} reference(s) show the recovery path.`
+        : 'Recovery evidence is not available yet, but the recovery card remains visible by contract.'
+    default:
+      return 'Deterministic evidence placeholder.'
+  }
+}
+
+function buildQaBlock(
+  incident: Incident,
+  qa: ConsoleNarrative['qa'] | undefined,
+  proofRefs: ProofRef[],
+  evidenceCounts: NarrativeEvidenceCounts,
+): QABlock {
+  if (qa) {
+    return {
+      question: qa.question,
+      answer: qa.answer,
+      evidenceRefs: qa.answerEvidenceRefs,
+      evidenceSummary: summarizeEvidenceRefs(qa.answerEvidenceRefs),
+      followups: qa.followups,
+      ...(qa.noAnswerReason ? { noAnswerReason: qa.noAnswerReason } : {}),
+    }
+  }
+
+  const primaryRoute = incident.packet.scope.affectedRoutes[0]
+  const targetLabel = primaryRoute
+    ? `${incident.packet.scope.primaryService} ${primaryRoute}`
+    : incident.packet.scope.primaryService
+  const evidenceRefs = proofRefs.flatMap((ref) => ref.evidenceRefs).slice(0, 6)
   return {
-    question: qa.question,
-    answer: qa.answer,
-    evidenceRefs: qa.answerEvidenceRefs,
-    evidenceSummary: summarizeEvidenceRefs(qa.answerEvidenceRefs),
-    followups: qa.followups,
-    ...(qa.noAnswerReason ? { noAnswerReason: qa.noAnswerReason } : {}),
+    question: `What explains the current incident on ${targetLabel}?`,
+    answer: incident.diagnosisResult
+      ? [
+          incident.diagnosisResult.summary.root_cause_hypothesis,
+          incident.diagnosisResult.recommendation.action_rationale_short,
+        ].filter(Boolean).join(' ')
+      : 'Diagnosis narrative is pending. Use the deterministic traces, metrics, and logs below to inspect the current evidence.',
+    evidenceRefs,
+    evidenceSummary: {
+      traces: evidenceCounts.traces,
+      metrics: evidenceCounts.metrics,
+      logs: evidenceCounts.logs,
+    },
+    followups: buildDeterministicFollowups(evidenceCounts),
+    ...(!incident.diagnosisResult
+      ? { noAnswerReason: 'Diagnosis narrative is pending; deterministic evidence surfaces are available now.' }
+      : {}),
   }
 }
 
@@ -391,6 +427,39 @@ function summarizeEvidenceRefs(refs: EvidenceRef[]): QABlock['evidenceSummary'] 
   }
 
   return summary
+}
+
+function buildDeterministicFollowups(
+  evidenceCounts: NarrativeEvidenceCounts,
+): QABlock['followups'] {
+  const followups: QABlock['followups'] = []
+
+  if (evidenceCounts.traces > 0) {
+    followups.push({
+      question: 'Which span is acting as the smoking gun?',
+      targetEvidenceKinds: ['traces'],
+    })
+  }
+  if (evidenceCounts.metrics > 0) {
+    followups.push({
+      question: 'How far did observed metrics drift from baseline?',
+      targetEvidenceKinds: ['metrics'],
+    })
+  }
+  if (evidenceCounts.logs > 0) {
+    followups.push({
+      question: 'Which logs correlate with the failing spans?',
+      targetEvidenceKinds: ['logs', 'traces'],
+    })
+  }
+  if (followups.length === 0) {
+    followups.push({
+      question: 'What evidence is still missing for this incident?',
+      targetEvidenceKinds: ['traces', 'metrics', 'logs'],
+    })
+  }
+
+  return followups
 }
 
 function formatMetricValue(value: number | string): string {

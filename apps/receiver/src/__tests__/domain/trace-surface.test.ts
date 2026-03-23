@@ -479,27 +479,39 @@ describe('buildTraceSurface', () => {
     expect(baseRef.isSmokingGun).toBe(false)
   })
 
-  it('correlates logs to spans deterministically by spanId then traceId', async () => {
+  it('correlates logs to spans deterministically within a ±2s window', async () => {
     const rootSpan = makeSpan({
       traceId: 'trace-1',
       spanId: 'root',
       parentSpanId: undefined,
+      startTimeMs: 1700000000000,
+      durationMs: 500,
     })
     const childSpan = makeSpan({
       traceId: 'trace-1',
       spanId: 'child',
       parentSpanId: 'root',
+      startTimeMs: 1700000004000,
+      durationMs: 300,
     })
     const logs = [
       makeLog({
         timestamp: '2024-01-01T00:00:01Z',
         bodyHash: 'hash-root',
+        startTimeMs: 1700000001000,
         traceId: 'trace-1',
         spanId: 'root',
       }),
       makeLog({
         timestamp: '2024-01-01T00:00:02Z',
         bodyHash: 'hash-trace',
+        startTimeMs: 1700000004500,
+        traceId: 'trace-1',
+      }),
+      makeLog({
+        timestamp: '2024-01-01T00:00:10Z',
+        bodyHash: 'hash-outside',
+        startTimeMs: 1700000010000,
         traceId: 'trace-1',
       }),
     ]
