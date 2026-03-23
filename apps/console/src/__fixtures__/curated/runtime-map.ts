@@ -69,7 +69,7 @@ export const runtimeMapReady: RuntimeMapResponse = {
     { incidentId: "inc_0892", label: "Stripe Rate Limit Cascade", severity: "critical", openedAgo: "8m" },
     { incidentId: "inc_0891", label: "Order Timeout Degradation", severity: "medium", openedAgo: "14m" },
   ],
-  state: { diagnosis: "ready" },
+  state: { diagnosis: "ready", source: "recent_window", windowLabel: "last 30m" },
 };
 
 /** Sparse: single node, no edges */
@@ -93,19 +93,80 @@ export const runtimeMapSparse: RuntimeMapResponse = {
   ],
   edges: [],
   incidents: [],
-  state: { diagnosis: "ready" },
+  state: { diagnosis: "ready", source: "recent_window", windowLabel: "last 30m" },
 };
 
 /** Unavailable: no traffic observed yet */
 export const runtimeMapUnavailable: RuntimeMapResponse = {
   summary: {
-    activeIncidents: 0,
+    activeIncidents: 2,
     degradedNodes: 0,
     clusterReqPerSec: 0,
     clusterP95Ms: 0,
   },
   nodes: [],
   edges: [],
-  incidents: [],
-  state: { diagnosis: "ready" },
+  incidents: [
+    { incidentId: "inc_070c0148", label: "Stripe 429s exhausted checkout retries.", severity: "critical", openedAgo: "43m" },
+    { incidentId: "inc_413bde8a", label: "Diagnosis pending for api timeout burst.", severity: "medium", openedAgo: "1h" },
+  ],
+  state: {
+    diagnosis: "ready",
+    source: "no_telemetry",
+    windowLabel: "last 30m",
+    emptyReason: "no_preserved_incident_spans",
+  },
+};
+
+/** Fallback: live window empty, incident-scoped spans available */
+export const runtimeMapIncidentFallback: RuntimeMapResponse = {
+  summary: {
+    activeIncidents: 2,
+    degradedNodes: 3,
+    clusterReqPerSec: 24,
+    clusterP95Ms: 611,
+  },
+  nodes: [
+    {
+      id: "route:web:POST:/checkout",
+      tier: "entry_point",
+      label: "POST /checkout",
+      subtitle: "24.0 req/s",
+      status: "critical",
+      metrics: { errorRate: 0.44, p95Ms: 611, reqPerSec: 24 },
+      badges: ["44% err"],
+      incidentId: "inc_070c0148",
+    },
+    {
+      id: "unit:web:stripe.charges.create",
+      tier: "runtime_unit",
+      label: "stripe.charges.create",
+      subtitle: "24.0 req/s",
+      status: "critical",
+      metrics: { errorRate: 0.44, p95Ms: 402, reqPerSec: 24 },
+      badges: ["44% err"],
+      incidentId: "inc_070c0148",
+    },
+    {
+      id: "dep:stripe",
+      tier: "dependency",
+      label: "stripe",
+      subtitle: "external",
+      status: "critical",
+      metrics: { errorRate: 0.44, p95Ms: 402, reqPerSec: 24 },
+      badges: ["44% err"],
+      incidentId: "inc_070c0148",
+    },
+  ],
+  edges: [
+    { fromNodeId: "route:web:POST:/checkout", toNodeId: "unit:web:stripe.charges.create", kind: "internal", status: "critical", trafficHint: "12" },
+    { fromNodeId: "unit:web:stripe.charges.create", toNodeId: "dep:stripe", kind: "external", status: "critical", trafficHint: "12" },
+  ],
+  incidents: runtimeMapUnavailable.incidents,
+  state: {
+    diagnosis: "ready",
+    source: "incident_scope",
+    windowLabel: "captured incident window · 070C",
+    scopeIncidentId: "inc_070c0148",
+  },
 };

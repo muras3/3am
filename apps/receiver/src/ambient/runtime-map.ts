@@ -5,7 +5,7 @@
  * not SpanBuffer. Produces a response conforming to RuntimeMapResponseSchema.
  */
 
-import type { TelemetrySpan, TelemetryStoreDriver, TelemetryQueryFilter } from '../telemetry/interface.js'
+import { buildIncidentQueryFilter, type TelemetrySpan, type TelemetryStoreDriver, type TelemetryQueryFilter } from '../telemetry/interface.js'
 import type { StorageDriver, Incident } from '../storage/interface.js'
 import type { RuntimeMapResponse, RuntimeMapNode, RuntimeMapEdge, RuntimeMapIncident } from '@3amoncall/core/schemas/runtime-map'
 import { normalizeDependency } from '../domain/formation.js'
@@ -229,27 +229,44 @@ export async function buildRuntimeMap(
 
   const filter: TelemetryQueryFilter = { startMs, endMs }
   const spans = await telemetryStore.querySpans(filter)
+  const incidentPage = await storage.listIncidents({ limit: 100 })
+  const openIncidents = incidentPage.items
+    .filter((i) => i.status === 'open')
+    .sort((a, b) => new Date(b.openedAt).getTime() - new Date(a.openedAt).getTime())
 
-  // Cold start: no spans — still show DB incidents so operators can navigate
+  // Live window empty: fall back to the newest open incident with preserved spans.
   if (spans.length === 0) {
-    const incidentPage = await storage.listIncidents({ limit: 100 })
-    const openIncidents = incidentPage.items.filter((i) => i.status === 'open')
-    return {
-      summary: { activeIncidents: openIncidents.length, degradedNodes: 0, clusterReqPerSec: 0, clusterP95Ms: 0 },
-      nodes: [],
-      edges: [],
-      incidents: openIncidents.map((i) => ({
-        incidentId: i.incidentId,
-        label: i.diagnosisResult?.summary.what_happened
-          ?? i.packet.scope.primaryService,
-        severity: i.packet.signalSeverity ?? 'medium',
-        openedAgo: formatOpenedAgo(i.openedAt),
-      })),
-      state: { diagnosis: 'ready' },
+    const fallback = await findIncidentFallback(openIncidents, telemetryStore)
+    if (fallback !== null) {
+      return assembleRuntimeMap({
+        spans: fallback.spans,
+        incidents: openIncidents,
+        source: 'incident_scope',
+        windowLabel: `captured incident window · ${formatShortIncidentId(fallback.incident.incidentId)}`,
+        scopeIncidentId: fallback.incident.incidentId,
+      })
     }
+
+    return emptyRuntimeMap(openIncidents, minutes)
   }
 
-  const windowSeconds = (endMs - startMs) / 1000
+  return assembleRuntimeMap({
+    spans,
+    incidents: openIncidents,
+    source: 'recent_window',
+    windowLabel: `last ${minutes}m`,
+  })
+}
+
+function assembleRuntimeMap(input: {
+  spans: TelemetrySpan[]
+  incidents: Incident[]
+  source: 'recent_window' | 'incident_scope'
+  windowLabel: string
+  scopeIncidentId?: string
+}): RuntimeMapResponse {
+  const { spans, incidents, source, windowLabel, scopeIncidentId } = input
+  const windowSeconds = computeWindowSeconds(spans)
 
   // ── Derive nodes and edges from spans ──
 
@@ -340,12 +357,9 @@ export async function buildRuntimeMap(
 
   // ── Match incidents ──
 
-  const incidentPage = await storage.listIncidents({ limit: 100 })
-  const openIncidents = incidentPage.items.filter((i) => i.status === 'open')
-
-  const incidents: RuntimeMapIncident[] = []
-  for (const incident of openIncidents) {
-    incidents.push({
+  const incidentRows: RuntimeMapIncident[] = []
+  for (const incident of incidents) {
+    incidentRows.push({
       incidentId: incident.incidentId,
       label: incident.diagnosisResult?.summary.what_happened
         ?? incident.packet.scope.primaryService,
@@ -365,16 +379,77 @@ export async function buildRuntimeMap(
 
   return {
     summary: {
-      activeIncidents: openIncidents.length,
+      activeIncidents: incidents.length,
       degradedNodes,
       clusterReqPerSec,
       clusterP95Ms,
     },
     nodes,
     edges,
-    incidents,
-    state: { diagnosis: 'ready' },
+    incidents: incidentRows,
+    state: {
+      diagnosis: 'ready',
+      source,
+      windowLabel,
+      ...(source === 'incident_scope' && scopeIncidentId ? { scopeIncidentId } : {}),
+    },
   }
+}
+
+async function findIncidentFallback(
+  incidents: Incident[],
+  telemetryStore: TelemetryStoreDriver,
+): Promise<{ incident: Incident; spans: TelemetrySpan[] } | null> {
+  for (const incident of incidents) {
+    if (incident.telemetryScope.windowStartMs >= incident.telemetryScope.windowEndMs) continue
+
+    const scopedSpans = await telemetryStore.querySpans(buildIncidentQueryFilter(incident.telemetryScope))
+    const membership = new Set(incident.spanMembership)
+    const spans = membership.size > 0
+      ? scopedSpans.filter((span) => membership.has(`${span.traceId}:${span.spanId}`))
+      : scopedSpans
+
+    if (spans.length > 0) {
+      return { incident, spans }
+    }
+  }
+
+  return null
+}
+
+function emptyRuntimeMap(openIncidents: Incident[], windowMinutes: number): RuntimeMapResponse {
+  const incidentRows = openIncidents.map((incident) => ({
+    incidentId: incident.incidentId,
+    label: incident.diagnosisResult?.summary.what_happened
+      ?? incident.packet.scope.primaryService,
+    severity: incident.packet.signalSeverity ?? 'medium',
+    openedAgo: formatOpenedAgo(incident.openedAt),
+  }))
+
+  const emptyReason = openIncidents.length > 0
+    ? 'no_preserved_incident_spans'
+    : 'no_open_incidents'
+
+  return {
+    summary: { activeIncidents: openIncidents.length, degradedNodes: 0, clusterReqPerSec: 0, clusterP95Ms: 0 },
+    nodes: [],
+    edges: [],
+    incidents: incidentRows,
+    state: {
+      diagnosis: 'ready',
+      source: 'no_telemetry',
+      windowLabel: `last ${windowMinutes}m`,
+      emptyReason,
+    },
+  }
+}
+
+function computeWindowSeconds(spans: TelemetrySpan[]): number {
+  if (spans.length < 2) return DEFAULT_WINDOW_MINUTES * 60
+  const startTimes = spans.map((span) => span.startTimeMs)
+  const min = Math.min(...startTimes)
+  const max = Math.max(...startTimes)
+  return Math.max(60, (max - min) / 1000)
 }
 
 // ── Helper: accumulate a node ──
@@ -468,4 +543,8 @@ function formatOpenedAgo(iso: string): string {
   const diffHours = Math.floor(diffMin / 60)
   if (diffHours < 24) return `${diffHours}h`
   return `${Math.floor(diffHours / 24)}d`
+}
+
+function formatShortIncidentId(incidentId: string): string {
+  return incidentId.replace(/^inc[_-]?/i, '').slice(0, 4).toUpperCase()
 }

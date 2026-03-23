@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import type { MapNode as MapNodeType, MapEdge } from "../../../api/curated-types.js";
 import type { LensLevel } from "../../../routes/__root.js";
 import { MapNode } from "./MapNode.js";
@@ -5,7 +6,7 @@ import { MapNode } from "./MapNode.js";
 interface Props {
   nodes: MapNodeType[];
   edges: MapEdge[];
-  emptyStateMessage?: string;
+  emptyState?: ReactNode;
   zoomTo: (level: LensLevel, trigger?: HTMLElement, incidentId?: string) => void;
 }
 
@@ -39,7 +40,7 @@ const LEFT_OFFSET = 28; // leave room for tier labels
  * Nodes are positioned absolutely within a 1100×380 container.
  * SVG edges are drawn behind nodes and animate traffic dots via animateMotion.
  */
-export function MapGraph({ nodes, edges, emptyStateMessage, zoomTo }: Props) {
+export function MapGraph({ nodes, edges, emptyState, zoomTo }: Props) {
   const nodePositions = computeNodePositions(nodes);
 
   return (
@@ -125,9 +126,9 @@ export function MapGraph({ nodes, edges, emptyStateMessage, zoomTo }: Props) {
         );
       })}
 
-      {nodes.length === 0 && emptyStateMessage ? (
-        <div className="map-empty map-empty-overlay" data-testid="map-empty-state">
-          <span>{emptyStateMessage}</span>
+      {nodes.length === 0 && emptyState ? (
+        <div className="map-empty map-empty-overlay">
+          {emptyState}
         </div>
       ) : null}
 
