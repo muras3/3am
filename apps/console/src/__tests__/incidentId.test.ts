@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { encodeIncidentId, parseIncidentId } from "../lib/incidentId.js";
+import {
+  encodeIncidentId,
+  formatShortIncidentId,
+  parseIncidentId,
+} from "../lib/incidentId.js";
 
 describe("incidentId helpers", () => {
   it("accepts expected incident ids", () => {
@@ -20,5 +24,12 @@ describe("incidentId helpers", () => {
   it("encodes path-sensitive characters before building API URLs", () => {
     expect(encodeIncidentId("inc_test_001")).toBe("inc_test_001");
     expect(encodeIncidentId("inc_../services")).toBe("inc_..%2Fservices");
+  });
+
+  it("formats short incident ids for console display", () => {
+    expect(formatShortIncidentId("inc_0892")).toBe("INC-0892");
+    expect(formatShortIncidentId("inc_833133a8-5e8c-49c7-8177-2dc7cd900cf9")).toBe(
+      "INC-833133A8",
+    );
   });
 });

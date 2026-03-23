@@ -191,6 +191,7 @@ describe("LensEvidenceStudio — proof card click updates navigation", () => {
         search: expect.objectContaining({
           proof: "trigger",
           tab: "traces",
+          targetId: "stripe-charge-001",
         }),
         replace: true,
       }),
@@ -208,6 +209,7 @@ describe("LensEvidenceStudio — proof card click updates navigation", () => {
         search: expect.objectContaining({
           proof: "design_gap",
           tab: "metrics",
+          targetId: "stripe_client_error_rate",
         }),
       }),
     );
@@ -241,10 +243,10 @@ describe("LensEvidenceStudio — empty state", () => {
       evidencePending,
     );
     renderStudio("inc_0892", qc);
-    expect(screen.getByText(/Evidence is being collected/)).toBeInTheDocument();
+    expect(screen.getAllByText(/Evidence is being collected/).length).toBeGreaterThan(0);
   });
 
-  it("does not render proof cards in empty state", () => {
+  it("keeps proof card boxes in empty state", () => {
     const qc = makeClient();
     qc.setQueryData(
       curatedQueries.extendedIncident("inc_0892").queryKey,
@@ -256,7 +258,22 @@ describe("LensEvidenceStudio — empty state", () => {
     );
     renderStudio("inc_0892", qc);
     const cards = document.querySelectorAll(".lens-ev-proof-card");
-    expect(cards).toHaveLength(0);
+    expect(cards).toHaveLength(3);
+  });
+
+  it("renders fixed-shape pending QA contract in empty state", () => {
+    const qc = makeClient();
+    qc.setQueryData(
+      curatedQueries.extendedIncident("inc_0892").queryKey,
+      extendedIncidentPending,
+    );
+    qc.setQueryData(
+      curatedQueries.evidence("inc_0892").queryKey,
+      evidencePending,
+    );
+    renderStudio("inc_0892", qc);
+    expect(screen.getByText(evidencePending.qa.question)).toBeInTheDocument();
+    expect(screen.getByText(evidencePending.qa.noAnswerReason!)).toBeInTheDocument();
   });
 });
 
@@ -297,6 +314,12 @@ describe("LensProofCards", () => {
     fireEvent.keyDown(firstCard!, { key: "Enter" });
     expect(mockNavigate).toHaveBeenCalled();
   });
+
+  it("renders pending cards from fixed receiver shape", () => {
+    render(<LensProofCards cards={evidencePending.proofCards} />);
+    expect(document.querySelectorAll(".lens-ev-proof-card")).toHaveLength(3);
+    expect(screen.getAllByText("Pending").length).toBeGreaterThan(0);
+  });
 });
 
 describe("QAFrame", () => {
@@ -314,13 +337,14 @@ describe("QAFrame", () => {
     expect(chips.length).toBeGreaterThan(0);
   });
 
-  it("shows degraded message when qa is null", () => {
-    render(<QAFrame qa={null} />);
-    expect(screen.getByText(/Evidence is being collected/)).toBeInTheDocument();
+  it("renders fixed fallback QA object from receiver contract", () => {
+    render(<QAFrame qa={evidencePending.qa} />);
+    expect(screen.getByText(evidencePending.qa.question)).toBeInTheDocument();
+    expect(screen.getByText(evidencePending.qa.noAnswerReason!)).toBeInTheDocument();
   });
 
   it("shows noAnswerReason when present", () => {
-    const qa = { ...evidenceReady.qa!, noAnswerReason: "Insufficient data to answer" };
+    const qa = { ...evidenceReady.qa, noAnswerReason: "Insufficient data to answer" };
     render(<QAFrame qa={qa} />);
     expect(screen.getByText("Insufficient data to answer")).toBeInTheDocument();
   });
@@ -410,8 +434,9 @@ describe("LensSideRail", () => {
     expect(screen.getByText(/High confidence.*Stripe 429 responses/)).toBeInTheDocument();
   });
 
-  it("returns null when notes array is empty", () => {
+  it("renders placeholder notes when notes array is empty", () => {
     const { container } = render(<LensSideRail notes={[]} />);
-    expect(container.firstChild).toBeNull();
+    expect(container.firstChild).not.toBeNull();
+    expect(screen.getByText("Confidence")).toBeInTheDocument();
   });
 });

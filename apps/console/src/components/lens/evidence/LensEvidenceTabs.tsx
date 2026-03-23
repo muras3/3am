@@ -87,11 +87,9 @@ export function LensEvidenceTabs({ surfaces }: Props) {
             type="button"
           >
             {tab.label}
-            {count > 0 && (
-              <span className="lens-ev-tab-count" aria-label={`${count} items`}>
-                {count}
-              </span>
-            )}
+            <span className="lens-ev-tab-count" aria-label={`${count} items`}>
+              {count}
+            </span>
           </button>
         );
       })}

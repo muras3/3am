@@ -10,6 +10,7 @@ import { RootCauseHypothesis } from "./RootCauseHypothesis.js";
 import { CauseCard } from "./CauseCard.js";
 import { LensEvidenceEntry } from "./LensEvidenceEntry.js";
 import { DiagnosisPending } from "./DiagnosisPending.js";
+import { describeBoardState } from "./board-state.js";
 
 interface Props {
   incidentId: string;
@@ -37,40 +38,49 @@ export function LensIncidentBoard({ incidentId, zoomTo }: Props) {
     );
   }
 
-  if (data.state.diagnosis === "pending") {
-    return <DiagnosisPending />;
-  }
-
   return (
     <div className="lens-board-content stagger">
+      {data.state.diagnosis !== "ready" ? (
+        <DiagnosisPending
+          message={
+            data.state.diagnosis === "pending"
+              ? "Diagnosis in progress…"
+              : "Diagnosis unavailable"
+          }
+          subtext={describeBoardState(data.state)}
+        />
+      ) : null}
+
       {/* 1. Identity */}
       <WhatHappened
         incidentId={data.incidentId}
         severity={data.severity}
         headline={data.headline}
         chips={data.chips}
+        state={data.state}
       />
 
       {/* 2. Action Hero */}
-      <ImmediateAction action={data.action} />
+      <ImmediateAction action={data.action} state={data.state} />
 
       {/* 3. Context Grid */}
       <div className="lens-board-context-grid">
-        <BlastRadius entries={data.blastRadius} />
-        <ConfidenceCard confidence={data.confidenceSummary} />
-        <OperatorCheck checks={data.operatorChecks} />
+        <BlastRadius entries={data.blastRadius} state={data.state} />
+        <ConfidenceCard confidence={data.confidenceSummary} state={data.state} />
+        <OperatorCheck checks={data.operatorChecks} state={data.state} />
       </div>
 
       {/* 4. Root Cause Hypothesis */}
-      <RootCauseHypothesis hypothesis={data.rootCauseHypothesis} />
+      <RootCauseHypothesis hypothesis={data.rootCauseHypothesis} state={data.state} />
 
       {/* 5. Causal Chain */}
-      <CauseCard steps={data.causalChain} />
+      <CauseCard steps={data.causalChain} state={data.state} />
 
       {/* 6. Evidence Summary */}
       <LensEvidenceEntry
         counts={data.evidenceSummary}
         impact={data.impactSummary}
+        state={data.state}
         zoomTo={zoomTo}
       />
     </div>

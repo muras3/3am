@@ -1,7 +1,9 @@
-import type { BlastRadiusEntry } from "../../../api/curated-types.js";
+import type { BlastRadiusEntry, CuratedState } from "../../../api/curated-types.js";
+import { sectionFallback } from "./board-state.js";
 
 interface Props {
   entries: BlastRadiusEntry[];
+  state: CuratedState;
 }
 
 function statusModifier(status: BlastRadiusEntry["status"]): string {
@@ -10,12 +12,12 @@ function statusModifier(status: BlastRadiusEntry["status"]): string {
   return "healthy";
 }
 
-export function BlastRadius({ entries }: Props) {
+export function BlastRadius({ entries, state }: Props) {
   return (
     <div className="lens-board-card">
       <div className="lens-board-card-title">Blast Radius</div>
       <div className="lens-board-blast-rows">
-        {entries.map((entry, i) => (
+        {entries.length > 0 ? entries.map((entry, i) => (
           <div key={i} className="lens-board-blast-row">
             <span
               className={`lens-board-health-dot lens-board-health-dot-${statusModifier(entry.status)}`}
@@ -32,7 +34,9 @@ export function BlastRadius({ entries }: Props) {
               {entry.label}
             </span>
           </div>
-        ))}
+        )) : (
+          <div className="lens-board-empty-block">{sectionFallback(state, "blastRadius")}</div>
+        )}
       </div>
     </div>
   );

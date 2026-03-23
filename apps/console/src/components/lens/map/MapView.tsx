@@ -61,22 +61,17 @@ export function MapView({ zoomTo }: Props) {
         </span>
       </h2>
 
-      {data.nodes.length === 0 ? (
-        <div className="map-empty">
-          <span>No traffic observed yet.</span>
-        </div>
-      ) : (
-        <MapGraph nodes={data.nodes} edges={data.edges} zoomTo={zoomTo} />
-      )}
+      <MapGraph
+        nodes={data.nodes}
+        edges={data.edges}
+        emptyStateMessage="No traffic observed yet."
+        zoomTo={zoomTo}
+      />
 
-      {data.incidents.length > 0 && (
-        <>
-          <h2 className="l0-section-title" style={{ marginTop: 12 }}>
-            Active Incidents
-          </h2>
-          <IncidentStrip incidents={data.incidents} zoomTo={zoomTo} />
-        </>
-      )}
+      <h2 className="l0-section-title" style={{ marginTop: 12 }}>
+        Active Incidents
+      </h2>
+      <IncidentStrip incidents={data.incidents} zoomTo={zoomTo} />
     </div>
   );
 }

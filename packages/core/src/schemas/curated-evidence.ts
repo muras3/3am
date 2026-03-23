@@ -274,8 +274,8 @@ export const EvidenceSurfacesSchema = z.object({
 }).strict();
 
 export const EvidenceResponseSchema = z.object({
-  proofCards: z.array(ProofCardSchema),
-  qa: QABlockSchema.nullable(),
+  proofCards: z.array(ProofCardSchema).length(3),
+  qa: QABlockSchema,
   surfaces: EvidenceSurfacesSchema,
   sideNotes: z.array(SideNoteSchema),
   state: CuratedStateSchema,

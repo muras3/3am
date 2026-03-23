@@ -27,7 +27,7 @@ export function StatsBar({ summary }: Props) {
         >
           {summary.degradedNodes}
         </span>
-        <span className="stat-label">Degraded Nodes</span>
+        <span className="stat-label">Degraded Services</span>
       </div>
       <div className="stat-block">
         <span className="stat-value" data-testid="stat-req-per-sec">

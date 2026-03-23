@@ -1,38 +1,51 @@
-import { useState, useCallback } from "react";
+import { useEffect, useState, useCallback } from "react";
+import { useSearch } from "@tanstack/react-router";
 import type { TraceSurface, TraceGroup, TraceSpan } from "../../../api/curated-types.js";
+import type { LensSearchParams } from "../../../routes/__root.js";
 
-// ── Type icons for span status ─────────────────────────────────
 const STATUS_ICON: Record<string, string> = {
-  error: "✕",
-  slow: "⚠",
-  ok: "✓",
+  error: "!",
+  slow: "~",
+  ok: "+",
 };
 
-// ── Compute proportional bar width relative to root span ──────
 function barPercent(durationMs: number, maxDurationMs: number): number {
   if (maxDurationMs === 0) return 100;
   return Math.max(2, Math.round((durationMs / maxDurationMs) * 100));
 }
 
-// ── Single span row ───────────────────────────────────────────
 interface SpanRowProps {
   span: TraceSpan;
   depth: number;
   maxDurationMs: number;
   isSmokingGun: boolean;
   proofType: string | null;
+  selectedTargetId?: string;
 }
 
-function SpanRow({ span, depth, maxDurationMs, isSmokingGun, proofType }: SpanRowProps) {
+function SpanRow({
+  span,
+  depth,
+  maxDurationMs,
+  isSmokingGun,
+  proofType,
+  selectedTargetId,
+}: SpanRowProps) {
   const [expanded, setExpanded] = useState(false);
   const hasDetail =
-    (span.attributes && Object.keys(span.attributes).length > 0) ||
-    (span.correlatedLogs && span.correlatedLogs.length > 0);
+    (span.attributes && Object.keys(span.attributes).length > 0)
+    || (span.correlatedLogs && span.correlatedLogs.length > 0);
   const widthPct = barPercent(span.durationMs, maxDurationMs);
 
   const toggle = useCallback(() => {
     if (hasDetail) setExpanded((v) => !v);
   }, [hasDetail]);
+
+  useEffect(() => {
+    if (hasDetail && selectedTargetId === span.spanId) {
+      setExpanded(true);
+    }
+  }, [hasDetail, selectedTargetId, span.spanId]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
@@ -48,9 +61,7 @@ function SpanRow({ span, depth, maxDurationMs, isSmokingGun, proofType }: SpanRo
     "lens-traces-span-row",
     isSmokingGun ? "smoking-gun" : "",
     hasDetail ? "expandable" : "",
-  ]
-    .filter(Boolean)
-    .join(" ");
+  ].filter(Boolean).join(" ");
 
   const indent = depth * 14;
 
@@ -66,7 +77,6 @@ function SpanRow({ span, depth, maxDurationMs, isSmokingGun, proofType }: SpanRo
         onClick={toggle}
         onKeyDown={handleKeyDown}
       >
-        {/* Name cell — 180px */}
         <span className="lens-traces-span-name" style={{ paddingLeft: indent }}>
           {STATUS_ICON[span.status] && (
             <span className={`lens-traces-status-icon lens-traces-status-icon-${span.status}`}>
@@ -76,7 +86,6 @@ function SpanRow({ span, depth, maxDurationMs, isSmokingGun, proofType }: SpanRo
           {span.name}
         </span>
 
-        {/* Bar track — 1fr */}
         <div className="lens-traces-bar-track">
           <div
             className={`lens-traces-bar lens-traces-bar-${span.status}`}
@@ -84,20 +93,17 @@ function SpanRow({ span, depth, maxDurationMs, isSmokingGun, proofType }: SpanRo
           />
         </div>
 
-        {/* Duration — 60px */}
         <span className={`lens-traces-span-dur${isSmokingGun ? " smoking-gun-dur" : ""}`}>
           {span.durationMs.toLocaleString()}ms
         </span>
       </div>
 
-      {/* Expandable detail */}
       {hasDetail && (
         <div
           className={`lens-traces-span-detail${expanded ? " open" : ""}`}
           aria-hidden={!expanded}
         >
           <div className="lens-traces-detail-grid">
-            {/* Attributes */}
             {span.attributes && Object.keys(span.attributes).length > 0 && (
               <div className="lens-traces-attrs">
                 <div className="lens-traces-detail-label">Attributes</div>
@@ -112,12 +118,11 @@ function SpanRow({ span, depth, maxDurationMs, isSmokingGun, proofType }: SpanRo
               </div>
             )}
 
-            {/* Correlated logs */}
             {span.correlatedLogs && span.correlatedLogs.length > 0 && (
               <div className="lens-traces-corr-logs">
                 <div className="lens-traces-detail-label">Correlated Logs</div>
                 {span.correlatedLogs.map((log, i) => (
-                  <div key={i} className="lens-traces-corr-log-row">
+                  <div key={`${log.timestamp}-${i}`} className="lens-traces-corr-log-row">
                     <span className="lens-traces-corr-log-ts">{log.timestamp}</span>
                     <span
                       className={`lens-traces-corr-log-sev lens-traces-log-sev-${log.severity.toLowerCase()}`}
@@ -136,16 +141,15 @@ function SpanRow({ span, depth, maxDurationMs, isSmokingGun, proofType }: SpanRo
   );
 }
 
-// ── DFS span tree rendering ───────────────────────────────────
 function buildSpanTree(
   spans: TraceSpan[],
   smokingGunSpanId: string | null,
   proofType: string | null,
+  selectedTargetId?: string,
 ) {
   const maxDuration = spans.reduce((m, s) => Math.max(m, s.durationMs), 0);
-
-  // Build parent→children map
   const childMap = new Map<string | undefined, TraceSpan[]>();
+
   for (const span of spans) {
     const parent = span.parentSpanId;
     if (!childMap.has(parent)) childMap.set(parent, []);
@@ -165,6 +169,7 @@ function buildSpanTree(
           maxDurationMs={maxDuration}
           isSmokingGun={span.spanId === smokingGunSpanId}
           proofType={proofType}
+          selectedTargetId={selectedTargetId}
         />,
       );
       walk(span.spanId, depth + 1);
@@ -175,12 +180,12 @@ function buildSpanTree(
   return rows;
 }
 
-// ── Trace group ───────────────────────────────────────────────
 interface TraceGroupBlockProps {
   group: TraceGroup;
   smokingGunSpanId: string | null;
   isExpected?: boolean;
   proofType: string | null;
+  selectedTargetId?: string;
 }
 
 function TraceGroupBlock({
@@ -188,14 +193,13 @@ function TraceGroupBlock({
   smokingGunSpanId,
   isExpected = false,
   proofType,
+  selectedTargetId,
 }: TraceGroupBlockProps) {
   const isError = group.status >= 500;
   const headerClass = [
     "lens-traces-trace-header",
     isError && !isExpected ? "error-header" : "",
-  ]
-    .filter(Boolean)
-    .join(" ");
+  ].filter(Boolean).join(" ");
 
   return (
     <div
@@ -212,14 +216,10 @@ function TraceGroupBlock({
         <span className={`lens-traces-trace-status lens-traces-trace-status-${isError ? "error" : "ok"}`}>
           {group.status}
         </span>
-        <span
-          className={`lens-traces-trace-dur${isError && !isExpected ? " anomalous" : ""}`}
-        >
+        <span className={`lens-traces-trace-dur${isError && !isExpected ? " anomalous" : ""}`}>
           {group.durationMs.toLocaleString()}ms
           {group.expectedDurationMs && !isExpected && (
-            <span className="lens-traces-dur-expected">
-              {" "}expected: {group.expectedDurationMs}ms
-            </span>
+            <span className="lens-traces-dur-expected"> expected: {group.expectedDurationMs}ms</span>
           )}
         </span>
         {isExpected && (
@@ -227,26 +227,31 @@ function TraceGroupBlock({
         )}
       </div>
 
-      {/* Annotation */}
       {group.annotation && (
         <div className={`lens-traces-annotation${isExpected ? " teal" : ""}`}>
           {group.annotation}
         </div>
       )}
 
-      {/* Span rows */}
-      {buildSpanTree(group.spans, smokingGunSpanId, proofType)}
+      {buildSpanTree(group.spans, smokingGunSpanId, proofType, selectedTargetId)}
     </div>
   );
 }
 
-// ── Main component ────────────────────────────────────────────
 interface LensTracesViewProps {
   surface: TraceSurface;
+  baselineState?: "ready" | "insufficient" | "unavailable";
+  evidenceDensity?: "rich" | "sparse" | "empty";
 }
 
-export function LensTracesView({ surface }: LensTracesViewProps) {
+export function LensTracesView({
+  surface,
+  baselineState = "ready",
+  evidenceDensity = "rich",
+}: LensTracesViewProps) {
   const [baselineVisible, setBaselineVisible] = useState(false);
+  const search = useSearch({ from: "__root__" }) as LensSearchParams;
+  const selectedTargetId = search.targetId;
 
   const toggleBaseline = useCallback(() => setBaselineVisible((v) => !v), []);
   const handleBaselineKeyDown = useCallback(
@@ -260,12 +265,23 @@ export function LensTracesView({ surface }: LensTracesViewProps) {
   );
 
   const { observed, expected, smokingGunSpanId } = surface;
+  const baselineUnavailable = expected.length === 0;
+  const baselineToggleLabel = baselineUnavailable
+    ? baselineState === "unavailable"
+      ? "Expected trace unavailable"
+      : "Expected trace is sparse"
+    : baselineVisible
+      ? "Hide expected trace"
+      : "Show expected trace";
 
   return (
     <div className="lens-traces-root">
-      {/* Observed traces */}
       {observed.length === 0 ? (
-        <div className="lens-traces-empty">No observed traces for this incident.</div>
+        <div className="lens-traces-empty">
+          {evidenceDensity === "empty"
+            ? "Observed trace lane is reserved. Deterministic trace evidence will appear here when telemetry arrives."
+            : "Only limited traces are available for this incident."}
+        </div>
       ) : (
         observed.map((group) => (
           <TraceGroupBlock
@@ -273,37 +289,43 @@ export function LensTracesView({ surface }: LensTracesViewProps) {
             group={group}
             smokingGunSpanId={smokingGunSpanId}
             proofType="trigger"
+            selectedTargetId={selectedTargetId}
           />
         ))
       )}
 
-      {/* Baseline toggle */}
-      {expected.length > 0 && (
-        <>
-          <div
-            className="lens-traces-baseline-toggle"
-            role="button"
-            tabIndex={0}
-            aria-expanded={baselineVisible}
-            onClick={toggleBaseline}
-            onKeyDown={handleBaselineKeyDown}
-          >
-            {baselineVisible ? "Hide expected trace" : "Show expected trace"}
-          </div>
+      <div
+        className={`lens-traces-baseline-toggle${baselineUnavailable ? " disabled" : ""}`}
+        role="button"
+        tabIndex={baselineUnavailable ? -1 : 0}
+        aria-expanded={baselineVisible}
+        aria-disabled={baselineUnavailable}
+        onClick={baselineUnavailable ? undefined : toggleBaseline}
+        onKeyDown={baselineUnavailable ? undefined : handleBaselineKeyDown}
+      >
+        {baselineToggleLabel}
+      </div>
 
-          <div className={`lens-traces-baseline-group${baselineVisible ? "" : " muted"}`}>
-            {expected.map((group) => (
-              <TraceGroupBlock
-                key={group.traceId}
-                group={group}
-                smokingGunSpanId={null}
-                isExpected
-                proofType="recovery"
-              />
-            ))}
+      <div className={`lens-traces-baseline-group${baselineVisible && !baselineUnavailable ? "" : " muted"}`}>
+        {expected.length > 0 ? (
+          expected.map((group) => (
+            <TraceGroupBlock
+              key={group.traceId}
+              group={group}
+              smokingGunSpanId={null}
+              isExpected
+              proofType="recovery"
+              selectedTargetId={selectedTargetId}
+            />
+          ))
+        ) : (
+          <div className="lens-traces-empty lens-traces-empty-baseline">
+            {baselineState === "unavailable"
+              ? "No baseline trace was available for this incident window."
+              : "Baseline comparison is currently too sparse to render expected behavior."}
           </div>
-        </>
-      )}
+        )}
+      </div>
     </div>
   );
 }

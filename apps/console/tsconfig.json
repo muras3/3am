@@ -9,7 +9,9 @@
     "types": ["vite/client", "vitest/globals"],
     "baseUrl": ".",
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "@3amoncall/core": ["../../packages/core/src/index.ts"],
+      "@3amoncall/core/*": ["../../packages/core/src/*"]
     }
   },
   "include": ["src"]

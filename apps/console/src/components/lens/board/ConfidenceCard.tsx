@@ -1,7 +1,9 @@
-import type { ConfidenceSummary } from "../../../api/curated-types.js";
+import type { ConfidenceSummary, CuratedState } from "../../../api/curated-types.js";
+import { sectionFallback } from "./board-state.js";
 
 interface Props {
   confidence: ConfidenceSummary;
+  state: CuratedState;
 }
 
 function scoreColorClass(value: number): string {
@@ -10,7 +12,9 @@ function scoreColorClass(value: number): string {
   return "lens-board-conf-score-low";
 }
 
-export function ConfidenceCard({ confidence }: Props) {
+export function ConfidenceCard({ confidence, state }: Props) {
+  const hasConfidence =
+    confidence.label.trim().length > 0 || confidence.basis.trim().length > 0 || confidence.value > 0;
   const pct = Math.round(confidence.value * 100);
   return (
     <div className="lens-board-card">
@@ -18,18 +22,26 @@ export function ConfidenceCard({ confidence }: Props) {
       <div className="lens-board-conf-top">
         <div
           className={`lens-board-conf-score ${scoreColorClass(confidence.value)}`}
-          aria-label={`Confidence score: ${pct}%`}
+          aria-label={hasConfidence ? `Confidence score: ${pct}%` : "Confidence unavailable"}
         >
-          {pct}%
+          {hasConfidence ? `${pct}%` : "—"}
         </div>
         <div className="lens-board-conf-meta">
-          <span className="lens-board-conf-label">{confidence.label}</span>
-          <span className="lens-board-conf-basis">{confidence.basis}</span>
+          <span className="lens-board-conf-label">
+            {confidence.label.trim() || "Unavailable"}
+          </span>
+          <span className="lens-board-conf-basis">
+            {confidence.basis.trim() || sectionFallback(state, "confidence")}
+          </span>
         </div>
       </div>
-      {confidence.risk && (
+      {confidence.risk.trim() ? (
         <div className="lens-board-conf-risk">
           <span className="lens-board-conf-risk-label">Risk:</span> {confidence.risk}
+        </div>
+      ) : (
+        <div className="lens-board-conf-risk lens-board-conf-risk-empty">
+          <span className="lens-board-conf-risk-label">Risk:</span> No specific risk returned.
         </div>
       )}
     </div>

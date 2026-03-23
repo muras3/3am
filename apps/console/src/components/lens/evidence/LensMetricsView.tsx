@@ -71,7 +71,11 @@ function HypGroupBlock({ group }: HypGroupBlockProps) {
       {/* Metric rows */}
       <div className="lens-metrics-hyp-body">
         {group.metrics.map((metric) => (
-          <div key={metric.name} className="lens-metrics-metric-row">
+          <div
+            key={metric.name}
+            className="lens-metrics-metric-row"
+            data-target-id={metric.name}
+          >
             <span className="lens-metrics-metric-name">{metric.name}</span>
             <span
               className="lens-metrics-metric-val"
@@ -101,11 +105,18 @@ function HypGroupBlock({ group }: HypGroupBlockProps) {
 // ── Main component ────────────────────────────────────────────
 interface LensMetricsViewProps {
   surface: MetricsSurface;
+  evidenceDensity?: "rich" | "sparse" | "empty";
 }
 
-export function LensMetricsView({ surface }: LensMetricsViewProps) {
+export function LensMetricsView({ surface, evidenceDensity = "rich" }: LensMetricsViewProps) {
   if (surface.hypotheses.length === 0) {
-    return <div className="lens-metrics-empty">No metric hypotheses for this incident.</div>;
+    return (
+      <div className="lens-metrics-empty">
+        {evidenceDensity === "empty"
+          ? "Metric lane is reserved. Deterministic comparisons will appear here when incident metrics arrive."
+          : "Metric hypotheses are sparse for this incident. The panel stays available for future comparisons."}
+      </div>
+    );
   }
 
   return (

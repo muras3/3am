@@ -1,9 +1,11 @@
-import type { EvidenceCounts, ImpactSummary } from "../../../api/curated-types.js";
+import type { CuratedState, EvidenceCounts, ImpactSummary } from "../../../api/curated-types.js";
 import type { LensLevel } from "../../../routes/__root.js";
+import { sectionFallback } from "./board-state.js";
 
 interface Props {
   counts: EvidenceCounts;
   impact: ImpactSummary;
+  state: CuratedState;
   zoomTo: (level: LensLevel, trigger?: HTMLElement, incidentId?: string) => void;
 }
 
@@ -13,7 +15,10 @@ function formatTime(iso: string): string {
   return d.toISOString().slice(11, 19) + " UTC";
 }
 
-export function LensEvidenceEntry({ counts, impact, zoomTo }: Props) {
+export function LensEvidenceEntry({ counts, impact, state, zoomTo }: Props) {
+  const showStateNote =
+    state.diagnosis !== "ready" || state.baseline !== "ready" || state.evidenceDensity !== "rich";
+
   function handleClick(e: React.MouseEvent<HTMLButtonElement>) {
     zoomTo(2, e.currentTarget);
   }
@@ -30,15 +35,9 @@ export function LensEvidenceEntry({ counts, impact, zoomTo }: Props) {
       <div className="lens-board-evidence-header">
         <div className="lens-board-card-title">Evidence</div>
         <div className="lens-board-evidence-timestamps">
-          {impact.startedAt && (
-            <span>Started {formatTime(impact.startedAt)}</span>
-          )}
-          {impact.fullCascadeAt && (
-            <span>Full cascade {formatTime(impact.fullCascadeAt)}</span>
-          )}
-          {impact.diagnosedAt && (
-            <span>Diagnosed {formatTime(impact.diagnosedAt)}</span>
-          )}
+          <span>Started {formatTime(impact.startedAt)}</span>
+          <span>Full cascade {formatTime(impact.fullCascadeAt)}</span>
+          <span>Diagnosed {formatTime(impact.diagnosedAt)}</span>
         </div>
       </div>
 
@@ -66,6 +65,9 @@ export function LensEvidenceEntry({ counts, impact, zoomTo }: Props) {
           </span>
         </div>
       </div>
+      {showStateNote ? (
+        <div className="lens-board-evidence-note">{sectionFallback(state, "evidence")}</div>
+      ) : null}
 
       <button
         className="lens-board-btn-evidence"

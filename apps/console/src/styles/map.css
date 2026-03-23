@@ -22,6 +22,7 @@
   display: flex;
   gap: 24px;
   margin-bottom: 16px;
+  flex-wrap: wrap;
 }
 
 .stat-block {
@@ -60,6 +61,8 @@
   max-width: 1100px;
   margin: 0 auto 12px;
   height: 380px;
+  border-radius: var(--radius);
+  overflow: hidden;
 }
 
 /* ── Tier labels ─────────────────────────────────────────────── */
@@ -263,6 +266,15 @@
   flex-wrap: wrap;
 }
 
+.map-empty-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.82), rgba(248, 246, 241, 0.92));
+  pointer-events: none;
+}
+
 .map-legend span {
   display: inline-flex;
   align-items: center;
@@ -288,12 +300,14 @@
   gap: 12px;
   padding: 8px 14px;
   border-radius: var(--radius-sm);
+  border: 1px solid transparent;
   cursor: pointer;
-  transition: background 0.15s;
+  transition: background 0.15s, border-color 0.15s;
 }
 
 .incident-row:hover {
   background: var(--panel-2);
+  border-color: var(--line);
 }
 
 .incident-row:focus-visible {
@@ -323,6 +337,8 @@
   font-weight: 600;
   padding: 2px 7px;
   border-radius: var(--radius-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
 
 .ir-sev.critical {
@@ -345,10 +361,25 @@
   color: var(--good);
 }
 
+.ir-sev.empty {
+  background: var(--panel-2);
+  color: var(--ink-3);
+}
+
 .ir-time {
   font-family: var(--mono);
   font-size: var(--fs-xs);
   color: var(--ink-3);
+}
+
+.incident-row-empty {
+  cursor: default;
+  background: var(--panel);
+  border-color: var(--line);
+}
+
+.incident-row-empty:hover {
+  background: var(--panel);
 }
 
 /* ── Empty state ─────────────────────────────────────────────── */
@@ -361,6 +392,7 @@
   gap: 8px;
   color: var(--ink-3);
   font-size: var(--fs-sm);
+  text-align: center;
 }
 
 /* ── Reduced motion ──────────────────────────────────────────── */
@@ -371,5 +403,26 @@
 
   .map-edges circle {
     display: none;
+  }
+}
+
+@media (max-width: 900px) {
+  .l0-content {
+    padding-inline: 16px;
+  }
+
+  .system-map {
+    height: 420px;
+  }
+
+  .incident-row {
+    display: grid;
+    grid-template-columns: auto auto 1fr;
+    align-items: center;
+  }
+
+  .ir-sev,
+  .ir-time {
+    grid-column: 2 / 4;
   }
 }

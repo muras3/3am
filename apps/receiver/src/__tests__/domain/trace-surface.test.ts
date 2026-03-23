@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { buildTraceSurface } from '../../domain/trace-surface.js'
-import type { TelemetrySpan, TelemetryStoreDriver } from '../../telemetry/interface.js'
+import type { TelemetrySpan, TelemetryLog, TelemetryStoreDriver } from '../../telemetry/interface.js'
 import type { Incident } from '../../storage/interface.js'
 import type { IncidentPacket } from '@3amoncall/core'
 import type { BaselineContext } from '@3amoncall/core/schemas/curated-evidence'
@@ -38,11 +38,27 @@ function makeSpan(overrides: Partial<TelemetrySpan> = {}): TelemetrySpan {
   }
 }
 
-function makeMockStore(spans: TelemetrySpan[]): TelemetryStoreDriver {
+function makeLog(overrides: Partial<TelemetryLog> = {}): TelemetryLog {
+  return {
+    service: 'web',
+    environment: 'production',
+    timestamp: '2024-01-01T00:00:01Z',
+    startTimeMs: 1700000001000,
+    severity: 'ERROR',
+    severityNumber: 17,
+    body: 'Stripe 429',
+    bodyHash: 'hash-1',
+    attributes: {},
+    ingestedAt: Date.now(),
+    ...overrides,
+  }
+}
+
+function makeMockStore(spans: TelemetrySpan[], logs: TelemetryLog[] = []): TelemetryStoreDriver {
   return {
     querySpans: vi.fn().mockResolvedValue(spans),
     queryMetrics: vi.fn().mockResolvedValue([]),
-    queryLogs: vi.fn().mockResolvedValue([]),
+    queryLogs: vi.fn().mockResolvedValue(logs),
     ingestSpans: vi.fn().mockResolvedValue(undefined),
     ingestMetrics: vi.fn().mockResolvedValue(undefined),
     ingestLogs: vi.fn().mockResolvedValue(undefined),
@@ -461,6 +477,55 @@ describe('buildTraceSurface', () => {
     expect(baseRef.surface).toBe('traces')
     expect(baseRef.groupId).toBe('trace:baseline-trace')
     expect(baseRef.isSmokingGun).toBe(false)
+  })
+
+  it('correlates logs to spans deterministically within a ±2s window', async () => {
+    const rootSpan = makeSpan({
+      traceId: 'trace-1',
+      spanId: 'root',
+      parentSpanId: undefined,
+      startTimeMs: 1700000000000,
+      durationMs: 500,
+    })
+    const childSpan = makeSpan({
+      traceId: 'trace-1',
+      spanId: 'child',
+      parentSpanId: 'root',
+      startTimeMs: 1700000004000,
+      durationMs: 300,
+    })
+    const logs = [
+      makeLog({
+        timestamp: '2024-01-01T00:00:01Z',
+        bodyHash: 'hash-root',
+        startTimeMs: 1700000001000,
+        traceId: 'trace-1',
+        spanId: 'root',
+      }),
+      makeLog({
+        timestamp: '2024-01-01T00:00:02Z',
+        bodyHash: 'hash-trace',
+        startTimeMs: 1700000004500,
+        traceId: 'trace-1',
+      }),
+      makeLog({
+        timestamp: '2024-01-01T00:00:10Z',
+        bodyHash: 'hash-outside',
+        startTimeMs: 1700000010000,
+        traceId: 'trace-1',
+      }),
+    ]
+
+    const incident = makeIncident([rootSpan, childSpan])
+    const store = makeMockStore([rootSpan, childSpan], logs)
+
+    const { surface } = await buildTraceSurface(incident, store)
+
+    const root = surface.observed[0]!.spans.find((span) => span.spanId === 'root')!
+    const child = surface.observed[0]!.spans.find((span) => span.spanId === 'child')!
+
+    expect(root.correlatedLogRefIds).toEqual(['web:2024-01-01T00:00:01Z:hash-root'])
+    expect(child.correlatedLogRefIds).toEqual(['web:2024-01-01T00:00:02Z:hash-trace'])
   })
 
   // ── Sort order: error traces first, then slow, then ok ──

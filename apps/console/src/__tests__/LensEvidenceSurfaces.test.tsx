@@ -1,10 +1,18 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { LensTracesView } from "../components/lens/evidence/LensTracesView.js";
 import { LensMetricsView } from "../components/lens/evidence/LensMetricsView.js";
 import { LensLogsView } from "../components/lens/evidence/LensLogsView.js";
 import { evidenceReady } from "../__fixtures__/curated/evidence.js";
+
+vi.mock("@tanstack/react-router", () => ({
+  useSearch: () => ({
+    level: 2,
+    tab: "traces",
+    incidentId: "inc_0892",
+  }),
+}));
 
 const { traces, metrics, logs } = evidenceReady.surfaces;
 
@@ -140,16 +148,19 @@ describe("LensTracesView", () => {
         surface={{ observed: [], expected: [], smokingGunSpanId: null }}
       />,
     );
-    expect(screen.getByText(/no observed traces/i)).toBeInTheDocument();
+    expect(screen.getByText(/only limited traces are available/i)).toBeInTheDocument();
   });
 
-  it("does not render baseline toggle when no expected traces", () => {
+  it("renders disabled baseline toggle when no expected traces", () => {
     render(
       <LensTracesView
         surface={{ observed: traces.observed, expected: [], smokingGunSpanId: null }}
       />,
     );
-    expect(screen.queryByRole("button", { name: /expected trace/i })).toBeNull();
+    expect(screen.getByRole("button", { name: /expected trace is sparse/i })).toHaveAttribute(
+      "aria-disabled",
+      "true",
+    );
   });
 });
 
@@ -237,7 +248,7 @@ describe("LensMetricsView", () => {
 
   it("renders empty state when no hypotheses", () => {
     render(<LensMetricsView surface={{ hypotheses: [] }} />);
-    expect(screen.getByText(/no metric hypotheses/i)).toBeInTheDocument();
+    expect(screen.getByText(/metric hypotheses are sparse/i)).toBeInTheDocument();
   });
 });
 
@@ -325,6 +336,6 @@ describe("LensLogsView", () => {
 
   it("renders empty state when no claims", () => {
     render(<LensLogsView surface={{ claims: [] }} />);
-    expect(screen.getByText(/no log claims/i)).toBeInTheDocument();
+    expect(screen.getByText(/log evidence is currently sparse/i)).toBeInTheDocument();
   });
 });

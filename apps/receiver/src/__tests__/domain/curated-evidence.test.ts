@@ -272,14 +272,30 @@ describe('buildCuratedEvidence', () => {
       makeMockStore(),
     )
 
-    expect(result.qa?.question).toBe('Why are payments failing?')
-    expect(result.qa?.evidenceSummary).toEqual({ traces: 1, metrics: 1, logs: 0 })
-    expect(result.qa?.followups[0]?.question).toBe('Did this start with a traffic spike?')
+    expect(result.qa.question).toBe('Why are payments failing?')
+    expect(result.qa.evidenceSummary).toEqual({ traces: 1, metrics: 1, logs: 0 })
+    expect(result.qa.followups[0]?.question).toBe('Did this start with a traffic spike?')
     expect(result.sideNotes[0]).toEqual({
       title: 'Confidence',
       text: 'High confidence',
       kind: 'confidence',
     })
+  })
+
+  it('builds deterministic qa and proof-card placeholders when narrative is missing', async () => {
+    const result = await buildCuratedEvidence(
+      makeIncident({
+        diagnosisDispatchedAt: '2024-01-01T00:02:00Z',
+      }),
+      makeMockStore(),
+    )
+
+    expect(result.proofCards).toHaveLength(3)
+    expect(result.proofCards.map((card) => card.id)).toEqual(['trigger', 'design_gap', 'recovery'])
+    expect(result.proofCards.every((card) => card.summary.length > 0)).toBe(true)
+    expect(result.proofCards.map((card) => card.targetSurface)).toEqual(['traces', 'metrics', 'traces'])
+    expect(result.qa.question).toContain('web /api/orders')
+    expect(result.qa.noAnswerReason).toContain('Diagnosis narrative is pending')
   })
 
   it('calls all three surface builders with the expected arguments', async () => {

@@ -6,15 +6,13 @@ interface Props {
   cards: ProofCard[];
 }
 
-/** Icon character per proof card id pattern */
 function iconFor(id: string): string {
-  if (id === "trigger") return "⚡";
-  if (id === "design_gap") return "⚠";
-  if (id === "recovery") return "✓";
-  return "●";
+  if (id === "trigger") return "T";
+  if (id === "design_gap") return "D";
+  if (id === "recovery") return "R";
+  return "•";
 }
 
-/** Color variant for icon pill */
 function iconVariant(id: string): string {
   if (id === "trigger") return "accent";
   if (id === "design_gap") return "amber";
@@ -42,7 +40,10 @@ function ProofCardItem({ card, isActive, onClick }: ProofCardItemProps) {
     <div
       role="button"
       tabIndex={0}
-      className={`lens-ev-proof-card${isActive ? " lens-ev-proof-card-active" : ""}`}
+      className={[
+        "lens-ev-proof-card",
+        isActive ? "lens-ev-proof-card-active" : "",
+      ].filter(Boolean).join(" ")}
       onClick={() => onClick(card)}
       onKeyDown={handleKeyDown}
       data-proof-id={card.id}
@@ -57,7 +58,11 @@ function ProofCardItem({ card, isActive, onClick }: ProofCardItemProps) {
           className={`lens-ev-pc-status lens-ev-pc-status-${card.status}`}
           aria-label={`Status: ${card.status}`}
         >
-          {card.status === "confirmed" ? "Confirmed" : "Inferred"}
+          {card.status === "confirmed"
+            ? "Confirmed"
+            : card.status === "pending"
+              ? "Pending"
+              : "Inferred"}
         </span>
       </div>
       <div className="lens-ev-pc-summary">{card.summary}</div>
@@ -65,47 +70,68 @@ function ProofCardItem({ card, isActive, onClick }: ProofCardItemProps) {
   );
 }
 
-/**
- * LensProofCards — 3-column grid of proof cards.
- * Click → updates URL ?proof=<id>&tab=<targetSurface> and triggers highlight effect.
- */
+function selectionTargetId(card: ProofCard): string | undefined {
+  const firstRef = card.evidenceRefs[0];
+  if (!firstRef) return undefined;
+
+  if (firstRef.kind === "span") {
+    const [, spanId] = firstRef.id.split(":");
+    return spanId ?? firstRef.id;
+  }
+
+  if (
+    firstRef.kind === "metric"
+    || firstRef.kind === "metric_group"
+    || firstRef.kind === "log_cluster"
+  ) {
+    return firstRef.id;
+  }
+
+  return undefined;
+}
+
+function applySelectionHighlight(proofId?: string, targetId?: string) {
+  document.querySelectorAll(".proof-highlight").forEach((el) => {
+    el.classList.remove("proof-highlight");
+  });
+
+  const selectors = [
+    targetId ? `[data-target-id="${targetId}"]` : null,
+    proofId ? `[data-proof="${proofId}"]` : null,
+  ].filter(Boolean) as string[];
+
+  for (const selector of selectors) {
+    const targets = document.querySelectorAll(selector);
+    if (targets.length === 0) continue;
+    targets.forEach((el) => el.classList.add("proof-highlight"));
+    targets[0]?.scrollIntoView({ behavior: "smooth", block: "center" });
+    return;
+  }
+}
+
 export function LensProofCards({ cards }: Props) {
   const navigate = useNavigate();
   const search = useSearch({ from: "__root__" }) as LensSearchParams;
   const activeProofId = search.proof;
 
   function handleCardClick(card: ProofCard) {
+    const targetId = selectionTargetId(card);
+
     void navigate({
       to: "/",
       search: {
         ...search,
         proof: card.id,
         tab: card.targetSurface,
+        targetId,
       },
       replace: true,
     });
 
-    // After a short delay, apply highlight class to matching data-proof elements
     setTimeout(() => {
-      // Remove existing highlights
-      document.querySelectorAll(".proof-highlight").forEach((el) => {
-        el.classList.remove("proof-highlight");
-      });
-
-      const targets = document.querySelectorAll(`[data-proof="${card.id}"]`);
-      targets.forEach((el) => {
-        el.classList.add("proof-highlight");
-      });
-
-      // Scroll first highlighted element into view
-      const first = targets[0];
-      if (first) {
-        first.scrollIntoView({ behavior: "smooth", block: "nearest" });
-      }
+      applySelectionHighlight(card.id, targetId);
     }, 200);
   }
-
-  if (cards.length === 0) return null;
 
   return (
     <div className="lens-ev-proof-cards" role="group" aria-label="Proof cards">

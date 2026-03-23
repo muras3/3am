@@ -5,6 +5,7 @@ import { MapNode } from "./MapNode.js";
 interface Props {
   nodes: MapNodeType[];
   edges: MapEdge[];
+  emptyStateMessage?: string;
   zoomTo: (level: LensLevel, trigger?: HTMLElement, incidentId?: string) => void;
 }
 
@@ -38,7 +39,7 @@ const LEFT_OFFSET = 28; // leave room for tier labels
  * Nodes are positioned absolutely within a 1100×380 container.
  * SVG edges are drawn behind nodes and animate traffic dots via animateMotion.
  */
-export function MapGraph({ nodes, edges, zoomTo }: Props) {
+export function MapGraph({ nodes, edges, emptyStateMessage, zoomTo }: Props) {
   const nodePositions = computeNodePositions(nodes);
 
   return (
@@ -123,6 +124,12 @@ export function MapGraph({ nodes, edges, zoomTo }: Props) {
           />
         );
       })}
+
+      {nodes.length === 0 && emptyStateMessage ? (
+        <div className="map-empty map-empty-overlay" data-testid="map-empty-state">
+          <span>{emptyStateMessage}</span>
+        </div>
+      ) : null}
 
       {/* Map legend */}
       <div className="map-legend">

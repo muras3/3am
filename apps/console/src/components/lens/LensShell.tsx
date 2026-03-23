@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, lazy, Suspense } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useSearch, useNavigate } from "@tanstack/react-router";
+import { curatedQueries } from "../../api/queries.js";
 import type { LensLevel, LensSearchParams } from "../../routes/__root.js";
 import { LevelHeader } from "./LevelHeader.js";
 import { ZoomNav } from "./ZoomNav.js";
@@ -24,6 +26,10 @@ export function LensShell() {
   const search = useSearch({ from: "__root__" }) as LensSearchParams;
   const { level, incidentId } = search;
   const navigate = useNavigate();
+  const { data: incidentMeta } = useQuery({
+    ...curatedQueries.extendedIncident(incidentId ?? ""),
+    enabled: !!incidentId,
+  });
 
   // Refs for focus management
   const levelRefs = useRef<(HTMLElement | null)[]>([null, null, null]);
@@ -115,6 +121,8 @@ export function LensShell() {
         <LevelHeader
           level={1}
           incidentId={incidentId}
+          severity={incidentMeta?.severity}
+          openedAt={incidentMeta?.openedAt}
           zoomTo={zoomTo}
         />
         <div className="level-content" data-focus-target>
@@ -138,6 +146,7 @@ export function LensShell() {
         <LevelHeader
           level={2}
           incidentId={incidentId}
+          severity={incidentMeta?.severity}
           zoomTo={zoomTo}
         />
         <div className="level-content" data-focus-target>

@@ -1,6 +1,23 @@
+import path from "node:path";
 import { defineConfig } from "vitest/config";
 
 export default defineConfig({
+  resolve: {
+    alias: [
+      {
+        find: /^@3amoncall\/core$/,
+        replacement: path.resolve(__dirname, "../../packages/core/src/index.ts"),
+      },
+      {
+        find: /^@3amoncall\/core\/(.+)$/,
+        replacement: path.resolve(__dirname, "../../packages/core/src/$1.ts"),
+      },
+      {
+        find: /^@3amoncall\/diagnosis$/,
+        replacement: path.resolve(__dirname, "../../packages/diagnosis/src/index.ts"),
+      },
+    ],
+  },
   test: {
     // Postgres test files share a single database and use TRUNCATE for isolation.
     // File-level parallelism causes cross-file TRUNCATE races (one file wipes

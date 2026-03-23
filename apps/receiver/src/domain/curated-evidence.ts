@@ -13,6 +13,7 @@ import type {
   CuratedTraceSurface,
   CuratedMetricsSurface,
   CuratedLogsSurface,
+  CorrelatedLog,
   EvidenceRef,
   ProofCard,
   QABlock,
@@ -121,9 +122,9 @@ export async function buildCuratedEvidence(
 
   return {
     proofCards: buildProofCards(narrative?.proofCards, reasoningStructure.proofRefs),
-    qa: buildQaBlock(narrative?.qa),
+    qa: buildQaBlock(narrative?.qa, incident, diagnosis),
     surfaces: {
-      traces: toPublicTraceSurface(traceResult.surface),
+      traces: toPublicTraceSurface(traceResult.surface, logsResult.surface),
       metrics: toPublicMetricsSurface(metricsResult.surface),
       logs: toPublicLogsSurface(logsResult.surface),
     },
@@ -132,13 +133,24 @@ export async function buildCuratedEvidence(
   }
 }
 
-function toPublicTraceSurface(surface: CuratedTraceSurface): EvidenceResponse['surfaces']['traces'] {
+function toPublicTraceSurface(
+  surface: CuratedTraceSurface,
+  logsSurface: CuratedLogsSurface,
+): EvidenceResponse['surfaces']['traces'] {
+  const expectedReference = surface.expected[0]
+  const correlatedLogsBySpan = buildCorrelatedLogsBySpan(logsSurface)
+  const correlatedLogsByTrace = buildCorrelatedLogsByTrace(logsSurface)
+
   return {
     observed: surface.observed.map((trace) => ({
       traceId: trace.traceId,
       route: trace.rootSpanName,
       status: trace.httpStatusCode ?? (trace.status === 'error' ? 500 : 200),
       durationMs: trace.durationMs,
+      ...(expectedReference ? { expectedDurationMs: expectedReference.durationMs } : {}),
+      ...(buildObservedAnnotation(trace.durationMs, expectedReference?.durationMs, surface.baseline)
+        ? { annotation: buildObservedAnnotation(trace.durationMs, expectedReference?.durationMs, surface.baseline) }
+        : {}),
       spans: trace.spans.map((span) => ({
         spanId: span.spanId,
         parentSpanId: span.parentSpanId,
@@ -146,6 +158,9 @@ function toPublicTraceSurface(surface: CuratedTraceSurface): EvidenceResponse['s
         durationMs: span.durationMs,
         status: span.status,
         attributes: span.attributes,
+        correlatedLogs: correlatedLogsBySpan.get(span.spanId)
+          ?? correlatedLogsByTrace.get(trace.traceId)
+          ?? undefined,
       })),
     })),
     expected: surface.expected.map((trace) => ({
@@ -153,6 +168,7 @@ function toPublicTraceSurface(surface: CuratedTraceSurface): EvidenceResponse['s
       route: trace.rootSpanName,
       status: trace.httpStatusCode ?? 200,
       durationMs: trace.durationMs,
+      annotation: buildExpectedAnnotation(surface.baseline),
       spans: trace.spans.map((span) => ({
         spanId: span.spanId,
         parentSpanId: span.parentSpanId,
@@ -167,6 +183,59 @@ function toPublicTraceSurface(surface: CuratedTraceSurface): EvidenceResponse['s
     // spanId part so the frontend can match it against span rows.
     smokingGunSpanId: extractSpanId(surface.smokingGunSpanId) ?? null,
   }
+}
+
+function buildObservedAnnotation(
+  observedDurationMs: number,
+  expectedDurationMs: number | undefined,
+  baseline: CuratedTraceSurface['baseline'],
+): string | undefined {
+  if (expectedDurationMs === undefined) return undefined
+  return `Observed ${observedDurationMs}ms vs expected ${expectedDurationMs}ms from ${baseline.sampleCount} baseline samples.`
+}
+
+function buildExpectedAnnotation(baseline: CuratedTraceSurface['baseline']): string {
+  return `Expected behavior from ${baseline.windowStart} to ${baseline.windowEnd} (${baseline.sampleCount} samples, ${baseline.confidence} confidence).`
+}
+
+function buildCorrelatedLogsBySpan(logsSurface: CuratedLogsSurface): Map<string, CorrelatedLog[]> {
+  const result = new Map<string, CorrelatedLog[]>()
+
+  for (const cluster of logsSurface.clusters) {
+    for (const entry of cluster.entries) {
+      if (!entry.spanId) continue
+      const existing = result.get(entry.spanId) ?? []
+      if (existing.length >= 3) continue
+      existing.push({
+        timestamp: entry.timestamp,
+        severity: entry.severity,
+        body: entry.body,
+      })
+      result.set(entry.spanId, existing)
+    }
+  }
+
+  return result
+}
+
+function buildCorrelatedLogsByTrace(logsSurface: CuratedLogsSurface): Map<string, CorrelatedLog[]> {
+  const result = new Map<string, CorrelatedLog[]>()
+
+  for (const cluster of logsSurface.clusters) {
+    for (const entry of cluster.entries) {
+      if (!entry.traceId) continue
+      const existing = result.get(entry.traceId) ?? []
+      if (existing.length >= 3) continue
+      existing.push({
+        timestamp: entry.timestamp,
+        severity: entry.severity,
+        body: entry.body,
+      })
+      result.set(entry.traceId, existing)
+    }
+  }
+
+  return result
 }
 
 function toPublicMetricsSurface(surface: CuratedMetricsSurface): EvidenceResponse['surfaces']['metrics'] {
@@ -230,22 +299,25 @@ function buildProofCards(
         label: card.label,
         status: ref?.status ?? 'pending',
         summary: card.summary,
-        targetSurface: ref?.targetSurface ?? 'traces',
+        targetSurface: resolveProofCardSurface(card.id),
         evidenceRefs: ref?.evidenceRefs ?? [],
       }
     })
   }
 
-  // Deterministic fallback: generate proof cards from proofRefs alone (no LLM wording)
-  if (proofRefs.length === 0) return []
-  return proofRefs.map((ref) => ({
-    id: ref.cardId,
-    label: defaultProofCardLabel(ref.cardId),
-    status: ref.status,
-    summary: '',
-    targetSurface: ref.targetSurface,
-    evidenceRefs: ref.evidenceRefs,
-  }))
+  const proofRefMap = new Map(proofRefs.map((ref) => [ref.cardId, ref]))
+
+  return (['trigger', 'design_gap', 'recovery'] as const).map((cardId) => {
+    const ref = proofRefMap.get(cardId)
+    return {
+      id: cardId,
+      label: defaultProofCardLabel(cardId),
+      status: ref?.status ?? 'pending',
+      summary: defaultProofCardSummary(cardId, ref?.status ?? 'pending'),
+      targetSurface: resolveProofCardSurface(cardId),
+      evidenceRefs: ref?.evidenceRefs ?? [],
+    }
+  })
 }
 
 function defaultProofCardLabel(cardId: string): string {
@@ -257,8 +329,58 @@ function defaultProofCardLabel(cardId: string): string {
   }
 }
 
-function buildQaBlock(qa: ConsoleNarrative['qa'] | undefined): QABlock | null {
-  if (!qa) return null
+function defaultProofCardSummary(
+  cardId: 'trigger' | 'design_gap' | 'recovery',
+  status: ProofCard['status'],
+): string {
+  switch (cardId) {
+    case 'trigger':
+      return status === 'pending'
+        ? 'Trigger evidence is being assembled from deterministic traces and logs.'
+        : 'Trigger evidence has been derived from deterministic telemetry.'
+    case 'design_gap':
+      return status === 'pending'
+        ? 'Design-gap evidence will be filled from metrics and dependency behavior.'
+        : 'Design-gap evidence has been derived from deterministic telemetry.'
+    case 'recovery':
+      return status === 'pending'
+        ? 'Recovery evidence remains open while baseline and remediation signals are collected.'
+        : 'Recovery evidence has been derived from deterministic telemetry.'
+    default:
+      return 'Deterministic evidence placeholder.'
+  }
+}
+
+function defaultProofCardSurface(cardId: 'trigger' | 'design_gap' | 'recovery'): ProofCard['targetSurface'] {
+  switch (cardId) {
+    case 'trigger': return 'traces'
+    case 'design_gap': return 'metrics'
+    case 'recovery': return 'traces'
+    default: return 'traces'
+  }
+}
+
+function resolveProofCardSurface(
+  cardId: 'trigger' | 'design_gap' | 'recovery',
+): ProofCard['targetSurface'] {
+  switch (cardId) {
+    case 'trigger':
+      return 'traces'
+    case 'design_gap':
+      return 'metrics'
+    case 'recovery':
+      return 'traces'
+    default:
+      return defaultProofCardSurface(cardId)
+  }
+}
+
+function buildQaBlock(
+  qa: ConsoleNarrative['qa'] | undefined,
+  incident: Incident,
+  diagnosisState: EvidenceResponse['state']['diagnosis'],
+): QABlock {
+  if (!qa) return buildFallbackQa(incident, diagnosisState)
 
   return {
     question: qa.question,
@@ -267,6 +389,44 @@ function buildQaBlock(qa: ConsoleNarrative['qa'] | undefined): QABlock | null {
     evidenceSummary: summarizeEvidenceRefs(qa.answerEvidenceRefs),
     followups: qa.followups,
     ...(qa.noAnswerReason ? { noAnswerReason: qa.noAnswerReason } : {}),
+  }
+}
+
+function buildFallbackQa(
+  incident: Incident,
+  diagnosisState: EvidenceResponse['state']['diagnosis'],
+): QABlock {
+  const service = incident.packet.scope.primaryService
+  const route = incident.packet.scope.affectedRoutes[0] ?? 'unknown route'
+  const dependency = incident.packet.scope.affectedDependencies[0]
+  const question = `What evidence is available for ${service} ${route}?`
+
+  let answer = `Deterministic traces, metrics, and logs for ${service} ${route} are available below.`
+  let noAnswerReason = 'Diagnosis narrative is unavailable; use the deterministic evidence surfaces below.'
+
+  if (diagnosisState === 'pending') {
+    answer = `Deterministic evidence for ${service} ${route} is available while diagnosis is still running.`
+    noAnswerReason = 'Diagnosis narrative is pending; use the deterministic evidence surfaces below.'
+  } else if (diagnosisState === 'ready') {
+    answer = `Deterministic evidence for ${service} ${route} is available below while the narrative answer is being prepared.`
+    noAnswerReason = 'Diagnosis narrative is not attached to this incident yet.'
+  }
+
+  if (dependency) {
+    answer += ` Primary dependency in scope: ${dependency}.`
+  }
+
+  return {
+    question,
+    answer,
+    evidenceRefs: [],
+    evidenceSummary: { traces: 0, metrics: 0, logs: 0 },
+    followups: [
+      { question: 'Open traces', targetEvidenceKinds: ['traces'] },
+      { question: 'Inspect metrics drift', targetEvidenceKinds: ['metrics'] },
+      { question: 'Review related logs', targetEvidenceKinds: ['logs'] },
+    ],
+    noAnswerReason,
   }
 }
 

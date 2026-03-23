@@ -1,6 +1,9 @@
 import { render, screen, fireEvent } from "@testing-library/react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { LensShell } from "../components/lens/LensShell.js";
+import { curatedQueries } from "../api/queries.js";
+import { extendedIncidentReady } from "../__fixtures__/curated/extended-incident.js";
 import type { LensSearchParams } from "../routes/__root.js";
 
 // ── Mock router ───────────────────────────────────────────────
@@ -47,17 +50,36 @@ beforeEach(() => {
   mockNavigate.mockClear();
 });
 
+function renderShell() {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+
+  if (mockSearch.incidentId) {
+    queryClient.setQueryData(
+      curatedQueries.extendedIncident(mockSearch.incidentId).queryKey,
+      extendedIncidentReady,
+    );
+  }
+
+  return render(
+    <QueryClientProvider client={queryClient}>
+      <LensShell />
+    </QueryClientProvider>,
+  );
+}
+
 // ── Tests ─────────────────────────────────────────────────────
 
 describe("LensShell — zoom navigation", () => {
   it("renders three level sections", () => {
-    render(<LensShell />);
+    renderShell();
     const levels = document.querySelectorAll(".level");
     expect(levels).toHaveLength(3);
   });
 
   it("sets level 0 as active by default", () => {
-    render(<LensShell />);
+    renderShell();
     const levels = document.querySelectorAll(".level");
     expect(levels[0]!.classList.contains("active")).toBe(true);
     expect(levels[1]!.classList.contains("active")).toBe(false);
@@ -66,7 +88,7 @@ describe("LensShell — zoom navigation", () => {
 
   it("sets level 1 as active when level=1", () => {
     mockSearch = { level: 1, tab: "traces", incidentId: "inc_test" };
-    render(<LensShell />);
+    renderShell();
     const levels = document.querySelectorAll(".level");
     expect(levels[0]!.classList.contains("zoomed-past")).toBe(true);
     expect(levels[1]!.classList.contains("active")).toBe(true);
@@ -74,7 +96,7 @@ describe("LensShell — zoom navigation", () => {
 
   it("sets level 2 as active when level=2", () => {
     mockSearch = { level: 2, tab: "traces", incidentId: "inc_test" };
-    render(<LensShell />);
+    renderShell();
     const levels = document.querySelectorAll(".level");
     expect(levels[0]!.classList.contains("zoomed-past")).toBe(true);
     expect(levels[1]!.classList.contains("zoomed-past")).toBe(true);
@@ -83,7 +105,7 @@ describe("LensShell — zoom navigation", () => {
 
   it("marks inactive levels with aria-hidden", () => {
     mockSearch = { level: 1, tab: "traces", incidentId: "inc_test" };
-    render(<LensShell />);
+    renderShell();
     const levels = document.querySelectorAll(".level");
     expect(levels[0]!.getAttribute("aria-hidden")).toBe("true");
     expect(levels[1]!.getAttribute("aria-hidden")).toBe("false");
@@ -94,7 +116,7 @@ describe("LensShell — zoom navigation", () => {
 describe("LensShell — zoom breadcrumb interaction", () => {
   it("navigates to level 1 via breadcrumb", () => {
     mockSearch = { level: 0, tab: "traces", incidentId: "inc_test" };
-    render(<LensShell />);
+    renderShell();
     fireEvent.click(screen.getByTestId("crumb-1"));
     expect(mockNavigate).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -106,7 +128,7 @@ describe("LensShell — zoom breadcrumb interaction", () => {
 
   it("strips deeper params when going back to level 0", () => {
     mockSearch = { level: 1, tab: "metrics", incidentId: "inc_test", proof: "trigger", targetId: "span:123" };
-    render(<LensShell />);
+    renderShell();
     fireEvent.click(screen.getByTestId("crumb-0"));
     expect(mockNavigate).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -125,7 +147,7 @@ describe("LensShell — zoom breadcrumb interaction", () => {
 describe("LensShell — Escape key", () => {
   it("goes back one level on Escape from level 1", () => {
     mockSearch = { level: 1, tab: "traces", incidentId: "inc_test" };
-    render(<LensShell />);
+    renderShell();
     fireEvent.keyDown(document, { key: "Escape" });
     expect(mockNavigate).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -136,7 +158,7 @@ describe("LensShell — Escape key", () => {
 
   it("goes back one level on Escape from level 2", () => {
     mockSearch = { level: 2, tab: "traces", incidentId: "inc_test" };
-    render(<LensShell />);
+    renderShell();
     fireEvent.keyDown(document, { key: "Escape" });
     expect(mockNavigate).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -147,7 +169,7 @@ describe("LensShell — Escape key", () => {
 
   it("does nothing on Escape at level 0", () => {
     mockSearch = { level: 0, tab: "traces", incidentId: undefined };
-    render(<LensShell />);
+    renderShell();
     fireEvent.keyDown(document, { key: "Escape" });
     expect(mockNavigate).not.toHaveBeenCalled();
   });
@@ -156,7 +178,7 @@ describe("LensShell — Escape key", () => {
 describe("LensShell — back button interaction", () => {
   it("navigates back via level header back button", () => {
     mockSearch = { level: 1, tab: "traces", incidentId: "inc_test" };
-    render(<LensShell />);
+    renderShell();
     fireEvent.click(screen.getByTestId("back-btn-1"));
     expect(mockNavigate).toHaveBeenCalledWith(
       expect.objectContaining({

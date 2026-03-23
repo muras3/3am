@@ -21,8 +21,6 @@ interface Props {
  *
  * Layout:
  *   context bar → proof cards → Q&A frame → tabs → content grid (main + side rail)
- *
- * Shows EmptyView when evidenceDensity === 'empty'.
  */
 export function LensEvidenceStudio({ incidentId }: Props) {
   const search = useSearch({ from: "__root__" }) as LensSearchParams;
@@ -50,32 +48,33 @@ export function LensEvidenceStudio({ incidentId }: Props) {
   const incident = incidentQuery.data;
   const evidence = evidenceQuery.data;
 
-  // Empty state when evidence density is empty
-  if (evidence.state.evidenceDensity === "empty") {
-    return (
-      <div className="lens-ev-empty" role="status" aria-label="Evidence Studio">
-        <ContextBar incident={incident} />
-        <div className="lens-ev-empty-body">
-          <div className="lens-ev-empty-pulse" aria-hidden="true" />
-          <p className="lens-ev-empty-text">Evidence is being collected…</p>
-          <p className="lens-ev-empty-sub">
-            Diagnosis is in progress. Check back in a moment.
-          </p>
-        </div>
-      </div>
-    );
-  }
-
   return (
-    <div className="lens-ev-studio" aria-label="Evidence Studio">
+    <div
+      className="lens-ev-studio"
+      aria-label="Evidence Studio"
+      data-evidence-density={evidence.state.evidenceDensity}
+      data-diagnosis-state={evidence.state.diagnosis}
+    >
       {/* Context bar — keeps incident context visible */}
       <ContextBar incident={incident} />
+
+      {evidence.state.evidenceDensity === "empty" && (
+        <div className="lens-ev-empty-banner" role="status">
+          <div className="lens-ev-empty-pulse" aria-hidden="true" />
+          <div>
+            <p className="lens-ev-empty-text">Evidence is being collected…</p>
+            <p className="lens-ev-empty-sub">
+              The major Evidence Studio panels remain available while deterministic telemetry arrives.
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Proof cards grid */}
       <LensProofCards cards={evidence.proofCards} />
 
       {/* Q&A frame */}
-      <QAFrame qa={evidence.qa} diagnosisState={evidence.state.diagnosis} />
+      <QAFrame qa={evidence.qa} />
 
       {/* Tab bar */}
       <LensEvidenceTabs surfaces={evidence.surfaces} />
@@ -90,7 +89,11 @@ export function LensEvidenceStudio({ incidentId }: Props) {
             className="lens-ev-view"
             hidden={tab !== "traces"}
           >
-            <LensTracesView surface={evidence.surfaces.traces} />
+            <LensTracesView
+              surface={evidence.surfaces.traces}
+              baselineState={evidence.state.baseline}
+              evidenceDensity={evidence.state.evidenceDensity}
+            />
           </div>
 
           <div
@@ -100,7 +103,10 @@ export function LensEvidenceStudio({ incidentId }: Props) {
             className="lens-ev-view"
             hidden={tab !== "metrics"}
           >
-            <LensMetricsView surface={evidence.surfaces.metrics} />
+            <LensMetricsView
+              surface={evidence.surfaces.metrics}
+              evidenceDensity={evidence.state.evidenceDensity}
+            />
           </div>
 
           <div
@@ -110,12 +116,19 @@ export function LensEvidenceStudio({ incidentId }: Props) {
             className="lens-ev-view"
             hidden={tab !== "logs"}
           >
-            <LensLogsView surface={evidence.surfaces.logs} />
+            <LensLogsView
+              surface={evidence.surfaces.logs}
+              evidenceDensity={evidence.state.evidenceDensity}
+            />
           </div>
         </div>
 
         {/* Right side rail */}
-        <LensSideRail notes={evidence.sideNotes} />
+        <LensSideRail
+          notes={evidence.sideNotes}
+          diagnosisState={evidence.state.diagnosis}
+          baselineState={evidence.state.baseline}
+        />
       </div>
     </div>
   );

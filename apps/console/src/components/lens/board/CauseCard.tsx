@@ -1,8 +1,10 @@
 import { Fragment } from "react";
-import type { CausalStep } from "../../../api/curated-types.js";
+import type { CausalStep, CuratedState } from "../../../api/curated-types.js";
+import { sectionFallback } from "./board-state.js";
 
 interface Props {
   steps: CausalStep[];
+  state: CuratedState;
 }
 
 function stepBorderClass(type: CausalStep["type"]): string {
@@ -26,12 +28,12 @@ function ChainArrow() {
   );
 }
 
-export function CauseCard({ steps }: Props) {
+export function CauseCard({ steps, state }: Props) {
   return (
     <div className="lens-board-chain-section">
       <h2 className="lens-board-section-label">Causal Chain</h2>
       <div className="lens-board-chain-flow" role="list">
-        {steps.map((step, i) => (
+        {steps.length > 0 ? steps.map((step, i) => (
           <Fragment key={`${step.type}-${i}`}>
             <div
               className={`lens-board-chain-step ${stepBorderClass(step.type)}`}
@@ -45,7 +47,11 @@ export function CauseCard({ steps }: Props) {
             </div>
             {i < steps.length - 1 && <ChainArrow />}
           </Fragment>
-        ))}
+        )) : (
+          <div className="lens-board-chain-placeholder" role="listitem">
+            {sectionFallback(state, "chain")}
+          </div>
+        )}
       </div>
     </div>
   );
