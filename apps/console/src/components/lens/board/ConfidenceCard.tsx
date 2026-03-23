@@ -1,5 +1,6 @@
 import type { ConfidenceSummary, CuratedState } from "../../../api/curated-types.js";
 import { sectionFallback } from "./board-state.js";
+import { shortenForViewport } from "./viewport-text.js";
 
 interface Props {
   confidence: ConfidenceSummary;
@@ -21,6 +22,14 @@ export function ConfidenceCard({ confidence, state }: Props) {
     : state.evidenceDensity === "sparse" || state.baseline !== "ready"
       ? "Limited confidence"
       : "Reviewing confidence";
+  const basisText = confidence.basis.trim() || sectionFallback(state, "confidence");
+  const riskText =
+    confidence.risk.trim() ||
+    "Early narrative can shift as more corroborating evidence lands.";
+  const basisPreview = shortenForViewport(basisText, 46);
+  const riskPreview = shortenForViewport(riskText, 88);
+  const hasExpandableDetail = basisPreview !== basisText || riskPreview !== riskText;
+
   return (
     <div className="lens-board-card">
       <div className="lens-board-card-title">Confidence</div>
@@ -36,19 +45,26 @@ export function ConfidenceCard({ confidence, state }: Props) {
             {confidence.label.trim() || fallbackLabel}
           </span>
           <span className="lens-board-conf-basis">
-            {confidence.basis.trim() || sectionFallback(state, "confidence")}
+            {basisPreview}
           </span>
         </div>
       </div>
-      {confidence.risk.trim() ? (
-        <div className="lens-board-conf-risk">
-          <span className="lens-board-conf-risk-label">Risk:</span> {confidence.risk}
-        </div>
-      ) : (
-        <div className="lens-board-conf-risk lens-board-conf-risk-empty">
-          <span className="lens-board-conf-risk-label">Risk:</span> Early narrative can shift as more corroborating evidence lands.
-        </div>
-      )}
+      <div className="lens-board-conf-risk">
+        <span className="lens-board-conf-risk-label">Risk:</span> {riskPreview}
+      </div>
+      {hasExpandableDetail ? (
+        <details className="lens-board-inline-details">
+          <summary>Confidence details</summary>
+          <div className="lens-board-inline-details-body lens-board-action-detail-copy">
+            <div>
+              <strong>Basis:</strong> {basisText}
+            </div>
+            <div>
+              <strong>Risk:</strong> {riskText}
+            </div>
+          </div>
+        </details>
+      ) : null}
     </div>
   );
 }

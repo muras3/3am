@@ -1,5 +1,6 @@
 import type { CuratedState, IncidentAction } from "../../../api/curated-types.js";
 import { sectionFallback } from "./board-state.js";
+import { shortenForViewport, splitActionForViewport } from "./viewport-text.js";
 
 interface Props {
   action: IncidentAction;
@@ -11,6 +12,14 @@ export function ImmediateAction({ action, state }: Props) {
   const rationale =
     action.rationale.trim() || sectionFallback(state, "action");
   const doNot = action.doNot.trim();
+  const actionSteps = splitActionForViewport(text);
+  const rationalePreview = shortenForViewport(rationale, 110);
+  const doNotText = doNot || "No contrary guidance returned.";
+  const doNotPreview = shortenForViewport(doNotText, 110);
+  const showFullDetails =
+    actionSteps.join(" ").trim() !== text ||
+    rationalePreview !== rationale ||
+    doNotPreview !== doNotText;
 
   return (
     <div className="lens-board-action-hero">
@@ -23,19 +32,42 @@ export function ImmediateAction({ action, state }: Props) {
         </svg>
         Immediate Action
       </div>
-      <div className="lens-board-action-text">{text}</div>
-      <div className="lens-board-action-why">
-        <strong>Why:</strong> {rationale}
+      <div className="lens-board-action-steps" role="list" aria-label="Immediate action steps">
+        {actionSteps.map((step, index) => (
+          <div key={`${step}-${index}`} className="lens-board-action-step" role="listitem">
+            <span className="lens-board-action-step-index">{index + 1}</span>
+            <span className="lens-board-action-step-text">{step}</span>
+          </div>
+        ))}
       </div>
-      {doNot ? (
-        <div className="lens-board-action-donot">
-          <strong>Do not:</strong> {doNot}
+      <div className="lens-board-action-support-grid">
+        <div className="lens-board-action-support">
+          <strong>Why</strong>
+          <span title={rationale}>{rationalePreview}</span>
         </div>
-      ) : (
-        <div className="lens-board-action-donot lens-board-action-donot-empty">
-          <strong>Do not:</strong> No contrary guidance returned.
+        <div
+          className={`lens-board-action-support lens-board-action-donot${doNot ? "" : " lens-board-action-donot-empty"}`}
+        >
+          <strong>Do not</strong>
+          <span title={doNotText}>{doNotPreview}</span>
         </div>
-      )}
+      </div>
+      {showFullDetails ? (
+        <details className="lens-board-inline-details lens-board-inline-details-strong">
+          <summary>Full action details</summary>
+          <div className="lens-board-inline-details-body lens-board-action-detail-copy">
+            <div>
+              <strong>Action:</strong> {text}
+            </div>
+            <div>
+              <strong>Why:</strong> {rationale}
+            </div>
+            <div>
+              <strong>Do not:</strong> {doNotText}
+            </div>
+          </div>
+        </details>
+      ) : null}
     </div>
   );
 }
