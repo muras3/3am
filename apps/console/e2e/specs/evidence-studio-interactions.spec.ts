@@ -54,6 +54,15 @@ async function gotoEvidenceStudioOrSkip(page: Page): Promise<string> {
 }
 
 test.describe("L2 Evidence Studio — interactions", () => {
+  test.beforeEach(async ({ page }) => {
+    page.on("console", (msg) => {
+      if (msg.type() === "error") console.log(`[browser error] ${msg.text()}`);
+    });
+    page.on("pageerror", (err) => {
+      console.log(`[browser exception] ${err.message}`);
+    });
+  });
+
   test("proof cards are visible", async ({ page }) => {
     await gotoEvidenceStudioOrSkip(page);
 
