@@ -146,12 +146,16 @@ jobs:
 
       - name: E2E tests (console)
         run: pnpm --filter @3amoncall/console e2e
+        timeout-minutes: 5
         env:
           CI: true
           RECEIVER_AUTH_TOKEN: e2e-test-token
+          DEBUG: "1"
 
       - name: E2E tests — receiver-served
         run: pnpm --filter @3amoncall/console e2e:receiver-served
+        timeout-minutes: 5
         env:
           CI: true
           RECEIVER_AUTH_TOKEN: e2e-test-token
+          DEBUG: "1"

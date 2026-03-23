@@ -136,21 +136,25 @@ export default async function globalSetup(): Promise<void> {
   };
   writeFileSync(E2E_STORAGE_STATE, JSON.stringify(storageState), "utf8");
 
-  // Warm up: fetch the first incident's evidence endpoint so the receiver
-  // pre-computes curated evidence (baseline selection, reasoning structure, etc.)
-  // before tests start. Without this, the first test pays the cold-start cost
-  // and times out in CI.
+  // Warm up: verify the evidence endpoint responds before tests start.
+  const t0 = Date.now();
   const listRes = await fetch(`${RECEIVER_URL}/api/incidents?limit=1`, {
     headers: { Authorization: `Bearer ${TOKEN}` },
   });
+  console.log(`[E2E] listIncidents: ${listRes.status} (${Date.now() - t0}ms)`);
   if (listRes.ok) {
-    const { items } = (await listRes.json()) as { items?: Array<{ incidentId: string }> };
-    const firstId = items?.[0]?.incidentId;
+    const data = (await listRes.json()) as { items?: Array<{ incidentId: string; diagnosisResult?: unknown }> };
+    console.log(`[E2E] incidents count: ${data.items?.length ?? 0}, first has diagnosis: ${!!data.items?.[0]?.diagnosisResult}`);
+    const firstId = data.items?.[0]?.incidentId;
     if (firstId) {
-      await fetch(`${RECEIVER_URL}/api/incidents/${encodeURIComponent(firstId)}/evidence`, {
+      const t1 = Date.now();
+      const evRes = await fetch(`${RECEIVER_URL}/api/incidents/${encodeURIComponent(firstId)}/evidence`, {
         headers: { Authorization: `Bearer ${TOKEN}` },
-      }).catch(() => {/* warm-up failure is non-fatal */});
+      }).catch((err) => { console.log(`[E2E] evidence warm-up failed: ${err}`); return null; });
+      console.log(`[E2E] evidence warm-up: ${evRes?.status ?? "failed"} (${Date.now() - t1}ms)`);
     }
+  } else {
+    console.log(`[E2E] listIncidents body: ${await listRes.text()}`);
   }
 
   console.log("[E2E] Receiver ready and seeded with 5 incidents");
