@@ -241,15 +241,16 @@ test.describe("L2 Evidence Studio — interactions", () => {
     const centerY = box.y + box.height / 2;
 
     const hitElement = await page.evaluate(
-      ({ x, y }) => {
-        const el = document.elementFromPoint(x, y);
+      // eslint-disable-next-line no-shadow -- runs in browser context
+      ([cx, cy]: [number, number]) => {
+        const el = (globalThis as unknown as { document: { elementFromPoint(x: number, y: number): { tagName: string; id: string; className: string } | null } }).document.elementFromPoint(cx, cy);
         return {
           tagName: el?.tagName ?? "",
           id: el?.id ?? "",
           className: el?.className ?? "",
         };
       },
-      { x: centerX, y: centerY },
+      [centerX, centerY] as [number, number],
     );
 
     // Must NOT hit L1 content (the original bug returned <strong>Why:</strong> from lens-board)
