@@ -62,6 +62,47 @@ export function LensEvidenceStudio({ incidentId }: Props) {
 
   const incident = incidentQuery.data;
   const evidence = evidenceQuery.data;
+  const confirmedProofCount = evidence.proofCards.filter((card) => card.status === "confirmed").length;
+  const showStatusBanner =
+    evidence.state.diagnosis !== "ready"
+    || evidence.state.evidenceDensity !== "rich"
+    || evidence.state.baseline !== "ready";
+
+  const statusTitle = evidence.state.diagnosis === "pending"
+    ? "Evidence Studio is live while diagnosis assembles"
+    : evidence.state.evidenceDensity === "sparse"
+      ? "A directional read is available now"
+      : evidence.state.diagnosis === "unavailable"
+        ? "Evidence Studio remains available without a narrative diagnosis"
+        : "Evidence coverage is still maturing";
+
+  const statusBody = evidence.state.diagnosis === "pending"
+    ? "Use the confirmed traces and logs first. Metrics, confidence wording, and the final narrative will tighten as correlation completes."
+    : evidence.state.evidenceDensity === "sparse"
+      ? "The strongest confirmed signals are shown first. Treat missing lanes as open questions, not as healthy evidence."
+      : evidence.state.diagnosis === "unavailable"
+        ? "Confirmed telemetry remains reviewable here. The system is withholding narrative claims it cannot support."
+        : "Observed behavior is available now, but baseline or comparison coverage is still limited.";
+
+  const statusVisibleNow = [
+    `${confirmedProofCount} proof card${confirmedProofCount === 1 ? "" : "s"} already point to confirmed evidence.`,
+    `${evidence.qa.evidenceSummary.traces} traces, ${evidence.qa.evidenceSummary.metrics} metrics, and ${evidence.qa.evidenceSummary.logs} logs are currently summarized in the Q&A frame.`,
+    evidence.surfaces.traces.observed.length > 0
+      ? "Traces can be opened now to inspect the first failing path."
+      : "Trace lane stays reserved and will populate as the first captured request arrives.",
+  ];
+
+  const statusStillPreparing = [
+    evidence.surfaces.metrics.hypotheses.length > 0
+      ? "Metric comparison is already present and will sharpen as more samples arrive."
+      : "Metric comparison will appear once drift repeats across enough samples.",
+    evidence.surfaces.logs.claims.length > 0
+      ? "Log clusters are visible now; absence evidence may still be added."
+      : "Log clusters will pin confirmed patterns and absences here once correlation completes.",
+    evidence.state.baseline === "ready"
+      ? "Baseline context is attached and may still expand with more comparable requests."
+      : "Expected baseline remains open, so recovery and comparison guidance stays provisional.",
+  ];
 
   function handleSubmitQuestion(question: string) {
     setSubmitError(undefined);
@@ -81,7 +122,7 @@ export function LensEvidenceStudio({ incidentId }: Props) {
         },
         onError: (error) => {
           if (error instanceof ApiError && error.status === 404) {
-            setSubmitError("Query transport is unavailable until diagnosis is ready.");
+            setSubmitError("Free-form Q&A will open once diagnosis links enough evidence. The prepared surfaces below are ready now.");
             return;
           }
           setSubmitError(error instanceof Error ? error.message : "Failed to submit question.");
@@ -100,14 +141,30 @@ export function LensEvidenceStudio({ incidentId }: Props) {
       {/* Context bar — keeps incident context visible */}
       <ContextBar incident={incident} />
 
-      {evidence.state.evidenceDensity === "empty" && (
+      {showStatusBanner && (
         <div className="lens-ev-empty-banner" role="status">
           <div className="lens-ev-empty-pulse" aria-hidden="true" />
-          <div>
-            <p className="lens-ev-empty-text">Evidence is being collected…</p>
-            <p className="lens-ev-empty-sub">
-              The major Evidence Studio panels remain available while deterministic telemetry arrives.
-            </p>
+          <div className="lens-ev-empty-copy">
+            <p className="lens-ev-empty-text">{statusTitle}</p>
+            <p className="lens-ev-empty-sub">{statusBody}</p>
+          </div>
+          <div className="lens-ev-empty-columns">
+            <div className="lens-ev-empty-panel">
+              <div className="lens-ev-empty-panel-title">Available now</div>
+              <ul className="lens-ev-empty-list">
+                {statusVisibleNow.map((item) => (
+                  <li key={item}>{item}</li>
+                ))}
+              </ul>
+            </div>
+            <div className="lens-ev-empty-panel lens-ev-empty-panel-muted">
+              <div className="lens-ev-empty-panel-title">Still filling in</div>
+              <ul className="lens-ev-empty-list">
+                {statusStillPreparing.map((item) => (
+                  <li key={item}>{item}</li>
+                ))}
+              </ul>
+            </div>
           </div>
         </div>
       )}

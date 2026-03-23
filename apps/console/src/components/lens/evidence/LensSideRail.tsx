@@ -33,20 +33,20 @@ function buildPlaceholderNotes(
     {
       title: "Confidence",
       text: diagnosisState === "ready"
-        ? "Narrative confidence is still being prepared."
-        : "Confidence will populate when deterministic evidence is strong enough to summarize.",
+        ? "Narrative confidence is still being refined from the current evidence mix."
+        : "Confidence will appear here once multiple evidence surfaces agree on the same explanation.",
       kind: "confidence",
     },
     {
       title: "Uncertainty",
       text: baselineState === "unavailable"
-        ? "No expected baseline is available yet, so deviations should be interpreted cautiously."
-        : "Narrative uncertainty will appear here once the diagnosis is available.",
+        ? "No expected baseline is attached yet, so treat observed slowdowns and failures as directional rather than fully comparative."
+        : "Open questions will stay pinned here while the system separates confirmed facts from still-unresolved possibilities.",
       kind: "uncertainty",
     },
     {
-      title: "Affected Dependencies",
-      text: "Dependency notes will stay pinned here as evidence linking matures.",
+      title: "Dependencies in Scope",
+      text: "Dependency notes stay pinned here as trace and log correlation confirms what is truly involved.",
       kind: "dependency",
     },
   ];

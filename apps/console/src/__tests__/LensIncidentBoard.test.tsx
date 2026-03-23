@@ -38,7 +38,8 @@ describe("LensIncidentBoard — diagnosis pending", () => {
       extendedIncidentPending,
     );
     renderBoard("inc_0892", vi.fn(), qc);
-    expect(screen.getByText(/Diagnosis in progress/)).toBeInTheDocument();
+    expect(screen.getByText("Diagnosis is still assembling")).toBeInTheDocument();
+    expect(screen.getByText("Visible now")).toBeInTheDocument();
   });
 
   it("keeps board sections rendered with state fallback copy when pending", () => {
@@ -50,8 +51,8 @@ describe("LensIncidentBoard — diagnosis pending", () => {
     renderBoard("inc_0892", vi.fn(), qc);
     expect(screen.getAllByText(/Immediate Action/i).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/Blast Radius/i).length).toBeGreaterThan(0);
-    expect(screen.getByText("Diagnosis pending for this incident.")).toBeInTheDocument();
-    expect(screen.getByText("Causal chain will populate when diagnosis completes.")).toBeInTheDocument();
+    expect(screen.getByText("Impact is confirmed. Diagnosis narrative is still taking shape.")).toBeInTheDocument();
+    expect(screen.getByText("The causal chain stays reserved until the trigger, propagation path, and user impact can be linked safely.")).toBeInTheDocument();
   });
 });
 
@@ -251,7 +252,7 @@ describe("LensIncidentBoard — sparse diagnosis", () => {
 
     renderBoard("inc_0892", vi.fn(), qc);
 
-    expect(screen.getAllByText("Sparse evidence returned.").length).toBeGreaterThan(0);
+    expect(screen.getByText("A first-pass diagnosis is available. Treat it as directional until more evidence fills in the gaps.")).toBeInTheDocument();
     expect(screen.getByText("Low confidence")).toBeInTheDocument();
     expect(screen.getByText("Check external dependency status pages")).toBeInTheDocument();
   });

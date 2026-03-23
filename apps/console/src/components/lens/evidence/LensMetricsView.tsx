@@ -135,8 +135,8 @@ export function LensMetricsView({ surface, evidenceDensity = "rich", isActive = 
     return (
       <div className="lens-metrics-empty">
         {evidenceDensity === "empty"
-          ? "Metric lane is reserved. Deterministic comparisons will appear here when incident metrics arrive."
-          : "Metric hypotheses are sparse for this incident. The panel stays available for future comparisons."}
+          ? "Metric comparison is reserved. As soon as the incident repeats across enough samples, expected vs observed drift will appear here."
+          : "Only a thin metric signal is available so far. Keep this lane open for confirming or disproving the current hypothesis."}
       </div>
     );
   }

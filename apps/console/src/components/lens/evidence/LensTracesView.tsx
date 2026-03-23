@@ -268,8 +268,8 @@ export function LensTracesView({
   const baselineUnavailable = expected.length === 0;
   const baselineToggleLabel = baselineUnavailable
     ? baselineState === "unavailable"
-      ? "Expected trace unavailable"
-      : "Expected trace is sparse"
+      ? "Expected trace not captured yet"
+      : "Expected trace is still sparse"
     : baselineVisible
       ? "Hide expected trace"
       : "Show expected trace";
@@ -321,8 +321,8 @@ export function LensTracesView({
         ) : (
           <div className="lens-traces-empty lens-traces-empty-baseline">
             {baselineState === "unavailable"
-              ? "No baseline trace was available for this incident window."
-              : "Baseline comparison is currently too sparse to render expected behavior."}
+              ? "No baseline trace has been attached to this incident window yet."
+              : "Baseline comparison is still too sparse to render expected behavior safely."}
           </div>
         )}
       </div>

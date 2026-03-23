@@ -38,16 +38,34 @@ export function LensIncidentBoard({ incidentId, zoomTo }: Props) {
     );
   }
 
+  const availableNow = [
+    `${data.severity.toUpperCase()} severity and incident timing are confirmed.`,
+    data.blastRadius.length > 0
+      ? `${data.blastRadius.length} impacted service path${data.blastRadius.length === 1 ? "" : "s"} already visible in blast radius.`
+      : "The blast-radius panel is reserved and will fill as affected paths are confirmed.",
+    data.evidenceSummary.traces + data.evidenceSummary.metrics + data.evidenceSummary.logs > 0
+      ? `${data.evidenceSummary.traces} traces, ${data.evidenceSummary.metrics} metrics, and ${data.evidenceSummary.logs} logs can already be inspected.`
+      : "Evidence Studio is open now, even while correlation is still collecting its first signals.",
+  ];
+
+  const nextUp = [
+    "Immediate action copy once the strongest remediation path is confirmed.",
+    "Root-cause narrative and causal chain once multiple surfaces agree.",
+    "Confidence wording after the system can separate signal from first-pass noise.",
+  ];
+
   return (
     <div className="lens-board-content stagger">
       {data.state.diagnosis !== "ready" ? (
         <DiagnosisPending
           message={
             data.state.diagnosis === "pending"
-              ? "Diagnosis in progress…"
-              : "Diagnosis unavailable"
+              ? "Diagnosis is still assembling"
+              : "Narrative diagnosis not available"
           }
           subtext={describeBoardState(data.state)}
+          availableNow={availableNow}
+          nextUp={nextUp}
         />
       ) : null}
 

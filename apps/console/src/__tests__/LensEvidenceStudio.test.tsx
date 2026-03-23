@@ -275,7 +275,8 @@ describe("LensEvidenceStudio — empty state", () => {
       evidencePending,
     );
     renderStudio("inc_0892", qc);
-    expect(screen.getAllByText(/Evidence is being collected/).length).toBeGreaterThan(0);
+    expect(screen.getByText("Evidence Studio is live while diagnosis assembles")).toBeInTheDocument();
+    expect(screen.getByText("Available now")).toBeInTheDocument();
   });
 
   it("keeps proof card boxes in empty state", () => {
@@ -669,12 +670,12 @@ describe("LensProofCards — cross-surface navigation", () => {
 
   it("pending card with empty evidenceRefs navigates without targetId", () => {
     render(<LensProofCards cards={evidencePending.proofCards} />);
-    const triggerCard = screen.getByText("Trigger Evidence").closest("[role='button']");
-    fireEvent.click(triggerCard!);
+    const pendingCard = screen.getByText("Dependency comparison").closest("[role='button']");
+    fireEvent.click(pendingCard!);
     expect(mockNavigate).toHaveBeenCalledWith(
       expect.objectContaining({
         search: expect.objectContaining({
-          proof: "trigger",
+          proof: "design_gap",
           targetId: undefined,
         }),
         replace: true,
@@ -710,7 +711,8 @@ describe("LensEvidenceStudio — degraded states", () => {
       evidencePending,
     );
     renderStudio("inc_0892", qc);
-    expect(screen.getAllByText(/Evidence is being collected/).length).toBeGreaterThan(0);
+    expect(screen.getByText("Evidence Studio is live while diagnosis assembles")).toBeInTheDocument();
+    expect(screen.getByText("Still filling in")).toBeInTheDocument();
   });
 
   it("pending fixture data attributes: data-evidence-density='empty', data-diagnosis-state='pending'", () => {

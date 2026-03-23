@@ -76,7 +76,7 @@ export function LensEvidenceEntry({ counts, impact, state, zoomTo }: Props) {
         aria-label="Open Evidence Studio"
       >
         <span className="lens-board-ev-dot" aria-hidden="true" />
-        Open Evidence Studio
+        Open Evidence Studio now
       </button>
     </div>
   );

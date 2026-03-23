@@ -130,8 +130,8 @@ export function LensLogsView({ surface, evidenceDensity = "rich", isActive = fal
     return (
       <div className="lens-logs-empty">
         {evidenceDensity === "empty"
-          ? "Log lane is reserved. Deterministic clusters and absence evidence will appear here when logs arrive."
-          : "Log evidence is currently sparse. The box remains available for correlated logs and absence evidence."}
+          ? "Log clusters are reserved here. When the first repeated pattern or notable absence is confirmed, it will pin into this lane."
+          : "Log evidence is still sparse. Treat this lane as open for corroboration rather than as proof of health."}
       </div>
     );
   }

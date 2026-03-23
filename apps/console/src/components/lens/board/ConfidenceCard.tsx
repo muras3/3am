@@ -16,6 +16,11 @@ export function ConfidenceCard({ confidence, state }: Props) {
   const hasConfidence =
     confidence.label.trim().length > 0 || confidence.basis.trim().length > 0 || confidence.value > 0;
   const pct = Math.round(confidence.value * 100);
+  const fallbackLabel = state.diagnosis === "pending"
+    ? "Building confidence"
+    : state.evidenceDensity === "sparse" || state.baseline !== "ready"
+      ? "Limited confidence"
+      : "Reviewing confidence";
   return (
     <div className="lens-board-card">
       <div className="lens-board-card-title">Confidence</div>
@@ -28,7 +33,7 @@ export function ConfidenceCard({ confidence, state }: Props) {
         </div>
         <div className="lens-board-conf-meta">
           <span className="lens-board-conf-label">
-            {confidence.label.trim() || "Unavailable"}
+            {confidence.label.trim() || fallbackLabel}
           </span>
           <span className="lens-board-conf-basis">
             {confidence.basis.trim() || sectionFallback(state, "confidence")}
@@ -41,7 +46,7 @@ export function ConfidenceCard({ confidence, state }: Props) {
         </div>
       ) : (
         <div className="lens-board-conf-risk lens-board-conf-risk-empty">
-          <span className="lens-board-conf-risk-label">Risk:</span> No specific risk returned.
+          <span className="lens-board-conf-risk-label">Risk:</span> Early narrative can shift as more corroborating evidence lands.
         </div>
       )}
     </div>

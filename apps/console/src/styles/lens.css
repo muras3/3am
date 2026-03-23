@@ -278,20 +278,42 @@
 .lens-board-pending {
   display: flex;
   flex-direction: column;
-  align-items: center;
-  justify-content: center;
+  gap: 14px;
+  padding: 18px 20px;
+  border-radius: var(--radius);
+  background: linear-gradient(135deg, rgba(13, 115, 119, 0.08), rgba(13, 115, 119, 0.03));
+  border: 1px solid rgba(13, 115, 119, 0.18);
+}
+
+.lens-board-pending-head {
+  display: flex;
+  align-items: flex-start;
   gap: 12px;
-  padding: 48px 24px;
-  text-align: center;
+}
+
+.lens-board-pending-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.lens-board-pending-kicker {
+  margin: 0;
+  font-size: var(--fs-xxs);
+  font-weight: 700;
+  color: var(--teal);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
 }
 
 .lens-board-pending-pulse {
   width: 32px;
   height: 32px;
   border-radius: 50%;
-  background: var(--accent-soft);
-  border: 2px solid var(--accent);
+  background: var(--teal-soft);
+  border: 2px solid var(--teal);
   animation: lens-board-pulse 1.5s ease-in-out infinite;
+  flex-shrink: 0;
 }
 
 @keyframes lens-board-pulse {
@@ -306,16 +328,54 @@
 }
 
 .lens-board-pending-text {
-  font-size: var(--fs-lg);
-  font-weight: 600;
+  font-size: var(--fs-xl);
+  font-weight: 700;
   color: var(--ink);
   margin: 0;
 }
 
 .lens-board-pending-sub {
   font-size: var(--fs-sm);
-  color: var(--ink-3);
+  color: var(--ink-2);
   margin: 0;
+}
+
+.lens-board-pending-columns {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.lens-board-pending-panel {
+  padding: 12px 14px;
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid rgba(13, 115, 119, 0.12);
+}
+
+.lens-board-pending-panel-muted {
+  background: var(--panel);
+  border-color: var(--line);
+}
+
+.lens-board-pending-panel-title {
+  margin-bottom: 8px;
+  font-size: var(--fs-xxs);
+  font-weight: 700;
+  color: var(--ink-3);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.lens-board-pending-list {
+  margin: 0;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: var(--fs-xs);
+  color: var(--ink-2);
+  line-height: var(--lh-read);
 }
 
 /* ── Identity ──────────────────────────────────────────────── */
@@ -375,6 +435,17 @@
 .lens-board-chip-critical { background: var(--accent-soft); color: var(--accent-text); }
 .lens-board-chip-external { background: var(--amber-soft);  color: var(--amber); }
 .lens-board-chip-system   { background: var(--teal-soft);   color: var(--teal); }
+
+.lens-board-state-note {
+  margin: 10px 0 0;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  font-size: var(--fs-sm);
+  color: var(--ink-2);
+  line-height: var(--lh-read);
+}
 
 /* ── Action hero ───────────────────────────────────────────── */
 .lens-board-action-hero {
@@ -447,6 +518,18 @@
   text-transform: uppercase;
   letter-spacing: 0.06em;
   margin-bottom: 8px;
+}
+
+.lens-board-empty-block,
+.lens-board-chain-placeholder,
+.lens-board-evidence-note {
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  background: linear-gradient(135deg, rgba(245, 247, 250, 0.9), rgba(255, 255, 255, 0.95));
+  border: 1px dashed var(--line-strong);
+  font-size: var(--fs-xs);
+  color: var(--ink-2);
+  line-height: var(--lh-read);
 }
 
 /* ── Blast radius ──────────────────────────────────────────── */
@@ -819,11 +902,12 @@
 }
 
 .lens-ev-empty-banner {
-  padding: 10px 14px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
-  background: var(--panel);
+  padding: 14px 16px;
+  border: 1px solid rgba(13, 115, 119, 0.16);
+  border-radius: var(--radius);
+  background: linear-gradient(135deg, rgba(13, 115, 119, 0.07), rgba(13, 115, 119, 0.02));
   align-items: flex-start;
+  flex-wrap: wrap;
 }
 
 .lens-ev-empty-pulse {
@@ -847,16 +931,62 @@
 }
 
 .lens-ev-empty-text {
-  font-size: var(--fs-lg);
-  font-weight: 600;
+  font-size: var(--fs-md);
+  font-weight: 700;
   color: var(--ink);
   margin: 0;
 }
 
 .lens-ev-empty-sub {
   font-size: var(--fs-sm);
-  color: var(--ink-3);
+  color: var(--ink-2);
   margin: 0;
+}
+
+.lens-ev-empty-copy {
+  flex: 1 1 240px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.lens-ev-empty-columns {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  width: 100%;
+}
+
+.lens-ev-empty-panel {
+  padding: 12px 14px;
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.76);
+  border: 1px solid rgba(13, 115, 119, 0.12);
+}
+
+.lens-ev-empty-panel-muted {
+  background: var(--panel);
+  border-color: var(--line);
+}
+
+.lens-ev-empty-panel-title {
+  margin-bottom: 8px;
+  font-size: var(--fs-xxs);
+  font-weight: 700;
+  color: var(--ink-3);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.lens-ev-empty-list {
+  margin: 0;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: var(--fs-xs);
+  color: var(--ink-2);
+  line-height: var(--lh-read);
 }
 
 /* ── Studio wrapper ────────────────────────────────────────────── */
@@ -1396,9 +1526,20 @@
   border-color: var(--line);
 }
 
+.lens-ev-qa-state-label {
+  font-size: var(--fs-xxs);
+  font-weight: 700;
+  color: var(--teal);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
 .lens-ev-qa-no-answer {
   padding: 10px 14px;
-  background: var(--panel-2);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  background: rgba(255, 255, 255, 0.7);
   border-radius: var(--radius-sm);
   font-size: var(--fs-sm);
   color: var(--ink-2);
@@ -1418,10 +1559,14 @@
 }
 
 .lens-metrics-empty {
-  padding: 24px;
-  text-align: center;
+  padding: 18px 20px;
+  text-align: left;
   font-size: var(--fs-sm);
-  color: var(--ink-3);
+  color: var(--ink-2);
+  background: linear-gradient(135deg, rgba(245, 247, 250, 0.92), rgba(255, 255, 255, 0.96));
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--radius-sm);
+  line-height: var(--lh-read);
 }
 
 /* Hypothesis group */
@@ -1814,6 +1959,11 @@
   .lens-ev-proof-cards {
     grid-template-columns: 1fr;
   }
+
+  .lens-board-pending-columns,
+  .lens-ev-empty-columns {
+    grid-template-columns: 1fr;
+  }
 }
 
 /* ── Logs view ───────────────────────────────────────────────── */
@@ -1824,10 +1974,14 @@
 }
 
 .lens-logs-empty {
-  padding: 24px;
-  text-align: center;
+  padding: 18px 20px;
+  text-align: left;
   font-size: var(--fs-sm);
-  color: var(--ink-3);
+  color: var(--ink-2);
+  background: linear-gradient(135deg, rgba(245, 247, 250, 0.92), rgba(255, 255, 255, 0.96));
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--radius-sm);
+  line-height: var(--lh-read);
 }
 
 /* Claim cluster */
