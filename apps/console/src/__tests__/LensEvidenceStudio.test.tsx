@@ -1,4 +1,5 @@
 import { render, screen, fireEvent } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { LensSearchParams } from "../routes/__root.js";
@@ -12,10 +13,12 @@ import { curatedQueries } from "../api/queries.js";
 import {
   evidenceReady,
   evidencePending,
+  evidenceSparse,
 } from "../__fixtures__/curated/evidence.js";
 import {
   extendedIncidentReady,
   extendedIncidentPending,
+  extendedIncidentSparse,
 } from "../__fixtures__/curated/extended-incident.js";
 
 let mockSearch: LensSearchParams = {
@@ -58,6 +61,34 @@ function setupReady() {
     evidenceReady,
   );
   return qc;
+}
+
+function setupSparse() {
+  const qc = makeClient();
+  qc.setQueryData(
+    curatedQueries.extendedIncident("inc_0892").queryKey,
+    extendedIncidentSparse,
+  );
+  qc.setQueryData(
+    curatedQueries.evidence("inc_0892").queryKey,
+    evidenceSparse,
+  );
+  return qc;
+}
+
+function renderQAFrame(
+  qa: typeof evidenceReady.qa,
+  overrides: Record<string, unknown> = {},
+) {
+  const props = {
+    qa,
+    inputValue: qa.question,
+    isSubmitting: false,
+    onInputChange: vi.fn(),
+    onSubmitQuestion: vi.fn(),
+    ...overrides,
+  };
+  return { ...render(<QAFrame {...(props as Parameters<typeof QAFrame>[0])} />), ...props };
 }
 
 // ── Tests ─────────────────────────────────────────────────────
@@ -116,10 +147,11 @@ describe("LensEvidenceStudio — proof cards", () => {
 });
 
 describe("LensEvidenceStudio — Q&A frame", () => {
-  it("renders Q&A frame with question", () => {
+  it("renders Q&A frame with question in input", () => {
     renderStudio("inc_0892", setupReady());
+    // The question is rendered as the input's value
     expect(
-      screen.getByText("Why are checkout payments failing?"),
+      screen.getByDisplayValue("Why are checkout payments failing?"),
     ).toBeInTheDocument();
   });
 
@@ -272,7 +304,8 @@ describe("LensEvidenceStudio — empty state", () => {
       evidencePending,
     );
     renderStudio("inc_0892", qc);
-    expect(screen.getByText(evidencePending.qa.question)).toBeInTheDocument();
+    // The question is rendered as the input's value
+    expect(screen.getByDisplayValue(evidencePending.qa.question)).toBeInTheDocument();
     expect(screen.getByText(evidencePending.qa.noAnswerReason!)).toBeInTheDocument();
   });
 });
@@ -323,30 +356,260 @@ describe("LensProofCards", () => {
 });
 
 describe("QAFrame", () => {
-  it("renders question and answer text", () => {
-    render(<QAFrame qa={evidenceReady.qa} />);
+  it("renders question in input field and answer text", () => {
+    renderQAFrame(evidenceReady.qa);
+    // The question is the input's value (not rendered as paragraph text)
     expect(
-      screen.getByText("Why are checkout payments failing?"),
+      screen.getByDisplayValue("Why are checkout payments failing?"),
     ).toBeInTheDocument();
     expect(screen.getByText(/Stripe API is returning 429/)).toBeInTheDocument();
   });
 
   it("renders follow-up chips", () => {
-    render(<QAFrame qa={evidenceReady.qa} />);
+    renderQAFrame(evidenceReady.qa);
     const chips = document.querySelectorAll(".lens-ev-qa-chip");
     expect(chips.length).toBeGreaterThan(0);
   });
 
   it("renders fixed fallback QA object from receiver contract", () => {
-    render(<QAFrame qa={evidencePending.qa} />);
-    expect(screen.getByText(evidencePending.qa.question)).toBeInTheDocument();
+    renderQAFrame(evidencePending.qa);
+    // Question is in the input value
+    expect(screen.getByDisplayValue(evidencePending.qa.question)).toBeInTheDocument();
     expect(screen.getByText(evidencePending.qa.noAnswerReason!)).toBeInTheDocument();
   });
 
   it("shows noAnswerReason when present", () => {
     const qa = { ...evidenceReady.qa, noAnswerReason: "Insufficient data to answer" };
-    render(<QAFrame qa={qa} />);
+    renderQAFrame(qa);
     expect(screen.getByText("Insufficient data to answer")).toBeInTheDocument();
+  });
+});
+
+describe("QAFrame — interaction", () => {
+  it("typing in input calls onInputChange", async () => {
+    const user = userEvent.setup();
+    const { onInputChange } = renderQAFrame(evidenceReady.qa, { inputValue: "" });
+    const input = screen.getByRole("textbox", { name: /ask a question/i });
+    await user.clear(input);
+    await user.type(input, "new question");
+    expect(onInputChange).toHaveBeenCalled();
+  });
+
+  it("submitting form calls onSubmitQuestion with trimmed value", async () => {
+    const user = userEvent.setup();
+    const onSubmitQuestion = vi.fn();
+    renderQAFrame(evidenceReady.qa, { inputValue: "  my question  ", onSubmitQuestion });
+    const submitBtn = screen.getByRole("button", { name: /ask/i });
+    await user.click(submitBtn);
+    expect(onSubmitQuestion).toHaveBeenCalledWith("my question");
+  });
+
+  it("submit button disabled when input is empty", () => {
+    renderQAFrame(evidenceReady.qa, { inputValue: "" });
+    const submitBtn = screen.getByRole("button", { name: /ask/i });
+    expect(submitBtn).toBeDisabled();
+  });
+
+  it("submit button disabled when isSubmitting=true", () => {
+    renderQAFrame(evidenceReady.qa, { isSubmitting: true });
+    const submitBtn = screen.getByRole("button", { name: /asking/i });
+    expect(submitBtn).toBeDisabled();
+  });
+
+  it("submit button shows 'Asking…' when isSubmitting=true", () => {
+    renderQAFrame(evidenceReady.qa, { isSubmitting: true });
+    expect(screen.getByRole("button", { name: /asking/i })).toHaveTextContent("Asking…");
+  });
+
+  it("input disabled when isSubmitting=true", () => {
+    renderQAFrame(evidenceReady.qa, { isSubmitting: true });
+    const input = screen.getByRole("textbox", { name: /ask a question/i });
+    expect(input).toBeDisabled();
+  });
+
+  it("error message rendered when submitError provided (role=alert)", () => {
+    renderQAFrame(evidenceReady.qa, { submitError: "Network error" });
+    const alert = screen.getByRole("alert");
+    expect(alert).toHaveTextContent("Network error");
+  });
+
+  it("latestReply rendered (role=status aria-live=polite)", () => {
+    renderQAFrame(evidenceReady.qa, { latestReply: "Here is the copilot reply" });
+    const status = screen.getByRole("status");
+    expect(status).toHaveTextContent("Here is the copilot reply");
+    expect(status).toHaveAttribute("aria-live", "polite");
+  });
+
+  it("follow-up chip click calls onSubmitQuestion with chip question", async () => {
+    const user = userEvent.setup();
+    const onSubmitQuestion = vi.fn();
+    renderQAFrame(evidenceReady.qa, { onSubmitQuestion });
+    const chip = screen.getByText("Is there retry logic?");
+    await user.click(chip);
+    expect(onSubmitQuestion).toHaveBeenCalledWith("Is there retry logic?");
+  });
+
+  it("follow-up chips disabled when isSubmitting=true", () => {
+    renderQAFrame(evidenceReady.qa, { isSubmitting: true });
+    const chips = document.querySelectorAll(".lens-ev-qa-chip");
+    chips.forEach((chip) => {
+      expect(chip).toBeDisabled();
+    });
+  });
+
+  it("evidence ref click calls navigate with correct tab/targetId (span → traces)", async () => {
+    const user = userEvent.setup();
+    renderQAFrame(evidenceReady.qa);
+    // The first evidenceRef is kind=span, id="a3f8c91d:stripe-charge-001"
+    const refBtn = screen.getByRole("button", {
+      name: /view evidence: span a3f8c91d:stripe-charge-001/i,
+    });
+    await user.click(refBtn);
+    expect(mockNavigate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        search: expect.objectContaining({
+          tab: "traces",
+          targetId: "stripe-charge-001",
+        }),
+      }),
+    );
+  });
+
+  it("evidence ref click for metric_group → metrics tab", async () => {
+    const user = userEvent.setup();
+    renderQAFrame(evidenceReady.qa);
+    // The second evidenceRef is kind=metric_group, id="hyp-trigger"
+    const refBtn = screen.getByRole("button", {
+      name: /view evidence: metric_group hyp-trigger/i,
+    });
+    await user.click(refBtn);
+    expect(mockNavigate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        search: expect.objectContaining({
+          tab: "metrics",
+          targetId: "hyp-trigger",
+        }),
+      }),
+    );
+  });
+
+  it("no-answer state shows noAnswerReason text", () => {
+    renderQAFrame(evidencePending.qa);
+    expect(
+      screen.getByText(evidencePending.qa.noAnswerReason!),
+    ).toBeInTheDocument();
+  });
+});
+
+describe("LensProofCards — cross-surface navigation", () => {
+  it("clicking trigger card navigates to traces tab with span targetId 'stripe-charge-001'", () => {
+    render(<LensProofCards cards={evidenceReady.proofCards} />);
+    const triggerCard = screen.getByText("External Trigger").closest("[role='button']");
+    fireEvent.click(triggerCard!);
+    expect(mockNavigate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        search: expect.objectContaining({
+          proof: "trigger",
+          tab: "traces",
+          targetId: "stripe-charge-001",
+        }),
+        replace: true,
+      }),
+    );
+  });
+
+  it("clicking design_gap navigates to metrics tab with targetId 'stripe_client_error_rate'", () => {
+    render(<LensProofCards cards={evidenceReady.proofCards} />);
+    const designCard = screen.getByText("Design Gap").closest("[role='button']");
+    fireEvent.click(designCard!);
+    expect(mockNavigate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        search: expect.objectContaining({
+          proof: "design_gap",
+          tab: "metrics",
+          targetId: "stripe_client_error_rate",
+        }),
+        replace: true,
+      }),
+    );
+  });
+
+  it("keyboard Enter on trigger card triggers same navigation", () => {
+    render(<LensProofCards cards={evidenceReady.proofCards} />);
+    const triggerCard = screen.getByText("External Trigger").closest("[role='button']");
+    fireEvent.keyDown(triggerCard!, { key: "Enter" });
+    expect(mockNavigate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        search: expect.objectContaining({
+          proof: "trigger",
+          tab: "traces",
+          targetId: "stripe-charge-001",
+        }),
+        replace: true,
+      }),
+    );
+  });
+
+  it("pending card with empty evidenceRefs navigates without targetId", () => {
+    render(<LensProofCards cards={evidencePending.proofCards} />);
+    const triggerCard = screen.getByText("Trigger Evidence").closest("[role='button']");
+    fireEvent.click(triggerCard!);
+    expect(mockNavigate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        search: expect.objectContaining({
+          proof: "trigger",
+          targetId: undefined,
+        }),
+        replace: true,
+      }),
+    );
+  });
+});
+
+describe("LensEvidenceStudio — degraded states", () => {
+  it("sparse fixture renders proof cards (3 cards, mix of confirmed/pending)", () => {
+    renderStudio("inc_0892", setupSparse());
+    const cards = document.querySelectorAll(".lens-ev-proof-card");
+    expect(cards).toHaveLength(3);
+    expect(document.querySelectorAll(".lens-ev-pc-status-confirmed").length).toBeGreaterThan(0);
+    expect(document.querySelectorAll(".lens-ev-pc-status-pending").length).toBeGreaterThan(0);
+  });
+
+  it("sparse fixture data attributes: data-evidence-density='sparse', data-diagnosis-state='ready'", () => {
+    renderStudio("inc_0892", setupSparse());
+    const studio = document.querySelector("[data-evidence-density='sparse']");
+    expect(studio).not.toBeNull();
+    expect(studio).toHaveAttribute("data-diagnosis-state", "ready");
+  });
+
+  it("pending fixture shows empty banner", () => {
+    const qc = makeClient();
+    qc.setQueryData(
+      curatedQueries.extendedIncident("inc_0892").queryKey,
+      extendedIncidentPending,
+    );
+    qc.setQueryData(
+      curatedQueries.evidence("inc_0892").queryKey,
+      evidencePending,
+    );
+    renderStudio("inc_0892", qc);
+    expect(screen.getAllByText(/Evidence is being collected/).length).toBeGreaterThan(0);
+  });
+
+  it("pending fixture data attributes: data-evidence-density='empty', data-diagnosis-state='pending'", () => {
+    const qc = makeClient();
+    qc.setQueryData(
+      curatedQueries.extendedIncident("inc_0892").queryKey,
+      extendedIncidentPending,
+    );
+    qc.setQueryData(
+      curatedQueries.evidence("inc_0892").queryKey,
+      evidencePending,
+    );
+    renderStudio("inc_0892", qc);
+    const studio = document.querySelector("[data-evidence-density='empty']");
+    expect(studio).not.toBeNull();
+    expect(studio).toHaveAttribute("data-diagnosis-state", "pending");
   });
 });
 
