@@ -28,31 +28,37 @@ function renderBoard(
   );
 }
 
+function getPendingBanner() {
+  return document.querySelector(".lens-board-pending");
+}
+
 // ── Tests ─────────────────────────────────────────────────────
 
 describe("LensIncidentBoard — diagnosis pending", () => {
-  it("renders DiagnosisPending banner when state.diagnosis is pending", () => {
+  it("renders a degraded-state banner with present and future sections", () => {
     const qc = makeClient();
     qc.setQueryData(
       curatedQueries.extendedIncident("inc_0892").queryKey,
       extendedIncidentPending,
     );
     renderBoard("inc_0892", vi.fn(), qc);
-    expect(screen.getByText("Diagnosis is still assembling")).toBeInTheDocument();
-    expect(screen.getByText("Visible now")).toBeInTheDocument();
+    const banner = getPendingBanner();
+    expect(banner).not.toBeNull();
+    expect(document.querySelectorAll(".lens-board-pending-panel")).toHaveLength(2);
+    expect(document.querySelectorAll(".lens-board-pending-list li")).toHaveLength(6);
   });
 
-  it("keeps board sections rendered with state fallback copy when pending", () => {
+  it("keeps board structure rendered while diagnosis is pending", () => {
     const qc = makeClient();
     qc.setQueryData(
       curatedQueries.extendedIncident("inc_0892").queryKey,
       extendedIncidentPending,
     );
     renderBoard("inc_0892", vi.fn(), qc);
-    expect(screen.getAllByText(/Immediate Action/i).length).toBeGreaterThan(0);
-    expect(screen.getAllByText(/Blast Radius/i).length).toBeGreaterThan(0);
-    expect(screen.getByText("Impact is confirmed. Diagnosis narrative is still taking shape.")).toBeInTheDocument();
-    expect(screen.getByText("The causal chain stays reserved until the trigger, propagation path, and user impact can be linked safely.")).toBeInTheDocument();
+    expect(document.querySelector(".lens-board-action-hero")).not.toBeNull();
+    expect(document.querySelectorAll(".lens-board-blast-row")).toHaveLength(2);
+    expect(document.querySelector(".lens-board-chain-placeholder")).not.toBeNull();
+    expect(document.querySelector(".lens-board-evidence-note")).not.toBeNull();
   });
 });
 
@@ -243,7 +249,7 @@ describe("LensEvidenceEntry", () => {
 });
 
 describe("LensIncidentBoard — sparse diagnosis", () => {
-  it("renders sparse state note without collapsing the board", () => {
+  it("renders sparse state as a full board with partial evidence markers", () => {
     const qc = makeClient();
     qc.setQueryData(
       curatedQueries.extendedIncident("inc_0892").queryKey,
@@ -252,8 +258,9 @@ describe("LensIncidentBoard — sparse diagnosis", () => {
 
     renderBoard("inc_0892", vi.fn(), qc);
 
-    expect(screen.getByText("A first-pass diagnosis is available. Treat it as directional until more evidence fills in the gaps.")).toBeInTheDocument();
-    expect(screen.getByText("Low confidence")).toBeInTheDocument();
-    expect(screen.getByText("Check external dependency status pages")).toBeInTheDocument();
+    expect(document.querySelector(".lens-board-state-note")).not.toBeNull();
+    expect(document.querySelectorAll(".lens-board-chain-step")).toHaveLength(1);
+    expect(document.querySelectorAll(".lens-board-check-item")).toHaveLength(1);
+    expect(screen.getByRole("button", { name: /Open Evidence Studio/i })).toBeInTheDocument();
   });
 });

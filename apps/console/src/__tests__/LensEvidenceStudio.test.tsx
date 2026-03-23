@@ -50,6 +50,10 @@ function renderStudio(
   );
 }
 
+function getStatusBanner() {
+  return document.querySelector(".lens-ev-empty-banner");
+}
+
 function setupReady() {
   const qc = makeClient();
   qc.setQueryData(
@@ -264,7 +268,7 @@ describe("LensEvidenceStudio — side notes", () => {
 });
 
 describe("LensEvidenceStudio — empty state", () => {
-  it("shows empty state when evidenceDensity is empty", () => {
+  it("shows a status banner when evidenceDensity is empty", () => {
     const qc = makeClient();
     qc.setQueryData(
       curatedQueries.extendedIncident("inc_0892").queryKey,
@@ -275,8 +279,8 @@ describe("LensEvidenceStudio — empty state", () => {
       evidencePending,
     );
     renderStudio("inc_0892", qc);
-    expect(screen.getByText("Evidence Studio is live while diagnosis assembles")).toBeInTheDocument();
-    expect(screen.getByText("Available now")).toBeInTheDocument();
+    expect(getStatusBanner()).not.toBeNull();
+    expect(document.querySelectorAll(".lens-ev-empty-panel")).toHaveLength(2);
   });
 
   it("keeps proof card boxes in empty state", () => {
@@ -305,9 +309,9 @@ describe("LensEvidenceStudio — empty state", () => {
       evidencePending,
     );
     renderStudio("inc_0892", qc);
-    // The question is rendered as the input's value
     expect(screen.getByDisplayValue(evidencePending.qa.question)).toBeInTheDocument();
-    expect(screen.getByText(evidencePending.qa.noAnswerReason!)).toBeInTheDocument();
+    expect(document.querySelector(".lens-ev-qa-answer-placeholder")).not.toBeNull();
+    expect(document.querySelector(".lens-ev-qa-no-answer")).not.toBeNull();
   });
 });
 
@@ -374,9 +378,8 @@ describe("QAFrame", () => {
 
   it("renders fixed fallback QA object from receiver contract", () => {
     renderQAFrame(evidencePending.qa);
-    // Question is in the input value
     expect(screen.getByDisplayValue(evidencePending.qa.question)).toBeInTheDocument();
-    expect(screen.getByText(evidencePending.qa.noAnswerReason!)).toBeInTheDocument();
+    expect(document.querySelector(".lens-ev-qa-answer-placeholder")).not.toBeNull();
   });
 
   it("shows noAnswerReason when present", () => {
@@ -494,11 +497,10 @@ describe("QAFrame — interaction", () => {
     );
   });
 
-  it("no-answer state shows noAnswerReason text", () => {
+  it("no-answer state uses placeholder treatment", () => {
     renderQAFrame(evidencePending.qa);
-    expect(
-      screen.getByText(evidencePending.qa.noAnswerReason!),
-    ).toBeInTheDocument();
+    expect(document.querySelector(".lens-ev-qa-answer-placeholder")).not.toBeNull();
+    expect(document.querySelector(".lens-ev-qa-no-answer")).not.toBeNull();
   });
 
   it("evidence ref keyboard Enter calls navigate", async () => {
@@ -670,7 +672,7 @@ describe("LensProofCards — cross-surface navigation", () => {
 
   it("pending card with empty evidenceRefs navigates without targetId", () => {
     render(<LensProofCards cards={evidencePending.proofCards} />);
-    const pendingCard = screen.getByText("Dependency comparison").closest("[role='button']");
+    const pendingCard = document.querySelector('[data-proof-id="design_gap"]');
     fireEvent.click(pendingCard!);
     expect(mockNavigate).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -700,7 +702,7 @@ describe("LensEvidenceStudio — degraded states", () => {
     expect(studio).toHaveAttribute("data-diagnosis-state", "ready");
   });
 
-  it("pending fixture shows empty banner", () => {
+  it("pending fixture mounts the degraded-status banner", () => {
     const qc = makeClient();
     qc.setQueryData(
       curatedQueries.extendedIncident("inc_0892").queryKey,
@@ -711,8 +713,8 @@ describe("LensEvidenceStudio — degraded states", () => {
       evidencePending,
     );
     renderStudio("inc_0892", qc);
-    expect(screen.getByText("Evidence Studio is live while diagnosis assembles")).toBeInTheDocument();
-    expect(screen.getByText("Still filling in")).toBeInTheDocument();
+    expect(getStatusBanner()).not.toBeNull();
+    expect(document.querySelectorAll(".lens-ev-empty-list li")).toHaveLength(6);
   });
 
   it("pending fixture data attributes: data-evidence-density='empty', data-diagnosis-state='pending'", () => {
