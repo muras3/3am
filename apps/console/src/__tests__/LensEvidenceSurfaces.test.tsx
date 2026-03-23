@@ -178,7 +178,7 @@ describe("LensTracesView", () => {
         surface={{ observed: traces.observed, expected: [], smokingGunSpanId: null }}
       />,
     );
-    expect(screen.getByRole("button", { name: /expected trace is sparse/i })).toHaveAttribute(
+    expect(screen.getByRole("button", { name: /expected trace is still sparse/i })).toHaveAttribute(
       "aria-disabled",
       "true",
     );
@@ -367,7 +367,7 @@ describe("LensMetricsView", () => {
 
   it("renders empty state when no hypotheses", () => {
     render(<LensMetricsView surface={{ hypotheses: [] }} />);
-    expect(screen.getByText(/metric hypotheses are sparse/i)).toBeInTheDocument();
+    expect(screen.getByText(/only a thin metric signal is available so far/i)).toBeInTheDocument();
   });
 });
 
@@ -488,7 +488,7 @@ describe("LensLogsView", () => {
 
   it("renders empty state when no claims", () => {
     render(<LensLogsView surface={{ claims: [] }} />);
-    expect(screen.getByText(/log evidence is currently sparse/i)).toBeInTheDocument();
+    expect(screen.getByText(/log evidence is still sparse/i)).toBeInTheDocument();
   });
 });
 
@@ -517,14 +517,14 @@ describe("LensLogsView — proof highlight", () => {
 // ── Degraded states — sparse fixture ──────────────────────────
 
 describe("Degraded states — sparse fixture", () => {
-  it("TracesView with baselineState='unavailable' shows 'Expected trace unavailable' label", () => {
+  it("TracesView with baselineState='unavailable' shows reserved baseline label", () => {
     render(
       <LensTracesView
         surface={evidenceSparse.surfaces.traces}
         baselineState="unavailable"
       />,
     );
-    expect(screen.getByRole("button", { name: /expected trace unavailable/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /expected trace not captured yet/i })).toBeInTheDocument();
   });
 
   it("TracesView sparse: baseline toggle is aria-disabled='true'", () => {
@@ -534,7 +534,7 @@ describe("Degraded states — sparse fixture", () => {
         baselineState="unavailable"
       />,
     );
-    const toggle = screen.getByRole("button", { name: /expected trace unavailable/i });
+    const toggle = screen.getByRole("button", { name: /expected trace not captured yet/i });
     expect(toggle).toHaveAttribute("aria-disabled", "true");
   });
 
@@ -545,7 +545,7 @@ describe("Degraded states — sparse fixture", () => {
         evidenceDensity="empty"
       />,
     );
-    expect(screen.getByText(/metric lane is reserved/i)).toBeInTheDocument();
+    expect(screen.getByText(/metric comparison is reserved/i)).toBeInTheDocument();
   });
 
   it("LogsView with evidenceDensity='empty' shows reserved lane text", () => {
@@ -555,7 +555,7 @@ describe("Degraded states — sparse fixture", () => {
         evidenceDensity="empty"
       />,
     );
-    expect(screen.getByText(/log lane is reserved/i)).toBeInTheDocument();
+    expect(screen.getByText(/log clusters are reserved here/i)).toBeInTheDocument();
   });
 });
 
