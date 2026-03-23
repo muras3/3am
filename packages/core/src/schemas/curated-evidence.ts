@@ -190,10 +190,19 @@ export const TraceGroupSchema = z.object({
   spans: z.array(TraceSpanSchema),
 }).strict();
 
+export const PublicBaselineSchema = z.object({
+  source: z.enum(["same_route", "same_service", "none"]),
+  windowStart: z.string(),
+  windowEnd: z.string(),
+  sampleCount: z.number(),
+  confidence: z.enum(["high", "medium", "low", "unavailable"]),
+}).strict();
+
 export const TraceSurfaceSchema = z.object({
   observed: z.array(TraceGroupSchema),
   expected: z.array(TraceGroupSchema),
   smokingGunSpanId: z.string().nullable(),
+  baseline: PublicBaselineSchema.optional(),
 }).strict();
 
 export const HypothesisMetricSchema = z.object({
@@ -261,6 +270,28 @@ export const QABlockSchema = z.object({
   noAnswerReason: z.string().optional(),
 }).strict();
 
+// ── Evidence Query (POST /api/incidents/:id/evidence/query) ──
+
+export const EvidenceQueryRequestSchema = z.object({
+  question: z.string().min(1).max(2000),
+  isFollowup: z.boolean().optional(),
+}).strict();
+
+export const EvidenceQueryConfidenceSchema = z.object({
+  label: z.enum(["high", "medium", "low", "unavailable"]),
+  value: z.number().min(0).max(1),
+}).strict();
+
+export const EvidenceQueryResponseSchema = z.object({
+  question: z.string(),
+  answer: z.string(),
+  confidence: EvidenceQueryConfidenceSchema,
+  evidenceRefs: z.array(EvidenceRefSchema),
+  evidenceSummary: EvidenceSummarySchema,
+  followups: z.array(FollowupSchema),
+  noAnswerReason: z.string().optional(),
+}).strict();
+
 export const SideNoteSchema = z.object({
   title: z.string(),
   text: z.string(),
@@ -301,6 +332,7 @@ export type EvidenceRef = z.infer<typeof EvidenceRefSchema>;
 export type CorrelatedLog = z.infer<typeof CorrelatedLogSchema>;
 export type TraceSpan = z.infer<typeof TraceSpanSchema>;
 export type TraceGroup = z.infer<typeof TraceGroupSchema>;
+export type PublicBaseline = z.infer<typeof PublicBaselineSchema>;
 export type TraceSurface = z.infer<typeof TraceSurfaceSchema>;
 export type HypothesisMetric = z.infer<typeof HypothesisMetricSchema>;
 export type HypothesisGroup = z.infer<typeof HypothesisGroupSchema>;
@@ -315,3 +347,6 @@ export type SideNote = z.infer<typeof SideNoteSchema>;
 export type EvidenceSurfaces = z.infer<typeof EvidenceSurfacesSchema>;
 export type EvidenceResponse = z.infer<typeof EvidenceResponseSchema>;
 export type NarrativeAbsenceEvidence = z.infer<typeof NarrativeAbsenceEvidenceSchema>;
+export type EvidenceQueryRequest = z.infer<typeof EvidenceQueryRequestSchema>;
+export type EvidenceQueryConfidence = z.infer<typeof EvidenceQueryConfidenceSchema>;
+export type EvidenceQueryResponse = z.infer<typeof EvidenceQueryResponseSchema>;

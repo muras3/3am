@@ -308,4 +308,99 @@ describe('buildCuratedEvidence', () => {
     expect(mockBuildMetricsSurface).toHaveBeenCalledWith(store, incident.telemetryScope, incident.anomalousSignals)
     expect(mockBuildLogsSurface).toHaveBeenCalledWith(store, incident.telemetryScope, incident.anomalousSignals, incident.spanMembership)
   })
+
+  it('public trace surface includes baseline field from internal surface', async () => {
+    const richBaseline: BaselineContext = {
+      windowStart: '2024-01-01T00:00:00Z',
+      windowEnd: '2024-01-01T00:05:00Z',
+      sampleCount: 50,
+      confidence: 'high',
+      source: { kind: 'same_route', route: '/checkout', service: 'web' },
+    }
+
+    mockBuildTraceSurface.mockResolvedValue({
+      surface: {
+        observed: [{
+          traceId: 'trace-1',
+          groupId: 'trace:trace-1',
+          rootSpanName: 'POST /checkout',
+          httpStatusCode: 500,
+          durationMs: 1200,
+          status: 'error',
+          startTimeMs: 0,
+          spans: [{
+            spanId: 'span-1',
+            parentSpanId: undefined,
+            refId: 'trace-1:span-1',
+            spanName: 'POST /checkout',
+            durationMs: 1200,
+            httpStatusCode: 500,
+            spanStatusCode: 2,
+            offsetMs: 0,
+            widthPct: 100,
+            status: 'error',
+            attributes: { route: '/checkout' },
+            correlatedLogRefIds: [],
+          }],
+        }],
+        expected: [],
+        baseline: richBaseline,
+      },
+      evidenceRefs: new Map<string, CuratedEvidenceRef>(),
+    })
+
+    const result = await buildCuratedEvidence(makeIncident(), makeMockStore())
+
+    expect(result.surfaces.traces.baseline).toBeDefined()
+    expect(result.surfaces.traces.baseline!.source).toBe('same_route')
+    expect(result.surfaces.traces.baseline!.sampleCount).toBe(50)
+    expect(result.surfaces.traces.baseline!.confidence).toBe('high')
+    expect(result.surfaces.traces.baseline!.windowStart).toBe('2024-01-01T00:00:00Z')
+    expect(result.surfaces.traces.baseline!.windowEnd).toBe('2024-01-01T00:05:00Z')
+  })
+
+  it('log ref IDs in proof cards match logs surface entry refIds', async () => {
+    // Set up a log surface with correlated entries and a trace with matching traceId
+    mockBuildLogsSurface.mockResolvedValue({
+      surface: {
+        clusters: [{
+          clusterId: 'lcluster:0',
+          clusterKey: {
+            primaryService: 'web',
+            severityDominant: 'ERROR',
+            hasTraceCorrelation: true,
+            keywordHits: ['error'],
+          },
+          entries: [{
+            refId: 'log:web:2024-01-01T00:01:00Z:hash1',
+            timestamp: '2024-01-01T00:01:00Z',
+            severity: 'ERROR',
+            body: 'Stripe API call failed',
+            isSignal: true,
+            traceId: 'trace-1',
+            spanId: 'span-1',
+          }],
+          signalCount: 1,
+          noiseCount: 0,
+        }],
+        absenceEvidence: [],
+      },
+      evidenceRefs: new Map(),
+    })
+
+    const narrative = makeNarrative()
+    const incident = makeIncident({
+      diagnosisResult: makeDiagnosisResult(),
+      consoleNarrative: narrative,
+    })
+
+    const result = await buildCuratedEvidence(incident, makeMockStore())
+
+    // The log claims should contain the cluster
+    expect(result.surfaces.logs.claims.length).toBeGreaterThan(0)
+    const logClaim = result.surfaces.logs.claims.find((c) => c.id === 'lcluster:0')
+    expect(logClaim).toBeDefined()
+    expect(logClaim!.entries.length).toBe(1)
+    expect(logClaim!.entries[0]!.body).toBe('Stripe API call failed')
+  })
 })

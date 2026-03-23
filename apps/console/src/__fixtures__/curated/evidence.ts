@@ -125,6 +125,13 @@ export const evidenceReady: EvidenceResponse = {
         },
       ],
       smokingGunSpanId: "stripe-api-001",
+      baseline: {
+        source: "same_route",
+        windowStart: "2024-03-20T14:15:00Z",
+        windowEnd: "2024-03-20T14:22:00Z",
+        sampleCount: 42,
+        confidence: "high",
+      },
     },
     metrics: {
       hypotheses: [
@@ -258,7 +265,12 @@ export const evidencePending: EvidenceResponse = {
     noAnswerReason: "Diagnosis narrative is pending; use the deterministic evidence surfaces below.",
   },
   surfaces: {
-    traces: { observed: [], expected: [], smokingGunSpanId: null },
+    traces: {
+      observed: [],
+      expected: [],
+      smokingGunSpanId: null,
+      baseline: { source: "none", windowStart: "", windowEnd: "", sampleCount: 0, confidence: "unavailable" },
+    },
     metrics: { hypotheses: [] },
     logs: { claims: [] },
   },
@@ -331,6 +343,7 @@ export const evidenceSparse: EvidenceResponse = {
       ],
       expected: [],
       smokingGunSpanId: "stripe-charge-001",
+      baseline: { source: "none", windowStart: "", windowEnd: "", sampleCount: 0, confidence: "unavailable" },
     },
     metrics: { hypotheses: [] },
     logs: { claims: [] },

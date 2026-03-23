@@ -14,6 +14,7 @@ export type ExtractedSpan = {
   parentSpanId?: string   // parent span for APM waterfall tree
   spanName?: string       // OTLP span.name (operation name)
   httpMethod?: string     // http.request.method attribute
+  attributes?: Record<string, unknown>  // allowlisted OTLP span attributes
 }
 
 // Spans slower than this threshold are considered anomalous (ADR 0023)
@@ -168,7 +169,7 @@ export function selectIncidentTriggerSpans(spans: ExtractedSpan[]): ExtractedSpa
   return spans.filter((span) => triggerKeys.has(`${span.traceId}:${span.spanId}`))
 }
 
-import { isRecord, nanoToMs } from './otlp-utils.js'
+import { isRecord, nanoToMs, flattenOtlpAttributes } from './otlp-utils.js'
 
 type OtlpAttributeValue =
   | { stringValue: string }
@@ -268,6 +269,7 @@ export function extractSpans(payload: unknown): ExtractedSpan[] {
           parentSpanId,
           spanName,
           httpMethod,
+          attributes: flattenOtlpAttributes(s['attributes']),
         })
       }
     }
