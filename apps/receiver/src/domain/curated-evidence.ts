@@ -182,6 +182,13 @@ function toPublicTraceSurface(
     // but the public TraceSurface spans only have spanId. Extract just the
     // spanId part so the frontend can match it against span rows.
     smokingGunSpanId: extractSpanId(surface.smokingGunSpanId) ?? null,
+    baseline: {
+      source: surface.baseline.source.kind,
+      windowStart: surface.baseline.windowStart,
+      windowEnd: surface.baseline.windowEnd,
+      sampleCount: surface.baseline.sampleCount,
+      confidence: surface.baseline.confidence,
+    },
   }
 }
 
