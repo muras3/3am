@@ -1,4 +1,7 @@
+import { useEffect } from "react";
+import { useSearch } from "@tanstack/react-router";
 import type { MetricsSurface, HypothesisGroup } from "../../../api/curated-types.js";
+import type { LensSearchParams } from "../../../routes/__root.js";
 
 type ClaimType = HypothesisGroup["type"];
 
@@ -44,14 +47,17 @@ function valueColor(type: ClaimType): string {
 // ── Single hypothesis group ───────────────────────────────────
 interface HypGroupBlockProps {
   group: HypothesisGroup;
+  activeProofId?: string;
+  activeTargetId?: string;
 }
 
-function HypGroupBlock({ group }: HypGroupBlockProps) {
+function HypGroupBlock({ group, activeProofId, activeTargetId }: HypGroupBlockProps) {
   const isConfirmed = group.verdict === "Confirmed";
+  const isHighlighted = activeProofId === group.type || activeTargetId === group.id;
 
   return (
     <div
-      className={`lens-metrics-hyp-group lens-metrics-hyp-type-${group.type}`}
+      className={`lens-metrics-hyp-group lens-metrics-hyp-type-${group.type}${isHighlighted ? " proof-highlight" : ""}`}
       data-proof={group.type}
       data-target-id={group.id}
     >
@@ -73,7 +79,7 @@ function HypGroupBlock({ group }: HypGroupBlockProps) {
         {group.metrics.map((metric) => (
           <div
             key={metric.name}
-            className="lens-metrics-metric-row"
+            className={`lens-metrics-metric-row${activeTargetId === metric.name ? " proof-highlight" : ""}`}
             data-target-id={metric.name}
           >
             <span className="lens-metrics-metric-name">{metric.name}</span>
@@ -106,9 +112,25 @@ function HypGroupBlock({ group }: HypGroupBlockProps) {
 interface LensMetricsViewProps {
   surface: MetricsSurface;
   evidenceDensity?: "rich" | "sparse" | "empty";
+  isActive?: boolean;
 }
 
-export function LensMetricsView({ surface, evidenceDensity = "rich" }: LensMetricsViewProps) {
+export function LensMetricsView({ surface, evidenceDensity = "rich", isActive = false }: LensMetricsViewProps) {
+  const search = useSearch({ from: "__root__" }) as LensSearchParams;
+  const activeProofId = search.proof;
+  const activeTargetId = search.targetId;
+
+  useEffect(() => {
+    if (!isActive) return;
+    const selector = activeTargetId
+      ? `[data-target-id="${activeTargetId}"]`
+      : activeProofId
+        ? `[data-proof="${activeProofId}"]`
+        : null;
+    if (!selector) return;
+    document.querySelector(selector)?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [activeProofId, activeTargetId, isActive]);
+
   if (surface.hypotheses.length === 0) {
     return (
       <div className="lens-metrics-empty">
@@ -122,7 +144,12 @@ export function LensMetricsView({ surface, evidenceDensity = "rich" }: LensMetri
   return (
     <div className="lens-metrics-root">
       {surface.hypotheses.map((group) => (
-        <HypGroupBlock key={group.id} group={group} />
+        <HypGroupBlock
+          key={group.id}
+          group={group}
+          activeProofId={activeProofId}
+          activeTargetId={activeTargetId}
+        />
       ))}
     </div>
   );

@@ -1,5 +1,5 @@
-import { queryOptions } from "@tanstack/react-query";
-import { apiFetch } from "./client.js";
+import { mutationOptions, queryOptions } from "@tanstack/react-query";
+import { apiFetch, apiFetchPost } from "./client.js";
 import { encodeIncidentId } from "../lib/incidentId.js";
 import type {
   RuntimeMapResponse,
@@ -64,5 +64,28 @@ export const curatedQueries = {
       staleTime: 30_000,
       ...(useFixtures && { refetchInterval: false as const }),
       enabled: !!id,
+    }),
+};
+
+export interface ChatTurn {
+  role: "user" | "assistant";
+  content: string;
+}
+
+export interface ChatRequest {
+  message: string;
+  history: ChatTurn[];
+}
+
+export interface ChatResponse {
+  reply: string;
+}
+
+export const curatedMutations = {
+  chat: (id: string) =>
+    mutationOptions({
+      mutationKey: ["curated", "incidents", id, "chat"],
+      mutationFn: (body: ChatRequest) =>
+        apiFetchPost<ChatResponse>(`/api/chat/${encodeIncidentId(id)}`, body),
     }),
 };
