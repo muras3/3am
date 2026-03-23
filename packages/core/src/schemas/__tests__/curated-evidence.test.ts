@@ -17,7 +17,7 @@ const minimalValid = {
       label: "Design Gap",
       status: "inferred",
       summary: "Receiver reserved the design-gap card; diagnosis wording is pending and direct evidence is still sparse.",
-      targetSurface: "logs",
+      targetSurface: "metrics",
       evidenceRefs: [],
     },
     {
@@ -25,7 +25,7 @@ const minimalValid = {
       label: "Recovery Path",
       status: "pending",
       summary: "Recovery evidence is not available yet, but the recovery card remains visible by contract.",
-      targetSurface: "logs",
+      targetSurface: "traces",
       evidenceRefs: [],
     },
   ],
@@ -58,7 +58,6 @@ const minimalValid = {
               attributes: { "http.route": "/checkout" },
               correlatedLogs: [
                 {
-                  refId: "web:2024-01-01T00:00:01Z:hash-1",
                   timestamp: "2024-01-01T00:00:01Z",
                   severity: "error",
                   body: "Stripe 429",
