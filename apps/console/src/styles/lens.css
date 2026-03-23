@@ -24,6 +24,7 @@
   transform: scale(0.96);
   filter: blur(2px);
   pointer-events: none;
+  z-index: 0;
   transition:
     opacity var(--zoom-dur) var(--zoom-ease),
     transform var(--zoom-dur) var(--zoom-ease),
@@ -45,6 +46,7 @@
   transform: scale(1.08);
   filter: blur(4px);
   pointer-events: none;
+  z-index: 0;
 }
 
 /* ── Level header ─────────────────────────────────────────── */
