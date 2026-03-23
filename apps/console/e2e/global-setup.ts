@@ -152,6 +152,12 @@ export default async function globalSetup(): Promise<void> {
         headers: { Authorization: `Bearer ${TOKEN}` },
       }).catch((err) => { console.log(`[E2E] evidence warm-up failed: ${err}`); return null; });
       console.log(`[E2E] evidence warm-up: ${evRes?.status ?? "failed"} (${Date.now() - t1}ms)`);
+      if (evRes?.ok) {
+        const evBody = await evRes.json() as Record<string, unknown>;
+        const cards = evBody["proofCards"] as unknown[];
+        console.log(`[E2E] evidence proofCards count: ${cards?.length ?? "missing"}`);
+        console.log(`[E2E] evidence state: ${JSON.stringify(evBody["state"])}`);
+      }
     }
   } else {
     console.log(`[E2E] listIncidents body: ${await listRes.text()}`);
