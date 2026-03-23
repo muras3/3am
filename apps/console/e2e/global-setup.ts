@@ -129,7 +129,7 @@ export default async function globalSetup(): Promise<void> {
     cookies: [],
     origins: [
       {
-        origin: "http://localhost:5174",
+        origin: `http://localhost:${process.env["E2E_VITE_PORT"] ?? "5174"}`,
         localStorage: [{ name: "receiver_auth_token", value: TOKEN }],
       },
     ],

@@ -26,7 +26,12 @@ async function tryGotoEvidenceStudio(page: Page): Promise<string | undefined> {
       { timeout: 15_000 },
     );
   } catch {
-    return undefined; // L2 never rendered
+    // Dump page state for diagnosis
+    const html = await page.content();
+    const bodySnippet = html.replace(/.*<body[^>]*>/s, "").replace(/<\/body>.*/s, "").slice(0, 1000);
+    console.log(`[E2E diag] L2 wait failed. URL: ${page.url()}`);
+    console.log(`[E2E diag] body snippet: ${bodySnippet}`);
+    return undefined;
   }
 
   // If the error state appeared, L2 can't be tested
