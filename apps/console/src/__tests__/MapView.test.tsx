@@ -4,7 +4,9 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MapView } from "../components/lens/map/MapView.js";
 import { curatedQueries } from "../api/queries.js";
 import {
+  runtimeMapIncidentFallback,
   runtimeMapReady,
+  runtimeMapSparse,
   runtimeMapUnavailable,
 } from "../__fixtures__/curated/runtime-map.js";
 import type { LensLevel } from "../routes/__root.js";
@@ -135,7 +137,7 @@ describe("MapView — incident strip", () => {
 
   it("keeps active incidents shell visible when there are no incidents", () => {
     const queryClient = makeClient();
-    queryClient.setQueryData(curatedQueries.runtimeMap().queryKey, runtimeMapUnavailable);
+    queryClient.setQueryData(curatedQueries.runtimeMap().queryKey, runtimeMapSparse);
 
     renderMapView(queryClient);
 
@@ -156,8 +158,20 @@ describe("MapView — empty map shell", () => {
     expect(screen.getByText("Entry Points")).toBeInTheDocument();
     expect(screen.getByText("Runtime Units")).toBeInTheDocument();
     expect(screen.getByText("Dependencies")).toBeInTheDocument();
-    expect(screen.getByText("Observed from spans")).toBeInTheDocument();
-    expect(screen.getByTestId("map-empty-state")).toHaveTextContent("No traffic observed yet.");
+    expect(screen.getAllByText("Observed from spans").length).toBeGreaterThan(0);
+    expect(screen.getByTestId("map-empty-state")).toHaveTextContent("No recent spans in the live window.");
+    expect(screen.getByTestId("map-empty-state")).toHaveTextContent("2 open incidents");
+  });
+
+  it("surfaces incident-scoped fallback clearly when preserved spans are available", () => {
+    const queryClient = makeClient();
+    queryClient.setQueryData(curatedQueries.runtimeMap().queryKey, runtimeMapIncidentFallback);
+
+    renderMapView(queryClient);
+
+    expect(screen.getByTestId("map-status-banner")).toHaveTextContent("Live window empty");
+    expect(screen.getByTestId("map-status-banner")).toHaveTextContent("captured incident window");
+    expect(document.querySelectorAll(".map-node")).toHaveLength(runtimeMapIncidentFallback.nodes.length);
   });
 });
 

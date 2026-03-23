@@ -8,6 +8,11 @@ export const CuratedStateSchema = z.object({
 
 export const RuntimeMapStateSchema = CuratedStateSchema.pick({
   diagnosis: true,
+}).extend({
+  source: z.enum(["recent_window", "incident_scope", "no_telemetry"]),
+  windowLabel: z.string(),
+  emptyReason: z.enum(["no_recent_spans", "no_preserved_incident_spans", "no_open_incidents"]).optional(),
+  scopeIncidentId: z.string().optional(),
 }).strict();
 
 export const RuntimeMapSummarySchema = z.object({

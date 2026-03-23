@@ -8,6 +8,7 @@
  */
 export type {
   CuratedState,
+  RuntimeMapState,
   RuntimeMapResponse,
   RuntimeMapSummary,
   RuntimeMapNode as MapNode,

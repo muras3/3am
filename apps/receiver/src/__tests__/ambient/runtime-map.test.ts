@@ -214,10 +214,51 @@ describe('buildRuntimeMap', () => {
     const result = await buildRuntimeMap(store, storage)
 
     expect(result.state.diagnosis).toBe('ready')
+    expect(result.state.source).toBe('no_telemetry')
     expect(result.nodes).toEqual([])
     expect(result.edges).toEqual([])
     expect(result.summary.activeIncidents).toBe(0)
     expect(result.summary.degradedNodes).toBe(0)
+  })
+
+  it('reconstructs incident-scoped fallback when live window is empty but incident spans were preserved', async () => {
+    const preservedSpan = makeSpan({
+      traceId: 'trace-fallback',
+      spanId: 'span-fallback',
+      spanKind: 2,
+      httpRoute: '/checkout',
+      httpMethod: 'POST',
+      serviceName: 'api',
+      startTimeMs: Date.now() - 3_600_000,
+    })
+    const store = makeMockTelemetryStore([])
+    vi.mocked(store.querySpans).mockImplementation(async (filter) =>
+      [preservedSpan].filter((span) =>
+        span.startTimeMs >= filter.startMs && span.startTimeMs <= filter.endMs,
+      ),
+    )
+    const storage = makeMockStorage([
+      makeIncident({
+        incidentId: 'inc-fallback',
+        spanMembership: ['trace-fallback:span-fallback'],
+        telemetryScope: {
+          windowStartMs: preservedSpan.startTimeMs - 5_000,
+          windowEndMs: preservedSpan.startTimeMs + 5_000,
+          detectTimeMs: preservedSpan.startTimeMs,
+          environment: 'production',
+          memberServices: ['api'],
+          dependencyServices: [],
+        },
+      }),
+    ])
+
+    const result = await buildRuntimeMap(store, storage)
+
+    expect(result.state.source).toBe('incident_scope')
+    expect(result.state.scopeIncidentId).toBe('inc-fallback')
+    expect(result.nodes).toHaveLength(1)
+    expect(result.nodes[0]!.id).toContain('/checkout')
+    expect(result.summary.activeIncidents).toBe(1)
   })
 
   it('creates entry_point node from SERVER span with httpRoute', async () => {

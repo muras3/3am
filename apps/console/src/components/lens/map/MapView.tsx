@@ -4,6 +4,7 @@ import type { LensLevel } from "../../../routes/__root.js";
 import { StatsBar } from "./StatsBar.js";
 import { MapGraph } from "./MapGraph.js";
 import { IncidentStrip } from "./IncidentStrip.js";
+import { MapEmptyState, MapStatusBanner } from "./MapStateNotice.js";
 
 interface Props {
   zoomTo: (level: LensLevel, trigger?: HTMLElement, incidentId?: string) => void;
@@ -42,6 +43,12 @@ export function MapView({ zoomTo }: Props) {
     );
   }
 
+  const sourceLabel = data.state.source === "incident_scope"
+    ? `— observed from preserved incident spans (${data.state.windowLabel})`
+    : data.state.source === "no_telemetry"
+    ? `— waiting for observed spans (${data.state.windowLabel})`
+    : `— observed from recent spans (${data.state.windowLabel})`;
+
   return (
     <div className="l0-content" data-testid="map-view">
       <StatsBar summary={data.summary} />
@@ -57,14 +64,21 @@ export function MapView({ zoomTo }: Props) {
             color: "var(--ink-3)",
           }}
         >
-          — observed from recent spans (last 30m)
+          {sourceLabel}
         </span>
       </h2>
+
+      <MapStatusBanner state={data.state} />
 
       <MapGraph
         nodes={data.nodes}
         edges={data.edges}
-        emptyStateMessage="No traffic observed yet."
+        emptyState={
+          <MapEmptyState
+            state={data.state}
+            activeIncidents={data.summary.activeIncidents}
+          />
+        }
         zoomTo={zoomTo}
       />
 
