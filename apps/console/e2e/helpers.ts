@@ -11,10 +11,20 @@ interface E2EIncidentSummary {
 }
 
 async function listIncidents(page: Page): Promise<E2EIncidentSummary[]> {
+  const t0 = Date.now();
+  console.log("[E2E helper] listIncidents: sending request via page.request");
   const res = await page.request.get("/api/incidents?limit=20", {
     headers: { Authorization: `Bearer ${E2E_TOKEN}` },
+    timeout: 10_000,
   });
-  const data = (await res.json()) as { items: E2EIncidentSummary[] };
+  console.log(`[E2E helper] listIncidents: ${res.status()} (${Date.now() - t0}ms)`);
+  if (!res.ok()) {
+    throw new Error(`[E2E] listIncidents failed: ${res.status()} ${res.statusText()} — ${await res.text()}`);
+  }
+  const data = (await res.json()) as { items?: E2EIncidentSummary[] };
+  if (!data.items) {
+    throw new Error(`[E2E] listIncidents: response has no 'items' field — got: ${JSON.stringify(data).slice(0, 200)}`);
+  }
   return data.items;
 }
 

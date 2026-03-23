@@ -19,6 +19,7 @@ export interface LensSearchParams {
   tab: EvidenceTab;
   proof?: string | undefined;
   targetId?: string | undefined;
+  query?: string | undefined;
 }
 
 function parseLensLevel(value: unknown): LensLevel {
@@ -51,6 +52,7 @@ export const rootRoute = createRootRouteWithContext<RouterContext>()({
       tab: parseEvidenceTab(search["tab"]),
       proof: parseOptionalString(search["proof"]),
       targetId: parseOptionalString(search["targetId"]),
+      query: parseOptionalString(search["query"]),
     };
   },
   component: () => (

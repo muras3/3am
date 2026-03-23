@@ -103,7 +103,7 @@ jobs:
       - name: Lint receiver
         run: pnpm --filter @3amoncall/receiver lint
 
-      # console
+      # console (unit tests only — E2E runs in parallel job)
       - name: Build console
         run: pnpm --filter @3amoncall/console build
       - name: Test console
@@ -121,17 +121,41 @@ jobs:
       - name: Bundle receiver
         run: pnpm --filter @3amoncall/receiver bundle
 
-      # console E2E (Playwright — Chromium only)
+  e2e:
+    name: E2E Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Build all packages
+        run: pnpm build
+
       - name: Install Playwright browsers
         run: pnpm --filter @3amoncall/console exec playwright install chromium --with-deps
+
       - name: E2E tests (console)
         run: pnpm --filter @3amoncall/console e2e
+        timeout-minutes: 5
         env:
           CI: true
           RECEIVER_AUTH_TOKEN: e2e-test-token
+          DEBUG: "1"
 
       - name: E2E tests — receiver-served
         run: pnpm --filter @3amoncall/console e2e:receiver-served
+        timeout-minutes: 5
         env:
           CI: true
           RECEIVER_AUTH_TOKEN: e2e-test-token
+          DEBUG: "1"

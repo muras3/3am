@@ -1,6 +1,8 @@
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import { useEffect, useState } from "react";
 import { useSearch } from "@tanstack/react-router";
-import { curatedQueries } from "../../../api/queries.js";
+import { ApiError } from "../../../api/client.js";
+import { curatedMutations, curatedQueries, type ChatTurn } from "../../../api/queries.js";
 import type { LensLevel, LensSearchParams } from "../../../routes/__root.js";
 import { ContextBar } from "./ContextBar.js";
 import { LensProofCards } from "./LensProofCards.js";
@@ -25,9 +27,22 @@ interface Props {
 export function LensEvidenceStudio({ incidentId }: Props) {
   const search = useSearch({ from: "__root__" }) as LensSearchParams;
   const tab = search.tab ?? "traces";
+  const [queryDraft, setQueryDraft] = useState(search.query ?? "");
+  const [history, setHistory] = useState<ChatTurn[]>([]);
+  const [latestReply, setLatestReply] = useState<string>();
+  const [submitError, setSubmitError] = useState<string>();
 
   const incidentQuery = useQuery(curatedQueries.extendedIncident(incidentId));
   const evidenceQuery = useQuery(curatedQueries.evidence(incidentId));
+  const chatMutation = useMutation(curatedMutations.chat(incidentId));
+
+  // Must be before early returns — React requires consistent hook call order.
+  const evidenceQaQuestion = evidenceQuery.data?.qa.question;
+  useEffect(() => {
+    if (evidenceQaQuestion != null) {
+      setQueryDraft(search.query ?? evidenceQaQuestion);
+    }
+  }, [evidenceQaQuestion, search.query]);
 
   if (incidentQuery.isLoading || evidenceQuery.isLoading) {
     return (
@@ -47,6 +62,33 @@ export function LensEvidenceStudio({ incidentId }: Props) {
 
   const incident = incidentQuery.data;
   const evidence = evidenceQuery.data;
+
+  function handleSubmitQuestion(question: string) {
+    setSubmitError(undefined);
+    chatMutation.mutate(
+      {
+        message: question,
+        history,
+      },
+      {
+        onSuccess: ({ reply }) => {
+          setHistory((prev) => [
+            ...prev,
+            { role: "user", content: question },
+            { role: "assistant", content: reply },
+          ]);
+          setLatestReply(reply);
+        },
+        onError: (error) => {
+          if (error instanceof ApiError && error.status === 404) {
+            setSubmitError("Query transport is unavailable until diagnosis is ready.");
+            return;
+          }
+          setSubmitError(error instanceof Error ? error.message : "Failed to submit question.");
+        },
+      },
+    );
+  }
 
   return (
     <div
@@ -74,7 +116,15 @@ export function LensEvidenceStudio({ incidentId }: Props) {
       <LensProofCards cards={evidence.proofCards} />
 
       {/* Q&A frame */}
-      <QAFrame qa={evidence.qa} />
+      <QAFrame
+        qa={evidence.qa}
+        inputValue={queryDraft}
+        isSubmitting={chatMutation.isPending}
+        submitError={submitError}
+        latestReply={latestReply}
+        onInputChange={setQueryDraft}
+        onSubmitQuestion={handleSubmitQuestion}
+      />
 
       {/* Tab bar */}
       <LensEvidenceTabs surfaces={evidence.surfaces} />
@@ -106,6 +156,7 @@ export function LensEvidenceStudio({ incidentId }: Props) {
             <LensMetricsView
               surface={evidence.surfaces.metrics}
               evidenceDensity={evidence.state.evidenceDensity}
+              isActive={tab === "metrics"}
             />
           </div>
 
@@ -119,6 +170,7 @@ export function LensEvidenceStudio({ incidentId }: Props) {
             <LensLogsView
               surface={evidence.surfaces.logs}
               evidenceDensity={evidence.state.evidenceDensity}
+              isActive={tab === "logs"}
             />
           </div>
         </div>

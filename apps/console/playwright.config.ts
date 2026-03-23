@@ -20,7 +20,7 @@ export default defineConfig({
   globalTeardown: path.resolve(__dirname, "./e2e/global-teardown.ts"),
 
   use: {
-    baseURL: "http://localhost:5174",
+    baseURL: `http://localhost:${process.env["E2E_VITE_PORT"] ?? "5174"}`,
     trace: "on-first-retry",
     storageState: E2E_STORAGE_STATE,
   },
@@ -34,9 +34,9 @@ export default defineConfig({
 
   webServer: {
     command:
-      "VITE_RECEIVER_BASE_URL=http://localhost:4319 pnpm dev --port 5174",
-    url: "http://localhost:5174",
-    reuseExistingServer: false,
+      `VITE_RECEIVER_BASE_URL=http://localhost:4319 pnpm dev --port ${process.env["E2E_VITE_PORT"] ?? "5174"}`,
+    url: `http://localhost:${process.env["E2E_VITE_PORT"] ?? "5174"}`,
+    reuseExistingServer: !process.env["CI"],
     timeout: 30_000,
   },
 });

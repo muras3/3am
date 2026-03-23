@@ -129,12 +129,39 @@ export default async function globalSetup(): Promise<void> {
     cookies: [],
     origins: [
       {
-        origin: "http://localhost:5174",
+        origin: `http://localhost:${process.env["E2E_VITE_PORT"] ?? "5174"}`,
         localStorage: [{ name: "receiver_auth_token", value: TOKEN }],
       },
     ],
   };
   writeFileSync(E2E_STORAGE_STATE, JSON.stringify(storageState), "utf8");
+
+  // Warm up: verify the evidence endpoint responds before tests start.
+  const t0 = Date.now();
+  const listRes = await fetch(`${RECEIVER_URL}/api/incidents?limit=1`, {
+    headers: { Authorization: `Bearer ${TOKEN}` },
+  });
+  console.log(`[E2E] listIncidents: ${listRes.status} (${Date.now() - t0}ms)`);
+  if (listRes.ok) {
+    const data = (await listRes.json()) as { items?: Array<{ incidentId: string; diagnosisResult?: unknown }> };
+    console.log(`[E2E] incidents count: ${data.items?.length ?? 0}, first has diagnosis: ${!!data.items?.[0]?.diagnosisResult}`);
+    const firstId = data.items?.[0]?.incidentId;
+    if (firstId) {
+      const t1 = Date.now();
+      const evRes = await fetch(`${RECEIVER_URL}/api/incidents/${encodeURIComponent(firstId)}/evidence`, {
+        headers: { Authorization: `Bearer ${TOKEN}` },
+      }).catch((err) => { console.log(`[E2E] evidence warm-up failed: ${err}`); return null; });
+      console.log(`[E2E] evidence warm-up: ${evRes?.status ?? "failed"} (${Date.now() - t1}ms)`);
+      if (evRes?.ok) {
+        const evBody = await evRes.json() as Record<string, unknown>;
+        const cards = evBody["proofCards"] as unknown[];
+        console.log(`[E2E] evidence proofCards count: ${cards?.length ?? "missing"}`);
+        console.log(`[E2E] evidence state: ${JSON.stringify(evBody["state"])}`);
+      }
+    }
+  } else {
+    console.log(`[E2E] listIncidents body: ${await listRes.text()}`);
+  }
 
   console.log("[E2E] Receiver ready and seeded with 5 incidents");
 }

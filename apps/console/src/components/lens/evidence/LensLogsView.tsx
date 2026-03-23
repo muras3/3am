@@ -1,4 +1,7 @@
+import { useEffect } from "react";
+import { useSearch } from "@tanstack/react-router";
 import type { LogsSurface, LogClaim, LogEntry } from "../../../api/curated-types.js";
+import type { LensSearchParams } from "../../../routes/__root.js";
 
 type ClaimType = LogClaim["type"];
 
@@ -60,14 +63,17 @@ function LogRow({ entry }: LogRowProps) {
 // ── Single claim cluster ──────────────────────────────────────
 interface ClaimClusterProps {
   claim: LogClaim;
+  activeProofId?: string;
+  activeTargetId?: string;
 }
 
-function ClaimCluster({ claim }: ClaimClusterProps) {
+function ClaimCluster({ claim, activeProofId, activeTargetId }: ClaimClusterProps) {
   const isAbsence = claim.type === "absence";
+  const isHighlighted = activeProofId === claim.type || activeTargetId === claim.id;
 
   return (
     <div
-      className={`lens-logs-claim-cluster lens-logs-claim-cluster-${claim.type}${isAbsence ? " absence" : ""}`}
+      className={`lens-logs-claim-cluster lens-logs-claim-cluster-${claim.type}${isAbsence ? " absence" : ""}${isHighlighted ? " proof-highlight" : ""}`}
       data-proof={claim.type}
       data-target-id={claim.id}
     >
@@ -101,9 +107,25 @@ function ClaimCluster({ claim }: ClaimClusterProps) {
 interface LensLogsViewProps {
   surface: LogsSurface;
   evidenceDensity?: "rich" | "sparse" | "empty";
+  isActive?: boolean;
 }
 
-export function LensLogsView({ surface, evidenceDensity = "rich" }: LensLogsViewProps) {
+export function LensLogsView({ surface, evidenceDensity = "rich", isActive = false }: LensLogsViewProps) {
+  const search = useSearch({ from: "__root__" }) as LensSearchParams;
+  const activeProofId = search.proof;
+  const activeTargetId = search.targetId;
+
+  useEffect(() => {
+    if (!isActive) return;
+    const selector = activeTargetId
+      ? `[data-target-id="${activeTargetId}"]`
+      : activeProofId
+        ? `[data-proof="${activeProofId}"]`
+        : null;
+    if (!selector) return;
+    document.querySelector(selector)?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [activeProofId, activeTargetId, isActive]);
+
   if (surface.claims.length === 0) {
     return (
       <div className="lens-logs-empty">
@@ -117,7 +139,12 @@ export function LensLogsView({ surface, evidenceDensity = "rich" }: LensLogsView
   return (
     <div className="lens-logs-root">
       {surface.claims.map((claim) => (
-        <ClaimCluster key={claim.id} claim={claim} />
+        <ClaimCluster
+          key={claim.id}
+          claim={claim}
+          activeProofId={activeProofId}
+          activeTargetId={activeTargetId}
+        />
       ))}
     </div>
   );

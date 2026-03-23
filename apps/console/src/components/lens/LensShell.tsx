@@ -52,6 +52,7 @@ export function LensShell() {
         tab: targetLevel >= 2 ? search.tab : "traces",
         proof: targetLevel >= 2 ? search.proof : undefined,
         targetId: targetLevel >= 2 ? search.targetId : undefined,
+        query: targetLevel >= 2 ? search.query : undefined,
       };
 
       void navigate({
@@ -60,7 +61,7 @@ export function LensShell() {
         replace: true,
       });
     },
-    [navigate, search.incidentId, search.tab, search.proof, search.targetId],
+    [navigate, search.incidentId, search.tab, search.proof, search.targetId, search.query],
   );
 
   // Focus management on level change

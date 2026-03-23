@@ -1,20 +1,35 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { LensTracesView } from "../components/lens/evidence/LensTracesView.js";
 import { LensMetricsView } from "../components/lens/evidence/LensMetricsView.js";
 import { LensLogsView } from "../components/lens/evidence/LensLogsView.js";
-import { evidenceReady } from "../__fixtures__/curated/evidence.js";
+import { QAFrame } from "../components/lens/evidence/QAFrame.js";
+import { evidenceReady, evidenceSparse } from "../__fixtures__/curated/evidence.js";
+
+const mockNavigate = vi.fn();
+
+let mockSearchState = {
+  level: 2,
+  tab: "traces",
+  incidentId: "inc_0892",
+} as Record<string, unknown>;
 
 vi.mock("@tanstack/react-router", () => ({
-  useSearch: () => ({
-    level: 2,
-    tab: "traces",
-    incidentId: "inc_0892",
-  }),
+  useSearch: () => mockSearchState,
+  useNavigate: () => mockNavigate,
 }));
 
 const { traces, metrics, logs } = evidenceReady.surfaces;
+
+beforeEach(() => {
+  mockSearchState = {
+    level: 2,
+    tab: "traces",
+    incidentId: "inc_0892",
+  };
+  mockNavigate.mockClear();
+});
 
 // ── TracesView ─────────────────────────────────────────────────
 
@@ -87,12 +102,18 @@ describe("LensTracesView", () => {
     expect(document.querySelector(".lens-traces-baseline-group")).not.toHaveClass("muted");
   });
 
-  it("expandable span detail is hidden by default", () => {
+  it("only the smoking gun span auto-expands on initial render", () => {
     render(<LensTracesView surface={traces} />);
-    // Details should exist but not be visible (no .open class)
+    // The smoking gun span (stripe-api-001) auto-expands; others stay closed
     const openDetails = document.querySelectorAll(".lens-traces-span-detail.open");
-    // None should be open initially
-    expect(openDetails.length).toBe(0);
+    // Exactly 1 open (the smoking gun)
+    expect(openDetails.length).toBe(1);
+    // Non-smoking-gun expandable spans should remain closed
+    const allDetails = document.querySelectorAll(".lens-traces-span-detail");
+    const closedDetails = Array.from(allDetails).filter(
+      (el) => !el.classList.contains("open"),
+    );
+    expect(closedDetails.length).toBe(allDetails.length - 1);
   });
 
   it("span detail expands on click for spans with attributes", async () => {
@@ -161,6 +182,104 @@ describe("LensTracesView", () => {
       "aria-disabled",
       "true",
     );
+  });
+
+  it("smoking gun span auto-expands on initial render (no selectedTargetId in URL)", () => {
+    // mockSearchState has no targetId — smoking gun should auto-expand
+    render(<LensTracesView surface={traces} />);
+    // The smoking gun span (stripe-api-001) has attributes, so it should be open
+    const openDetail = document.querySelector(".lens-traces-span-detail.open");
+    expect(openDetail).not.toBeNull();
+  });
+
+  it("smoking gun expanded shows attributes dl", () => {
+    render(<LensTracesView surface={traces} />);
+    // After auto-expand the attribute list should be visible
+    const attrList = document.querySelector(".lens-traces-attr-list");
+    expect(attrList).not.toBeNull();
+  });
+
+  it("smoking gun span does NOT auto-expand when selectedTargetId points elsewhere", () => {
+    // Point targetId at a different span — smoking gun should NOT expand
+    mockSearchState = { ...mockSearchState, targetId: "checkout-001" };
+    render(<LensTracesView surface={traces} />);
+    // The smoking-gun row should NOT be open (checkout-001 is expandable and matches)
+    const smokingGunRow = document.querySelector(".smoking-gun");
+    expect(smokingGunRow).not.toBeNull();
+    // aria-expanded on the smoking-gun span row should be false
+    expect(smokingGunRow).toHaveAttribute("aria-expanded", "false");
+  });
+});
+
+// ── TracesView span detail content ─────────────────────────────
+
+describe("LensTracesView — span detail content", () => {
+  it("expanded span shows attribute key-value pairs", async () => {
+    const user = userEvent.setup();
+    render(<LensTracesView surface={traces} />);
+    // Click first expandable span
+    const expandableRow = document.querySelector(
+      ".lens-traces-span-row.expandable",
+    ) as HTMLElement;
+    await user.click(expandableRow);
+
+    // After expanding, attribute key should appear in a dt
+    const attrKeys = document.querySelectorAll(".lens-traces-attr-key");
+    expect(attrKeys.length).toBeGreaterThan(0);
+    const attrVals = document.querySelectorAll(".lens-traces-attr-val");
+    expect(attrVals.length).toBeGreaterThan(0);
+  });
+
+  it("expanded span shows correlated log rows with timestamp/severity/body", async () => {
+    const user = userEvent.setup();
+    render(<LensTracesView surface={traces} />);
+    // The checkout-001 span has correlatedLogs — click it
+    const checkoutRow = document.querySelector(
+      `[data-target-id="checkout-001"]`,
+    ) as HTMLElement;
+    expect(checkoutRow).not.toBeNull();
+    await user.click(checkoutRow);
+
+    const corrLogs = document.querySelectorAll(".lens-traces-corr-log-row");
+    expect(corrLogs.length).toBeGreaterThan(0);
+    // Each correlated log row should have timestamp, severity and body spans
+    const logTs = document.querySelectorAll(".lens-traces-corr-log-ts");
+    expect(logTs.length).toBeGreaterThan(0);
+    const logSev = document.querySelectorAll(".lens-traces-corr-log-sev");
+    expect(logSev.length).toBeGreaterThan(0);
+    const logBody = document.querySelectorAll(".lens-traces-corr-log-body");
+    expect(logBody.length).toBeGreaterThan(0);
+  });
+
+  it("span without attributes or correlatedLogs is NOT expandable (no role=button)", () => {
+    // We test a minimal surface where all spans have no attributes
+    // and no correlatedLogs — such spans should NOT be expandable.
+    const minimalSurface = {
+      observed: [
+        {
+          traceId: "t1",
+          route: "GET /health",
+          status: 200,
+          durationMs: 10,
+          spans: [
+            {
+              spanId: "s1",
+              name: "GET /health",
+              durationMs: 10,
+              status: "ok" as const,
+              attributes: {},
+            },
+          ],
+        },
+      ],
+      expected: [],
+      smokingGunSpanId: null,
+    };
+    render(<LensTracesView surface={minimalSurface} />);
+    const spanRow = document.querySelector(`[data-target-id="s1"]`);
+    expect(spanRow).not.toBeNull();
+    // Should not have role=button since it's not expandable
+    expect(spanRow).not.toHaveAttribute("role", "button");
   });
 });
 
@@ -252,6 +371,39 @@ describe("LensMetricsView", () => {
   });
 });
 
+describe("LensMetricsView — proof highlight", () => {
+  it("mock useSearch with proof='trigger' → trigger group gets proof-highlight class", () => {
+    mockSearchState = { ...mockSearchState, proof: "trigger" };
+    render(<LensMetricsView surface={metrics} />);
+    const highlighted = document.querySelector(
+      ".lens-metrics-hyp-group.proof-highlight",
+    );
+    expect(highlighted).not.toBeNull();
+    expect(highlighted).toHaveAttribute("data-proof", "trigger");
+  });
+
+  it("mock useSearch with targetId matching group.id → group gets proof-highlight class", () => {
+    mockSearchState = { ...mockSearchState, targetId: "hyp-trigger" };
+    render(<LensMetricsView surface={metrics} />);
+    const highlighted = document.querySelector(
+      ".lens-metrics-hyp-group.proof-highlight",
+    );
+    expect(highlighted).not.toBeNull();
+    expect(highlighted).toHaveAttribute("data-target-id", "hyp-trigger");
+  });
+
+  it("metric row gets proof-highlight when activeTargetId matches metric.name", () => {
+    const metricName = metrics.hypotheses[0]!.metrics[0]!.name;
+    mockSearchState = { ...mockSearchState, targetId: metricName };
+    render(<LensMetricsView surface={metrics} />);
+    const highlighted = document.querySelector(
+      ".lens-metrics-metric-row.proof-highlight",
+    );
+    expect(highlighted).not.toBeNull();
+    expect(highlighted).toHaveAttribute("data-target-id", metricName);
+  });
+});
+
 // ── LogsView ───────────────────────────────────────────────────
 
 describe("LensLogsView", () => {
@@ -337,5 +489,119 @@ describe("LensLogsView", () => {
   it("renders empty state when no claims", () => {
     render(<LensLogsView surface={{ claims: [] }} />);
     expect(screen.getByText(/log evidence is currently sparse/i)).toBeInTheDocument();
+  });
+});
+
+describe("LensLogsView — proof highlight", () => {
+  it("mock useSearch with proof='trigger' → trigger cluster gets proof-highlight class", () => {
+    mockSearchState = { ...mockSearchState, proof: "trigger" };
+    render(<LensLogsView surface={logs} />);
+    const highlighted = document.querySelector(
+      ".lens-logs-claim-cluster.proof-highlight",
+    );
+    expect(highlighted).not.toBeNull();
+    expect(highlighted).toHaveAttribute("data-proof", "trigger");
+  });
+
+  it("mock useSearch with targetId matching claim.id → cluster gets proof-highlight class", () => {
+    mockSearchState = { ...mockSearchState, targetId: "claim-429" };
+    render(<LensLogsView surface={logs} />);
+    const highlighted = document.querySelector(
+      ".lens-logs-claim-cluster.proof-highlight",
+    );
+    expect(highlighted).not.toBeNull();
+    expect(highlighted).toHaveAttribute("data-target-id", "claim-429");
+  });
+});
+
+// ── Degraded states — sparse fixture ──────────────────────────
+
+describe("Degraded states — sparse fixture", () => {
+  it("TracesView with baselineState='unavailable' shows 'Expected trace unavailable' label", () => {
+    render(
+      <LensTracesView
+        surface={evidenceSparse.surfaces.traces}
+        baselineState="unavailable"
+      />,
+    );
+    expect(screen.getByRole("button", { name: /expected trace unavailable/i })).toBeInTheDocument();
+  });
+
+  it("TracesView sparse: baseline toggle is aria-disabled='true'", () => {
+    render(
+      <LensTracesView
+        surface={evidenceSparse.surfaces.traces}
+        baselineState="unavailable"
+      />,
+    );
+    const toggle = screen.getByRole("button", { name: /expected trace unavailable/i });
+    expect(toggle).toHaveAttribute("aria-disabled", "true");
+  });
+
+  it("MetricsView with evidenceDensity='empty' shows reserved lane text", () => {
+    render(
+      <LensMetricsView
+        surface={{ hypotheses: [] }}
+        evidenceDensity="empty"
+      />,
+    );
+    expect(screen.getByText(/metric lane is reserved/i)).toBeInTheDocument();
+  });
+
+  it("LogsView with evidenceDensity='empty' shows reserved lane text", () => {
+    render(
+      <LensLogsView
+        surface={{ claims: [] }}
+        evidenceDensity="empty"
+      />,
+    );
+    expect(screen.getByText(/log lane is reserved/i)).toBeInTheDocument();
+  });
+});
+
+// ── Degraded states — QA ──────────────────────────────────────
+
+describe("Degraded states — QA", () => {
+  it("QAFrame with noAnswerReason renders placeholder answer", () => {
+    render(
+      <QAFrame
+        qa={evidenceSparse.qa}
+        inputValue={evidenceSparse.qa.question}
+        isSubmitting={false}
+        onInputChange={vi.fn()}
+        onSubmitQuestion={vi.fn()}
+      />,
+    );
+    expect(screen.getByText(evidenceSparse.qa.noAnswerReason!)).toBeInTheDocument();
+  });
+
+  it("pending follow-up chips are still rendered", () => {
+    render(
+      <QAFrame
+        qa={evidenceSparse.qa}
+        inputValue={evidenceSparse.qa.question}
+        isSubmitting={false}
+        onInputChange={vi.fn()}
+        onSubmitQuestion={vi.fn()}
+      />,
+    );
+    const chips = document.querySelectorAll(".lens-ev-qa-chip");
+    expect(chips.length).toBeGreaterThan(0);
+  });
+
+  it("follow-up chips are disabled when isSubmitting=true", () => {
+    render(
+      <QAFrame
+        qa={evidenceSparse.qa}
+        inputValue={evidenceSparse.qa.question}
+        isSubmitting={true}
+        onInputChange={vi.fn()}
+        onSubmitQuestion={vi.fn()}
+      />,
+    );
+    const chips = document.querySelectorAll(".lens-ev-qa-chip");
+    chips.forEach((chip) => {
+      expect(chip).toBeDisabled();
+    });
   });
 });

@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import type { LensSearchParams } from "../../../routes/__root.js";
 import type { ProofCard } from "../../../api/curated-types.js";
@@ -90,29 +91,27 @@ function selectionTargetId(card: ProofCard): string | undefined {
   return undefined;
 }
 
-function applySelectionHighlight(proofId?: string, targetId?: string) {
-  document.querySelectorAll(".proof-highlight").forEach((el) => {
-    el.classList.remove("proof-highlight");
-  });
-
-  const selectors = [
-    targetId ? `[data-target-id="${targetId}"]` : null,
-    proofId ? `[data-proof="${proofId}"]` : null,
-  ].filter(Boolean) as string[];
-
-  for (const selector of selectors) {
-    const targets = document.querySelectorAll(selector);
-    if (targets.length === 0) continue;
-    targets.forEach((el) => el.classList.add("proof-highlight"));
-    targets[0]?.scrollIntoView({ behavior: "smooth", block: "center" });
-    return;
-  }
-}
-
 export function LensProofCards({ cards }: Props) {
   const navigate = useNavigate();
   const search = useSearch({ from: "__root__" }) as LensSearchParams;
   const activeProofId = search.proof;
+  const activeTargetId = search.targetId;
+
+  useEffect(() => {
+    if (!activeProofId && !activeTargetId) return;
+
+    const selectors = [
+      activeTargetId ? `[data-target-id="${activeTargetId}"]` : null,
+      activeProofId ? `[data-proof="${activeProofId}"]` : null,
+    ].filter(Boolean) as string[];
+
+    for (const selector of selectors) {
+      const target = document.querySelector(selector);
+      if (!target) continue;
+      target.scrollIntoView({ behavior: "smooth", block: "center" });
+      return;
+    }
+  }, [activeProofId, activeTargetId, search.tab]);
 
   function handleCardClick(card: ProofCard) {
     const targetId = selectionTargetId(card);
@@ -127,10 +126,6 @@ export function LensProofCards({ cards }: Props) {
       },
       replace: true,
     });
-
-    setTimeout(() => {
-      applySelectionHighlight(card.id, targetId);
-    }, 200);
   }
 
   return (

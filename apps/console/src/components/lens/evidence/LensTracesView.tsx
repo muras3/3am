@@ -42,10 +42,10 @@ function SpanRow({
   }, [hasDetail]);
 
   useEffect(() => {
-    if (hasDetail && selectedTargetId === span.spanId) {
+    if (hasDetail && (selectedTargetId === span.spanId || (isSmokingGun && !selectedTargetId))) {
       setExpanded(true);
     }
-  }, [hasDetail, selectedTargetId, span.spanId]);
+  }, [hasDetail, selectedTargetId, span.spanId, isSmokingGun]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
