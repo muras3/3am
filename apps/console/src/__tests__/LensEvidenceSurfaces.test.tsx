@@ -396,6 +396,17 @@ describe("LensMetricsView — proof highlight", () => {
     expect(highlighted).not.toBeNull();
     expect(highlighted).toHaveAttribute("data-target-id", "hyp-trigger");
   });
+
+  it("metric row gets proof-highlight when activeTargetId matches metric.name", () => {
+    const metricName = metrics.hypotheses[0]!.metrics[0]!.name;
+    mockSearchState = { ...mockSearchState, targetId: metricName };
+    render(<LensMetricsView surface={metrics} />);
+    const highlighted = document.querySelector(
+      ".lens-metrics-metric-row.proof-highlight",
+    );
+    expect(highlighted).not.toBeNull();
+    expect(highlighted).toHaveAttribute("data-target-id", metricName);
+  });
 });
 
 // ── LogsView ───────────────────────────────────────────────────

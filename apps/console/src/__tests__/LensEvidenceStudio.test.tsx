@@ -499,6 +499,83 @@ describe("QAFrame — interaction", () => {
       screen.getByText(evidencePending.qa.noAnswerReason!),
     ).toBeInTheDocument();
   });
+
+  it("evidence ref keyboard Enter calls navigate", async () => {
+    const user = userEvent.setup();
+    renderQAFrame(evidenceReady.qa);
+    const refBtn = screen.getByRole("button", {
+      name: /view evidence: span a3f8c91d:stripe-charge-001/i,
+    });
+    refBtn.focus();
+    await user.keyboard("{Enter}");
+    expect(mockNavigate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        search: expect.objectContaining({
+          tab: "traces",
+          targetId: "stripe-charge-001",
+        }),
+      }),
+    );
+  });
+
+  it("evidence ref keyboard Space calls navigate", async () => {
+    const user = userEvent.setup();
+    renderQAFrame(evidenceReady.qa);
+    const refBtn = screen.getByRole("button", {
+      name: /view evidence: span a3f8c91d:stripe-charge-001/i,
+    });
+    refBtn.focus();
+    await user.keyboard(" ");
+    expect(mockNavigate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        search: expect.objectContaining({
+          tab: "traces",
+          targetId: "stripe-charge-001",
+        }),
+      }),
+    );
+  });
+
+  it("evidence summary text renders correctly", () => {
+    renderQAFrame(evidenceReady.qa);
+    expect(screen.getAllByText(/12 traces, 3 metrics, 28 logs/).length).toBeGreaterThan(0);
+  });
+
+  it("evidence ref kind=log_cluster navigates to logs tab", async () => {
+    const user = userEvent.setup();
+    const qaWithLogRef = {
+      ...evidenceReady.qa,
+      evidenceRefs: [{ kind: "log_cluster" as const, id: "claim-429" }],
+    };
+    renderQAFrame(qaWithLogRef);
+    const refBtn = screen.getByRole("button", {
+      name: /view evidence: log_cluster claim-429/i,
+    });
+    await user.click(refBtn);
+    expect(mockNavigate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        search: expect.objectContaining({
+          tab: "logs",
+          targetId: "claim-429",
+        }),
+      }),
+    );
+  });
+
+  it("span targetId is extracted from traceId:spanId format", async () => {
+    const user = userEvent.setup();
+    // evidenceReady.qa.evidenceRefs[0] is { kind: "span", id: "a3f8c91d:stripe-charge-001" }
+    // The component should extract "stripe-charge-001" as targetId
+    renderQAFrame(evidenceReady.qa);
+    const refBtn = screen.getByRole("button", {
+      name: /view evidence: span a3f8c91d:stripe-charge-001/i,
+    });
+    await user.click(refBtn);
+    const call = mockNavigate.mock.calls[0]?.[0];
+    expect(call.search.targetId).toBe("stripe-charge-001");
+    // Not the full "a3f8c91d:stripe-charge-001"
+    expect(call.search.targetId).not.toContain(":");
+  });
 });
 
 describe("LensProofCards — cross-surface navigation", () => {
@@ -548,6 +625,46 @@ describe("LensProofCards — cross-surface navigation", () => {
         replace: true,
       }),
     );
+  });
+
+  it("clicking recovery card navigates to traces tab with span targetId", () => {
+    render(<LensProofCards cards={evidenceReady.proofCards} />);
+    const recoveryCard = screen.getByText("Recovery Signal").closest("[role='button']");
+    fireEvent.click(recoveryCard!);
+    expect(mockNavigate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        search: expect.objectContaining({
+          proof: "recovery",
+          tab: "traces",
+          targetId: "stripe-retry-001",
+        }),
+        replace: true,
+      }),
+    );
+  });
+
+  it("keyboard Space on card triggers navigation", () => {
+    render(<LensProofCards cards={evidenceReady.proofCards} />);
+    const triggerCard = screen.getByText("External Trigger").closest("[role='button']");
+    fireEvent.keyDown(triggerCard!, { key: " " });
+    expect(mockNavigate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        search: expect.objectContaining({
+          proof: "trigger",
+          tab: "traces",
+        }),
+        replace: true,
+      }),
+    );
+  });
+
+  it("active card has aria-pressed=true", () => {
+    mockSearch = { ...mockSearch, proof: "trigger" };
+    render(<LensProofCards cards={evidenceReady.proofCards} />);
+    const triggerCard = screen.getByText("External Trigger").closest("[role='button']");
+    expect(triggerCard).toHaveAttribute("aria-pressed", "true");
+    const designCard = screen.getByText("Design Gap").closest("[role='button']");
+    expect(designCard).toHaveAttribute("aria-pressed", "false");
   });
 
   it("pending card with empty evidenceRefs navigates without targetId", () => {
@@ -701,5 +818,50 @@ describe("LensSideRail", () => {
     const { container } = render(<LensSideRail notes={[]} />);
     expect(container.firstChild).not.toBeNull();
     expect(screen.getByText("Confidence")).toBeInTheDocument();
+  });
+});
+
+// ── Integration: Q&A mutation ──────────────────────────────────
+
+describe("LensEvidenceStudio — Q&A mutation integration", () => {
+  let fetchSpy: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    fetchSpy = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve({ reply: "Mock mutation reply" }),
+    });
+    vi.stubGlobal("fetch", fetchSpy);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("Q&A submit calls chat mutation via form submit", async () => {
+    const user = userEvent.setup();
+    renderStudio("inc_0892", setupReady());
+    const input = screen.getByLabelText("Ask a question about this incident");
+    await user.clear(input);
+    await user.type(input, "Test question");
+    const submitBtn = screen.getByRole("button", { name: "Ask" });
+    await user.click(submitBtn);
+    // Verify fetch was called with the chat endpoint
+    expect(fetchSpy).toHaveBeenCalledWith(
+      expect.stringContaining("/api/chat/"),
+      expect.objectContaining({ method: "POST" }),
+    );
+  });
+
+  it("Q&A follow-up chip triggers chat mutation", async () => {
+    const user = userEvent.setup();
+    renderStudio("inc_0892", setupReady());
+    const chip = screen.getByText("Is there retry logic?");
+    await user.click(chip);
+    expect(fetchSpy).toHaveBeenCalledWith(
+      expect.stringContaining("/api/chat/"),
+      expect.objectContaining({ method: "POST" }),
+    );
   });
 });
