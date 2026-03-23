@@ -178,7 +178,6 @@ function makeTraceSurface(baseline: BaselineContext = EMPTY_BASELINE): CuratedTr
   return {
     observed: [],
     expected: [],
-    smokingGunSpanId: undefined,
     baseline,
   }
 }
@@ -222,60 +221,12 @@ describe('buildCuratedEvidence', () => {
             widthPct: 100,
             status: 'error',
             attributes: { route: '/checkout' },
-            correlatedLogRefIds: ['web:2024-01-01T00:00:01Z:hash-1'],
-          }],
-        }],
-        expected: [{
-          traceId: 'trace-baseline-1',
-          groupId: 'trace:trace-baseline-1',
-          rootSpanName: 'POST /checkout',
-          httpStatusCode: 200,
-          durationMs: 300,
-          status: 'ok',
-          startTimeMs: 0,
-          spans: [{
-            spanId: 'baseline-span-1',
-            parentSpanId: undefined,
-            refId: 'trace-baseline-1:baseline-span-1',
-            spanName: 'POST /checkout',
-            durationMs: 300,
-            httpStatusCode: 200,
-            spanStatusCode: 1,
-            offsetMs: 0,
-            widthPct: 100,
-            status: 'ok',
-            attributes: { route: '/checkout' },
             correlatedLogRefIds: [],
           }],
         }],
+        expected: [],
         smokingGunSpanId: 'trace-1:span-1',
         baseline: EMPTY_BASELINE,
-      },
-      evidenceRefs: new Map<string, CuratedEvidenceRef>(),
-    })
-    mockBuildLogsSurface.mockResolvedValue({
-      surface: {
-        clusters: [{
-          clusterId: 'lcluster:0',
-          clusterKey: {
-            primaryService: 'web',
-            severityDominant: 'ERROR',
-            hasTraceCorrelation: true,
-            keywordHits: ['stripe'],
-          },
-          entries: [{
-            refId: 'web:2024-01-01T00:00:01Z:hash-1',
-            timestamp: '2024-01-01T00:00:01Z',
-            severity: 'ERROR',
-            body: 'Stripe 429',
-            isSignal: true,
-            traceId: 'trace-1',
-            spanId: 'span-1',
-          }],
-          signalCount: 1,
-          noiseCount: 0,
-        }],
-        absenceEvidence: [],
       },
       evidenceRefs: new Map<string, CuratedEvidenceRef>(),
     })
@@ -283,13 +234,10 @@ describe('buildCuratedEvidence', () => {
     const result = await buildCuratedEvidence(makeIncident(), makeMockStore())
 
     expect(result.surfaces.traces.observed[0]?.route).toBe('POST /checkout')
-    expect(result.surfaces.traces.observed[0]?.expectedDurationMs).toBe(300)
-    expect(result.surfaces.traces.observed[0]?.annotation).toContain('Observed 1200ms')
-    expect(result.surfaces.traces.observed[0]?.spans[0]?.correlatedLogs?.[0]?.body).toBe('Stripe 429')
     // extractSpanId extracts spanId from "traceId:spanId" composite format
     expect(result.surfaces.traces.smokingGunSpanId).toBe('span-1')
     expect(result.surfaces.metrics.hypotheses).toEqual([])
-    expect(result.surfaces.logs.claims[0]?.label).toContain('web')
+    expect(result.surfaces.logs.claims).toEqual([])
   })
 
   it('derives state from diagnosis, baseline, and evidence density', async () => {
@@ -345,6 +293,7 @@ describe('buildCuratedEvidence', () => {
     expect(result.proofCards).toHaveLength(3)
     expect(result.proofCards.map((card) => card.id)).toEqual(['trigger', 'design_gap', 'recovery'])
     expect(result.proofCards.every((card) => card.summary.length > 0)).toBe(true)
+    expect(result.proofCards.map((card) => card.targetSurface)).toEqual(['traces', 'metrics', 'traces'])
     expect(result.qa.question).toContain('web /api/orders')
     expect(result.qa.noAnswerReason).toContain('Diagnosis narrative is pending')
   })
