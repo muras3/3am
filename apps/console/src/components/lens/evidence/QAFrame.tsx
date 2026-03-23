@@ -3,8 +3,7 @@ import type { QABlock, EvidenceRef } from "../../../api/curated-types.js";
 import type { LensSearchParams } from "../../../routes/__root.js";
 
 interface Props {
-  qa: QABlock | null;
-  diagnosisState?: "ready" | "pending" | "unavailable";
+  qa: QABlock;
 }
 
 function EvidenceRefLink({ ref: evidenceRef }: { ref: EvidenceRef }) {
@@ -65,39 +64,8 @@ function EvidenceRefLink({ ref: evidenceRef }: { ref: EvidenceRef }) {
 /**
  * QAFrame — Question / Answer block above tabs.
  * Shows question + teal-soft answer box + evidence refs + follow-up chips.
- * When qa is null or has noAnswerReason, shows degraded state.
  */
-export function QAFrame({ qa, diagnosisState }: Props) {
-  if (!qa) {
-    const question = diagnosisState === "unavailable"
-      ? "Why is this incident degraded?"
-      : "What evidence is available for this incident?";
-    const message = diagnosisState === "ready"
-      ? "Narrative is being generated. Evidence surfaces are available below."
-      : diagnosisState === "unavailable"
-        ? "Diagnosis is unavailable. Use the deterministic traces, metrics, and logs below."
-        : "Diagnosis not available yet. Evidence is being collected.";
-    return (
-      <div className="lens-ev-qa-frame lens-ev-qa-empty" role="region" aria-label="Question and answer">
-        <div className="lens-ev-qa-question-row">
-          <span className="lens-ev-qa-icon" aria-hidden="true">?</span>
-          <span className="lens-ev-qa-question-text">{question}</span>
-        </div>
-        <div className="lens-ev-qa-answer lens-ev-qa-answer-placeholder">
-          <strong>Answer:</strong> {message}
-          <div className="lens-ev-qa-evidence-note">
-            The Evidence Studio surfaces remain available below even without a narrative answer.
-          </div>
-        </div>
-        <div className="lens-ev-qa-followups" role="group" aria-label="Follow-up questions">
-          <span className="lens-ev-qa-chip lens-ev-qa-chip-placeholder">Open traces</span>
-          <span className="lens-ev-qa-chip lens-ev-qa-chip-placeholder">Check metrics drift</span>
-          <span className="lens-ev-qa-chip lens-ev-qa-chip-placeholder">Inspect logs</span>
-        </div>
-      </div>
-    );
-  }
-
+export function QAFrame({ qa }: Props) {
   if (qa.noAnswerReason) {
     return (
       <div className="lens-ev-qa-frame" role="region" aria-label="Question and answer">
@@ -105,9 +73,26 @@ export function QAFrame({ qa, diagnosisState }: Props) {
           <span className="lens-ev-qa-icon" aria-hidden="true">?</span>
           <span className="lens-ev-qa-question-text">{qa.question}</span>
         </div>
-        <div className="lens-ev-qa-no-answer">
-          {qa.noAnswerReason}
+        <div className="lens-ev-qa-answer lens-ev-qa-answer-placeholder">
+          <strong>Answer:</strong> {qa.answer}
+          <div className="lens-ev-qa-no-answer">
+            {qa.noAnswerReason}
+          </div>
         </div>
+        {qa.followups.length > 0 && (
+          <div className="lens-ev-qa-followups" role="group" aria-label="Follow-up questions">
+            {qa.followups.map((q) => (
+              <button
+                key={q.question}
+                className="lens-ev-qa-chip"
+                type="button"
+                onClick={() => undefined}
+              >
+                {q.question}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
     );
   }

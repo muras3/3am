@@ -1229,18 +1229,6 @@
   box-shadow: 0 1px 4px rgba(0,0,0,0.06);
 }
 
-.lens-ev-proof-card-placeholder {
-  cursor: default;
-  border-style: dashed;
-  color: var(--ink-3);
-  box-shadow: none;
-}
-
-.lens-ev-proof-card-placeholder:hover {
-  border-color: var(--line);
-  box-shadow: none;
-}
-
 .lens-ev-proof-card:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
@@ -1689,11 +1677,6 @@
 .lens-ev-qa-chip:focus-visible {
   outline: 2px solid var(--teal);
   outline-offset: 2px;
-}
-
-.lens-ev-qa-chip-placeholder {
-  cursor: default;
-  color: var(--ink-3);
 }
 
 /* ── Tabs ──────────────────────────────────────────────────────── */

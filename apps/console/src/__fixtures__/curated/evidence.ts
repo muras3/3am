@@ -217,14 +217,14 @@ export const evidenceReady: EvidenceResponse = {
   },
 };
 
-/** Pending: no proof cards, no Q&A */
+/** Pending: fixed-shape proof cards and QA, no narrative grounding yet */
 export const evidencePending: EvidenceResponse = {
   proofCards: [
     {
       id: "trigger",
       label: "Trigger Evidence",
       status: "pending",
-      summary: "Trigger evidence is reserved in the contract, but deterministic references are not available yet.",
+      summary: "Trigger evidence is being assembled from deterministic traces and logs.",
       targetSurface: "traces",
       evidenceRefs: [],
     },
@@ -232,28 +232,30 @@ export const evidencePending: EvidenceResponse = {
       id: "design_gap",
       label: "Design Gap",
       status: "pending",
-      summary: "Receiver reserved the design-gap card; diagnosis wording is pending and direct evidence is still sparse.",
-      targetSurface: "logs",
+      summary: "Design-gap evidence will be filled from metrics and dependency behavior.",
+      targetSurface: "metrics",
       evidenceRefs: [],
     },
     {
       id: "recovery",
       label: "Recovery Path",
       status: "pending",
-      summary: "Recovery evidence is not available yet, but the recovery card remains visible by contract.",
-      targetSurface: "logs",
+      summary: "Recovery evidence remains open while baseline and remediation signals are collected.",
+      targetSurface: "traces",
       evidenceRefs: [],
     },
   ],
   qa: {
-    question: "What explains the current incident on web /checkout?",
-    answer: "Diagnosis wording is not ready yet. Use the deterministic traces, metrics, and logs below to inspect the current evidence.",
+    question: "What evidence is available for payment-service /checkout?",
+    answer: "Deterministic evidence for payment-service /checkout is available while diagnosis is still running. Primary dependency in scope: Stripe API.",
     evidenceRefs: [],
     evidenceSummary: { traces: 0, metrics: 0, logs: 0 },
     followups: [
-      { question: "What evidence is still missing for this incident?", targetEvidenceKinds: ["traces", "metrics", "logs"] },
+      { question: "Open traces", targetEvidenceKinds: ["traces"] },
+      { question: "Inspect metrics drift", targetEvidenceKinds: ["metrics"] },
+      { question: "Review related logs", targetEvidenceKinds: ["logs"] },
     ],
-    noAnswerReason: "Diagnosis narrative is pending; deterministic evidence surfaces are available now.",
+    noAnswerReason: "Diagnosis narrative is pending; use the deterministic evidence surfaces below.",
   },
   surfaces: {
     traces: { observed: [], expected: [], smokingGunSpanId: null },
@@ -268,7 +270,7 @@ export const evidencePending: EvidenceResponse = {
   },
 };
 
-/** Sparse: 1 proof card, traces only, baseline unavailable */
+/** Sparse: fixed-shape proof cards and QA, traces only, baseline unavailable */
 export const evidenceSparse: EvidenceResponse = {
   proofCards: [
     {
@@ -282,29 +284,31 @@ export const evidenceSparse: EvidenceResponse = {
     {
       id: "design_gap",
       label: "Design Gap",
-      status: "inferred",
-      summary: "Receiver reserved the design-gap card; diagnosis wording is pending and direct evidence is still sparse.",
-      targetSurface: "logs",
+      status: "pending",
+      summary: "Design-gap evidence will be filled from metrics and dependency behavior.",
+      targetSurface: "metrics",
       evidenceRefs: [],
     },
     {
       id: "recovery",
       label: "Recovery Path",
       status: "pending",
-      summary: "Recovery evidence is not available yet, but the recovery card remains visible by contract.",
-      targetSurface: "logs",
+      summary: "Recovery evidence remains open while baseline and remediation signals are collected.",
+      targetSurface: "traces",
       evidenceRefs: [],
     },
   ],
   qa: {
-    question: "What explains the current incident on web /checkout?",
-    answer: "Stripe 429 evidence is visible in the trace surface, but the narrative layer is still sparse.",
-    evidenceRefs: [{ kind: "span", id: "a3f8c91d:stripe-charge-001" }],
-    evidenceSummary: { traces: 1, metrics: 0, logs: 0 },
+    question: "What evidence is available for payment-service /checkout?",
+    answer: "Deterministic traces, metrics, and logs for payment-service /checkout are available below. Primary dependency in scope: Stripe API.",
+    evidenceRefs: [],
+    evidenceSummary: { traces: 0, metrics: 0, logs: 0 },
     followups: [
-      { question: "Which span is acting as the smoking gun?", targetEvidenceKinds: ["traces"] },
+      { question: "Open traces", targetEvidenceKinds: ["traces"] },
+      { question: "Inspect metrics drift", targetEvidenceKinds: ["metrics"] },
+      { question: "Review related logs", targetEvidenceKinds: ["logs"] },
     ],
-    noAnswerReason: "Diagnosis narrative is incomplete; inspect the deterministic trace evidence directly.",
+    noAnswerReason: "Diagnosis narrative is unavailable; use the deterministic evidence surfaces below.",
   },
   surfaces: {
     traces: {
@@ -314,7 +318,6 @@ export const evidenceSparse: EvidenceResponse = {
           route: "POST /checkout",
           status: 500,
           durationMs: 2340,
-          annotation: "Observed 2340ms on POST /checkout versus baseline unavailable.",
           spans: [
             {
               spanId: "stripe-charge-001",
@@ -322,7 +325,6 @@ export const evidenceSparse: EvidenceResponse = {
               durationMs: 1990,
               status: "error",
               attributes: { "http.status_code": 429 },
-              correlatedLogs: [],
             },
           ],
         },

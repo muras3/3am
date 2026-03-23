@@ -4,7 +4,6 @@ import type { ProofCard } from "../../../api/curated-types.js";
 
 interface Props {
   cards: ProofCard[];
-  diagnosisState?: "ready" | "pending" | "unavailable";
 }
 
 function iconFor(id: string): string {
@@ -24,11 +23,10 @@ function iconVariant(id: string): string {
 interface ProofCardItemProps {
   card: ProofCard;
   isActive: boolean;
-  isPlaceholder?: boolean;
   onClick: (card: ProofCard) => void;
 }
 
-function ProofCardItem({ card, isActive, isPlaceholder = false, onClick }: ProofCardItemProps) {
+function ProofCardItem({ card, isActive, onClick }: ProofCardItemProps) {
   const variant = iconVariant(card.id);
 
   function handleKeyDown(e: React.KeyboardEvent) {
@@ -41,17 +39,15 @@ function ProofCardItem({ card, isActive, isPlaceholder = false, onClick }: Proof
   return (
     <div
       role="button"
-      tabIndex={isPlaceholder ? -1 : 0}
+      tabIndex={0}
       className={[
         "lens-ev-proof-card",
         isActive ? "lens-ev-proof-card-active" : "",
-        isPlaceholder ? "lens-ev-proof-card-placeholder" : "",
       ].filter(Boolean).join(" ")}
-      onClick={isPlaceholder ? undefined : () => onClick(card)}
-      onKeyDown={isPlaceholder ? undefined : handleKeyDown}
+      onClick={() => onClick(card)}
+      onKeyDown={handleKeyDown}
       data-proof-id={card.id}
       aria-pressed={isActive}
-      aria-disabled={isPlaceholder}
     >
       <div className="lens-ev-pc-top">
         <div className={`lens-ev-pc-icon lens-ev-pc-icon-${variant}`} aria-hidden="true">
@@ -69,50 +65,9 @@ function ProofCardItem({ card, isActive, isPlaceholder = false, onClick }: Proof
               : "Inferred"}
         </span>
       </div>
-      <div className="lens-ev-pc-summary">{card.summary || "Awaiting deterministic evidence."}</div>
+      <div className="lens-ev-pc-summary">{card.summary}</div>
     </div>
   );
-}
-
-const PLACEHOLDER_CARDS: ProofCard[] = [
-  {
-    id: "trigger",
-    label: "External Trigger",
-    status: "pending",
-    summary: "",
-    targetSurface: "traces",
-    evidenceRefs: [],
-  },
-  {
-    id: "design_gap",
-    label: "Design Gap",
-    status: "pending",
-    summary: "",
-    targetSurface: "metrics",
-    evidenceRefs: [],
-  },
-  {
-    id: "recovery",
-    label: "Recovery Signal",
-    status: "pending",
-    summary: "",
-    targetSurface: "traces",
-    evidenceRefs: [],
-  },
-];
-
-function buildPlaceholderCards(
-  cards: ProofCard[],
-  diagnosisState: Props["diagnosisState"],
-): ProofCard[] {
-  if (cards.length > 0) return cards;
-
-  return PLACEHOLDER_CARDS.map((card) => ({
-    ...card,
-    summary: diagnosisState === "unavailable"
-      ? "No diagnosis narrative yet. This slot stays reserved for deterministic evidence."
-      : "Evidence is still being assembled for this proof lane.",
-  }));
 }
 
 function selectionTargetId(card: ProofCard): string | undefined {
@@ -154,12 +109,10 @@ function applySelectionHighlight(proofId?: string, targetId?: string) {
   }
 }
 
-export function LensProofCards({ cards, diagnosisState }: Props) {
+export function LensProofCards({ cards }: Props) {
   const navigate = useNavigate();
   const search = useSearch({ from: "__root__" }) as LensSearchParams;
   const activeProofId = search.proof;
-  const renderedCards = buildPlaceholderCards(cards, diagnosisState);
-  const showingPlaceholders = cards.length === 0;
 
   function handleCardClick(card: ProofCard) {
     const targetId = selectionTargetId(card);
@@ -182,12 +135,11 @@ export function LensProofCards({ cards, diagnosisState }: Props) {
 
   return (
     <div className="lens-ev-proof-cards" role="group" aria-label="Proof cards">
-      {renderedCards.map((card) => (
+      {cards.map((card) => (
         <ProofCardItem
           key={card.id}
           card={card}
           isActive={activeProofId === card.id}
-          isPlaceholder={showingPlaceholders}
           onClick={handleCardClick}
         />
       ))}

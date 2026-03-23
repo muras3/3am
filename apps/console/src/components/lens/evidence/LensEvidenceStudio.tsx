@@ -71,10 +71,10 @@ export function LensEvidenceStudio({ incidentId }: Props) {
       )}
 
       {/* Proof cards grid */}
-      <LensProofCards cards={evidence.proofCards} diagnosisState={evidence.state.diagnosis} />
+      <LensProofCards cards={evidence.proofCards} />
 
       {/* Q&A frame */}
-      <QAFrame qa={evidence.qa} diagnosisState={evidence.state.diagnosis} />
+      <QAFrame qa={evidence.qa} />
 
       {/* Tab bar */}
       <LensEvidenceTabs surfaces={evidence.surfaces} />
