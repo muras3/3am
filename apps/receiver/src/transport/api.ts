@@ -3,6 +3,7 @@ import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import {
   DiagnosisResultSchema,
+  EvidenceQueryRequestSchema,
   type DiagnosisResult,
 } from "@3amoncall/core";
 import { jwtCookieSetter, jwtCookieValidator } from "../middleware/session-cookie.js";
@@ -16,6 +17,7 @@ import { computeServices, computeActivity } from "../ambient/service-aggregator.
 import { buildRuntimeMap } from "../ambient/runtime-map.js";
 import { buildExtendedIncident } from "../domain/incident-detail-extension.js";
 import { buildCuratedEvidence } from "../domain/curated-evidence.js";
+import { buildEvidenceQueryAnswer } from "../domain/evidence-query.js";
 import type { DiagnosisRunner } from "../runtime/diagnosis-runner.js";
 
 const CHAT_MAX_HISTORY = 10;
@@ -105,10 +107,14 @@ export function createApiRouter(storage: StorageDriver, spanBuffer: SpanBuffer |
   if (authToken) {
     app.use("/api/*", jwtCookieSetter({ authToken, secure: !allowInsecure }));
     app.use("/api/chat/*", jwtCookieValidator(authToken));
+    app.use("/api/incidents/*/evidence/query", jwtCookieValidator(authToken));
   }
 
   // Rate limit chat endpoint — LLM cost protection (B-11)
   app.use("/api/chat/*", rateLimiter({ windowMs: 60_000, max: 10 }));
+
+  // Rate limit evidence query endpoint — LLM cost protection
+  app.use("/api/incidents/*/evidence/query", rateLimiter({ windowMs: 60_000, max: 10 }));
 
   app.get("/api/incidents", async (c) => {
     const limitStr = c.req.query("limit");
@@ -136,6 +142,35 @@ export function createApiRouter(storage: StorageDriver, spanBuffer: SpanBuffer |
       return c.json({ error: "not found" }, 404);
     }
     return c.json(await buildCuratedEvidence(incident, telemetryStore));
+  });
+
+  app.post("/api/incidents/:id/evidence/query", apiBodyLimit(4 * 1024), async (c) => {
+    const id = c.req.param("id");
+
+    let body: unknown;
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ error: "invalid body" }, 400);
+    }
+
+    const parsed = EvidenceQueryRequestSchema.safeParse(body);
+    if (!parsed.success) {
+      return c.json({ error: "invalid body", details: parsed.error.issues }, 400);
+    }
+
+    const incident = await storage.getIncident(id);
+    if (incident === null) {
+      return c.json({ error: "not found" }, 404);
+    }
+
+    const result = await buildEvidenceQueryAnswer(
+      incident,
+      telemetryStore,
+      parsed.data.question,
+      parsed.data.isFollowup ?? false,
+    );
+    return c.json(result);
   });
 
   app.get("/api/packets/:packetId", async (c) => {
