@@ -6,9 +6,17 @@ import react from "@vitejs/plugin-react";
 export default defineConfig({
   plugins: [tailwindcss(), react()],
   resolve: {
-    alias: {
-      "@": path.resolve(__dirname, "./src"),
-    },
+    alias: [
+      { find: "@", replacement: path.resolve(__dirname, "./src") },
+      {
+        find: /^@3amoncall\/core$/,
+        replacement: path.resolve(__dirname, "../../packages/core/src/index.ts"),
+      },
+      {
+        find: /^@3amoncall\/core\/(.+)$/,
+        replacement: path.resolve(__dirname, "../../packages/core/src/$1.ts"),
+      },
+    ],
   },
   server: {
     proxy: {

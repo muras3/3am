@@ -165,6 +165,7 @@ export const CuratedLogsSurfaceSchema = z.object({
 export const EvidenceRefSchema = AnswerEvidenceRefSchema;
 
 export const CorrelatedLogSchema = z.object({
+  refId: z.string().optional(),
   timestamp: z.string(),
   severity: z.string(),
   body: z.string(),
@@ -274,8 +275,8 @@ export const EvidenceSurfacesSchema = z.object({
 }).strict();
 
 export const EvidenceResponseSchema = z.object({
-  proofCards: z.array(ProofCardSchema),
-  qa: QABlockSchema.nullable(),
+  proofCards: z.array(ProofCardSchema).length(3),
+  qa: QABlockSchema,
   surfaces: EvidenceSurfacesSchema,
   sideNotes: z.array(SideNoteSchema),
   state: CuratedStateSchema,

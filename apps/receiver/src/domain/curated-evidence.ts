@@ -20,6 +20,7 @@ import type {
   ConsoleNarrative,
   ProofCardNarrative,
   ProofRef,
+  NarrativeEvidenceCounts,
 } from '@3amoncall/core'
 import { buildTraceSurface } from './trace-surface.js'
 import { buildMetricsSurface } from './metrics-surface.js'
@@ -121,9 +122,9 @@ export async function buildCuratedEvidence(
 
   return {
     proofCards: buildProofCards(narrative?.proofCards, reasoningStructure.proofRefs),
-    qa: buildQaBlock(narrative?.qa),
+    qa: buildQaBlock(incident, narrative?.qa, reasoningStructure.proofRefs, reasoningStructure.evidenceCounts),
     surfaces: {
-      traces: toPublicTraceSurface(traceResult.surface),
+      traces: toPublicTraceSurface(traceResult.surface, logsResult.surface),
       metrics: toPublicMetricsSurface(metricsResult.surface),
       logs: toPublicLogsSurface(logsResult.surface),
     },
@@ -132,13 +133,27 @@ export async function buildCuratedEvidence(
   }
 }
 
-function toPublicTraceSurface(surface: CuratedTraceSurface): EvidenceResponse['surfaces']['traces'] {
+function toPublicTraceSurface(
+  surface: CuratedTraceSurface,
+  logsSurface: CuratedLogsSurface,
+): EvidenceResponse['surfaces']['traces'] {
+  const logIndex = new Map(
+    logsSurface.clusters.flatMap((cluster) =>
+      cluster.entries.map((entry) => [entry.refId, entry] as const),
+    ),
+  )
+  const expectedDurationIndex = buildExpectedDurationIndex(surface)
+
   return {
     observed: surface.observed.map((trace) => ({
       traceId: trace.traceId,
       route: trace.rootSpanName,
       status: trace.httpStatusCode ?? (trace.status === 'error' ? 500 : 200),
       durationMs: trace.durationMs,
+      ...(expectedDurationIndex.get(trace.rootSpanName) !== undefined
+        ? { expectedDurationMs: expectedDurationIndex.get(trace.rootSpanName) }
+        : {}),
+      annotation: buildObservedTraceAnnotation(trace.rootSpanName, trace.durationMs, expectedDurationIndex.get(trace.rootSpanName)),
       spans: trace.spans.map((span) => ({
         spanId: span.spanId,
         parentSpanId: span.parentSpanId,
@@ -146,6 +161,15 @@ function toPublicTraceSurface(surface: CuratedTraceSurface): EvidenceResponse['s
         durationMs: span.durationMs,
         status: span.status,
         attributes: span.attributes,
+        correlatedLogs: span.correlatedLogRefIds
+          .map((refId) => logIndex.get(refId))
+          .filter((entry): entry is NonNullable<typeof entry> => entry !== undefined)
+          .map((entry) => ({
+            refId: entry.refId,
+            timestamp: entry.timestamp,
+            severity: mapLogSeverity(entry.severity),
+            body: entry.body,
+          })),
       })),
     })),
     expected: surface.expected.map((trace) => ({
@@ -153,6 +177,7 @@ function toPublicTraceSurface(surface: CuratedTraceSurface): EvidenceResponse['s
       route: trace.rootSpanName,
       status: trace.httpStatusCode ?? 200,
       durationMs: trace.durationMs,
+      annotation: buildExpectedTraceAnnotation(surface, trace.rootSpanName, trace.durationMs),
       spans: trace.spans.map((span) => ({
         spanId: span.spanId,
         parentSpanId: span.parentSpanId,
@@ -160,6 +185,7 @@ function toPublicTraceSurface(surface: CuratedTraceSurface): EvidenceResponse['s
         durationMs: span.durationMs,
         status: span.status,
         attributes: span.attributes,
+        correlatedLogs: [],
       })),
     })),
     // Internal CuratedTraceSurface stores smokingGunSpanId as "traceId:spanId"
@@ -223,29 +249,32 @@ function buildProofCards(
 
   // When narrative is available, merge wording (narrative) with evidence (proofRefs)
   if (narrativeCards) {
-    return narrativeCards.map((card) => {
-      const ref = refMap.get(card.id)
+    return (['trigger', 'design_gap', 'recovery'] as const).map((cardId) => {
+      const ref = refMap.get(cardId)
+      const narrativeCard = narrativeCards.find((card) => card.id === cardId)
       return {
-        id: card.id,
-        label: card.label,
+        id: cardId,
+        label: narrativeCard?.label ?? defaultProofCardLabel(cardId),
         status: ref?.status ?? 'pending',
-        summary: card.summary,
-        targetSurface: ref?.targetSurface ?? 'traces',
+        summary: narrativeCard?.summary ?? defaultProofCardSummary(cardId, ref),
+        targetSurface: ref?.targetSurface ?? defaultProofCardSurface(cardId),
         evidenceRefs: ref?.evidenceRefs ?? [],
       }
     })
   }
 
   // Deterministic fallback: generate proof cards from proofRefs alone (no LLM wording)
-  if (proofRefs.length === 0) return []
-  return proofRefs.map((ref) => ({
-    id: ref.cardId,
-    label: defaultProofCardLabel(ref.cardId),
-    status: ref.status,
-    summary: '',
-    targetSurface: ref.targetSurface,
-    evidenceRefs: ref.evidenceRefs,
-  }))
+  return (['trigger', 'design_gap', 'recovery'] as const).map((cardId) => {
+    const ref = refMap.get(cardId)
+    return {
+      id: cardId,
+      label: defaultProofCardLabel(cardId),
+      status: ref?.status ?? 'pending',
+      summary: defaultProofCardSummary(cardId, ref),
+      targetSurface: ref?.targetSurface ?? defaultProofCardSurface(cardId),
+      evidenceRefs: ref?.evidenceRefs ?? [],
+    }
+  })
 }
 
 function defaultProofCardLabel(cardId: string): string {
@@ -257,16 +286,81 @@ function defaultProofCardLabel(cardId: string): string {
   }
 }
 
-function buildQaBlock(qa: ConsoleNarrative['qa'] | undefined): QABlock | null {
-  if (!qa) return null
+function defaultProofCardSurface(cardId: string): ProofCard['targetSurface'] {
+  switch (cardId) {
+    case 'trigger':
+      return 'traces'
+    case 'design_gap':
+      return 'logs'
+    case 'recovery':
+      return 'logs'
+    default:
+      return 'traces'
+  }
+}
+
+function defaultProofCardSummary(cardId: string, ref: ProofRef | undefined): string {
+  const evidenceCount = ref?.evidenceRefs.length ?? 0
+  const surface = ref?.targetSurface ?? defaultProofCardSurface(cardId)
+
+  switch (cardId) {
+    case 'trigger':
+      return evidenceCount > 0
+        ? `${evidenceCount} deterministic ${surface} reference(s) capture the trigger path.`
+        : 'Trigger evidence is reserved in the contract, but deterministic references are not available yet.'
+    case 'design_gap':
+      return evidenceCount > 0
+        ? `${evidenceCount} deterministic ${surface} reference(s) describe the suspected design gap.`
+        : 'Receiver reserved the design-gap card; diagnosis wording is pending and direct evidence is still sparse.'
+    case 'recovery':
+      return evidenceCount > 0
+        ? `${evidenceCount} deterministic ${surface} reference(s) show the recovery path.`
+        : 'Recovery evidence is not available yet, but the recovery card remains visible by contract.'
+    default:
+      return 'Deterministic evidence placeholder.'
+  }
+}
+
+function buildQaBlock(
+  incident: Incident,
+  qa: ConsoleNarrative['qa'] | undefined,
+  proofRefs: ProofRef[],
+  evidenceCounts: NarrativeEvidenceCounts,
+): QABlock {
+  if (qa) {
+    return {
+      question: qa.question,
+      answer: qa.answer,
+      evidenceRefs: qa.answerEvidenceRefs,
+      evidenceSummary: summarizeEvidenceRefs(qa.answerEvidenceRefs),
+      followups: qa.followups,
+      ...(qa.noAnswerReason ? { noAnswerReason: qa.noAnswerReason } : {}),
+    }
+  }
+
+  const defaultRefs = proofRefs.flatMap((ref) => ref.evidenceRefs).slice(0, 6)
+  const primaryRoute = incident.packet.scope.affectedRoutes[0]
+  const primaryTarget = primaryRoute ? `${incident.packet.scope.primaryService} ${primaryRoute}` : incident.packet.scope.primaryService
+  const diagnosisPending = !incident.diagnosisResult
 
   return {
-    question: qa.question,
-    answer: qa.answer,
-    evidenceRefs: qa.answerEvidenceRefs,
-    evidenceSummary: summarizeEvidenceRefs(qa.answerEvidenceRefs),
-    followups: qa.followups,
-    ...(qa.noAnswerReason ? { noAnswerReason: qa.noAnswerReason } : {}),
+    question: `What explains the current incident on ${primaryTarget}?`,
+    answer: diagnosisPending
+      ? 'Diagnosis wording is not ready yet. Use the deterministic traces, metrics, and logs below to inspect the current evidence.'
+      : [
+          incident.diagnosisResult?.summary.root_cause_hypothesis,
+          incident.diagnosisResult?.recommendation.action_rationale_short,
+        ].filter(Boolean).join(' '),
+    evidenceRefs: defaultRefs,
+    evidenceSummary: {
+      traces: evidenceCounts.traces,
+      metrics: evidenceCounts.metrics,
+      logs: evidenceCounts.logs,
+    },
+    followups: buildDeterministicFollowups(evidenceCounts),
+    ...(diagnosisPending
+      ? { noAnswerReason: 'Diagnosis narrative is pending; deterministic evidence surfaces are available now.' }
+      : {}),
   }
 }
 
@@ -322,6 +416,82 @@ function summarizeEvidenceRefs(refs: EvidenceRef[]): QABlock['evidenceSummary'] 
   }
 
   return summary
+}
+
+function buildDeterministicFollowups(
+  evidenceCounts: NarrativeEvidenceCounts,
+): QABlock['followups'] {
+  const followups: QABlock['followups'] = []
+
+  if (evidenceCounts.traces > 0) {
+    followups.push({
+      question: 'Which span is acting as the smoking gun?',
+      targetEvidenceKinds: ['traces'],
+    })
+  }
+  if (evidenceCounts.metrics > 0) {
+    followups.push({
+      question: 'How far did observed metrics diverge from baseline?',
+      targetEvidenceKinds: ['metrics'],
+    })
+  }
+  if (evidenceCounts.logs > 0) {
+    followups.push({
+      question: 'Which logs correlate directly with the failing span?',
+      targetEvidenceKinds: ['logs', 'traces'],
+    })
+  }
+
+  if (followups.length === 0) {
+    followups.push({
+      question: 'What evidence is still missing for this incident?',
+      targetEvidenceKinds: ['traces', 'metrics', 'logs'],
+    })
+  }
+
+  return followups
+}
+
+function buildExpectedDurationIndex(surface: CuratedTraceSurface): Map<string, number> {
+  const totals = new Map<string, { durationMs: number; count: number }>()
+
+  for (const trace of surface.expected) {
+    const current = totals.get(trace.rootSpanName) ?? { durationMs: 0, count: 0 }
+    current.durationMs += trace.durationMs
+    current.count += 1
+    totals.set(trace.rootSpanName, current)
+  }
+
+  return new Map(
+    [...totals.entries()].map(([route, value]) => [route, Math.round(value.durationMs / value.count)]),
+  )
+}
+
+function buildObservedTraceAnnotation(
+  route: string,
+  durationMs: number,
+  expectedDurationMs: number | undefined,
+): string {
+  if (expectedDurationMs === undefined) {
+    return `Observed trace for ${route}. Baseline comparison is not available.`
+  }
+
+  const ratio = expectedDurationMs > 0 ? (durationMs / expectedDurationMs).toFixed(1) : 'n/a'
+  return `Observed ${durationMs}ms on ${route} versus expected ${expectedDurationMs}ms (${ratio}x slower).`
+}
+
+function buildExpectedTraceAnnotation(
+  surface: CuratedTraceSurface,
+  route: string,
+  durationMs: number,
+): string {
+  const source = surface.baseline.source.kind === 'none'
+    ? 'No baseline source'
+    : surface.baseline.source.kind === 'same_route'
+      ? `Baseline from ${surface.baseline.source.service} ${surface.baseline.source.route}`
+      : `Baseline from ${surface.baseline.source.service}`
+
+  return `${source}; representative expected duration is ${durationMs}ms.`
 }
 
 function formatMetricValue(value: number | string): string {

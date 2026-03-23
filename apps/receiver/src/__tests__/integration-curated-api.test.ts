@@ -487,7 +487,7 @@ describe('Integration: Curated API assembly (§6)', () => {
       }
     })
 
-    it('evidence-pending-surfaces: diagnosis pending, surfaces non-empty, qa null', async () => {
+    it('evidence-pending-surfaces: diagnosis pending keeps fixed shape and non-empty surfaces', async () => {
       await seedRichTelemetry(telemetryStore)
       const incident = makeIncident({
         diagnosisDispatchedAt: new Date().toISOString(),
@@ -499,8 +499,8 @@ describe('Integration: Curated API assembly (§6)', () => {
       EvidenceResponseSchema.strict().parse(result)
 
       expect(result.state.diagnosis).toBe('pending')
-      expect(result.qa).toBeNull()
-      // Surfaces should still have data even without diagnosis
+      expect(result.qa.noAnswerReason).toContain('Diagnosis narrative is pending')
+      expect(result.proofCards).toHaveLength(3)
       expect(result.surfaces.traces.observed.length).toBeGreaterThanOrEqual(0)
     })
 
@@ -617,7 +617,7 @@ describe('Integration: Curated API assembly (§6)', () => {
   // ═══════════════════════════════════════════════════════════════════════
 
   describe('Step 4: Evidence narrative', () => {
-    it('qa-null-placeholder: qa is null when no consoleNarrative', async () => {
+    it('qa-placeholder-shape: qa stays non-null when no consoleNarrative', async () => {
       const incident = makeIncident({
         diagnosisResult: makeDiagnosisResult(),
       })
@@ -625,7 +625,8 @@ describe('Integration: Curated API assembly (§6)', () => {
       const result = await buildCuratedEvidence(incident, telemetryStore)
       EvidenceResponseSchema.strict().parse(result)
 
-      expect(result.qa).toBeNull()
+      expect(result.qa.question).toBeTruthy()
+      expect(result.qa.answer).toBeTruthy()
     })
 
     it('qa-ref-resolution: qa evidenceRefs are populated from narrative', async () => {
@@ -637,12 +638,11 @@ describe('Integration: Curated API assembly (§6)', () => {
       const result = await buildCuratedEvidence(incident, telemetryStore)
       EvidenceResponseSchema.strict().parse(result)
 
-      expect(result.qa).not.toBeNull()
-      expect(result.qa!.question).toBeTruthy()
-      expect(result.qa!.answer).toBeTruthy()
-      expect(result.qa!.evidenceRefs).toBeDefined()
-      expect(result.qa!.evidenceSummary).toBeDefined()
-      expect(result.qa!.followups.length).toBeGreaterThan(0)
+      expect(result.qa.question).toBeTruthy()
+      expect(result.qa.answer).toBeTruthy()
+      expect(result.qa.evidenceRefs).toBeDefined()
+      expect(result.qa.evidenceSummary).toBeDefined()
+      expect(result.qa.followups.length).toBeGreaterThan(0)
     })
 
     it('qa-unanswerable: noAnswerReason propagated when set', async () => {
@@ -658,8 +658,7 @@ describe('Integration: Curated API assembly (§6)', () => {
       const result = await buildCuratedEvidence(incident, telemetryStore)
       EvidenceResponseSchema.strict().parse(result)
 
-      expect(result.qa).not.toBeNull()
-      expect(result.qa!.noAnswerReason).toBe('Insufficient telemetry data to determine root cause.')
+      expect(result.qa.noAnswerReason).toBe('Insufficient telemetry data to determine root cause.')
     })
 
     it('reasoning-structure-valid: ReasoningStructureSchema.strict().parse() green', async () => {
@@ -690,8 +689,7 @@ describe('Integration: Curated API assembly (§6)', () => {
       const result = await buildCuratedEvidence(incident, telemetryStore)
       EvidenceResponseSchema.strict().parse(result)
 
-      expect(result.qa).not.toBeNull()
-      expect(result.qa!.answer.length).toBeGreaterThan(0)
+      expect(result.qa.answer.length).toBeGreaterThan(0)
     })
 
     it('diagnosed-incident-proofcards-3: buildCuratedEvidence returns 3 proofCards when narrative present', async () => {

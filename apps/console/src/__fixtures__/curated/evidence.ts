@@ -219,8 +219,42 @@ export const evidenceReady: EvidenceResponse = {
 
 /** Pending: no proof cards, no Q&A */
 export const evidencePending: EvidenceResponse = {
-  proofCards: [],
-  qa: null,
+  proofCards: [
+    {
+      id: "trigger",
+      label: "Trigger Evidence",
+      status: "pending",
+      summary: "Trigger evidence is reserved in the contract, but deterministic references are not available yet.",
+      targetSurface: "traces",
+      evidenceRefs: [],
+    },
+    {
+      id: "design_gap",
+      label: "Design Gap",
+      status: "pending",
+      summary: "Receiver reserved the design-gap card; diagnosis wording is pending and direct evidence is still sparse.",
+      targetSurface: "logs",
+      evidenceRefs: [],
+    },
+    {
+      id: "recovery",
+      label: "Recovery Path",
+      status: "pending",
+      summary: "Recovery evidence is not available yet, but the recovery card remains visible by contract.",
+      targetSurface: "logs",
+      evidenceRefs: [],
+    },
+  ],
+  qa: {
+    question: "What explains the current incident on web /checkout?",
+    answer: "Diagnosis wording is not ready yet. Use the deterministic traces, metrics, and logs below to inspect the current evidence.",
+    evidenceRefs: [],
+    evidenceSummary: { traces: 0, metrics: 0, logs: 0 },
+    followups: [
+      { question: "What evidence is still missing for this incident?", targetEvidenceKinds: ["traces", "metrics", "logs"] },
+    ],
+    noAnswerReason: "Diagnosis narrative is pending; deterministic evidence surfaces are available now.",
+  },
   surfaces: {
     traces: { observed: [], expected: [], smokingGunSpanId: null },
     metrics: { hypotheses: [] },
@@ -245,8 +279,33 @@ export const evidenceSparse: EvidenceResponse = {
       targetSurface: "traces",
       evidenceRefs: [{ kind: "span", id: "a3f8c91d:stripe-charge-001" }],
     },
+    {
+      id: "design_gap",
+      label: "Design Gap",
+      status: "inferred",
+      summary: "Receiver reserved the design-gap card; diagnosis wording is pending and direct evidence is still sparse.",
+      targetSurface: "logs",
+      evidenceRefs: [],
+    },
+    {
+      id: "recovery",
+      label: "Recovery Path",
+      status: "pending",
+      summary: "Recovery evidence is not available yet, but the recovery card remains visible by contract.",
+      targetSurface: "logs",
+      evidenceRefs: [],
+    },
   ],
-  qa: null,
+  qa: {
+    question: "What explains the current incident on web /checkout?",
+    answer: "Stripe 429 evidence is visible in the trace surface, but the narrative layer is still sparse.",
+    evidenceRefs: [{ kind: "span", id: "a3f8c91d:stripe-charge-001" }],
+    evidenceSummary: { traces: 1, metrics: 0, logs: 0 },
+    followups: [
+      { question: "Which span is acting as the smoking gun?", targetEvidenceKinds: ["traces"] },
+    ],
+    noAnswerReason: "Diagnosis narrative is incomplete; inspect the deterministic trace evidence directly.",
+  },
   surfaces: {
     traces: {
       observed: [
@@ -255,6 +314,7 @@ export const evidenceSparse: EvidenceResponse = {
           route: "POST /checkout",
           status: 500,
           durationMs: 2340,
+          annotation: "Observed 2340ms on POST /checkout versus baseline unavailable.",
           spans: [
             {
               spanId: "stripe-charge-001",
@@ -262,6 +322,7 @@ export const evidenceSparse: EvidenceResponse = {
               durationMs: 1990,
               status: "error",
               attributes: { "http.status_code": 429 },
+              correlatedLogs: [],
             },
           ],
         },

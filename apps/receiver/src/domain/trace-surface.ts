@@ -6,7 +6,7 @@
  * for the evidence index.
  */
 
-import type { TelemetrySpan, TelemetryStoreDriver } from '../telemetry/interface.js'
+import type { TelemetrySpan, TelemetryLog, TelemetryStoreDriver } from '../telemetry/interface.js'
 import { buildIncidentQueryFilter } from '../telemetry/interface.js'
 import type { Incident } from '../storage/interface.js'
 import { spanMembershipKey } from '../storage/interface.js'
@@ -22,6 +22,7 @@ import { selectBaseline } from './baseline-selector.js'
 
 const SLOW_SPAN_THRESHOLD_MS = 5_000
 const MAX_OBSERVED_TRACES = 10
+const MAX_CORRELATED_LOGS_PER_SPAN = 5
 
 // ── Span Status Helpers ──────────────────────────────────────────────────
 
@@ -114,9 +115,54 @@ function findRootSpan(spans: TelemetrySpan[]): TelemetrySpan {
   )
 }
 
-function buildTraceSpan(span: TelemetrySpan, rootStartTimeMs: number, rootDurationMs: number): CuratedTraceSpan {
+function logRefId(log: TelemetryLog): string {
+  return `${log.service}:${log.timestamp}:${log.bodyHash}`
+}
+
+function buildCorrelatedLogIndex(
+  logs: TelemetryLog[],
+): {
+  bySpanKey: Map<string, string[]>
+  byTraceId: Map<string, string[]>
+} {
+  const bySpanKey = new Map<string, string[]>()
+  const byTraceId = new Map<string, string[]>()
+
+  for (const log of logs) {
+    const refId = logRefId(log)
+
+    if (log.traceId && !log.spanId) {
+      const traceRefs = byTraceId.get(log.traceId) ?? []
+      if (traceRefs.length < MAX_CORRELATED_LOGS_PER_SPAN) {
+        traceRefs.push(refId)
+      }
+      byTraceId.set(log.traceId, traceRefs)
+    }
+
+    if (log.traceId && log.spanId) {
+      const spanKey = `${log.traceId}:${log.spanId}`
+      const spanRefs = bySpanKey.get(spanKey) ?? []
+      if (spanRefs.length < MAX_CORRELATED_LOGS_PER_SPAN) {
+        spanRefs.push(refId)
+      }
+      bySpanKey.set(spanKey, spanRefs)
+    }
+  }
+
+  return { bySpanKey, byTraceId }
+}
+
+function buildTraceSpan(
+  span: TelemetrySpan,
+  rootStartTimeMs: number,
+  rootDurationMs: number,
+  correlatedLogs: { bySpanKey: Map<string, string[]>; byTraceId: Map<string, string[]> },
+): CuratedTraceSpan {
   const offsetMs = span.startTimeMs - rootStartTimeMs
   const widthPct = rootDurationMs > 0 ? (span.durationMs / rootDurationMs) * 100 : 0
+  const spanKey = `${span.traceId}:${span.spanId}`
+  const exactRefs = correlatedLogs.bySpanKey.get(spanKey) ?? []
+  const fallbackRefs = exactRefs.length > 0 ? [] : (correlatedLogs.byTraceId.get(span.traceId) ?? [])
 
   return {
     spanId: span.spanId,
@@ -131,17 +177,21 @@ function buildTraceSpan(span: TelemetrySpan, rootStartTimeMs: number, rootDurati
     status: classifySpanStatus(span.httpStatusCode, span.spanStatusCode, span.durationMs),
     peerService: span.peerService,
     attributes: span.attributes,
-    correlatedLogRefIds: [], // placeholder — cross-surface correlation deferred
+    correlatedLogRefIds: (exactRefs.length > 0 ? exactRefs : fallbackRefs).slice(0, MAX_CORRELATED_LOGS_PER_SPAN),
   }
 }
 
-function buildGroupedTrace(traceId: string, spans: TelemetrySpan[]): CuratedGroupedTrace {
+function buildGroupedTrace(
+  traceId: string,
+  spans: TelemetrySpan[],
+  correlatedLogs: { bySpanKey: Map<string, string[]>; byTraceId: Map<string, string[]> },
+): CuratedGroupedTrace {
   const root = findRootSpan(spans)
   const rootDurationMs = root.durationMs
   const rootStartTimeMs = root.startTimeMs
 
   const traceSpans: CuratedTraceSpan[] = spans.map((s) =>
-    buildTraceSpan(s, rootStartTimeMs, rootDurationMs),
+    buildTraceSpan(s, rootStartTimeMs, rootDurationMs, correlatedLogs),
   )
 
   return {
@@ -167,7 +217,11 @@ export async function buildTraceSurface(
   // ── Observed traces ──────────────────────────────────────────────────
 
   const filter = buildIncidentQueryFilter(incident.telemetryScope)
-  const allSpans = await telemetryStore.querySpans(filter)
+  const [allSpans, allLogs] = await Promise.all([
+    telemetryStore.querySpans(filter),
+    telemetryStore.queryLogs(filter),
+  ])
+  const correlatedLogs = buildCorrelatedLogIndex(allLogs)
 
   // Filter to incident-bound spans only
   const membershipSet = new Set(incident.spanMembership)
@@ -179,7 +233,7 @@ export async function buildTraceSurface(
   const observedGroups = groupSpansByTrace(incidentSpans)
   let observedTraces: CuratedGroupedTrace[] = []
   for (const [traceId, spans] of observedGroups) {
-    observedTraces.push(buildGroupedTrace(traceId, spans))
+    observedTraces.push(buildGroupedTrace(traceId, spans, correlatedLogs))
   }
 
   // Sort by status severity (error first, then slow, then ok),
@@ -226,7 +280,7 @@ export async function buildTraceSurface(
   const baselineGroups = groupSpansByTrace(baselineResult.spans)
   const expectedTraces: CuratedGroupedTrace[] = []
   for (const [traceId, spans] of baselineGroups) {
-    expectedTraces.push(buildGroupedTrace(traceId, spans))
+    expectedTraces.push(buildGroupedTrace(traceId, spans, correlatedLogs))
   }
 
   // ── Build EvidenceRefs ───────────────────────────────────────────────
