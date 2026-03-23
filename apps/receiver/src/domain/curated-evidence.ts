@@ -299,7 +299,7 @@ function buildProofCards(
         label: card.label,
         status: ref?.status ?? 'pending',
         summary: card.summary,
-        targetSurface: resolveProofCardSurface(card.id, ref?.targetSurface),
+        targetSurface: resolveProofCardSurface(card.id),
         evidenceRefs: ref?.evidenceRefs ?? [],
       }
     })
@@ -314,7 +314,7 @@ function buildProofCards(
       label: defaultProofCardLabel(cardId),
       status: ref?.status ?? 'pending',
       summary: defaultProofCardSummary(cardId, ref?.status ?? 'pending'),
-      targetSurface: resolveProofCardSurface(cardId, ref?.targetSurface),
+      targetSurface: resolveProofCardSurface(cardId),
       evidenceRefs: ref?.evidenceRefs ?? [],
     }
   })
@@ -362,7 +362,6 @@ function defaultProofCardSurface(cardId: 'trigger' | 'design_gap' | 'recovery'):
 
 function resolveProofCardSurface(
   cardId: 'trigger' | 'design_gap' | 'recovery',
-  candidate: ProofCard['targetSurface'] | undefined,
 ): ProofCard['targetSurface'] {
   switch (cardId) {
     case 'trigger':
