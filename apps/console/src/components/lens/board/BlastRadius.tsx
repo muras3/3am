@@ -13,11 +13,14 @@ function statusModifier(status: BlastRadiusEntry["status"]): string {
 }
 
 export function BlastRadius({ entries, state }: Props) {
+  const visibleEntries = entries.slice(0, 3);
+  const hiddenCount = Math.max(entries.length - visibleEntries.length, 0);
+
   return (
     <div className="lens-board-card">
       <div className="lens-board-card-title">Blast Radius</div>
       <div className="lens-board-blast-rows">
-        {entries.length > 0 ? entries.map((entry, i) => (
+        {entries.length > 0 ? visibleEntries.map((entry, i) => (
           <div key={i} className="lens-board-blast-row">
             <span
               className={`lens-board-health-dot lens-board-health-dot-${statusModifier(entry.status)}`}
@@ -38,6 +41,18 @@ export function BlastRadius({ entries, state }: Props) {
           <div className="lens-board-empty-block">{sectionFallback(state, "blastRadius")}</div>
         )}
       </div>
+      {hiddenCount > 0 ? (
+        <details className="lens-board-inline-details">
+          <summary>{hiddenCount} more impacted path{hiddenCount === 1 ? "" : "s"}</summary>
+          <div className="lens-board-inline-details-body lens-board-compact-list">
+            {entries.slice(visibleEntries.length).map((entry, index) => (
+              <div key={`${entry.target}-${index}`}>
+                {entry.target} · {entry.label} · {entry.status}
+              </div>
+            ))}
+          </div>
+        </details>
+      ) : null}
     </div>
   );
 }
