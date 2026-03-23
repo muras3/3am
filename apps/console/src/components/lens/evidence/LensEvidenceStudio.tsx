@@ -36,6 +36,14 @@ export function LensEvidenceStudio({ incidentId }: Props) {
   const evidenceQuery = useQuery(curatedQueries.evidence(incidentId));
   const chatMutation = useMutation(curatedMutations.chat(incidentId));
 
+  // Must be before early returns — React requires consistent hook call order.
+  const evidenceQaQuestion = evidenceQuery.data?.qa.question;
+  useEffect(() => {
+    if (evidenceQaQuestion != null) {
+      setQueryDraft(search.query ?? evidenceQaQuestion);
+    }
+  }, [evidenceQaQuestion, search.query]);
+
   if (incidentQuery.isLoading || evidenceQuery.isLoading) {
     return (
       <div className="lens-ev-loading" role="status">
@@ -54,10 +62,6 @@ export function LensEvidenceStudio({ incidentId }: Props) {
 
   const incident = incidentQuery.data;
   const evidence = evidenceQuery.data;
-
-  useEffect(() => {
-    setQueryDraft(search.query ?? evidence.qa.question);
-  }, [evidence.qa.question, search.query]);
 
   function handleSubmitQuestion(question: string) {
     setSubmitError(undefined);
