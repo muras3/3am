@@ -272,6 +272,7 @@ describe("LensTracesView — span detail content", () => {
               name: "GET /health",
               durationMs: 10,
               status: "ok" as const,
+              attributes: {},
             },
           ],
         },
