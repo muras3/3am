@@ -200,4 +200,74 @@ test.describe("L2 Evidence Studio — interactions", () => {
     const primaryNote = page.locator(".lens-ev-side-note.lens-ev-side-note-primary");
     await expect(primaryNote).toBeVisible({ timeout: 5_000 });
   });
+
+  test("tabs are clickable after L1→L2 zoom transition (occlusion regression)", async ({ page }) => {
+    // Navigate to L1 (Incident Board) via helper — skip if no diagnosed incident
+    let incidentId: string;
+    try {
+      incidentId = await gotoFirstIncident(page);
+    } catch {
+      test.skip(true, "No diagnosed incident available");
+      return;
+    }
+
+    // Wait for L1 content and the "Open Evidence Studio" button
+    const openStudioBtn = page.locator('button:has-text("Open Evidence Studio")');
+    try {
+      await openStudioBtn.waitFor({ state: "visible", timeout: 15_000 });
+    } catch {
+      test.skip(true, "Open Evidence Studio button not visible (diagnosis may be pending)");
+      return;
+    }
+
+    // Click to zoom from L1 → L2
+    await openStudioBtn.click();
+
+    // Wait for L2 to become active with Evidence Studio rendered
+    await page.waitForSelector("section.level.active .lens-ev-studio", { timeout: 15_000 });
+
+    // Wait for the 0.55s CSS zoom transition to fully complete
+    await page.waitForTimeout(700);
+
+    // Verify elementFromPoint at the tab coordinate does NOT return L1 content
+    const metricsTab = page.locator('[role="tab"][id="ev-tab-metrics"]');
+    await metricsTab.waitFor({ state: "visible", timeout: 5_000 });
+
+    const box = await metricsTab.boundingBox();
+    expect(box).toBeTruthy();
+    if (!box) return;
+
+    const centerX = box.x + box.width / 2;
+    const centerY = box.y + box.height / 2;
+
+    const hitElement = await page.evaluate(
+      ({ x, y }) => {
+        const el = document.elementFromPoint(x, y);
+        return {
+          tagName: el?.tagName ?? "",
+          id: el?.id ?? "",
+          className: el?.className ?? "",
+        };
+      },
+      { x: centerX, y: centerY },
+    );
+
+    // Must NOT hit L1 content (the original bug returned <strong>Why:</strong> from lens-board)
+    expect(hitElement.className).not.toMatch(/lens-board/);
+    // Must hit the tab or its child
+    expect(hitElement.id === "ev-tab-metrics" || hitElement.className.includes("lens-ev-tab")).toBe(
+      true,
+    );
+
+    // Actually click the tab — the real user action
+    await metricsTab.click();
+    await expect(metricsTab).toHaveAttribute("aria-selected", "true");
+    await expect(page).toHaveURL(/[?&]tab=metrics/);
+
+    // Verify logs tab is also clickable
+    const logsTab = page.locator('[role="tab"][id="ev-tab-logs"]');
+    await logsTab.click();
+    await expect(logsTab).toHaveAttribute("aria-selected", "true");
+    await expect(page).toHaveURL(/[?&]tab=logs/);
+  });
 });
