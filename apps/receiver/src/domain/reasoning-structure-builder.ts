@@ -142,7 +142,7 @@ function buildProofRefs(
       targetSurface: "logs",
       evidenceRefs: retryLogs.slice(0, 3).map((l) => ({
         kind: "log" as const,
-        id: `${l.service}:${l.timestamp}`,
+        id: `${l.service}:${l.timestamp}:${l.bodyHash}`,
       })),
       status: "confirmed",
     });
@@ -164,7 +164,7 @@ function buildProofRefs(
     targetSurface: "logs",
     evidenceRefs: recoveryLogs.slice(0, 3).map((l) => ({
       kind: "log" as const,
-      id: `${l.service}:${l.timestamp}`,
+      id: `${l.service}:${l.timestamp}:${l.bodyHash}`,
     })),
     status: recoveryLogs.length > 0 ? "confirmed" : "pending",
   });
