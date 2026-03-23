@@ -136,5 +136,22 @@ export default async function globalSetup(): Promise<void> {
   };
   writeFileSync(E2E_STORAGE_STATE, JSON.stringify(storageState), "utf8");
 
+  // Warm up: fetch the first incident's evidence endpoint so the receiver
+  // pre-computes curated evidence (baseline selection, reasoning structure, etc.)
+  // before tests start. Without this, the first test pays the cold-start cost
+  // and times out in CI.
+  const listRes = await fetch(`${RECEIVER_URL}/api/incidents?limit=1`, {
+    headers: { Authorization: `Bearer ${TOKEN}` },
+  });
+  if (listRes.ok) {
+    const { items } = (await listRes.json()) as { items?: Array<{ incidentId: string }> };
+    const firstId = items?.[0]?.incidentId;
+    if (firstId) {
+      await fetch(`${RECEIVER_URL}/api/incidents/${encodeURIComponent(firstId)}/evidence`, {
+        headers: { Authorization: `Bearer ${TOKEN}` },
+      }).catch(() => {/* warm-up failure is non-fatal */});
+    }
+  }
+
   console.log("[E2E] Receiver ready and seeded with 5 incidents");
 }
