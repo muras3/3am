@@ -9,6 +9,9 @@ interface Props {
  * Shows health dot + incident ID (mono) + em-dash + headline + action summary.
  */
 export function ContextBar({ incident }: Props) {
+  const headline = incident.headline.trim() || "Evidence Studio is waiting for a diagnosis narrative.";
+  const actionText = incident.action.text.trim();
+
   return (
     <div className="lens-ev-context-bar" role="region" aria-label="Incident context">
       <span
@@ -17,10 +20,10 @@ export function ContextBar({ incident }: Props) {
       />
       <span className="lens-ev-ctx-id">{incident.incidentId}</span>
       <span className="lens-ev-ctx-sep" aria-hidden="true">&mdash;</span>
-      <span className="lens-ev-ctx-headline">{incident.headline}</span>
-      {incident.action.text && (
+      <span className="lens-ev-ctx-headline">{headline}</span>
+      {actionText && (
         <span className="lens-ev-ctx-action">
-          Action: {incident.action.text}
+          Action: {actionText}
         </span>
       )}
     </div>

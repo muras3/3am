@@ -100,11 +100,18 @@ function ClaimCluster({ claim }: ClaimClusterProps) {
 // ── Main component ────────────────────────────────────────────
 interface LensLogsViewProps {
   surface: LogsSurface;
+  evidenceDensity?: "rich" | "sparse" | "empty";
 }
 
-export function LensLogsView({ surface }: LensLogsViewProps) {
+export function LensLogsView({ surface, evidenceDensity = "rich" }: LensLogsViewProps) {
   if (surface.claims.length === 0) {
-    return <div className="lens-logs-empty">No log claims for this incident.</div>;
+    return (
+      <div className="lens-logs-empty">
+        {evidenceDensity === "empty"
+          ? "Log lane is reserved. Deterministic clusters and absence evidence will appear here when logs arrive."
+          : "Log evidence is currently sparse. The box remains available for correlated logs and absence evidence."}
+      </div>
+    );
   }
 
   return (

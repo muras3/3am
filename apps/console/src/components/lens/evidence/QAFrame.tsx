@@ -20,9 +20,12 @@ function EvidenceRefLink({ ref: evidenceRef }: { ref: EvidenceRef }) {
       log_cluster: "logs",
     };
     const tab = tabMap[evidenceRef.kind] ?? search.tab;
+    const targetId = evidenceRef.kind === "span"
+      ? evidenceRef.id.split(":").at(-1) ?? evidenceRef.id
+      : evidenceRef.id;
     void navigate({
       to: "/",
-      search: { ...search, tab, targetId: evidenceRef.id },
+      search: { ...search, tab, targetId },
       replace: true,
     });
 
@@ -31,7 +34,7 @@ function EvidenceRefLink({ ref: evidenceRef }: { ref: EvidenceRef }) {
       document.querySelectorAll(".proof-highlight").forEach((el) => {
         el.classList.remove("proof-highlight");
       });
-      const targets = document.querySelectorAll(`[data-target-id="${evidenceRef.id}"]`);
+      const targets = document.querySelectorAll(`[data-target-id="${targetId}"]`);
       targets.forEach((el) => el.classList.add("proof-highlight"));
       const first = targets[0];
       if (first) first.scrollIntoView({ behavior: "smooth", block: "nearest" });
@@ -66,13 +69,30 @@ function EvidenceRefLink({ ref: evidenceRef }: { ref: EvidenceRef }) {
  */
 export function QAFrame({ qa, diagnosisState }: Props) {
   if (!qa) {
+    const question = diagnosisState === "unavailable"
+      ? "Why is this incident degraded?"
+      : "What evidence is available for this incident?";
     const message = diagnosisState === "ready"
       ? "Narrative is being generated. Evidence surfaces are available below."
-      : "Diagnosis not available yet. Evidence is being collected.";
+      : diagnosisState === "unavailable"
+        ? "Diagnosis is unavailable. Use the deterministic traces, metrics, and logs below."
+        : "Diagnosis not available yet. Evidence is being collected.";
     return (
       <div className="lens-ev-qa-frame lens-ev-qa-empty" role="region" aria-label="Question and answer">
-        <div className="lens-ev-qa-empty-msg">
-          {message}
+        <div className="lens-ev-qa-question-row">
+          <span className="lens-ev-qa-icon" aria-hidden="true">?</span>
+          <span className="lens-ev-qa-question-text">{question}</span>
+        </div>
+        <div className="lens-ev-qa-answer lens-ev-qa-answer-placeholder">
+          <strong>Answer:</strong> {message}
+          <div className="lens-ev-qa-evidence-note">
+            The Evidence Studio surfaces remain available below even without a narrative answer.
+          </div>
+        </div>
+        <div className="lens-ev-qa-followups" role="group" aria-label="Follow-up questions">
+          <span className="lens-ev-qa-chip lens-ev-qa-chip-placeholder">Open traces</span>
+          <span className="lens-ev-qa-chip lens-ev-qa-chip-placeholder">Check metrics drift</span>
+          <span className="lens-ev-qa-chip lens-ev-qa-chip-placeholder">Inspect logs</span>
         </div>
       </div>
     );
