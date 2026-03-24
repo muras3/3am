@@ -8,6 +8,11 @@ ALLOW_INSECURE_DEV_MODE = "false"
 DIAGNOSIS_MAX_WAIT_MS = "0"
 DIAGNOSIS_GENERATION_THRESHOLD = "50"
 
+[assets]
+directory = "../console/dist"
+not_found_handling = "single-page-application"
+run_worker_first = ["/api/*", "/v1/*", "/healthz"]
+
 [[d1_databases]]
 binding = "DB"
 database_name = "3amoncall-db"
