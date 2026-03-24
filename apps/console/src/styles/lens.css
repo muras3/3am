@@ -1741,16 +1741,103 @@
 }
 
 .lens-ev-qa-answer {
-  padding: 10px 14px;
+  padding: 14px 16px;
   border-radius: var(--radius-sm);
-  background: var(--teal-soft);
-  border: 1px solid rgba(13,115,119,0.2);
+  background:
+    linear-gradient(180deg, rgba(249, 251, 251, 0.98), rgba(241, 247, 246, 0.98));
+  border: 1px solid rgba(13,115,119,0.18);
   font-size: var(--fs-sm);
   color: var(--ink-2);
   line-height: var(--lh-read);
   display: flex;
   flex-direction: column;
+  gap: 10px;
+  box-shadow: 0 10px 24px rgba(20, 41, 39, 0.06);
+}
+
+.lens-ev-qa-answer-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.lens-ev-qa-answer-note {
+  font-size: var(--fs-xs);
+  color: var(--ink-3);
+  max-width: 70ch;
+}
+
+.lens-ev-qa-segments {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.lens-ev-qa-segment {
+  display: flex;
+  flex-direction: column;
   gap: 6px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid rgba(23, 44, 43, 0.08);
+}
+
+.lens-ev-qa-segment:last-child {
+  padding-bottom: 0;
+  border-bottom: none;
+}
+
+.lens-ev-qa-segment-line {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.lens-ev-qa-segment-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 78px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  border: 1px solid transparent;
+  flex-shrink: 0;
+}
+
+.lens-ev-qa-segment-badge-fact {
+  background: rgba(13, 115, 119, 0.1);
+  color: var(--teal);
+  border-color: rgba(13, 115, 119, 0.18);
+}
+
+.lens-ev-qa-segment-badge-inference {
+  background: rgba(196, 140, 34, 0.12);
+  color: #8a5b00;
+  border-color: rgba(196, 140, 34, 0.22);
+}
+
+.lens-ev-qa-segment-badge-unknown {
+  background: rgba(93, 105, 110, 0.1);
+  color: var(--ink-3);
+  border-color: rgba(93, 105, 110, 0.18);
+}
+
+.lens-ev-qa-segment-text {
+  color: var(--ink);
+  flex: 1;
+}
+
+.lens-ev-qa-segment-unknown .lens-ev-qa-segment-text {
+  color: var(--ink-2);
+}
+
+.lens-ev-qa-segment-inference .lens-ev-qa-segment-text {
+  color: #5e490f;
 }
 
 .lens-ev-qa-refs {
@@ -1824,6 +1911,27 @@
 .lens-ev-qa-chip:focus-visible {
   outline: 2px solid var(--teal);
   outline-offset: 2px;
+}
+
+@media (max-width: 720px) {
+  .lens-ev-qa-question-row {
+    flex-wrap: wrap;
+  }
+
+  .lens-ev-qa-time {
+    order: 3;
+    width: 100%;
+  }
+
+  .lens-ev-qa-segment-line {
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .lens-ev-qa-segment-badge {
+    min-width: 0;
+    width: fit-content;
+  }
 }
 
 /* ── Tabs ──────────────────────────────────────────────────────── */

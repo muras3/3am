@@ -1,8 +1,6 @@
 import { test, expect, type Page } from "@playwright/test";
 import { gotoFirstIncident } from "../helpers.js";
 
-const MOCK_ANTHROPIC_REPLY = "Disable the Stripe retry loop immediately to stop the cascade.";
-
 /**
  * Try to reach L2 Evidence Studio. Returns the incidentId on success,
  * or undefined when the environment cannot render L2 (missing diagnosis,
@@ -21,10 +19,10 @@ async function tryGotoEvidenceStudio(page: Page): Promise<string | undefined> {
   await page.goto(`/?incidentId=${incidentId}&level=2&tab=traces`);
 
   try {
-    await page.waitForFunction(
-      "document.querySelector('.lens-ev-studio') || document.querySelector('.lens-ev-error')",
-      { timeout: 15_000 },
-    );
+    await Promise.race([
+      page.locator(".lens-ev-studio").waitFor({ state: "visible", timeout: 15_000 }),
+      page.locator(".lens-ev-error").waitFor({ state: "visible", timeout: 15_000 }),
+    ]);
   } catch {
     // Dump page state for diagnosis
     const html = await page.content();
@@ -173,7 +171,8 @@ test.describe("L2 Evidence Studio — interactions", () => {
 
     const answerEl = page.locator(".lens-ev-qa-answer-live");
     await answerEl.waitFor({ state: "visible", timeout: 15_000 });
-    await expect(answerEl).toContainText(MOCK_ANTHROPIC_REPLY);
+    await expect(answerEl).toContainText(/Grounded answer|No answer/);
+    await expect(answerEl.locator(".lens-ev-qa-segment, .lens-ev-qa-no-answer").first()).toBeVisible();
   });
 
   test("follow-up chip triggers submission", async ({ page }) => {
@@ -186,7 +185,7 @@ test.describe("L2 Evidence Studio — interactions", () => {
 
     const answerEl = page.locator(".lens-ev-qa-answer-live");
     await answerEl.waitFor({ state: "visible", timeout: 15_000 });
-    await expect(answerEl).toContainText(MOCK_ANTHROPIC_REPLY);
+    await expect(answerEl).toContainText(/Grounded answer|No answer/);
     expect(chipText.trim().length).toBeGreaterThan(0);
   });
 

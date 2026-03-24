@@ -6,7 +6,7 @@
  */
 
 import { describe, expect, it, vi } from 'vitest'
-import type { TelemetryStoreDriver } from '../../telemetry/interface.js'
+import type { TelemetryLog, TelemetryMetric, TelemetrySpan, TelemetryStoreDriver } from '../../telemetry/interface.js'
 import type { Incident } from '../../storage/interface.js'
 import type { IncidentPacket, DiagnosisResult } from '@3amoncall/core'
 import { EvidenceQueryResponseSchema } from '@3amoncall/core/schemas/curated-evidence'
@@ -25,10 +25,49 @@ import { buildEvidenceQueryAnswer } from '../../domain/evidence-query.js'
 // ── Fixture factories ───────────────────────────────────────────────────
 
 function makeMockStore(): TelemetryStoreDriver {
+  const spans: TelemetrySpan[] = [{
+    traceId: 'trace-1',
+    spanId: 'span-1',
+    parentSpanId: undefined,
+    serviceName: 'web',
+    environment: 'production',
+    spanName: 'POST /checkout',
+    httpRoute: '/api/checkout',
+    httpStatusCode: 504,
+    spanStatusCode: 2,
+    durationMs: 1200,
+    startTimeMs: 1700000001000,
+    exceptionCount: 1,
+    attributes: { 'http.status_code': 504 },
+    ingestedAt: 1700000002000,
+  }]
+  const metrics: TelemetryMetric[] = [{
+    service: 'web',
+    environment: 'production',
+    name: 'checkout.error_rate',
+    startTimeMs: 1700000000000,
+    summary: { value: 0.85, p95: 1200 },
+    ingestedAt: 1700000002000,
+  }]
+  const logs: TelemetryLog[] = [{
+    service: 'web',
+    environment: 'production',
+    timestamp: '2024-01-01T00:01:00Z',
+    startTimeMs: 1700000000000,
+    severity: 'ERROR',
+    severityNumber: 17,
+    body: 'Stripe 429',
+    bodyHash: 'stripe429hash0001',
+    attributes: {},
+    traceId: 'trace-1',
+    spanId: 'span-1',
+    ingestedAt: 1700000002000,
+  }]
+
   return {
-    querySpans: vi.fn().mockResolvedValue([]),
-    queryMetrics: vi.fn().mockResolvedValue([]),
-    queryLogs: vi.fn().mockResolvedValue([]),
+    querySpans: vi.fn().mockResolvedValue(spans),
+    queryMetrics: vi.fn().mockResolvedValue(metrics),
+    queryLogs: vi.fn().mockResolvedValue(logs),
     ingestSpans: vi.fn().mockResolvedValue(undefined),
     ingestMetrics: vi.fn().mockResolvedValue(undefined),
     ingestLogs: vi.fn().mockResolvedValue(undefined),
@@ -145,6 +184,7 @@ describe('buildEvidenceQueryAnswer', () => {
 
     const result = await buildEvidenceQueryAnswer(incident, store, 'What happened?', false)
 
+    expect(result.status).toBe('no_answer')
     expect(result.noAnswerReason).toBeTruthy()
     expect(result.noAnswerReason).toContain('No diagnosis has been triggered')
   })
@@ -157,6 +197,7 @@ describe('buildEvidenceQueryAnswer', () => {
 
     const result = await buildEvidenceQueryAnswer(incident, store, 'What happened?', false)
 
+    expect(result.status).toBe('no_answer')
     expect(result.noAnswerReason).toBeTruthy()
     expect(result.noAnswerReason).toContain('Diagnosis is still running')
   })
@@ -169,11 +210,12 @@ describe('buildEvidenceQueryAnswer', () => {
 
     const result = await buildEvidenceQueryAnswer(incident, store, 'What happened?', false)
 
-    expect(result.answer.length).toBeGreaterThan(0)
+    expect(result.status).toBe('answered')
+    expect(result.segments.length).toBeGreaterThan(0)
     expect(result.noAnswerReason).toBeUndefined()
   })
 
-  it('answer includes what_happened summary when diagnosis available', async () => {
+  it('includes diagnosis-backed inference when diagnosis is available', async () => {
     const incident = makeIncident({
       diagnosisResult: makeDiagnosisResult(),
     })
@@ -181,29 +223,18 @@ describe('buildEvidenceQueryAnswer', () => {
 
     const result = await buildEvidenceQueryAnswer(incident, store, 'What happened?', false)
 
-    expect(result.answer).toContain('Stripe API rate limited')
+    expect(result.segments.some((segment) => segment.kind === 'inference')).toBe(true)
+    expect(result.segments.some((segment) => segment.text.includes('Flash sale traffic exceeded Stripe API quota'))).toBe(true)
   })
 
-  it('confidence is unavailable/0 when no diagnosis', async () => {
-    const incident = makeIncident()
-    const store = makeMockStore()
+  it('every segment carries at least one evidence ref', async () => {
+    const incident = makeIncident({ diagnosisResult: makeDiagnosisResult() })
+    const result = await buildEvidenceQueryAnswer(incident, makeMockStore(), 'Why is checkout failing?', false)
 
-    const result = await buildEvidenceQueryAnswer(incident, store, 'What happened?', false)
-
-    expect(result.confidence.label).toBe('unavailable')
-    expect(result.confidence.value).toBe(0)
-  })
-
-  it('confidence is medium/0.5 when diagnosis without narrative', async () => {
-    const incident = makeIncident({
-      diagnosisResult: makeDiagnosisResult(),
-    })
-    const store = makeMockStore()
-
-    const result = await buildEvidenceQueryAnswer(incident, store, 'What happened?', false)
-
-    expect(result.confidence.label).toBe('medium')
-    expect(result.confidence.value).toBe(0.5)
+    expect(result.segments.length).toBeGreaterThan(0)
+    for (const segment of result.segments) {
+      expect(segment.evidenceRefs.length).toBeGreaterThan(0)
+    }
   })
 
   it('followups are always populated', async () => {

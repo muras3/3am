@@ -392,6 +392,28 @@ function buildQaBlock(
   return {
     question: qa.question,
     answer: qa.answer,
+    status: qa.noAnswerReason ? 'no_answer' : 'answered',
+    ...(qa.evidenceBindings.length > 0
+      ? {
+          segments: qa.evidenceBindings.map((binding, index) => ({
+            id: `qa_seg_${index + 1}`,
+            kind: 'fact' as const,
+            text: binding.claim,
+            evidenceRefs: binding.evidenceRefs,
+          })),
+        }
+      : qa.noAnswerReason
+        ? {
+            segments: [{
+              id: 'qa_seg_unknown_1',
+              kind: 'unknown' as const,
+              text: qa.noAnswerReason,
+              evidenceRefs: qa.answerEvidenceRefs.length > 0
+                ? qa.answerEvidenceRefs
+                : buildFallbackQaRefs(incident),
+            }],
+          }
+        : {}),
     evidenceRefs: qa.answerEvidenceRefs,
     evidenceSummary: summarizeEvidenceRefs(qa.answerEvidenceRefs),
     followups: qa.followups,
@@ -426,6 +448,13 @@ function buildFallbackQa(
   return {
     question,
     answer,
+    status: 'no_answer',
+    segments: [{
+      id: 'qa_fallback_unknown_1',
+      kind: 'unknown',
+      text: noAnswerReason,
+      evidenceRefs: buildFallbackQaRefs(incident),
+    }],
     evidenceRefs: [],
     evidenceSummary: { traces: 0, metrics: 0, logs: 0 },
     followups: [
@@ -435,6 +464,25 @@ function buildFallbackQa(
     ],
     noAnswerReason,
   }
+}
+
+function buildFallbackQaRefs(incident: Incident): EvidenceRef[] {
+  const trace = incident.packet.evidence.representativeTraces[0]
+  if (trace) {
+    return [{ kind: 'span', id: `${trace.traceId}:${trace.spanId}` }]
+  }
+
+  const metric = incident.packet.evidence.changedMetrics[0]
+  if (metric) {
+    return [{ kind: 'metric', id: metric.name }]
+  }
+
+  const log = incident.packet.evidence.relevantLogs[0]
+  if (log) {
+    return [{ kind: 'log', id: `${log.service}:${log.timestamp}` }]
+  }
+
+  return [{ kind: 'log_cluster', id: `${incident.incidentId}:pending` }]
 }
 
 function buildSideNotes(

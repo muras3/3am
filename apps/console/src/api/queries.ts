@@ -5,6 +5,7 @@ import type {
   RuntimeMapResponse,
   ExtendedIncident,
   EvidenceResponse,
+  EvidenceQueryResponse,
 } from "./curated-types.js";
 
 // ── Fixture mode ──────────────────────────────────────────────
@@ -67,25 +68,16 @@ export const curatedQueries = {
     }),
 };
 
-export interface ChatTurn {
-  role: "user" | "assistant";
-  content: string;
-}
-
-export interface ChatRequest {
-  message: string;
-  history: ChatTurn[];
-}
-
-export interface ChatResponse {
-  reply: string;
+export interface EvidenceQueryRequest {
+  question: string;
+  isFollowup?: boolean;
 }
 
 export const curatedMutations = {
-  chat: (id: string) =>
+  evidenceQuery: (id: string) =>
     mutationOptions({
-      mutationKey: ["curated", "incidents", id, "chat"],
-      mutationFn: (body: ChatRequest) =>
-        apiFetchPost<ChatResponse>(`/api/chat/${encodeIncidentId(id)}`, body),
+      mutationKey: ["curated", "incidents", id, "evidence-query"],
+      mutationFn: (body: EvidenceQueryRequest) =>
+        apiFetchPost<EvidenceQueryResponse>(`/api/incidents/${encodeIncidentId(id)}/evidence/query`, body),
     }),
 };

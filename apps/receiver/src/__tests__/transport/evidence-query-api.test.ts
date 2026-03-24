@@ -159,7 +159,7 @@ describe('POST /api/incidents/:id/evidence/query', () => {
     expect(res.status).toBe(200)
     const body = (await res.json()) as Record<string, unknown>
     expect(body['question']).toBe('What happened?')
-    expect(body['answer']).toBeTruthy()
+    expect(body['status']).toBeTruthy()
   })
 
   it('returns 400 when question is missing', async () => {
@@ -217,8 +217,8 @@ describe('POST /api/incidents/:id/evidence/query', () => {
     const body = await res.json()
     const parsed = EvidenceQueryResponseSchema.strict().parse(body)
     expect(parsed.question).toBe('Why are payments failing?')
-    expect(parsed.answer.length).toBeGreaterThan(0)
-    expect(parsed.confidence).toBeDefined()
+    expect(parsed.status).toBeTruthy()
+    expect(Array.isArray(parsed.segments)).toBe(true)
     expect(parsed.evidenceSummary).toBeDefined()
     expect(parsed.followups).toBeDefined()
   })

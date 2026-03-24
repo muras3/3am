@@ -38,6 +38,30 @@ export const evidenceReady: EvidenceResponse = {
       "The StripeClient makes one API call per checkout transaction with no batching, causing all 189 req/s " +
       "to hit Stripe's 100 req/s limit. The lack of retry/backoff logic means every 429 cascades as a 500 " +
       "to the checkout endpoint.",
+    status: "answered",
+    segments: [
+      {
+        id: "qa-ready-1",
+        kind: "fact",
+        text: "Stripe API is returning 429 responses on the checkout path since 14:23:15 UTC.",
+        evidenceRefs: [{ kind: "span", id: "a3f8c91d:stripe-charge-001" }],
+      },
+      {
+        id: "qa-ready-2",
+        kind: "fact",
+        text: "The strongest metric drift sits in the trigger metric group for Stripe API errors and rate-limit exhaustion.",
+        evidenceRefs: [{ kind: "metric_group", id: "hyp-trigger" }],
+      },
+      {
+        id: "qa-ready-3",
+        kind: "inference",
+        text: "That evidence matches the existing diagnosis that the one-call-per-checkout Stripe pattern is overrunning the quota and cascading into checkout failures.",
+        evidenceRefs: [
+          { kind: "span", id: "a3f8c91d:stripe-charge-001" },
+          { kind: "metric_group", id: "hyp-trigger" },
+        ],
+      },
+    ],
     evidenceRefs: [
       { kind: "span", id: "a3f8c91d:stripe-charge-001" },
       { kind: "metric_group", id: "hyp-trigger" },
@@ -255,6 +279,15 @@ export const evidencePending: EvidenceResponse = {
   qa: {
     question: "What evidence is available for payment-service /checkout?",
     answer: "You can already review the first failing checkout trace, its Stripe call, and the related log burst. That is enough to confirm the failing path before the narrative diagnosis completes.",
+    status: "no_answer",
+    segments: [
+      {
+        id: "qa-pending-1",
+        kind: "unknown",
+        text: "Diagnosis is still running, so the system is withholding a grounded conclusion and only surfacing the first failing path.",
+        evidenceRefs: [{ kind: "span", id: "pend-trace-001:payment-auth-001" }],
+      },
+    ],
     evidenceRefs: [],
     evidenceSummary: { traces: 3, metrics: 0, logs: 8 },
     followups: [
@@ -357,6 +390,15 @@ export const evidenceSparse: EvidenceResponse = {
   qa: {
     question: "What evidence is available for payment-service /checkout?",
     answer: "The incident already has one confirmed trigger signal in traces. Use the evidence below as a directional read, not a complete explanation.",
+    status: "no_answer",
+    segments: [
+      {
+        id: "qa-sparse-1",
+        kind: "unknown",
+        text: "The diagnosis is still sparse, so this remains a directional read rather than a grounded conclusion.",
+        evidenceRefs: [{ kind: "span", id: "a3f8c91d:stripe-charge-001" }],
+      },
+    ],
     evidenceRefs: [],
     evidenceSummary: { traces: 1, metrics: 0, logs: 0 },
     followups: [

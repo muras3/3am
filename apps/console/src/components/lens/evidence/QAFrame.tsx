@@ -1,7 +1,14 @@
 import type { FormEvent } from "react";
 import { useEffect, useState } from "react";
 import { useNavigate, useSearch } from "@tanstack/react-router";
-import type { QABlock, EvidenceRef, Followup } from "../../../api/curated-types.js";
+import type {
+  QABlock,
+  EvidenceRef,
+  EvidenceQueryRef,
+  EvidenceQueryResponse,
+  EvidenceQuerySegment,
+  Followup,
+} from "../../../api/curated-types.js";
 import type { LensSearchParams } from "../../../routes/__root.js";
 
 interface Props {
@@ -9,18 +16,21 @@ interface Props {
   inputValue: string;
   isSubmitting: boolean;
   submitError?: string;
-  latestReply?: string;
+  latestResponse?: EvidenceQueryResponse;
   onInputChange: (value: string) => void;
-  onSubmitQuestion: (question: string) => void;
+  onSubmitQuestion: (question: string, isFollowup?: boolean) => void;
 }
 
-function evidenceRefTarget(ref: EvidenceRef): { tab: "traces" | "metrics" | "logs"; targetId: string } {
+function evidenceRefTarget(
+  ref: EvidenceRef | EvidenceQueryRef,
+): { tab: "traces" | "metrics" | "logs"; targetId: string } {
   const tabMap: Record<string, "traces" | "metrics" | "logs"> = {
     span: "traces",
     metric: "metrics",
     metric_group: "metrics",
     log: "logs",
     log_cluster: "logs",
+    absence: "logs",
   };
 
   return {
@@ -29,7 +39,7 @@ function evidenceRefTarget(ref: EvidenceRef): { tab: "traces" | "metrics" | "log
   };
 }
 
-function EvidenceRefLink({ ref: evidenceRef }: { ref: EvidenceRef }) {
+function EvidenceRefLink({ ref: evidenceRef }: { ref: EvidenceRef | EvidenceQueryRef }) {
   const navigate = useNavigate();
   const search = useSearch({ from: "__root__" }) as LensSearchParams;
   const { tab, targetId } = evidenceRefTarget(evidenceRef);
@@ -67,6 +77,11 @@ function EvidenceRefLink({ ref: evidenceRef }: { ref: EvidenceRef }) {
   );
 }
 
+function SegmentBadge({ kind }: { kind: EvidenceQuerySegment["kind"] }) {
+  const label = kind === "fact" ? "Fact" : kind === "inference" ? "Inference" : "Unknown";
+  return <span className={`lens-ev-qa-segment-badge lens-ev-qa-segment-badge-${kind}`}>{label}</span>;
+}
+
 function FollowupChip({
   followup,
   disabled,
@@ -93,27 +108,29 @@ export function QAFrame({
   inputValue,
   isSubmitting,
   submitError,
-  latestReply,
+  latestResponse,
   onInputChange,
   onSubmitQuestion,
 }: Props) {
   const [draft, setDraft] = useState(inputValue);
+  const latestSegments = latestResponse?.segments ?? [];
+  const initialSegments = qa.segments ?? [];
+  const activeFollowups = latestResponse?.followups ?? qa.followups;
+  const summary = latestResponse?.evidenceSummary ?? qa.evidenceSummary;
 
   useEffect(() => {
     setDraft(inputValue);
   }, [inputValue]);
-
-  const { traces, metrics, logs } = qa.evidenceSummary;
   const evidenceSummaryText = [
-    traces > 0 ? `${traces} traces` : null,
-    metrics > 0 ? `${metrics} metrics` : null,
-    logs > 0 ? `${logs} logs` : null,
+    summary.traces > 0 ? `${summary.traces} traces` : null,
+    summary.metrics > 0 ? `${summary.metrics} metrics` : null,
+    summary.logs > 0 ? `${summary.logs} logs` : null,
   ].filter(Boolean).join(", ");
 
-  function submit(question: string) {
+  function submit(question: string, isFollowup = false) {
     const trimmed = question.trim();
     if (!trimmed || isSubmitting) return;
-    onSubmitQuestion(trimmed);
+    onSubmitQuestion(trimmed, isFollowup);
   }
 
   function handleSubmit(e: FormEvent<HTMLFormElement>) {
@@ -133,8 +150,8 @@ export function QAFrame({
             setDraft(e.target.value);
             onInputChange(e.target.value);
           }}
-          placeholder="Ask a question about this incident"
-          aria-label="Ask a question about this incident"
+          placeholder="Ask what the evidence can actually support"
+          aria-label="Ask a grounded question about this incident"
           disabled={isSubmitting}
         />
         {evidenceSummaryText && (
@@ -147,7 +164,7 @@ export function QAFrame({
           type="submit"
           disabled={isSubmitting || draft.trim().length === 0}
         >
-          {isSubmitting ? "Asking…" : "Ask"}
+          {isSubmitting ? "Checking…" : "Ask"}
         </button>
       </form>
 
@@ -157,13 +174,64 @@ export function QAFrame({
         </div>
       )}
 
-      {latestReply && (
+      {latestResponse ? (
         <div className="lens-ev-qa-answer lens-ev-qa-answer-live" role="status" aria-live="polite">
-          <strong>Copilot reply:</strong> {latestReply}
-        </div>
-      )}
+          <div className="lens-ev-qa-answer-head">
+            <span className="lens-ev-qa-state-label">
+              {latestResponse.status === "no_answer" ? "No answer" : "Grounded answer"}
+            </span>
+            {latestResponse.noAnswerReason && (
+              <span className="lens-ev-qa-answer-note">{latestResponse.noAnswerReason}</span>
+            )}
+          </div>
 
-      {qa.noAnswerReason ? (
+          {latestSegments.length > 0 ? (
+            <div className="lens-ev-qa-segments" role="article" aria-label="Answer segments">
+              {latestSegments.map((segment) => (
+                <div key={segment.id} className={`lens-ev-qa-segment lens-ev-qa-segment-${segment.kind}`}>
+                  <div className="lens-ev-qa-segment-line">
+                    <SegmentBadge kind={segment.kind} />
+                    <span className="lens-ev-qa-segment-text">{segment.text}</span>
+                  </div>
+                  <div className="lens-ev-qa-refs" aria-label="Evidence references">
+                    {segment.evidenceRefs.map((ref, i) => (
+                      <EvidenceRefLink key={`${ref.kind}-${ref.id}-${i}`} ref={ref} />
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="lens-ev-qa-no-answer">{latestResponse.noAnswerReason}</div>
+          )}
+        </div>
+      ) : initialSegments.length > 0 ? (
+        <div className="lens-ev-qa-answer" role="article">
+          <div className="lens-ev-qa-answer-head">
+            <span className="lens-ev-qa-state-label">
+              {qa.status === "no_answer" ? "No answer" : "Prepared read"}
+            </span>
+            {qa.noAnswerReason && (
+              <span className="lens-ev-qa-answer-note">{qa.noAnswerReason}</span>
+            )}
+          </div>
+          <div className="lens-ev-qa-segments" aria-label="Prepared answer segments">
+            {initialSegments.map((segment) => (
+              <div key={segment.id} className={`lens-ev-qa-segment lens-ev-qa-segment-${segment.kind}`}>
+                <div className="lens-ev-qa-segment-line">
+                  <SegmentBadge kind={segment.kind} />
+                  <span className="lens-ev-qa-segment-text">{segment.text}</span>
+                </div>
+                <div className="lens-ev-qa-refs" aria-label="Evidence references">
+                  {segment.evidenceRefs.map((ref, i) => (
+                    <EvidenceRefLink key={`${ref.kind}-${ref.id}-${i}`} ref={ref} />
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : qa.noAnswerReason ? (
         <div className="lens-ev-qa-answer lens-ev-qa-answer-placeholder">
           <div className="lens-ev-qa-state-label">Current read</div>
           <div>{qa.answer}</div>
@@ -174,33 +242,29 @@ export function QAFrame({
         </div>
       ) : (
         <div className="lens-ev-qa-answer" role="article">
-          <strong>Answer:</strong> {qa.answer}
+          <div className="lens-ev-qa-answer-head">
+            <span className="lens-ev-qa-state-label">Prepared read</span>
+          </div>
+          <div>{qa.answer}</div>
 
           {qa.evidenceRefs.length > 0 && (
             <div className="lens-ev-qa-refs" aria-label="Evidence references">
-              <span className="lens-ev-qa-refs-label">Evidence: </span>
               {qa.evidenceRefs.map((ref, i) => (
                 <EvidenceRefLink key={`${ref.kind}-${ref.id}-${i}`} ref={ref} />
               ))}
             </div>
           )}
-
-          {evidenceSummaryText && (
-            <div className="lens-ev-qa-evidence-note" aria-label="Evidence count">
-              ↓ Evidence below supports this answer ({evidenceSummaryText})
-            </div>
-          )}
         </div>
       )}
 
-      {qa.followups.length > 0 && (
+      {activeFollowups.length > 0 && (
         <div className="lens-ev-qa-followups" role="group" aria-label="Follow-up questions">
-          {qa.followups.map((followup) => (
+          {activeFollowups.map((followup) => (
             <FollowupChip
               key={followup.question}
               followup={followup}
               disabled={isSubmitting}
-              onAsk={submit}
+              onAsk={(question) => submit(question, true)}
             />
           ))}
         </div>

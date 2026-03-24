@@ -20,6 +20,7 @@ import {
   extendedIncidentPending,
   extendedIncidentSparse,
 } from "../__fixtures__/curated/extended-incident.js";
+import type { EvidenceQueryResponse } from "../api/curated-types.js";
 
 let mockSearch: LensSearchParams = {
   level: 2,
@@ -27,6 +28,37 @@ let mockSearch: LensSearchParams = {
   incidentId: "inc_0892",
 };
 const mockNavigate = vi.fn();
+const groundedAnswer: EvidenceQueryResponse = {
+  question: "Why are checkout payments failing?",
+  status: "answered",
+  segments: [
+    {
+      id: "seg-1",
+      kind: "fact",
+      text: "Stripe API is returning 429 responses on the checkout path.",
+      evidenceRefs: [{ kind: "span", id: "a3f8c91d:stripe-charge-001" }],
+    },
+    {
+      id: "seg-2",
+      kind: "inference",
+      text: "That pattern is consistent with the existing diagnosis that Stripe quota pressure is driving the failure.",
+      evidenceRefs: [
+        { kind: "span", id: "a3f8c91d:stripe-charge-001" },
+        { kind: "metric_group", id: "hyp-trigger" },
+      ],
+    },
+    {
+      id: "seg-3",
+      kind: "unknown",
+      text: "The current evidence does not prove whether Stripe changed the account quota.",
+      evidenceRefs: [{ kind: "absence", id: "claim-no-retry" }],
+    },
+  ],
+  evidenceSummary: { traces: 1, metrics: 1, logs: 1 },
+  followups: [
+    { question: "Do the metrics show the same failure window?", targetEvidenceKinds: ["metrics"] },
+  ],
+};
 
 vi.mock("@tanstack/react-router", () => ({
   useSearch: () => mockSearch,
@@ -390,7 +422,7 @@ describe("QAFrame — interaction", () => {
   it("typing in input calls onInputChange", async () => {
     const user = userEvent.setup();
     const { onInputChange } = renderQAFrame(evidenceReady.qa, { inputValue: "" });
-    const input = screen.getByRole("textbox", { name: /ask a question/i });
+    const input = screen.getByRole("textbox", { name: /ask a grounded question/i });
     await user.clear(input);
     await user.type(input, "new question");
     expect(onInputChange).toHaveBeenCalled();
@@ -402,7 +434,7 @@ describe("QAFrame — interaction", () => {
     renderQAFrame(evidenceReady.qa, { inputValue: "  my question  ", onSubmitQuestion });
     const submitBtn = screen.getByRole("button", { name: /ask/i });
     await user.click(submitBtn);
-    expect(onSubmitQuestion).toHaveBeenCalledWith("my question");
+    expect(onSubmitQuestion).toHaveBeenCalledWith("my question", false);
   });
 
   it("submit button disabled when input is empty", () => {
@@ -413,18 +445,18 @@ describe("QAFrame — interaction", () => {
 
   it("submit button disabled when isSubmitting=true", () => {
     renderQAFrame(evidenceReady.qa, { isSubmitting: true });
-    const submitBtn = screen.getByRole("button", { name: /asking/i });
+    const submitBtn = screen.getByRole("button", { name: /checking/i });
     expect(submitBtn).toBeDisabled();
   });
 
-  it("submit button shows 'Asking…' when isSubmitting=true", () => {
+  it("submit button shows 'Checking…' when isSubmitting=true", () => {
     renderQAFrame(evidenceReady.qa, { isSubmitting: true });
-    expect(screen.getByRole("button", { name: /asking/i })).toHaveTextContent("Asking…");
+    expect(screen.getByRole("button", { name: /checking/i })).toHaveTextContent("Checking…");
   });
 
   it("input disabled when isSubmitting=true", () => {
     renderQAFrame(evidenceReady.qa, { isSubmitting: true });
-    const input = screen.getByRole("textbox", { name: /ask a question/i });
+    const input = screen.getByRole("textbox", { name: /ask a grounded question/i });
     expect(input).toBeDisabled();
   });
 
@@ -434,10 +466,12 @@ describe("QAFrame — interaction", () => {
     expect(alert).toHaveTextContent("Network error");
   });
 
-  it("latestReply rendered (role=status aria-live=polite)", () => {
-    renderQAFrame(evidenceReady.qa, { latestReply: "Here is the copilot reply" });
+  it("latest grounded response renders segment labels and text", () => {
+    renderQAFrame(evidenceReady.qa, { latestResponse: groundedAnswer });
     const status = screen.getByRole("status");
-    expect(status).toHaveTextContent("Here is the copilot reply");
+    expect(status).toHaveTextContent("Fact");
+    expect(status).toHaveTextContent("Inference");
+    expect(status).toHaveTextContent("Unknown");
     expect(status).toHaveAttribute("aria-live", "polite");
   });
 
@@ -447,7 +481,7 @@ describe("QAFrame — interaction", () => {
     renderQAFrame(evidenceReady.qa, { onSubmitQuestion });
     const chip = screen.getByText("Is there retry logic?");
     await user.click(chip);
-    expect(onSubmitQuestion).toHaveBeenCalledWith("Is there retry logic?");
+    expect(onSubmitQuestion).toHaveBeenCalledWith("Is there retry logic?", true);
   });
 
   it("follow-up chips disabled when isSubmitting=true", () => {
@@ -461,10 +495,9 @@ describe("QAFrame — interaction", () => {
   it("evidence ref click calls navigate with correct tab/targetId (span → traces)", async () => {
     const user = userEvent.setup();
     renderQAFrame(evidenceReady.qa);
-    // The first evidenceRef is kind=span, id="a3f8c91d:stripe-charge-001"
-    const refBtn = screen.getByRole("button", {
+    const refBtn = screen.getAllByRole("button", {
       name: /view evidence: span a3f8c91d:stripe-charge-001/i,
-    });
+    })[0]!;
     await user.click(refBtn);
     expect(mockNavigate).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -479,10 +512,9 @@ describe("QAFrame — interaction", () => {
   it("evidence ref click for metric_group → metrics tab", async () => {
     const user = userEvent.setup();
     renderQAFrame(evidenceReady.qa);
-    // The second evidenceRef is kind=metric_group, id="hyp-trigger"
-    const refBtn = screen.getByRole("button", {
+    const refBtn = screen.getAllByRole("button", {
       name: /view evidence: metric_group hyp-trigger/i,
-    });
+    })[0]!;
     await user.click(refBtn);
     expect(mockNavigate).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -504,9 +536,9 @@ describe("QAFrame — interaction", () => {
   it("evidence ref keyboard Enter calls navigate", async () => {
     const user = userEvent.setup();
     renderQAFrame(evidenceReady.qa);
-    const refBtn = screen.getByRole("button", {
+    const refBtn = screen.getAllByRole("button", {
       name: /view evidence: span a3f8c91d:stripe-charge-001/i,
-    });
+    })[0]!;
     refBtn.focus();
     await user.keyboard("{Enter}");
     expect(mockNavigate).toHaveBeenCalledWith(
@@ -522,9 +554,9 @@ describe("QAFrame — interaction", () => {
   it("evidence ref keyboard Space calls navigate", async () => {
     const user = userEvent.setup();
     renderQAFrame(evidenceReady.qa);
-    const refBtn = screen.getByRole("button", {
+    const refBtn = screen.getAllByRole("button", {
       name: /view evidence: span a3f8c91d:stripe-charge-001/i,
-    });
+    })[0]!;
     refBtn.focus();
     await user.keyboard(" ");
     expect(mockNavigate).toHaveBeenCalledWith(
@@ -544,11 +576,20 @@ describe("QAFrame — interaction", () => {
 
   it("evidence ref kind=log_cluster navigates to logs tab", async () => {
     const user = userEvent.setup();
-    const qaWithLogRef = {
-      ...evidenceReady.qa,
-      evidenceRefs: [{ kind: "log_cluster" as const, id: "claim-429" }],
-    };
-    renderQAFrame(qaWithLogRef);
+    renderQAFrame(evidenceReady.qa, {
+      latestResponse: {
+        question: evidenceReady.qa.question,
+        status: "answered",
+        segments: [{
+          id: "log-cluster-seg",
+          kind: "fact",
+          text: "A log cluster captures the Stripe 429 burst.",
+          evidenceRefs: [{ kind: "log_cluster", id: "claim-429" }],
+        }],
+        evidenceSummary: evidenceReady.qa.evidenceSummary,
+        followups: evidenceReady.qa.followups,
+      },
+    });
     const refBtn = screen.getByRole("button", {
       name: /view evidence: log_cluster claim-429/i,
     });
@@ -565,12 +606,10 @@ describe("QAFrame — interaction", () => {
 
   it("span targetId is extracted from traceId:spanId format", async () => {
     const user = userEvent.setup();
-    // evidenceReady.qa.evidenceRefs[0] is { kind: "span", id: "a3f8c91d:stripe-charge-001" }
-    // The component should extract "stripe-charge-001" as targetId
     renderQAFrame(evidenceReady.qa);
-    const refBtn = screen.getByRole("button", {
+    const refBtn = screen.getAllByRole("button", {
       name: /view evidence: span a3f8c91d:stripe-charge-001/i,
-    });
+    })[0]!;
     await user.click(refBtn);
     const call = mockNavigate.mock.calls[0]?.[0];
     expect(call.search.targetId).toBe("stripe-charge-001");
@@ -679,6 +718,23 @@ describe("LensProofCards — cross-surface navigation", () => {
           targetId: undefined,
         }),
         replace: true,
+      }),
+    );
+  });
+
+  it("evidence query refs for absence navigate to logs", async () => {
+    const user = userEvent.setup();
+    renderQAFrame(evidenceReady.qa, { latestResponse: groundedAnswer });
+    const refBtn = screen.getByRole("button", {
+      name: /view evidence: absence claim-no-retry/i,
+    });
+    await user.click(refBtn);
+    expect(mockNavigate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        search: expect.objectContaining({
+          tab: "logs",
+          targetId: "claim-no-retry",
+        }),
       }),
     );
   });
@@ -832,7 +888,7 @@ describe("LensEvidenceStudio — Q&A mutation integration", () => {
     fetchSpy = vi.fn().mockResolvedValue({
       ok: true,
       status: 200,
-      json: () => Promise.resolve({ reply: "Mock mutation reply" }),
+      json: () => Promise.resolve(groundedAnswer),
     });
     vi.stubGlobal("fetch", fetchSpy);
   });
@@ -841,28 +897,27 @@ describe("LensEvidenceStudio — Q&A mutation integration", () => {
     vi.unstubAllGlobals();
   });
 
-  it("Q&A submit calls chat mutation via form submit", async () => {
+  it("Q&A submit calls evidence query mutation via form submit", async () => {
     const user = userEvent.setup();
     renderStudio("inc_0892", setupReady());
-    const input = screen.getByLabelText("Ask a question about this incident");
+    const input = screen.getByLabelText("Ask a grounded question about this incident");
     await user.clear(input);
     await user.type(input, "Test question");
     const submitBtn = screen.getByRole("button", { name: "Ask" });
     await user.click(submitBtn);
-    // Verify fetch was called with the chat endpoint
     expect(fetchSpy).toHaveBeenCalledWith(
-      expect.stringContaining("/api/chat/"),
+      expect.stringContaining("/api/incidents/inc_0892/evidence/query"),
       expect.objectContaining({ method: "POST" }),
     );
   });
 
-  it("Q&A follow-up chip triggers chat mutation", async () => {
+  it("Q&A follow-up chip triggers evidence query mutation", async () => {
     const user = userEvent.setup();
     renderStudio("inc_0892", setupReady());
     const chip = screen.getByText("Is there retry logic?");
     await user.click(chip);
     expect(fetchSpy).toHaveBeenCalledWith(
-      expect.stringContaining("/api/chat/"),
+      expect.stringContaining("/api/incidents/inc_0892/evidence/query"),
       expect.objectContaining({ method: "POST" }),
     );
   });
