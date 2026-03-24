@@ -1,4 +1,7 @@
+import { readFileSync } from "fs";
+import { join } from "path";
 import { serve } from "@hono/node-server";
+import { serveStatic } from "@hono/node-server/serve-static";
 import { createApp, resolveAuthToken } from "./index.js";
 import { MemoryAdapter } from "./storage/adapters/memory.js";
 import { PostgresAdapter } from "./storage/drizzle/postgres.js";
@@ -34,6 +37,21 @@ async function main() {
   const resolvedAuthToken = await resolveAuthToken(storageForAuth);
 
   const app = createApp(storage, { telemetryStore, resolvedAuthToken });
+
+  // Static serving for the Console SPA (ADR 0028) — Node.js only
+  const consoleDist = process.env["CONSOLE_DIST_PATH"];
+  if (consoleDist) {
+    let indexHtml: string | null = null;
+    try {
+      indexHtml = readFileSync(join(consoleDist, "index.html"), "utf-8");
+    } catch {
+      console.warn("[receiver] Console index.html not found at", consoleDist, "— SPA fallback disabled");
+    }
+    app.use("/*", serveStatic({ root: consoleDist }));
+    if (indexHtml) {
+      app.get("/*", (c) => c.html(indexHtml as string));
+    }
+  }
 
   // Bind to 0.0.0.0 so the server is reachable from outside the process
   // (containers, VMs, any hosted environment).

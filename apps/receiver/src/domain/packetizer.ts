@@ -38,7 +38,6 @@
  *   and shuffled input orderings.
  */
 
-import { randomUUID } from "crypto"
 import type { IncidentPacket, PlatformEvent, RelevantLog } from "@3amoncall/core"
 import { type ExtractedSpan, isAnomalous, SLOW_SPAN_THRESHOLD_MS } from "./anomaly-detector.js"
 import { normalizeDependency } from "./formation.js"
@@ -362,7 +361,7 @@ export function createPacket(
   // pointers
   const traceRefs = [...new Set(spans.map((s) => s.traceId))]
 
-  const packetId = randomUUID()
+  const packetId = crypto.randomUUID()
   const packet: IncidentPacket = {
     schemaVersion: "incident-packet/v1alpha1",
     packetId,

@@ -1,4 +1,3 @@
-import { randomUUID } from "crypto";
 import { promisify } from "node:util";
 import { gunzip } from "node:zlib";
 import { Hono, type Context } from "hono";
@@ -303,7 +302,7 @@ export function createIngestRouter(storage: StorageDriver, spanBuffer: SpanBuffe
     }
 
     const isNew = !existing;
-    const incidentId = existing ? existing.incidentId : "inc_" + randomUUID();
+    const incidentId = existing ? existing.incidentId : "inc_" + crypto.randomUUID();
     // Use signal time (not server clock) so formation window is anchored to telemetry
     const openedAt = existing
       ? existing.openedAt

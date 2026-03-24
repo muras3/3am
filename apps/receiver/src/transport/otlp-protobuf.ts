@@ -7,26 +7,38 @@
  * Proto source: opentelemetry-proto v1.3.2
  * Descriptor:   src/transport/proto/otlp.json (vendored, regenerate with `pnpm proto:gen`)
  */
-import { createRequire } from 'node:module'
 import protobuf from 'protobufjs'
 
-// JSON descriptors cannot be imported with ESM `import` assertions in all runtimes;
-// createRequire is the safe cross-runtime approach (Node.js, vitest).
-const _require = createRequire(import.meta.url)
-const descriptor: protobuf.INamespace = _require('./proto/otlp.json')
+// Disable JIT code generation before any type resolution.
+// CF Workers disallow new Function() — protobufjs falls back to generic decoders.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+;(protobuf.util as any).codegen.supported = false
 
-// Initialize Root once at module load time (synchronous, no I/O after this point).
-const _root = protobuf.Root.fromJSON(descriptor)
+// JSON descriptor for OTLP protobuf decoding.
+// Static import works with both esbuild (wrangler) and Node.js/vitest bundlers.
+import _descriptor from './proto/otlp.json' with { type: 'json' }
+const descriptor = _descriptor as unknown as protobuf.INamespace
 
-const ExportTraceServiceRequest = _root.lookupType(
-  'opentelemetry.proto.collector.trace.v1.ExportTraceServiceRequest',
-)
-const ExportMetricsServiceRequest = _root.lookupType(
-  'opentelemetry.proto.collector.metrics.v1.ExportMetricsServiceRequest',
-)
-const ExportLogsServiceRequest = _root.lookupType(
-  'opentelemetry.proto.collector.logs.v1.ExportLogsServiceRequest',
-)
+// Lazy initialization — deferred to first decode call to avoid module-load-time
+// type resolution that may trigger codegen in some protobufjs versions.
+let _root: protobuf.Root | null = null
+let _traceType: protobuf.Type | null = null
+let _metricsType: protobuf.Type | null = null
+let _logsType: protobuf.Type | null = null
+
+function initRoot(): void {
+  if (_root) return
+  _root = protobuf.Root.fromJSON(descriptor)
+  _traceType = _root.lookupType(
+    'opentelemetry.proto.collector.trace.v1.ExportTraceServiceRequest',
+  )
+  _metricsType = _root.lookupType(
+    'opentelemetry.proto.collector.metrics.v1.ExportMetricsServiceRequest',
+  )
+  _logsType = _root.lookupType(
+    'opentelemetry.proto.collector.logs.v1.ExportLogsServiceRequest',
+  )
+}
 
 /**
  * Conversion options shared across all OTLP decode calls.
@@ -84,8 +96,9 @@ function normalizeSpanIds(obj: unknown): unknown {
  * @throws protobuf.util.ProtocolError or Error on invalid binary.
  */
 export function decodeTraces(buf: Uint8Array): unknown {
-  const decoded = ExportTraceServiceRequest.decode(buf)
-  const plain = ExportTraceServiceRequest.toObject(decoded, DECODE_OPTIONS)
+  initRoot()
+  const decoded = _traceType!.decode(buf)
+  const plain = _traceType!.toObject(decoded, DECODE_OPTIONS)
   return normalizeSpanIds(plain)
 }
 
@@ -96,8 +109,9 @@ export function decodeTraces(buf: Uint8Array): unknown {
  * @throws protobuf.util.ProtocolError or Error on invalid binary.
  */
 export function decodeMetrics(buf: Uint8Array): unknown {
-  const decoded = ExportMetricsServiceRequest.decode(buf)
-  return ExportMetricsServiceRequest.toObject(decoded, DECODE_OPTIONS)
+  initRoot()
+  const decoded = _metricsType!.decode(buf)
+  return _metricsType!.toObject(decoded, DECODE_OPTIONS)
 }
 
 /**
@@ -107,6 +121,7 @@ export function decodeMetrics(buf: Uint8Array): unknown {
  * @throws protobuf.util.ProtocolError or Error on invalid binary.
  */
 export function decodeLogs(buf: Uint8Array): unknown {
-  const decoded = ExportLogsServiceRequest.decode(buf)
-  return ExportLogsServiceRequest.toObject(decoded, DECODE_OPTIONS)
+  initRoot()
+  const decoded = _logsType!.decode(buf)
+  return _logsType!.toObject(decoded, DECODE_OPTIONS)
 }

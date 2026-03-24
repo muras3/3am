@@ -10,9 +10,10 @@
  * - /unknown-route  → index.html (SPA fallback)
  */
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "fs";
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
+import { serveStatic } from "@hono/node-server/serve-static";
 import { createApp } from "../index.js";
 
 const MOCK_HTML = "<!DOCTYPE html><html><body>Console</body></html>";
@@ -33,8 +34,13 @@ afterAll(() => {
   delete process.env["RECEIVER_AUTH_TOKEN"];
 });
 
+/** Create app with static serving (mirrors server.ts pattern) */
 function makeApp() {
-  return createApp(undefined, { consoleDist });
+  const app = createApp();
+  const indexHtml = readFileSync(join(consoleDist, "index.html"), "utf-8");
+  app.use("/*", serveStatic({ root: consoleDist }));
+  app.get("/*", (c) => c.html(indexHtml));
+  return app;
 }
 
 describe("Receiver static serving — consoleDist not configured", () => {
@@ -48,11 +54,9 @@ describe("Receiver static serving — consoleDist not configured", () => {
     delete process.env["ALLOW_INSECURE_DEV_MODE"];
   });
 
-  it("GET / serves index.html via CONSOLE_DIST_PATH env var", async () => {
-    process.env["CONSOLE_DIST_PATH"] = consoleDist;
+  it("GET / serves index.html when static serving is attached (server.ts pattern)", async () => {
     process.env["RECEIVER_AUTH_TOKEN"] = TOKEN;
-    const app = createApp(); // no options.consoleDist — relies on env var
-    delete process.env["CONSOLE_DIST_PATH"];
+    const app = makeApp();
     const res = await app.request("/");
     expect(res.status).toBe(200);
     const text = await res.text();
