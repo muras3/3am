@@ -339,6 +339,8 @@ describe("LensEvidenceStudio — empty state", () => {
     renderStudio("inc_0892", qc);
     // The question is rendered as the input's value
     expect(screen.getByDisplayValue(evidencePending.qa.question)).toBeInTheDocument();
+    expect(document.querySelector(".lens-ev-qa-answer-placeholder")).not.toBeNull();
+    expect(document.querySelector(".lens-ev-qa-no-answer")).not.toBeNull();
     expect(screen.getByText(evidencePending.qa.noAnswerReason!)).toBeInTheDocument();
   });
 });
@@ -408,6 +410,7 @@ describe("QAFrame", () => {
     renderQAFrame(evidencePending.qa);
     // Question is in the input value
     expect(screen.getByDisplayValue(evidencePending.qa.question)).toBeInTheDocument();
+    expect(document.querySelector(".lens-ev-qa-answer-placeholder")).not.toBeNull();
     expect(screen.getByText(evidencePending.qa.noAnswerReason!)).toBeInTheDocument();
   });
 
@@ -528,6 +531,8 @@ describe("QAFrame — interaction", () => {
 
   it("no-answer state shows noAnswerReason text", () => {
     renderQAFrame(evidencePending.qa);
+    expect(document.querySelector(".lens-ev-qa-answer-placeholder")).not.toBeNull();
+    expect(document.querySelector(".lens-ev-qa-no-answer")).not.toBeNull();
     expect(
       screen.getByText(evidencePending.qa.noAnswerReason!),
     ).toBeInTheDocument();

@@ -218,7 +218,10 @@ export function QAFrame({
               <span className="lens-ev-qa-answer-note">{qa.noAnswerReason}</span>
             )}
           </div>
-          <div className="lens-ev-qa-segments" aria-label="Prepared answer segments">
+          <div
+            className={qa.status === "no_answer" ? "lens-ev-qa-no-answer" : "lens-ev-qa-segments"}
+            aria-label="Prepared answer segments"
+          >
             {initialSegments.map((segment) => (
               <div key={segment.id} className={`lens-ev-qa-segment lens-ev-qa-segment-${segment.kind}`}>
                 <div className="lens-ev-qa-segment-line">
