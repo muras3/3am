@@ -28,31 +28,37 @@ function renderBoard(
   );
 }
 
+function getPendingBanner() {
+  return document.querySelector(".lens-board-pending");
+}
+
 // ── Tests ─────────────────────────────────────────────────────
 
 describe("LensIncidentBoard — diagnosis pending", () => {
-  it("renders DiagnosisPending banner when state.diagnosis is pending", () => {
+  it("renders a degraded-state banner with present and future sections", () => {
     const qc = makeClient();
     qc.setQueryData(
       curatedQueries.extendedIncident("inc_0892").queryKey,
       extendedIncidentPending,
     );
     renderBoard("inc_0892", vi.fn(), qc);
-    expect(screen.getByText("Diagnosis is still assembling")).toBeInTheDocument();
-    expect(screen.getByText("Visible now")).toBeInTheDocument();
+    const banner = getPendingBanner();
+    expect(banner).not.toBeNull();
+    expect(document.querySelectorAll(".lens-board-pending-panel")).toHaveLength(2);
+    expect(document.querySelectorAll(".lens-board-pending-list li")).toHaveLength(6);
   });
 
-  it("keeps board sections rendered with state fallback copy when pending", () => {
+  it("keeps board structure rendered while diagnosis is pending", () => {
     const qc = makeClient();
     qc.setQueryData(
       curatedQueries.extendedIncident("inc_0892").queryKey,
       extendedIncidentPending,
     );
     renderBoard("inc_0892", vi.fn(), qc);
-    expect(screen.getAllByText(/Immediate Action/i).length).toBeGreaterThan(0);
-    expect(screen.getAllByText(/Blast Radius/i).length).toBeGreaterThan(0);
-    expect(screen.getByText("Impact is confirmed. Diagnosis narrative is still taking shape.")).toBeInTheDocument();
-    expect(screen.getByText("The causal chain stays reserved until the trigger, propagation path, and user impact can be linked safely.")).toBeInTheDocument();
+    expect(document.querySelector(".lens-board-action-hero")).not.toBeNull();
+    expect(document.querySelectorAll(".lens-board-blast-row")).toHaveLength(2);
+    expect(document.querySelector(".lens-board-chain-placeholder")).not.toBeNull();
+    expect(document.querySelector(".lens-board-evidence-note")).not.toBeNull();
   });
 });
 
@@ -68,33 +74,30 @@ describe("LensIncidentBoard — diagnosis ready", () => {
 
   it("renders the incident headline", () => {
     renderBoard("inc_0892", vi.fn(), setupReady());
-    expect(
-      screen.getByText(/Stripe API rate limit cascade causing payment failures/),
-    ).toBeInTheDocument();
+    expect(screen.getAllByText(/Stripe API rate limit cascade causing payment failures/).length)
+      .toBeGreaterThan(0);
     expect(screen.getAllByText("INC-0892").length).toBeGreaterThan(0);
   });
 
   it("renders Immediate Action section", () => {
     renderBoard("inc_0892", vi.fn(), setupReady());
     expect(screen.getByText("Immediate Action")).toBeInTheDocument();
-    expect(
-      screen.getByText(/Enable request batching on StripeClient/),
-    ).toBeInTheDocument();
+    expect(screen.getAllByText(/Enable request batching on StripeClient/).length)
+      .toBeGreaterThan(0);
   });
 
   it("renders Do not block", () => {
     renderBoard("inc_0892", vi.fn(), setupReady());
-    expect(
-      screen.getByText(/Request a Stripe rate limit increase/),
-    ).toBeInTheDocument();
+    expect(screen.getAllByText(/Request a Stripe rate limit increase/).length)
+      .toBeGreaterThan(0);
+    expect(screen.getByText("Full action details")).toBeInTheDocument();
   });
 
   it("renders Root Cause Hypothesis section", () => {
     renderBoard("inc_0892", vi.fn(), setupReady());
     expect(screen.getByText("Root Cause Hypothesis")).toBeInTheDocument();
-    expect(
-      screen.getByText(/StripeClient service makes unbatched 1:1 API calls/),
-    ).toBeInTheDocument();
+    expect(screen.getAllByText(/StripeClient service makes unbatched 1:1 API calls/).length)
+      .toBeGreaterThan(0);
   });
 
   it("renders Causal Chain section", () => {
@@ -167,7 +170,8 @@ describe("OperatorCheck", () => {
     );
     renderBoard("inc_0892", vi.fn(), qc);
     const checkboxes = document.querySelectorAll(".lens-board-checkbox");
-    expect(checkboxes).toHaveLength(extendedIncidentReady.operatorChecks.length);
+    expect(checkboxes).toHaveLength(2);
+    expect(screen.getByText("Show all checks (3)")).toBeInTheDocument();
   });
 
   it("renders operator check text items", () => {
@@ -177,12 +181,10 @@ describe("OperatorCheck", () => {
       extendedIncidentReady,
     );
     renderBoard("inc_0892", vi.fn(), qc);
-    expect(
-      screen.getByText("Verify Stripe dashboard shows rate limit exceeded"),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText("Check if batching config exists but is disabled"),
-    ).toBeInTheDocument();
+    expect(screen.getAllByText("Verify Stripe dashboard shows rate limit exceeded").length)
+      .toBeGreaterThan(0);
+    expect(screen.getAllByText("Check if batching config exists but is disabled").length)
+      .toBeGreaterThan(0);
   });
 });
 
@@ -209,12 +211,13 @@ describe("LensEvidenceEntry", () => {
 
   it("shows evidence counts", () => {
     renderBoard("inc_0892", vi.fn(), setupReady());
-    // traces: 47, traceErrors: 12
-    expect(screen.getByText(/47/)).toBeInTheDocument();
-    expect(screen.getByText(/12 errors/)).toBeInTheDocument();
-    // logs: 234, logErrors: 89
-    expect(screen.getByText(/234/)).toBeInTheDocument();
-    expect(screen.getByText(/89 errors/)).toBeInTheDocument();
+    const summary = document.querySelector(".lens-board-evidence-summary-line");
+    const counts = document.querySelector(".lens-board-evidence-counts");
+    expect(summary).not.toBeNull();
+    expect(summary?.textContent).toContain("47 traces");
+    expect(summary?.textContent).toContain("234 logs");
+    expect(counts?.textContent).toContain("12 errors");
+    expect(counts?.textContent).toContain("89 errors");
   });
 
   it("calls zoomTo(2) when Open Evidence Studio button is clicked", () => {
@@ -243,7 +246,7 @@ describe("LensEvidenceEntry", () => {
 });
 
 describe("LensIncidentBoard — sparse diagnosis", () => {
-  it("renders sparse state note without collapsing the board", () => {
+  it("renders sparse state as a full board with partial evidence markers", () => {
     const qc = makeClient();
     qc.setQueryData(
       curatedQueries.extendedIncident("inc_0892").queryKey,
@@ -252,8 +255,9 @@ describe("LensIncidentBoard — sparse diagnosis", () => {
 
     renderBoard("inc_0892", vi.fn(), qc);
 
-    expect(screen.getByText("A first-pass diagnosis is available. Treat it as directional until more evidence fills in the gaps.")).toBeInTheDocument();
-    expect(screen.getByText("Low confidence")).toBeInTheDocument();
-    expect(screen.getByText("Check external dependency status pages")).toBeInTheDocument();
+    expect(document.querySelector(".lens-board-state-note")).not.toBeNull();
+    expect(document.querySelectorAll(".lens-board-chain-step")).toHaveLength(1);
+    expect(document.querySelectorAll(".lens-board-check-item")).toHaveLength(1);
+    expect(screen.getByRole("button", { name: /Open Evidence Studio/i })).toBeInTheDocument();
   });
 });

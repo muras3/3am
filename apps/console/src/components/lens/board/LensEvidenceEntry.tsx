@@ -18,6 +18,11 @@ function formatTime(iso: string): string {
 export function LensEvidenceEntry({ counts, impact, state, zoomTo }: Props) {
   const showStateNote =
     state.diagnosis !== "ready" || state.baseline !== "ready" || state.evidenceDensity !== "rich";
+  const summaryLine = [
+    `${counts.traces} traces`,
+    `${counts.metrics} anomalous metrics`,
+    `${counts.logs} logs`,
+  ].join(" · ");
 
   function handleClick(e: React.MouseEvent<HTMLButtonElement>) {
     zoomTo(2, e.currentTarget);
@@ -41,6 +46,7 @@ export function LensEvidenceEntry({ counts, impact, state, zoomTo }: Props) {
         </div>
       </div>
 
+      <div className="lens-board-evidence-summary-line">{summaryLine}</div>
       <div className="lens-board-evidence-counts">
         <div className="lens-board-evidence-row">
           <span className="lens-board-ev-label">Traces</span>

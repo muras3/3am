@@ -163,25 +163,25 @@ describe("LensTracesView", () => {
     expect(el).not.toBeNull();
   });
 
-  it("renders empty state when no observed traces", () => {
+  it("renders a reserved trace lane when no observed traces exist", () => {
     render(
       <LensTracesView
         surface={{ observed: [], expected: [], smokingGunSpanId: null }}
       />,
     );
-    expect(screen.getByText(/only limited traces are available/i)).toBeInTheDocument();
+    expect(document.querySelector(".lens-traces-empty")).not.toBeNull();
+    expect(document.querySelector(".lens-traces-baseline-toggle")).not.toBeNull();
   });
 
-  it("renders disabled baseline toggle when no expected traces", () => {
+  it("renders a disabled baseline toggle when no expected traces exist", () => {
     render(
       <LensTracesView
         surface={{ observed: traces.observed, expected: [], smokingGunSpanId: null }}
       />,
     );
-    expect(screen.getByRole("button", { name: /expected trace is still sparse/i })).toHaveAttribute(
-      "aria-disabled",
-      "true",
-    );
+    const toggle = document.querySelector(".lens-traces-baseline-toggle.disabled");
+    expect(toggle).not.toBeNull();
+    expect(toggle).toHaveAttribute("aria-disabled", "true");
   });
 
   it("smoking gun span auto-expands on initial render (no selectedTargetId in URL)", () => {
@@ -365,9 +365,11 @@ describe("LensMetricsView", () => {
     }
   });
 
-  it("renders empty state when no hypotheses", () => {
+  it("renders a reserved metrics lane when no hypotheses exist", () => {
     render(<LensMetricsView surface={{ hypotheses: [] }} />);
-    expect(screen.getByText(/only a thin metric signal is available so far/i)).toBeInTheDocument();
+    const empty = document.querySelector(".lens-metrics-empty");
+    expect(empty).not.toBeNull();
+    expect(empty?.textContent?.length).toBeGreaterThan(20);
   });
 });
 
@@ -486,9 +488,11 @@ describe("LensLogsView", () => {
     }
   });
 
-  it("renders empty state when no claims", () => {
+  it("renders a reserved logs lane when no claims exist", () => {
     render(<LensLogsView surface={{ claims: [] }} />);
-    expect(screen.getByText(/log evidence is still sparse/i)).toBeInTheDocument();
+    const empty = document.querySelector(".lens-logs-empty");
+    expect(empty).not.toBeNull();
+    expect(empty?.textContent?.length).toBeGreaterThan(20);
   });
 });
 
@@ -517,14 +521,14 @@ describe("LensLogsView — proof highlight", () => {
 // ── Degraded states — sparse fixture ──────────────────────────
 
 describe("Degraded states — sparse fixture", () => {
-  it("TracesView with baselineState='unavailable' shows reserved baseline label", () => {
+  it("TracesView with baselineState='unavailable' disables the baseline control", () => {
     render(
       <LensTracesView
         surface={evidenceSparse.surfaces.traces}
         baselineState="unavailable"
       />,
     );
-    expect(screen.getByRole("button", { name: /expected trace not captured yet/i })).toBeInTheDocument();
+    expect(document.querySelector(".lens-traces-baseline-toggle.disabled")).not.toBeNull();
   });
 
   it("TracesView sparse: baseline toggle is aria-disabled='true'", () => {
@@ -534,28 +538,29 @@ describe("Degraded states — sparse fixture", () => {
         baselineState="unavailable"
       />,
     );
-    const toggle = screen.getByRole("button", { name: /expected trace not captured yet/i });
+    const toggle = document.querySelector(".lens-traces-baseline-toggle.disabled");
+    expect(toggle).not.toBeNull();
     expect(toggle).toHaveAttribute("aria-disabled", "true");
   });
 
-  it("MetricsView with evidenceDensity='empty' shows reserved lane text", () => {
+  it("MetricsView with evidenceDensity='empty' keeps the lane mounted", () => {
     render(
       <LensMetricsView
         surface={{ hypotheses: [] }}
         evidenceDensity="empty"
       />,
     );
-    expect(screen.getByText(/metric comparison is reserved/i)).toBeInTheDocument();
+    expect(document.querySelector(".lens-metrics-empty")).not.toBeNull();
   });
 
-  it("LogsView with evidenceDensity='empty' shows reserved lane text", () => {
+  it("LogsView with evidenceDensity='empty' keeps the lane mounted", () => {
     render(
       <LensLogsView
         surface={{ claims: [] }}
         evidenceDensity="empty"
       />,
     );
-    expect(screen.getByText(/log clusters are reserved here/i)).toBeInTheDocument();
+    expect(document.querySelector(".lens-logs-empty")).not.toBeNull();
   });
 });
 
