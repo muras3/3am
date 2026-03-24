@@ -206,7 +206,10 @@ export function QAFrame({
           )}
         </div>
       ) : initialSegments.length > 0 ? (
-        <div className="lens-ev-qa-answer" role="article">
+        <div
+          className={`lens-ev-qa-answer${qa.status === "no_answer" ? " lens-ev-qa-answer-placeholder" : ""}`}
+          role="article"
+        >
           <div className="lens-ev-qa-answer-head">
             <span className="lens-ev-qa-state-label">
               {qa.status === "no_answer" ? "No answer" : "Prepared read"}
