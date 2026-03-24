@@ -7,13 +7,12 @@
  * Proto source: opentelemetry-proto v1.3.2
  * Descriptor:   src/transport/proto/otlp.json (vendored, regenerate with `pnpm proto:gen`)
  */
-import { createRequire } from 'node:module'
 import protobuf from 'protobufjs'
 
-// JSON descriptors cannot be imported with ESM `import` assertions in all runtimes;
-// createRequire is the safe cross-runtime approach (Node.js, vitest).
-const _require = createRequire(import.meta.url)
-const descriptor: protobuf.INamespace = _require('./proto/otlp.json')
+// JSON descriptor for OTLP protobuf decoding.
+// Static import works with both esbuild (wrangler) and Node.js/vitest bundlers.
+// @ts-expect-error — JSON module import; resolved by bundler at build time
+import descriptor from './proto/otlp.json' with { type: 'json' }
 
 // Initialize Root once at module load time (synchronous, no I/O after this point).
 const _root = protobuf.Root.fromJSON(descriptor)

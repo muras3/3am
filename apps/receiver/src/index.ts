@@ -1,11 +1,6 @@
-import { randomUUID } from "crypto";
-import { readFileSync } from "fs";
-import { dirname, join } from "path";
-import { fileURLToPath } from "url";
 import { Hono } from "hono";
 import { bearerAuth } from "hono/bearer-auth";
 import { cors } from "hono/cors";
-import { serveStatic } from "@hono/node-server/serve-static";
 import type { StorageDriver } from "./storage/interface.js";
 import type { TelemetryStoreDriver } from "./telemetry/interface.js";
 import { MemoryAdapter } from "./storage/adapters/memory.js";
@@ -24,14 +19,7 @@ export type { TelemetryStoreDriver } from "./telemetry/interface.js";
 const SETTINGS_KEY_AUTH_TOKEN = "receiver_auth_token";
 const SETTINGS_KEY_SETUP_COMPLETE = "setup_complete";
 
-const APP_VERSION: string = (() => {
-  try {
-    const dir = dirname(fileURLToPath(import.meta.url));
-    return JSON.parse(readFileSync(join(dir, "../package.json"), "utf-8")).version;
-  } catch {
-    return process.env["npm_package_version"] ?? "0.0.0";
-  }
-})();
+const APP_VERSION: string = process.env["npm_package_version"] ?? "0.1.0";
 
 /**
  * Resolve the auth token for this instance.
@@ -48,18 +36,13 @@ export async function resolveAuthToken(storage: StorageDriver): Promise<string |
   const stored = await storage.getSettings(SETTINGS_KEY_AUTH_TOKEN);
   if (stored) return stored;
 
-  const generated = randomUUID();
+  const generated = crypto.randomUUID();
   await storage.setSettings(SETTINGS_KEY_AUTH_TOKEN, generated);
   console.log("[receiver] Generated new auth token — retrieve via /api/setup-token on first access");
   return generated;
 }
 
 export interface AppOptions {
-  /** Absolute path to the built Console dist directory. When set, Receiver serves
-   *  the SPA at "/" and falls back to index.html for unknown paths.
-   *  Can also be set via CONSOLE_DIST_PATH env var.
-   */
-  consoleDist?: string | undefined;
   /** SpanBuffer instance for the ambient read model (ADR 0029). */
   spanBuffer?: SpanBuffer | undefined;
   /** TelemetryStore instance for scored evidence selection (ADR 0032).
@@ -187,25 +170,6 @@ export function createApp(storage?: StorageDriver, options?: AppOptions): Hono {
 
   app.route("/", createIngestRouter(store, spanBuffer, telemetryStore, diagnosisConfig, runner));
   app.route("/", createApiRouter(store, spanBuffer, telemetryStore, runner));
-
-  // Static serving for the Console SPA (ADR 0028)
-  const consoleDist = options?.consoleDist ?? process.env["CONSOLE_DIST_PATH"];
-  if (consoleDist) {
-    // Cache index.html once at startup to avoid blocking the event loop per-request (F-E4-001)
-    let indexHtml: string | null = null;
-    try {
-      indexHtml = readFileSync(join(consoleDist, "index.html"), "utf-8");
-    } catch {
-      console.warn("[receiver] Console index.html not found at", consoleDist, "— SPA fallback disabled");
-    }
-
-    // Serve static assets (JS, CSS, images) by path
-    app.use("/*", serveStatic({ root: consoleDist }));
-    // SPA fallback: unknown paths → cached index.html (client-side routing)
-    if (indexHtml) {
-      app.get("/*", (c) => c.html(indexHtml as string));
-    }
-  }
 
   return app;
 }

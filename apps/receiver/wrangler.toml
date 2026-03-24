@@ -1,0 +1,14 @@
+name = "3amoncall-receiver"
+main = "src/cf-entry.ts"
+compatibility_date = "2025-03-01"
+compatibility_flags = ["nodejs_compat_v2"]
+
+[vars]
+ALLOW_INSECURE_DEV_MODE = "false"
+DIAGNOSIS_MAX_WAIT_MS = "0"
+DIAGNOSIS_GENERATION_THRESHOLD = "50"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "3amoncall-db"
+database_id = "9266ad6f-92ee-4a8e-8fde-27d8acff6eac"
