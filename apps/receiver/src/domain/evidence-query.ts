@@ -1,20 +1,32 @@
 /**
  * evidence-query.ts — Domain logic for POST /api/incidents/:id/evidence/query.
  *
- * Generates evidence-grounded Q&A answers. When diagnosis is available,
- * uses LLM with evidence context. When unavailable, returns a deterministic
- * no-answer response.
+ * Uses the curated evidence read model as the source of truth, performs a
+ * lightweight retrieval pass, then generates a grounded single-turn answer.
  */
 
-import Anthropic from "@anthropic-ai/sdk";
+import type {
+  EvidenceQueryRef,
+  EvidenceQueryResponse,
+  EvidenceResponse,
+  Followup,
+} from "@3amoncall/core";
+import { generateEvidenceQuery } from "@3amoncall/diagnosis";
 import type { Incident } from "../storage/interface.js";
 import type { TelemetryStoreDriver } from "../telemetry/interface.js";
-import type { EvidenceQueryResponse, EvidenceSummary } from "@3amoncall/core";
+import { buildCuratedEvidence } from "./curated-evidence.js";
 
 const EVIDENCE_QUERY_MODEL =
   process.env["EVIDENCE_QUERY_MODEL"] ?? "claude-haiku-4-5-20251001";
 
 type DiagnosisState = "ready" | "pending" | "unavailable";
+
+type RetrievedEvidence = {
+  ref: EvidenceQueryRef;
+  surface: "traces" | "metrics" | "logs";
+  summary: string;
+  score: number;
+};
 
 function determineDiagnosisState(incident: Incident): DiagnosisState {
   if (incident.diagnosisResult) return "ready";
@@ -22,242 +34,266 @@ function determineDiagnosisState(incident: Incident): DiagnosisState {
   return "unavailable";
 }
 
-function buildEvidenceSummary(incident: Incident): EvidenceSummary {
-  const evidence = incident.packet.evidence;
+function tokenize(input: string): string[] {
+  return input
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .split(/\s+/)
+    .filter((token) => token.length >= 3);
+}
+
+function summarizeEvidence(evidence: EvidenceResponse["surfaces"]) {
   return {
-    traces: evidence.representativeTraces.length,
-    metrics: evidence.changedMetrics.length,
-    logs: evidence.relevantLogs.length,
+    traces: evidence.traces.observed.length,
+    metrics: evidence.metrics.hypotheses.length,
+    logs: evidence.logs.claims.length,
   };
 }
 
-function buildDefaultFollowups(incident: Incident): EvidenceQueryResponse["followups"] {
-  const evidence = incident.packet.evidence;
-  const followups: EvidenceQueryResponse["followups"] = [];
-
-  if (evidence.representativeTraces.length > 0) {
-    followups.push({ question: "Open traces", targetEvidenceKinds: ["traces"] });
-  }
-  if (evidence.changedMetrics.length > 0) {
-    followups.push({ question: "Inspect metrics drift", targetEvidenceKinds: ["metrics"] });
-  }
-  if (evidence.relevantLogs.length > 0) {
-    followups.push({ question: "Review related logs", targetEvidenceKinds: ["logs"] });
-  }
-
-  // If nothing is available yet, return generic fallbacks
-  if (followups.length === 0) {
-    return [
-      { question: "What traces are available?", targetEvidenceKinds: ["traces"] },
-      { question: "Show metrics drift", targetEvidenceKinds: ["metrics"] },
-      { question: "Review logs", targetEvidenceKinds: ["logs"] },
-    ];
-  }
-
-  return followups;
-}
-
-function buildLLMSystemPrompt(incident: Incident): string {
-  const dr = incident.diagnosisResult!;
-  const narrative = incident.consoleNarrative!;
-
-  const chain = dr.reasoning.causal_chain.map((s) => `${s.type}: ${s.title}`).join(" → ");
-
-  const proofCardLines = narrative.proofCards
-    .map((c) => `  - ${c.id}: ${c.label} — ${c.summary}`)
-    .join("\n");
-
-  const qaContext =
-    `Initial question: ${narrative.qa.question}\n` +
-    `Initial answer: ${narrative.qa.answer}`;
-
-  const evidenceRefLines = narrative.qa.answerEvidenceRefs
-    .map((r) => `  - kind=${r.kind} id=${r.id}`)
-    .join("\n");
-
-  return (
-    "You are an incident responder assistant. Answer the user's question strictly based on the provided incident evidence context.\n\n" +
-    `## Diagnosis Summary\n` +
-    `What happened: ${dr.summary.what_happened}\n` +
-    `Root cause: ${dr.summary.root_cause_hypothesis}\n` +
-    `Immediate action: ${dr.recommendation.immediate_action}\n` +
-    `Causal chain: ${chain}\n\n` +
-    `## Narrative Context\n${qaContext}\n\n` +
-    `## Proof Cards\n${proofCardLines}\n\n` +
-    `## Available Evidence Refs\n${evidenceRefLines}\n\n` +
-    "Respond ONLY with valid JSON in this exact shape:\n" +
-    '{ "answer": "<string>", "evidenceRefs": [{"kind": "<kind>", "id": "<id>"}], "followups": ["<string>"] }\n\n' +
-    "Rules:\n" +
-    "- answer: 2-4 sentences, factual, grounded in the diagnosis and evidence above\n" +
-    "- evidenceRefs: only ref IDs from the available evidence refs above\n" +
-    "- followups: 2-3 short follow-up questions the engineer might ask next\n" +
-    "- Do not speculate beyond the provided context"
+function buildEvidenceCatalog(evidence: EvidenceResponse): RetrievedEvidence[] {
+  const traces = evidence.surfaces.traces.observed.flatMap((trace) =>
+    trace.spans.map((span) => ({
+      ref: { kind: "span" as const, id: `${trace.traceId}:${span.spanId}` },
+      surface: "traces" as const,
+      summary:
+        `${trace.route} span ${span.name} status=${span.status} durationMs=${span.durationMs}` +
+        (span.attributes["http.status_code"] !== undefined
+          ? ` httpStatus=${String(span.attributes["http.status_code"])}` : ""),
+      score: 0,
+    })),
   );
+
+  const metrics = evidence.surfaces.metrics.hypotheses.map((group) => ({
+    ref: { kind: "metric_group" as const, id: group.id },
+    surface: "metrics" as const,
+    summary: `${group.claim}. verdict=${group.verdict}. metrics=${group.metrics.map((m) => m.name).join(", ")}`,
+    score: 0,
+  }));
+
+  const logs = evidence.surfaces.logs.claims.map((claim) => ({
+    ref: {
+      kind: claim.type === "absence" ? "absence" as const : "log_cluster" as const,
+      id: claim.id,
+    },
+    surface: "logs" as const,
+    summary:
+      `${claim.label}. type=${claim.type}. count=${claim.count}.` +
+      (claim.entries[0]?.body ? ` sample=${claim.entries[0].body}` : "") +
+      (claim.explanation ? ` explanation=${claim.explanation}` : ""),
+    score: 0,
+  }));
+
+  return [...traces, ...metrics, ...logs];
 }
 
-interface LLMQueryResult {
-  answer: string;
-  evidenceRefs: Array<{ kind: string; id: string }>;
-  followups: string[];
-}
-
-function parseLLMResponse(text: string): LLMQueryResult | null {
-  try {
-    // Strip any markdown code fences if present
-    const jsonText = text.replace(/^```(?:json)?\n?/, "").replace(/\n?```$/, "").trim();
-    const parsed = JSON.parse(jsonText) as Record<string, unknown>;
-
-    if (
-      typeof parsed["answer"] !== "string" ||
-      !Array.isArray(parsed["evidenceRefs"]) ||
-      !Array.isArray(parsed["followups"])
-    ) {
-      return null;
+function retrieveEvidence(question: string, catalog: RetrievedEvidence[]): RetrievedEvidence[] {
+  const tokens = new Set(tokenize(question));
+  const boosted = catalog.map((entry, index) => {
+    const haystack = `${entry.summary} ${entry.ref.id} ${entry.ref.kind}`.toLowerCase();
+    let score = 0;
+    for (const token of tokens) {
+      if (haystack.includes(token)) score += 3;
     }
+    if (entry.ref.kind === "span" && /trace|span|path|route/.test(question.toLowerCase())) score += 2;
+    if (entry.ref.kind === "metric_group" && /metric|rate|latency|error|throughput|spike/.test(question.toLowerCase())) score += 2;
+    if ((entry.ref.kind === "log_cluster" || entry.ref.kind === "absence") && /log|missing|retry|backoff|error/.test(question.toLowerCase())) score += 2;
+    return { ...entry, score: score + Math.max(0, 1 - index * 0.01) };
+  });
 
-    const rawRefs = (parsed["evidenceRefs"] as unknown[]).filter(
-      (r): r is { kind: string; id: string } =>
-        typeof r === "object" &&
-        r !== null &&
-        typeof (r as Record<string, unknown>)["kind"] === "string" &&
-        typeof (r as Record<string, unknown>)["id"] === "string",
-    );
+  const sorted = boosted
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 8);
 
-    return {
-      answer: parsed["answer"] as string,
-      evidenceRefs: rawRefs,
-      followups: (parsed["followups"] as unknown[]).filter(
-        (f): f is string => typeof f === "string",
-      ),
-    };
-  } catch {
-    return null;
+  const diverse: RetrievedEvidence[] = [];
+  const seenKinds = new Set<string>();
+  for (const entry of sorted) {
+    if (diverse.length < 4 || !seenKinds.has(entry.ref.kind)) {
+      diverse.push(entry);
+      seenKinds.add(entry.ref.kind);
+    }
   }
+
+  return diverse.length > 0 ? diverse : catalog.slice(0, 4);
 }
 
-function buildConfidenceFromRefs(
-  refCount: number,
-): EvidenceQueryResponse["confidence"] {
-  if (refCount >= 3) return { label: "high", value: 0.85 };
-  if (refCount >= 1) return { label: "medium", value: 0.6 };
-  return { label: "low", value: 0.3 };
+function buildDeterministicNoAnswer(
+  question: string,
+  evidence: EvidenceResponse,
+  reason: string,
+): EvidenceQueryResponse {
+  return {
+    question,
+    status: "no_answer",
+    segments: [],
+    evidenceSummary: summarizeEvidence(evidence.surfaces),
+    followups: buildFollowups([], evidence, question),
+    noAnswerReason: reason,
+  };
 }
 
-function toEvidenceRef(
-  raw: { kind: string; id: string },
-): EvidenceQueryResponse["evidenceRefs"][number] | null {
-  const validKinds = ["span", "log", "metric", "log_cluster", "metric_group"] as const;
-  if (!validKinds.includes(raw.kind as (typeof validKinds)[number])) return null;
-  return { kind: raw.kind as (typeof validKinds)[number], id: raw.id };
+function buildFallbackAnswer(
+  question: string,
+  incident: Incident,
+  evidence: EvidenceResponse,
+  retrieved: RetrievedEvidence[],
+): EvidenceQueryResponse {
+  const segments: EvidenceQueryResponse["segments"] = [];
+
+  const firstFact = retrieved[0];
+  if (firstFact) {
+    segments.push({
+      id: "seg_fact_1",
+      kind: "fact",
+      text: firstFact.summary.split(".")[0] ?? firstFact.summary,
+      evidenceRefs: [firstFact.ref],
+    });
+  }
+
+  const secondFact = retrieved.find((item) => item.ref.kind !== firstFact?.ref.kind);
+  if (secondFact) {
+    segments.push({
+      id: "seg_fact_2",
+      kind: "fact",
+      text: secondFact.summary.split(".")[0] ?? secondFact.summary,
+      evidenceRefs: [secondFact.ref],
+    });
+  }
+
+  if (incident.diagnosisResult && retrieved.length > 0) {
+    segments.push({
+      id: "seg_inference_1",
+      kind: "inference",
+      text: incident.diagnosisResult.summary.root_cause_hypothesis,
+      evidenceRefs: retrieved.slice(0, 2).map((item) => item.ref),
+    });
+  }
+
+  if (segments.length === 0) {
+    return buildDeterministicNoAnswer(
+      question,
+      evidence,
+      "The current curated evidence does not support a grounded answer yet.",
+    );
+  }
+
+  return {
+    question,
+    status: "answered",
+    segments,
+    evidenceSummary: summarizeEvidence(evidence.surfaces),
+    followups: buildFollowups(retrieved, evidence, question),
+  };
+}
+
+function buildFollowups(
+  retrieved: RetrievedEvidence[],
+  evidence: EvidenceResponse,
+  question: string,
+): Followup[] {
+  const lowerQuestion = question.toLowerCase();
+  const surfaceSeen = new Set(retrieved.map((entry) => entry.surface));
+  const followups: Followup[] = [];
+
+  if (surfaceSeen.has("traces") && !lowerQuestion.includes("metric")) {
+    followups.push({
+      question: "Do the metrics show the same failure window?",
+      targetEvidenceKinds: ["metrics"],
+    });
+  }
+  if (surfaceSeen.has("metrics") && !lowerQuestion.includes("log")) {
+    followups.push({
+      question: "Which log cluster lines up with that drift?",
+      targetEvidenceKinds: ["logs"],
+    });
+  }
+  if (surfaceSeen.has("logs") && !lowerQuestion.includes("trace")) {
+    followups.push({
+      question: "Which trace path first shows this failure?",
+      targetEvidenceKinds: ["traces"],
+    });
+  }
+
+  const hasAbsence = evidence.surfaces.logs.claims.some((claim) => claim.type === "absence");
+  if (hasAbsence && !lowerQuestion.includes("missing")) {
+    followups.push({
+      question: "What expected resilience signal is still missing?",
+      targetEvidenceKinds: ["logs"],
+    });
+  }
+
+  if (followups.length === 0) {
+    if (evidence.surfaces.traces.observed.length > 0) {
+      followups.push({ question: "Which span should I inspect first?", targetEvidenceKinds: ["traces"] });
+    }
+    if (evidence.surfaces.metrics.hypotheses.length > 0) {
+      followups.push({ question: "Which metric group is most abnormal?", targetEvidenceKinds: ["metrics"] });
+    }
+    if (evidence.surfaces.logs.claims.length > 0) {
+      followups.push({ question: "Which log cluster best explains the symptom?", targetEvidenceKinds: ["logs"] });
+    }
+  }
+
+  return followups.slice(0, 4);
 }
 
 export async function buildEvidenceQueryAnswer(
   incident: Incident,
-  _telemetryStore: TelemetryStoreDriver,
+  telemetryStore: TelemetryStoreDriver,
   question: string,
   _isFollowup: boolean,
 ): Promise<EvidenceQueryResponse> {
   const diagnosisState = determineDiagnosisState(incident);
+  const curatedEvidence = await buildCuratedEvidence(incident, telemetryStore);
 
-  // ── Path 1: No diagnosis at all ──────────────────────────────────────────
-  if (diagnosisState === "unavailable" || diagnosisState === "pending") {
-    return {
+  if (diagnosisState === "unavailable") {
+    return buildDeterministicNoAnswer(
       question,
-      answer:
-        "Diagnosis is not yet available. Evidence surfaces below show the raw telemetry data collected so far.",
-      confidence: { label: "unavailable", value: 0 },
-      evidenceRefs: [],
-      evidenceSummary: buildEvidenceSummary(incident),
-      followups: buildDefaultFollowups(incident),
-      noAnswerReason:
-        diagnosisState === "pending"
-          ? "Diagnosis is still running. Answers will be available when diagnosis completes."
-          : "No diagnosis has been triggered for this incident yet.",
-    };
+      curatedEvidence,
+      "No diagnosis has been triggered for this incident, so the system will not guess beyond the curated evidence.",
+    );
   }
 
-  const dr = incident.diagnosisResult!;
-
-  // ── Path 2: Diagnosis ready, but no consoleNarrative ────────────────────
-  if (!incident.consoleNarrative) {
-    const whatHappened = dr.summary.what_happened;
-    const immediateAction = dr.recommendation.immediate_action;
-
-    return {
+  if (diagnosisState === "pending") {
+    return buildDeterministicNoAnswer(
       question,
-      answer: `Based on the diagnosis: ${whatHappened}. Recommended action: ${immediateAction}. See evidence surfaces below for supporting data.`,
-      confidence: { label: "medium", value: 0.5 },
-      evidenceRefs: [],
-      evidenceSummary: buildEvidenceSummary(incident),
-      followups: buildDefaultFollowups(incident),
-    };
+      curatedEvidence,
+      "Diagnosis is still running. The curated evidence surfaces are available now, but the system is withholding a grounded answer until diagnosis is ready.",
+    );
   }
 
-  // ── Path 3: Full LLM answer ──────────────────────────────────────────────
-  const systemPrompt = buildLLMSystemPrompt(incident);
-  const userMessage = `<user_question>${question}</user_question>`;
-
-  const client = new Anthropic({
-    baseURL: process.env["ANTHROPIC_BASE_URL"],
-    apiKey: process.env["ANTHROPIC_API_KEY"] ?? "no-key",
-  });
-
-  let llmResult: LLMQueryResult | null = null;
+  const catalog = buildEvidenceCatalog(curatedEvidence);
+  const retrieved = retrieveEvidence(question, catalog);
+  if (retrieved.length === 0) {
+    return buildDeterministicNoAnswer(
+      question,
+      curatedEvidence,
+      "The current curated evidence does not contain enough linked material to answer this question responsibly.",
+    );
+  }
 
   try {
-    const response = await client.messages.create({
-      model: EVIDENCE_QUERY_MODEL,
-      max_tokens: 1024,
-      temperature: 0.2,
-      system: systemPrompt,
-      messages: [{ role: "user", content: userMessage }],
-    });
-
-    const text = response.content
-      .filter((b): b is Anthropic.TextBlock => b.type === "text")
-      .map((b) => b.text)
-      .join("");
-
-    llmResult = parseLLMResponse(text);
-  } catch {
-    // LLM failure: fall back to path 2 behavior
-  }
-
-  if (!llmResult) {
-    const whatHappened = dr.summary.what_happened;
-    const immediateAction = dr.recommendation.immediate_action;
+    const generated = await generateEvidenceQuery(
+      {
+        question,
+        diagnosis: incident.diagnosisResult
+          ? {
+              whatHappened: incident.diagnosisResult.summary.what_happened,
+              rootCauseHypothesis: incident.diagnosisResult.summary.root_cause_hypothesis,
+              immediateAction: incident.diagnosisResult.recommendation.immediate_action,
+              causalChain: incident.diagnosisResult.reasoning.causal_chain.map((step) => step.title),
+            }
+          : null,
+        evidence: retrieved.map(({ ref, surface, summary }) => ({ ref, surface, summary })),
+      },
+      { model: EVIDENCE_QUERY_MODEL },
+    );
 
     return {
-      question,
-      answer: `Based on the diagnosis: ${whatHappened}. Recommended action: ${immediateAction}. See evidence surfaces below for supporting data.`,
-      confidence: { label: "medium", value: 0.5 },
-      evidenceRefs: [],
-      evidenceSummary: buildEvidenceSummary(incident),
-      followups: buildDefaultFollowups(incident),
+      ...generated,
+      evidenceSummary: summarizeEvidence(curatedEvidence.surfaces),
+      followups: buildFollowups(retrieved, curatedEvidence, question),
     };
+  } catch {
+    return buildFallbackAnswer(question, incident, curatedEvidence, retrieved);
   }
-
-  const validRefs = llmResult.evidenceRefs
-    .map(toEvidenceRef)
-    .filter((r): r is NonNullable<typeof r> => r !== null);
-
-  const followupObjects: EvidenceQueryResponse["followups"] = llmResult.followups.map((q) => ({
-    question: q,
-    targetEvidenceKinds: ["traces"] as ["traces"],
-  }));
-
-  const evidenceSummary: EvidenceSummary = {
-    traces: validRefs.filter((r) => r.kind === "span").length,
-    metrics: validRefs.filter((r) => r.kind === "metric" || r.kind === "metric_group").length,
-    logs: validRefs.filter((r) => r.kind === "log" || r.kind === "log_cluster").length,
-  };
-
-  return {
-    question,
-    answer: llmResult.answer,
-    confidence: buildConfidenceFromRefs(validRefs.length),
-    evidenceRefs: validRefs,
-    evidenceSummary,
-    followups: followupObjects.length > 0 ? followupObjects : buildDefaultFollowups(incident),
-  };
 }

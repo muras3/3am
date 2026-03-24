@@ -2,7 +2,8 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { useSearch } from "@tanstack/react-router";
 import { ApiError } from "../../../api/client.js";
-import { curatedMutations, curatedQueries, type ChatTurn } from "../../../api/queries.js";
+import { curatedMutations, curatedQueries } from "../../../api/queries.js";
+import type { EvidenceQueryResponse } from "../../../api/curated-types.js";
 import type { LensLevel, LensSearchParams } from "../../../routes/__root.js";
 import { ContextBar } from "./ContextBar.js";
 import { LensProofCards } from "./LensProofCards.js";
@@ -18,25 +19,17 @@ interface Props {
   zoomTo: (level: LensLevel, trigger?: HTMLElement, incidentId?: string) => void;
 }
 
-/**
- * LensEvidenceStudio — Level 2 orchestration component.
- *
- * Layout:
- *   context bar → proof cards → Q&A frame → tabs → content grid (main + side rail)
- */
 export function LensEvidenceStudio({ incidentId }: Props) {
   const search = useSearch({ from: "__root__" }) as LensSearchParams;
   const tab = search.tab ?? "traces";
   const [queryDraft, setQueryDraft] = useState(search.query ?? "");
-  const [history, setHistory] = useState<ChatTurn[]>([]);
-  const [latestReply, setLatestReply] = useState<string>();
+  const [latestResponse, setLatestResponse] = useState<EvidenceQueryResponse>();
   const [submitError, setSubmitError] = useState<string>();
 
   const incidentQuery = useQuery(curatedQueries.extendedIncident(incidentId));
   const evidenceQuery = useQuery(curatedQueries.evidence(incidentId));
-  const chatMutation = useMutation(curatedMutations.chat(incidentId));
+  const groundedQueryMutation = useMutation(curatedMutations.evidenceQuery(incidentId));
 
-  // Must be before early returns — React requires consistent hook call order.
   const evidenceQaQuestion = evidenceQuery.data?.qa.question;
   useEffect(() => {
     if (evidenceQaQuestion != null) {
@@ -104,25 +97,17 @@ export function LensEvidenceStudio({ incidentId }: Props) {
       : "Expected baseline remains open, so recovery and comparison guidance stays provisional.",
   ];
 
-  function handleSubmitQuestion(question: string) {
+  function handleSubmitQuestion(question: string, isFollowup = false) {
     setSubmitError(undefined);
-    chatMutation.mutate(
+    groundedQueryMutation.mutate(
+      { question, isFollowup },
       {
-        message: question,
-        history,
-      },
-      {
-        onSuccess: ({ reply }) => {
-          setHistory((prev) => [
-            ...prev,
-            { role: "user", content: question },
-            { role: "assistant", content: reply },
-          ]);
-          setLatestReply(reply);
+        onSuccess: (response) => {
+          setLatestResponse(response);
         },
         onError: (error) => {
           if (error instanceof ApiError && error.status === 404) {
-            setSubmitError("Free-form Q&A will open once diagnosis links enough evidence. The prepared surfaces below are ready now.");
+            setSubmitError("Grounded Q&A is unavailable for this incident. The evidence surfaces below remain available.");
             return;
           }
           setSubmitError(error instanceof Error ? error.message : "Failed to submit question.");
@@ -138,7 +123,6 @@ export function LensEvidenceStudio({ incidentId }: Props) {
       data-evidence-density={evidence.state.evidenceDensity}
       data-diagnosis-state={evidence.state.diagnosis}
     >
-      {/* Context bar — keeps incident context visible */}
       <ContextBar incident={incident} />
 
       {showStatusBanner && (
@@ -169,24 +153,20 @@ export function LensEvidenceStudio({ incidentId }: Props) {
         </div>
       )}
 
-      {/* Proof cards grid */}
       <LensProofCards cards={evidence.proofCards} />
 
-      {/* Q&A frame */}
       <QAFrame
         qa={evidence.qa}
         inputValue={queryDraft}
-        isSubmitting={chatMutation.isPending}
+        isSubmitting={groundedQueryMutation.isPending}
         submitError={submitError}
-        latestReply={latestReply}
+        latestResponse={latestResponse}
         onInputChange={setQueryDraft}
         onSubmitQuestion={handleSubmitQuestion}
       />
 
-      {/* Tab bar */}
       <LensEvidenceTabs surfaces={evidence.surfaces} />
 
-      {/* Content grid: main + side rail */}
       <div className="lens-ev-grid">
         <div className="lens-ev-main">
           <div
@@ -232,7 +212,6 @@ export function LensEvidenceStudio({ incidentId }: Props) {
           </div>
         </div>
 
-        {/* Right side rail */}
         <LensSideRail
           notes={evidence.sideNotes}
           diagnosisState={evidence.state.diagnosis}

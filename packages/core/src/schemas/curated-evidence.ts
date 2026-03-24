@@ -265,6 +265,13 @@ export const QABlockSchema = z.object({
   question: z.string(),
   answer: z.string(),
   evidenceRefs: z.array(EvidenceRefSchema),
+  status: z.enum(["answered", "no_answer"]).optional(),
+  segments: z.array(z.object({
+    id: z.string(),
+    kind: z.enum(["fact", "inference", "unknown"]),
+    text: z.string().min(1),
+    evidenceRefs: z.array(EvidenceRefSchema).min(1),
+  }).strict()).optional(),
   evidenceSummary: EvidenceSummarySchema,
   followups: z.array(FollowupSchema),
   noAnswerReason: z.string().optional(),
@@ -277,16 +284,24 @@ export const EvidenceQueryRequestSchema = z.object({
   isFollowup: z.boolean().optional(),
 }).strict();
 
-export const EvidenceQueryConfidenceSchema = z.object({
-  label: z.enum(["high", "medium", "low", "unavailable"]),
-  value: z.number().min(0).max(1),
+export const EvidenceQueryRefSchema = z.object({
+  kind: z.enum(["span", "metric_group", "log_cluster", "absence"]),
+  id: z.string(),
 }).strict();
+
+export const EvidenceQuerySegmentSchema = z.object({
+  id: z.string(),
+  kind: z.enum(["fact", "inference", "unknown"]),
+  text: z.string().min(1),
+  evidenceRefs: z.array(EvidenceQueryRefSchema).min(1),
+}).strict();
+
+export const EvidenceQueryStatusSchema = z.enum(["answered", "no_answer"]);
 
 export const EvidenceQueryResponseSchema = z.object({
   question: z.string(),
-  answer: z.string(),
-  confidence: EvidenceQueryConfidenceSchema,
-  evidenceRefs: z.array(EvidenceRefSchema),
+  status: EvidenceQueryStatusSchema,
+  segments: z.array(EvidenceQuerySegmentSchema),
   evidenceSummary: EvidenceSummarySchema,
   followups: z.array(FollowupSchema),
   noAnswerReason: z.string().optional(),
@@ -348,5 +363,7 @@ export type EvidenceSurfaces = z.infer<typeof EvidenceSurfacesSchema>;
 export type EvidenceResponse = z.infer<typeof EvidenceResponseSchema>;
 export type NarrativeAbsenceEvidence = z.infer<typeof NarrativeAbsenceEvidenceSchema>;
 export type EvidenceQueryRequest = z.infer<typeof EvidenceQueryRequestSchema>;
-export type EvidenceQueryConfidence = z.infer<typeof EvidenceQueryConfidenceSchema>;
+export type EvidenceQueryRef = z.infer<typeof EvidenceQueryRefSchema>;
+export type EvidenceQuerySegment = z.infer<typeof EvidenceQuerySegmentSchema>;
+export type EvidenceQueryStatus = z.infer<typeof EvidenceQueryStatusSchema>;
 export type EvidenceQueryResponse = z.infer<typeof EvidenceQueryResponseSchema>;

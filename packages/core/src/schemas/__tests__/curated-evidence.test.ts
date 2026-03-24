@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { ZodError } from "zod";
-import { EvidenceResponseSchema } from "../curated-evidence.js";
+import { EvidenceQueryResponseSchema, EvidenceResponseSchema } from "../curated-evidence.js";
 
 const minimalValid = {
   proofCards: [
@@ -102,5 +102,35 @@ describe("EvidenceResponseSchema", () => {
         proofCards: minimalValid.proofCards.slice(0, 2),
       }),
     ).toThrow(ZodError);
+  });
+});
+
+describe("EvidenceQueryResponseSchema", () => {
+  it("accepts sentence-level grounded segments", () => {
+    const parsed = EvidenceQueryResponseSchema.parse({
+      question: "Why are payments failing?",
+      status: "answered",
+      segments: [
+        {
+          id: "seg-1",
+          kind: "fact",
+          text: "Checkout spans are failing with 504 responses.",
+          evidenceRefs: [{ kind: "span", id: "trace-1:span-1" }],
+        },
+        {
+          id: "seg-2",
+          kind: "unknown",
+          text: "The current evidence does not prove whether the upstream quota changed.",
+          evidenceRefs: [{ kind: "absence", id: "missing-retry" }],
+        },
+      ],
+      evidenceSummary: { traces: 1, metrics: 0, logs: 1 },
+      followups: [
+        { question: "Do the metrics show the same spike?", targetEvidenceKinds: ["metrics"] },
+      ],
+    });
+
+    expect(parsed.segments).toHaveLength(2);
+    expect(parsed.segments[1]?.kind).toBe("unknown");
   });
 });
