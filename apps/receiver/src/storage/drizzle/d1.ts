@@ -9,6 +9,15 @@
  */
 import { drizzle } from "drizzle-orm/d1";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
+
+// Local D1Database type to avoid polluting global scope with @cloudflare/workers-types
+// (which conflicts with @types/node globals like crypto.subtle)
+interface D1Database {
+  prepare(query: string): unknown;
+  batch<T = unknown>(statements: unknown[]): Promise<T[]>;
+  exec(query: string): Promise<unknown>;
+  dump(): Promise<ArrayBuffer>;
+}
 import { eq, desc, lt, and } from "drizzle-orm";
 import { sql } from "drizzle-orm";
 import type { IncidentPacket, DiagnosisResult, ConsoleNarrative, PlatformEvent, ThinEvent } from "@3amoncall/core";

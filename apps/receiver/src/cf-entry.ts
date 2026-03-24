@@ -14,6 +14,19 @@ import { createApp, resolveAuthToken } from "./index.js";
 import { D1StorageAdapter } from "./storage/drizzle/d1.js";
 import { D1TelemetryAdapter } from "./telemetry/drizzle/d1.js";
 
+// Local CF types to avoid @cloudflare/workers-types polluting globals
+interface D1Database {
+  prepare(query: string): unknown;
+  batch<T = unknown>(statements: unknown[]): Promise<T[]>;
+  exec(query: string): Promise<unknown>;
+  dump(): Promise<ArrayBuffer>;
+}
+interface ExecutionContext {
+  waitUntil(promise: Promise<unknown>): void;
+  passThroughOnException(): void;
+  props: Record<string, unknown>;
+}
+
 interface Env {
   DB: D1Database;
   RECEIVER_AUTH_TOKEN?: string;

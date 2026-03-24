@@ -6,6 +6,14 @@
  */
 import { drizzle } from "drizzle-orm/d1";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
+
+// Local D1Database type to avoid polluting global scope with @cloudflare/workers-types
+interface D1Database {
+  prepare(query: string): unknown;
+  batch<T = unknown>(statements: unknown[]): Promise<T[]>;
+  exec(query: string): Promise<unknown>;
+  dump(): Promise<ArrayBuffer>;
+}
 import { and, gte, lte, lt, inArray, eq, sql } from "drizzle-orm";
 import type {
   TelemetryStoreDriver,
