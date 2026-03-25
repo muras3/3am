@@ -118,7 +118,7 @@ export function runTelemetryStoreSuite(
           httpRoute: "/checkout",
           httpStatusCode: 500,
           peerService: "stripe",
-          attributes: { "http.method": "POST" },
+          attributes: { "http.request.method": "POST" },
         });
         await driver.ingestSpans([span]);
 
@@ -127,7 +127,7 @@ export function runTelemetryStoreSuite(
         expect(result[0]!.httpRoute).toBe("/checkout");
         expect(result[0]!.httpStatusCode).toBe(500);
         expect(result[0]!.peerService).toBe("stripe");
-        expect(result[0]!.attributes).toEqual({ "http.method": "POST" });
+        expect(result[0]!.attributes).toEqual({ "http.request.method": "POST" });
       });
 
       it("handles empty array without error", async () => {
