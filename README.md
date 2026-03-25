@@ -60,6 +60,22 @@ The Receiver collects spans, metrics, and logs via OTLP/HTTP. When anomaly thres
 
 ---
 
+## Configuration
+
+### Retention
+
+Set `RETENTION_HOURS` to control how long telemetry data (spans, metrics, logs, snapshots) and closed incidents are kept. Default: `1` (1 hour). Cleanup is app-side lazy cleanup, triggered by incoming requests at most once every 5 minutes.
+
+| `RETENTION_HOURS` | Retention |
+|-------------------|-----------|
+| `1` (default)     | 1 hour    |
+| `24`              | 24 hours  |
+| `72`              | 72 hours  |
+
+Invalid values (non-integer, zero, negative) fall back to the default (1 hour). Open incidents are never deleted by cleanup regardless of retention.
+
+---
+
 ## Security
 
 - **Anthropic spending limit:** Set a monthly spend cap at [console.anthropic.com](https://console.anthropic.com/settings/billing) before deploying. Diagnosis runs on every incident.

@@ -20,6 +20,7 @@ import { buildCuratedEvidence } from "../domain/curated-evidence.js";
 import { buildEvidenceQueryAnswer } from "../domain/evidence-query.js";
 import type { DiagnosisRunner } from "../runtime/diagnosis-runner.js";
 import { resolveWaitUntil, runClaimedDiagnosis } from "../runtime/diagnosis-debouncer.js";
+import { maybeCleanup } from "../retention/lazy-cleanup.js";
 
 const CHAT_MAX_HISTORY = 10;
 const CHAT_MAX_MESSAGE_CHARS = 500;
@@ -119,6 +120,7 @@ export function createApiRouter(storage: StorageDriver, spanBuffer: SpanBuffer |
   app.use("/api/incidents/*/evidence/query", rateLimiter({ windowMs: 60_000, max: 10 }));
 
   app.get("/api/incidents", async (c) => {
+    await maybeCleanup(storage, telemetryStore);
     const limitStr = c.req.query("limit");
     const cursor = c.req.query("cursor");
     const rawLimit = limitStr !== undefined ? parseInt(limitStr, 10) : 20;
@@ -129,6 +131,7 @@ export function createApiRouter(storage: StorageDriver, spanBuffer: SpanBuffer |
   });
 
   app.get("/api/incidents/:id", async (c) => {
+    await maybeCleanup(storage, telemetryStore);
     const id = c.req.param("id");
     const incident = await storage.getIncident(id);
     if (incident === null) {
@@ -138,6 +141,7 @@ export function createApiRouter(storage: StorageDriver, spanBuffer: SpanBuffer |
   });
 
   app.get("/api/incidents/:id/evidence", async (c) => {
+    await maybeCleanup(storage, telemetryStore);
     const id = c.req.param("id");
     const incident = await storage.getIncident(id);
     if (incident === null) {

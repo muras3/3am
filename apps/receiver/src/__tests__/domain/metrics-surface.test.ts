@@ -51,6 +51,7 @@ function makeMockStore(
     getSnapshots: async () => [],
     deleteSnapshots: async () => {},
     deleteExpired: async () => {},
+    deleteExpiredSnapshots: async () => {},
   }
 }
 

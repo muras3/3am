@@ -48,6 +48,7 @@ function makeMockStore(logs: TelemetryLog[] = []): TelemetryStoreDriver {
     getSnapshots: vi.fn().mockResolvedValue([]),
     deleteSnapshots: vi.fn().mockResolvedValue(undefined),
     deleteExpired: vi.fn().mockResolvedValue(undefined),
+    deleteExpiredSnapshots: vi.fn().mockResolvedValue(undefined),
   }
 }
 

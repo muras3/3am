@@ -25,7 +25,7 @@ import {
 import { buildAnomalousSignals, createPacket } from "../domain/packetizer.js";
 import { extractTelemetryMetrics, extractTelemetryLogs } from "../telemetry/otlp-extractors.js";
 import { rebuildSnapshots } from "../telemetry/snapshot-builder.js";
-import { CLEANUP_INTERVAL_MS, RETENTION_MS } from "../telemetry/constants.js";
+import { maybeCleanup } from "../retention/lazy-cleanup.js";
 import type { DiagnosisRunner } from "../runtime/diagnosis-runner.js";
 import { type DiagnosisConfig, scheduleDelayedDiagnosis, checkGenerationThreshold, resolveWaitUntil, runIfNeeded } from "../runtime/diagnosis-debouncer.js";
 import { decodeTraces, decodeMetrics, decodeLogs } from "./otlp-protobuf.js";
@@ -146,21 +146,6 @@ function selectBestIncidentForPlatformEvent(
     })[0];
 }
 
-// ── Opportunistic TTL cleanup (ADR 0032 Appendix A.5) ─────────────────────────
-let lastCleanup = 0;
-
-async function maybeCleanup(telemetryStore: TelemetryStoreDriver): Promise<void> {
-  const now = Date.now();
-  if (now - lastCleanup < CLEANUP_INTERVAL_MS) return;
-  lastCleanup = now;
-  await telemetryStore.deleteExpired(new Date(now - RETENTION_MS));
-}
-
-/** Exported for testing only — reset the cleanup timer between test runs. */
-export function _resetCleanupTimerForTest(): void {
-  lastCleanup = 0;
-}
-
 /** Compute scope expansion fields from a batch of spans (used in evidence-only and existing-attach paths). */
 function computeScopeExpansion(spans: Array<{ traceId: string; spanId: string; serviceName: string; peerService?: string; startTimeMs: number; durationMs: number }>) {
   const spanIds = spans.map(s => spanMembershipKey(s.traceId, s.spanId));
@@ -217,7 +202,7 @@ export function createIngestRouter(storage: StorageDriver, spanBuffer: SpanBuffe
   );
 
   app.post("/v1/traces", async (c) => {
-    await maybeCleanup(telemetryStore);
+    await maybeCleanup(storage, telemetryStore);
 
     const result = await decodeOtlpBody(c, decodeTraces);
     if (result instanceof Response) return result;
@@ -362,7 +347,7 @@ export function createIngestRouter(storage: StorageDriver, spanBuffer: SpanBuffe
   // OTLP metrics — protobuf + JSON both accepted (ADR 0022).
   // Evidence is extracted and attached to matching open incidents.
   app.post("/v1/metrics", async (c) => {
-    await maybeCleanup(telemetryStore);
+    await maybeCleanup(storage, telemetryStore);
 
     const result = await decodeOtlpBody(c, decodeMetrics);
     if (result instanceof Response) return result;
@@ -394,7 +379,7 @@ export function createIngestRouter(storage: StorageDriver, spanBuffer: SpanBuffe
   // OTLP logs — protobuf + JSON both accepted (ADR 0022).
   // Only WARN/ERROR/FATAL logs (severityNumber >= 13) are extracted and attached.
   app.post("/v1/logs", async (c) => {
-    await maybeCleanup(telemetryStore);
+    await maybeCleanup(storage, telemetryStore);
 
     const result = await decodeOtlpBody(c, decodeLogs);
     if (result instanceof Response) return result;

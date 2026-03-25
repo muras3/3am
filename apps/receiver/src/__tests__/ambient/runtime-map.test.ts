@@ -40,6 +40,7 @@ function makeMockTelemetryStore(spans: TelemetrySpan[] = []): TelemetryStoreDriv
     getSnapshots: vi.fn().mockResolvedValue([]),
     deleteSnapshots: vi.fn(),
     deleteExpired: vi.fn(),
+    deleteExpiredSnapshots: vi.fn(),
   }
 }
 

@@ -413,4 +413,12 @@ export class SQLiteTelemetryAdapter implements TelemetryStoreDriver {
       tx.delete(telemetryLogs).where(lt(telemetryLogs.ingestedAt, cutoff)).run();
     });
   }
+
+  async deleteExpiredSnapshots(before: Date): Promise<void> {
+    const cutoffIso = before.toISOString();
+    this.db
+      .delete(incidentEvidenceSnapshots)
+      .where(lt(incidentEvidenceSnapshots.updatedAt, cutoffIso))
+      .run();
+  }
 }

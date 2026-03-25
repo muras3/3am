@@ -112,4 +112,7 @@ export interface TelemetryStoreDriver {
 
   // TTL cleanup
   deleteExpired(before: Date): Promise<void>
+
+  /** Remove evidence snapshots where updatedAt < before. */
+  deleteExpiredSnapshots(before: Date): Promise<void>
 }
