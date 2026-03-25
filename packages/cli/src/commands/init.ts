@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { createInterface } from "node:readline";
 import { execSync } from "node:child_process";
 import { detectFramework } from "./init/detect-framework.js";
+import { detectLogger } from "./init/detect-logger.js";
 import { detectPackageManager } from "./init/detect-package-manager.js";
 import { getInstrumentationTemplate } from "./init/templates.js";
 
@@ -83,6 +84,7 @@ export async function runInit(_argv: string[]): Promise<void> {
 
   const allDeps = { ...pkg.dependencies, ...pkg.devDependencies };
   const framework = detectFramework(allDeps);
+  const logger = detectLogger(allDeps);
   const pm = detectPackageManager(cwd);
   const serviceName = pkg.name ?? "my-service";
   const isTs = isTypeScriptProject(cwd, allDeps);
@@ -92,7 +94,11 @@ export async function runInit(_argv: string[]): Promise<void> {
   const pkgBackupPath = pkgPath + ".bak";
   copyFileSync(pkgPath, pkgBackupPath);
 
-  const installCmd = getInstallCommand(pm, OTEL_DEPS);
+  const depsToInstall = [...OTEL_DEPS];
+  if (logger.detected) {
+    depsToInstall.push(logger.instrumentationPackage);
+  }
+  const installCmd = getInstallCommand(pm, depsToInstall);
   process.stdout.write(`Installing OTel dependencies: ${installCmd}\n`);
 
   try {
@@ -137,7 +143,19 @@ export async function runInit(_argv: string[]): Promise<void> {
   writeFileSync(envPath, updatedEnv, "utf-8");
   process.stdout.write("Updated .env\n");
 
+  // --- Self-check: show what signals will be collected ---
   process.stdout.write("\n3amoncall init complete!\n\n");
+  process.stdout.write("Signal check:\n");
+  process.stdout.write("  ✓ Traces — auto-instrumented (HTTP, DB, etc.)\n");
+  process.stdout.write("  ✓ Metrics — auto-instrumented (request duration, etc.)\n");
+  if (logger.detected) {
+    process.stdout.write(`  ✓ Logs — ${logger.name} detected, bridge installed\n`);
+  } else {
+    process.stdout.write(
+      "  ✗ Logs — no structured logger detected. Install pino or winston for log-based diagnosis.\n",
+    );
+  }
+  process.stdout.write("\n");
 
   // --- Startup guidance (Finding 3: match flag to module system) ---
   if (framework === "nextjs") {
