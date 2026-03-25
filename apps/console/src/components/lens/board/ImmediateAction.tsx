@@ -20,6 +20,11 @@ export function ImmediateAction({ action, state }: Props) {
     actionSteps.join(" ").trim() !== text ||
     rationalePreview !== rationale ||
     doNotPreview !== doNotText;
+  const isDirectional =
+    state.diagnosis !== "ready" || state.evidenceDensity === "sparse";
+  const title = isDirectional ? "Next Operator Step" : "Immediate Action";
+  const supportLabel = isDirectional ? "Why this first" : "Why";
+  const doNotLabel = isDirectional ? "Avoid assuming" : "Do not";
 
   return (
     <div className="lens-board-action-hero">
@@ -30,8 +35,13 @@ export function ImmediateAction({ action, state }: Props) {
             fill="currentColor"
           />
         </svg>
-        Immediate Action
+        {title}
       </div>
+      {isDirectional ? (
+        <p className="lens-board-action-intro">
+          Use this as the safest next move with current evidence, not as a confirmed remediation.
+        </p>
+      ) : null}
       <div className="lens-board-action-steps" role="list" aria-label="Immediate action steps">
         {actionSteps.map((step, index) => (
           <div key={`${step}-${index}`} className="lens-board-action-step" role="listitem">
@@ -42,13 +52,13 @@ export function ImmediateAction({ action, state }: Props) {
       </div>
       <div className="lens-board-action-support-grid">
         <div className="lens-board-action-support">
-          <strong>Why</strong>
+          <strong>{supportLabel}</strong>
           <span title={rationale}>{rationalePreview}</span>
         </div>
         <div
           className={`lens-board-action-support lens-board-action-donot${doNot ? "" : " lens-board-action-donot-empty"}`}
         >
-          <strong>Do not</strong>
+          <strong>{doNotLabel}</strong>
           <span title={doNotText}>{doNotPreview}</span>
         </div>
       </div>

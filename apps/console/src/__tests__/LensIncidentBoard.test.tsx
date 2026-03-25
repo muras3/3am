@@ -35,7 +35,7 @@ function getPendingBanner() {
 // ── Tests ─────────────────────────────────────────────────────
 
 describe("LensIncidentBoard — diagnosis pending", () => {
-  it("renders a degraded-state banner with present and future sections", () => {
+  it("renders a degraded-state banner with confirmed, unconfirmed, and next-step sections", () => {
     const qc = makeClient();
     qc.setQueryData(
       curatedQueries.extendedIncident("inc_0892").queryKey,
@@ -44,8 +44,11 @@ describe("LensIncidentBoard — diagnosis pending", () => {
     renderBoard("inc_0892", vi.fn(), qc);
     const banner = getPendingBanner();
     expect(banner).not.toBeNull();
-    expect(document.querySelectorAll(".lens-board-pending-panel")).toHaveLength(2);
-    expect(document.querySelectorAll(".lens-board-pending-list li")).toHaveLength(6);
+    expect(screen.getByText("Confirmed now")).toBeInTheDocument();
+    expect(screen.getByText("Not confirmed yet")).toBeInTheDocument();
+    expect(screen.getByText("Operator next step")).toBeInTheDocument();
+    expect(document.querySelectorAll(".lens-board-pending-panel")).toHaveLength(3);
+    expect(document.querySelectorAll(".lens-board-pending-list li")).toHaveLength(9);
   });
 
   it("keeps board structure rendered while diagnosis is pending", () => {
@@ -59,6 +62,24 @@ describe("LensIncidentBoard — diagnosis pending", () => {
     expect(document.querySelectorAll(".lens-board-blast-row")).toHaveLength(2);
     expect(document.querySelector(".lens-board-chain-placeholder")).not.toBeNull();
     expect(document.querySelector(".lens-board-evidence-note")).not.toBeNull();
+  });
+
+  it("surfaces action-first evidence guidance and reserved rerun affordance", () => {
+    const qc = makeClient();
+    const zoomTo = vi.fn();
+    qc.setQueryData(
+      curatedQueries.extendedIncident("inc_0892").queryKey,
+      extendedIncidentPending,
+    );
+    renderBoard("inc_0892", zoomTo, qc);
+
+    expect(screen.getByText("Next Operator Step")).toBeInTheDocument();
+    expect(screen.getByText("Working Theory")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /Open Evidence Studio from diagnosis status/i }));
+    expect(zoomTo).toHaveBeenCalledWith(2, expect.anything());
+
+    expect(screen.getByRole("button", { name: /Re-run diagnosis/i })).toBeDisabled();
   });
 });
 
@@ -96,6 +117,7 @@ describe("LensIncidentBoard — diagnosis ready", () => {
   it("renders Root Cause Hypothesis section", () => {
     renderBoard("inc_0892", vi.fn(), setupReady());
     expect(screen.getByText("Root Cause Hypothesis")).toBeInTheDocument();
+    expect(screen.getByText("Correlated")).toBeInTheDocument();
     expect(screen.getAllByText(/StripeClient service makes unbatched 1:1 API calls/).length)
       .toBeGreaterThan(0);
   });
@@ -157,7 +179,7 @@ describe("ConfidenceCard", () => {
     );
     renderBoard("inc_0892", vi.fn(), qc);
     expect(screen.getByText("High confidence")).toBeInTheDocument();
-    expect(screen.getByText("Stripe 429 ↔ traffic r=0.97")).toBeInTheDocument();
+    expect(screen.getAllByText("Stripe 429 ↔ traffic r=0.97").length).toBeGreaterThan(0);
   });
 });
 
@@ -223,7 +245,7 @@ describe("LensEvidenceEntry", () => {
   it("calls zoomTo(2) when Open Evidence Studio button is clicked", () => {
     const zoomTo = vi.fn();
     renderBoard("inc_0892", zoomTo, setupReady());
-    const btn = screen.getByRole("button", { name: /Open Evidence Studio/ });
+    const btn = screen.getByRole("button", { name: /Open Evidence Studio now/ });
     fireEvent.click(btn);
     expect(zoomTo).toHaveBeenCalledWith(2, expect.anything());
   });
@@ -231,7 +253,7 @@ describe("LensEvidenceEntry", () => {
   it("calls zoomTo(2) on Enter key", () => {
     const zoomTo = vi.fn();
     renderBoard("inc_0892", zoomTo, setupReady());
-    const btn = screen.getByRole("button", { name: /Open Evidence Studio/ });
+    const btn = screen.getByRole("button", { name: /Open Evidence Studio now/ });
     fireEvent.keyDown(btn, { key: "Enter" });
     expect(zoomTo).toHaveBeenCalledWith(2, expect.anything());
   });
@@ -239,7 +261,7 @@ describe("LensEvidenceEntry", () => {
   it("calls zoomTo(2) on Space key", () => {
     const zoomTo = vi.fn();
     renderBoard("inc_0892", zoomTo, setupReady());
-    const btn = screen.getByRole("button", { name: /Open Evidence Studio/ });
+    const btn = screen.getByRole("button", { name: /Open Evidence Studio now/ });
     fireEvent.keyDown(btn, { key: " " });
     expect(zoomTo).toHaveBeenCalledWith(2, expect.anything());
   });
@@ -258,6 +280,7 @@ describe("LensIncidentBoard — sparse diagnosis", () => {
     expect(document.querySelector(".lens-board-state-note")).not.toBeNull();
     expect(document.querySelectorAll(".lens-board-chain-step")).toHaveLength(1);
     expect(document.querySelectorAll(".lens-board-check-item")).toHaveLength(1);
-    expect(screen.getByRole("button", { name: /Open Evidence Studio/i })).toBeInTheDocument();
+    expect(screen.getByText("Next Operator Step")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Open Evidence Studio now/i })).toBeInTheDocument();
   });
 });

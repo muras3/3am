@@ -29,10 +29,11 @@ export function ConfidenceCard({ confidence, state }: Props) {
   const basisPreview = shortenForViewport(basisText, 46);
   const riskPreview = shortenForViewport(riskText, 88);
   const hasExpandableDetail = basisPreview !== basisText || riskPreview !== riskText;
+  const confidenceStatus = state.diagnosis === "ready" ? "Current confidence" : "Confidence now";
 
   return (
     <div className="lens-board-card">
-      <div className="lens-board-card-title">Confidence</div>
+      <div className="lens-board-card-title">{confidenceStatus}</div>
       <div className="lens-board-conf-top">
         <div
           className={`lens-board-conf-score ${scoreColorClass(confidence.value)}`}
@@ -49,8 +50,12 @@ export function ConfidenceCard({ confidence, state }: Props) {
           </span>
         </div>
       </div>
+      <div className="lens-board-conf-row">
+        <span className="lens-board-conf-row-label">Based on</span>
+        <span className="lens-board-conf-row-value">{basisPreview}</span>
+      </div>
       <div className="lens-board-conf-risk">
-        <span className="lens-board-conf-risk-label">Risk:</span> {riskPreview}
+        <span className="lens-board-conf-risk-label">Uncertainty:</span> {riskPreview}
       </div>
       {hasExpandableDetail ? (
         <details className="lens-board-inline-details">
