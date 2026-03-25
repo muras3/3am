@@ -29,8 +29,8 @@ type RetrievedEvidence = {
 };
 
 function determineDiagnosisState(incident: Incident): DiagnosisState {
-  if (incident.diagnosisResult) return "ready";
   if (incident.diagnosisDispatchedAt) return "pending";
+  if (incident.diagnosisResult) return "ready";
   return "unavailable";
 }
 

@@ -241,8 +241,8 @@ function buildBaselineFilter(scope: TelemetryScope): TelemetryQueryFilter {
 function classifyDiagnosisState(
   incident: Incident,
 ): 'ready' | 'pending' | 'unavailable' {
-  if (incident.diagnosisResult) return 'ready'
   if (incident.diagnosisDispatchedAt) return 'pending'
+  if (incident.diagnosisResult) return 'ready'
   return 'unavailable'
 }
 

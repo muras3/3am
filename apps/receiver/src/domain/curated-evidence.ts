@@ -71,10 +71,10 @@ export async function buildCuratedEvidence(
   }
 
   const diagnosis: EvidenceResponse['state']['diagnosis'] =
-    incident.diagnosisResult
-      ? 'ready'
-      : incident.diagnosisDispatchedAt
-        ? 'pending'
+    incident.diagnosisDispatchedAt
+      ? 'pending'
+      : incident.diagnosisResult
+        ? 'ready'
         : 'unavailable'
 
   const baselineConfidence = traceResult.surface.baseline.confidence

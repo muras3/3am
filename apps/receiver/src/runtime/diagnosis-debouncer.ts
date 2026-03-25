@@ -107,6 +107,30 @@ export function checkGenerationThreshold(
 }
 
 /**
+ * Execute a diagnosis run after the caller has already claimed dispatch.
+ * Keeps the dispatch marker active for the full stage 1 + stage 2 lifecycle,
+ * then clears it so read models fall back to ready/unavailable.
+ */
+export async function runClaimedDiagnosis(
+  incidentId: string,
+  storage: StorageDriver,
+  runner: DiagnosisRunner,
+): Promise<void> {
+  if (inFlight.has(incidentId)) {
+    await storage.releaseDiagnosisDispatch(incidentId);
+    return;
+  }
+
+  inFlight.add(incidentId);
+  try {
+    await runner.run(incidentId);
+  } finally {
+    await storage.releaseDiagnosisDispatch(incidentId);
+    inFlight.delete(incidentId);
+  }
+}
+
+/**
  * Run diagnosis only if no result exists yet AND no run is already in-flight
  * AND this instance wins the DB-level dispatch claim.
  *
@@ -132,19 +156,7 @@ export async function runIfNeeded(
   const claimed = await storage.claimDiagnosisDispatch(incidentId);
   if (!claimed) return; // Another instance already claimed — skip.
 
-  inFlight.add(incidentId);
-  try {
-    const success = await runner.run(incidentId);
-    if (!success) {
-      await storage.releaseDiagnosisDispatch(incidentId);
-    }
-  } catch (err) {
-    // Release claim so the incident can be retried on next trigger.
-    await storage.releaseDiagnosisDispatch(incidentId);
-    throw err;
-  } finally {
-    inFlight.delete(incidentId);
-  }
+  await runClaimedDiagnosis(incidentId, storage, runner);
 }
 
 function sleep(ms: number): Promise<void> {
