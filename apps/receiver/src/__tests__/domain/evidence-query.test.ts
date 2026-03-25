@@ -38,7 +38,7 @@ function makeMockStore(): TelemetryStoreDriver {
     durationMs: 1200,
     startTimeMs: 1700000001000,
     exceptionCount: 1,
-    attributes: { 'http.status_code': 504 },
+    attributes: { 'http.response.status_code': 504 },
     ingestedAt: 1700000002000,
   }]
   const metrics: TelemetryMetric[] = [{
@@ -293,5 +293,51 @@ describe('buildEvidenceQueryAnswer', () => {
 
     const result2 = await buildEvidenceQueryAnswer(incident, store, 'First question', false)
     expect(result2.question).toBe('First question')
+  })
+
+  it('span summary includes httpStatus when using new stable attribute http.response.status_code', async () => {
+    const incident = makeIncident({ diagnosisResult: makeDiagnosisResult() })
+    // makeMockStore already uses 'http.response.status_code': 504
+    const store = makeMockStore()
+
+    const result = await buildEvidenceQueryAnswer(incident, store, 'Why is checkout failing?', false)
+
+    const spanSegment = result.segments.find(
+      (seg) => seg.kind === 'fact' && seg.text.includes('httpStatus=504'),
+    )
+    expect(spanSegment).toBeDefined()
+  })
+
+  it('span summary includes httpStatus when using deprecated attribute http.status_code (backward compat)', async () => {
+    // Override the store to return a span with the deprecated attribute form
+    const spans: TelemetrySpan[] = [{
+      traceId: 'trace-1',
+      spanId: 'span-1',
+      parentSpanId: undefined,
+      serviceName: 'web',
+      environment: 'production',
+      spanName: 'POST /checkout',
+      httpRoute: '/api/checkout',
+      httpStatusCode: 504,
+      spanStatusCode: 2,
+      durationMs: 1200,
+      startTimeMs: 1700000001000,
+      exceptionCount: 1,
+      attributes: { 'http.status_code': 504 },
+      ingestedAt: 1700000002000,
+    }]
+
+    const storeWithDeprecated = {
+      ...makeMockStore(),
+      querySpans: vi.fn().mockResolvedValue(spans),
+    }
+
+    const incident = makeIncident({ diagnosisResult: makeDiagnosisResult() })
+    const result = await buildEvidenceQueryAnswer(incident, storeWithDeprecated, 'Why is checkout failing?', false)
+
+    const spanSegment = result.segments.find(
+      (seg) => seg.kind === 'fact' && seg.text.includes('httpStatus=504'),
+    )
+    expect(spanSegment).toBeDefined()
   })
 })

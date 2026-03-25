@@ -102,7 +102,7 @@ function makeRichTraceSurface(baseline: BaselineContext = BASELINE_HIGH): Curate
             offsetMs: 0,
             widthPct: 100,
             status: 'error',
-            attributes: { 'http.route': '/api/checkout', 'http.method': 'POST' },
+            attributes: { 'http.route': '/api/checkout', 'http.request.method': 'POST' },
             correlatedLogRefIds: ['log-ref-1'],
           },
           {
@@ -117,7 +117,7 @@ function makeRichTraceSurface(baseline: BaselineContext = BASELINE_HIGH): Curate
             widthPct: 66,
             status: 'error',
             peerService: 'stripe',
-            attributes: { 'http.url': 'https://api.stripe.com/v1/charges' },
+            attributes: { 'url.full': 'https://api.stripe.com/v1/charges' },
             correlatedLogRefIds: [],
           },
         ],

@@ -17,7 +17,7 @@ export const FORMATION_WINDOW_MS = 5 * 60 * 1000
 export const MAX_CROSS_SERVICE_MERGE = 3
 
 /**
- * Loopback / zero hostnames that are NOT meaningful peer.service identifiers.
+ * Loopback / zero hostnames that are NOT meaningful peer.service / server.address identifiers.
  * IaaS-internal IP addresses are handled separately via IP_ADDRESS_PATTERN.
  */
 const IGNORED_DEPENDENCY_NAMES = new Set([
@@ -31,7 +31,14 @@ const IGNORED_DEPENDENCY_NAMES = new Set([
 const IP_ADDRESS_PATTERN = /^\d{1,3}(\.\d{1,3}){3}$/
 
 /**
- * Normalise a raw peer.service value.
+ * Normalise a raw dependency identifier value.
+ *
+ * Input may originate from either:
+ *   - `peer.service` — deprecated OTel semconv; carries a logical service name (e.g. "stripe").
+ *     Preferred by old SDK versions and set explicitly by users for human-readable incident labels.
+ *   - `server.address` — stable OTel semconv; carries a hostname (e.g. "api.stripe.com").
+ *     Emitted by new SDK versions when peer.service is absent.
+ *
  * Returns `undefined` for values that carry no meaningful dependency identity:
  *   - empty / undefined
  *   - loopback hostnames (IGNORED_DEPENDENCY_NAMES)
@@ -48,7 +55,7 @@ export function normalizeDependency(raw: string | undefined): string | undefined
  * Build a formation key from the full set of anomalous spans in a batch.
  *
  * `dependency` is derived only when ALL anomalous spans agree on the same
- * peer.service (after normalization).  Multiple distinct peer.service values
+ * peer.service / server.address value (after normalization).  Multiple distinct values
  * → dependency = undefined (safe default that falls back to service matching).
  *
  * Spans should be pre-sorted by (startTimeMs asc, serviceName asc) so that
@@ -59,7 +66,7 @@ export function buildFormationKey(spans: ExtractedSpan[]): IncidentFormationKey 
   const firstSpan = spans[0]!
 
 
-  // Collect raw peer.service values, ignoring absent ones
+  // Collect raw peer.service / server.address values, ignoring absent ones
   const rawPeerServices = spans
     .map((s) => s.peerService)
     .filter((p): p is string => p !== undefined)

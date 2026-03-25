@@ -118,7 +118,7 @@ async function startMigration(config = {}) {
   state.migrationHoldSec = migrationHoldSec;
 
   const lockHoldSpan = tracer.startSpan("migration.lock_hold", {
-    attributes: { "db.system": "postgresql", "db.operation": "select" }
+    attributes: { "db.system.name": "postgresql", "db.operation": "select" }
   });
 
   // Connection A: long-running SELECT that holds AccessShareLock
@@ -150,7 +150,7 @@ async function startMigration(config = {}) {
 
       const alterSpan = tracer.startSpan("migration.alter_table", {
         attributes: {
-          "db.system": "postgresql",
+          "db.system.name": "postgresql",
           "db.operation": "alter_table",
           "db.sql.table": "orders"
         }

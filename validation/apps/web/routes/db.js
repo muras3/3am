@@ -23,9 +23,9 @@ function handleDbRecentOrders(req, res, ctx) {
       return ctx.tracer.startActiveSpan("db.query", {
         kind: SpanKind.CLIENT,
         attributes: {
-          "peer.service": "postgres",
-          "db.system": "postgresql",
-          "db.statement": "SELECT id, status FROM orders ORDER BY id DESC LIMIT 10",
+          "server.address": "postgres",
+          "db.system.name": "postgresql",
+          "db.query.text": "SELECT id, status FROM orders ORDER BY id DESC LIMIT 10",
           "db.operation": "select"
         }
       }, async (span) => {

@@ -244,7 +244,7 @@ export function extractSpans(payload: unknown): ExtractedSpan[] {
         const httpStatusCode =
           httpStatusCodeStr !== undefined ? Number(httpStatusCodeStr) : undefined
 
-        const peerService = getAttr(attrs, 'peer.service')
+        const peerService = getAttr(attrs, 'peer.service') ?? getAttr(attrs, 'server.address')
 
         const events = Array.isArray(s['events']) ? (s['events'] as unknown[]) : []
         const exceptionCount = events.filter((e) => isRecord(e) && e['name'] === 'exception').length

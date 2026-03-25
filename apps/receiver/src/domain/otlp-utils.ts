@@ -58,6 +58,12 @@ const ATTRIBUTE_ALLOWLIST = new Set([
   'http.route',
   'http.response.status_code',
   'http.request.method',
+  // Stable OTel semconv (new SDKs)
+  'server.address',
+  'server.port',
+  'db.query.text',
+  'db.system.name',
+  // Deprecated equivalents retained for backward compat with old SDK versions
   'peer.service',
   'url.full',
   'url.path',

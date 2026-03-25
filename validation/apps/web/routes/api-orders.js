@@ -79,7 +79,7 @@ async function handleApiOrders(req, res, ctx) {
               });
               const latencyMs = Date.now() - notifyStartedAt;
               notifySpan.setAttributes({
-                "peer.service": "notification-svc",
+                "server.address": "notification-svc.internal",
                 "notification.latency_ms": latencyMs,
                 "http.response.status_code": response.statusCode
               });
@@ -89,7 +89,7 @@ async function handleApiOrders(req, res, ctx) {
             } catch (error) {
               const latencyMs = Date.now() - notifyStartedAt;
               notifySpan.setAttributes({
-                "peer.service": "notification-svc",
+                "server.address": "notification-svc.internal",
                 "notification.latency_ms": latencyMs
               });
               notifySpan.recordException(error);

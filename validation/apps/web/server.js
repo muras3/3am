@@ -244,7 +244,7 @@ async function callPayment(orderId) {
         span.addEvent("payment_attempt", runAttrs({ attempt, status_code: response.statusCode }));
         if (response.statusCode !== 429) {
           span.setAttributes({
-            "peer.service": "stripe",
+            "server.address": "api.stripe.com",
             "payment.attempts": attempt,
             "http.response.status_code": response.statusCode
           });
@@ -257,7 +257,7 @@ async function callPayment(orderId) {
         log("warn", "payment dependency rate limited", { orderId, attempt, statusCode: 429 });
         if (attempt >= retryMaxAttempts) {
           span.setAttributes({
-            "peer.service": "stripe",
+            "server.address": "api.stripe.com",
             "payment.attempts": attempt,
             "http.response.status_code": response.statusCode,
             "retry.exhausted": true

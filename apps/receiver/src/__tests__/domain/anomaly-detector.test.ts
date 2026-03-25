@@ -262,6 +262,68 @@ describe('extractSpans', () => {
     const spans = extractSpans(payload)
     expect(spans[0]!.spanKind).toBeUndefined()
   })
+
+  it('uses server.address as peerService fallback when peer.service is absent (new SDK)', () => {
+    const payload = {
+      resourceSpans: [{
+        resource: { attributes: [{ key: 'service.name', value: { stringValue: 'api-service' } }] },
+        scopeSpans: [{
+          spans: [{
+            traceId: 'abc123', spanId: 'span001',
+            startTimeUnixNano: '1700000000000000000', endTimeUnixNano: '1700000001000000000',
+            status: { code: 0 },
+            attributes: [
+              { key: 'server.address', value: { stringValue: 'api.stripe.com' } },
+            ],
+            events: [],
+          }],
+        }],
+      }],
+    }
+    const spans = extractSpans(payload)
+    expect(spans[0]!.peerService).toBe('api.stripe.com')
+  })
+
+  it('prefers peer.service over server.address when both are present (backward compat)', () => {
+    const payload = {
+      resourceSpans: [{
+        resource: { attributes: [{ key: 'service.name', value: { stringValue: 'api-service' } }] },
+        scopeSpans: [{
+          spans: [{
+            traceId: 'abc123', spanId: 'span001',
+            startTimeUnixNano: '1700000000000000000', endTimeUnixNano: '1700000001000000000',
+            status: { code: 0 },
+            attributes: [
+              { key: 'peer.service', value: { stringValue: 'stripe' } },
+              { key: 'server.address', value: { stringValue: 'api.stripe.com' } },
+            ],
+            events: [],
+          }],
+        }],
+      }],
+    }
+    const spans = extractSpans(payload)
+    expect(spans[0]!.peerService).toBe('stripe')
+  })
+
+  it('sets peerService to undefined when neither peer.service nor server.address is present', () => {
+    const payload = {
+      resourceSpans: [{
+        resource: { attributes: [{ key: 'service.name', value: { stringValue: 'api-service' } }] },
+        scopeSpans: [{
+          spans: [{
+            traceId: 'abc123', spanId: 'span001',
+            startTimeUnixNano: '1700000000000000000', endTimeUnixNano: '1700000001000000000',
+            status: { code: 0 },
+            attributes: [],
+            events: [],
+          }],
+        }],
+      }],
+    }
+    const spans = extractSpans(payload)
+    expect(spans[0]!.peerService).toBeUndefined()
+  })
 })
 
 // ── isIncidentTrigger ─────────────────────────────────────────────────────────
