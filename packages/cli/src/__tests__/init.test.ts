@@ -232,8 +232,6 @@ describe("isEsmProject()", () => {
 describe("runInit()", () => {
   let tmpDir: string;
   let origCwd: string;
-  let stderrSpy: { mockRestore: () => void };
-
   beforeEach(() => {
     tmpDir = join(tmpdir(), `init-test-${Date.now()}`);
     mkdirSync(tmpDir, { recursive: true });
@@ -241,7 +239,7 @@ describe("runInit()", () => {
     process.chdir(tmpDir);
     vi.mocked(execSync).mockReset();
     vi.mocked(execSync).mockImplementation(() => Buffer.from(""));
-    stderrSpy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    vi.spyOn(process.stderr, "write").mockImplementation(() => true);
   });
 
   afterEach(() => {
