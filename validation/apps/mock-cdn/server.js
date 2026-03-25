@@ -205,7 +205,7 @@ async function handleRequest(req, res) {
         }
         if (origin.statusCode >= 400) {
           stats.cachedErrorsTotal += 1;
-          cachedErrorsCounter.add(1, { "http.status_code": origin.statusCode });
+          cachedErrorsCounter.add(1, { "http.response.status_code": origin.statusCode });
         }
       }
 
