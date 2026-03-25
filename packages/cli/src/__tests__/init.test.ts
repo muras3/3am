@@ -10,6 +10,7 @@ vi.mock("node:child_process", () => ({
 
 import { execSync } from "node:child_process";
 import { detectFramework } from "../commands/init/detect-framework.js";
+import { detectLogger } from "../commands/init/detect-logger.js";
 import { detectPackageManager } from "../commands/init/detect-package-manager.js";
 import { getInstrumentationTemplate } from "../commands/init/templates.js";
 import { updateEnvFile, runInit, isTypeScriptProject, isEsmProject } from "../commands/init.js";
@@ -33,6 +34,41 @@ describe("detectFramework()", () => {
 
   it("prefers nextjs over express", () => {
     expect(detectFramework({ next: "14.0.0", express: "4.18.0" })).toBe("nextjs");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// detectLogger
+// ---------------------------------------------------------------------------
+
+describe("detectLogger()", () => {
+  it("detects pino", () => {
+    const result = detectLogger({ pino: "8.0.0", express: "4.18.0" });
+    expect(result.name).toBe("pino");
+    expect(result.instrumentationPackage).toBe("@opentelemetry/instrumentation-pino");
+  });
+
+  it("detects winston", () => {
+    const result = detectLogger({ winston: "3.10.0" });
+    expect(result.name).toBe("winston");
+    expect(result.instrumentationPackage).toBe("@opentelemetry/instrumentation-winston");
+  });
+
+  it("detects bunyan", () => {
+    const result = detectLogger({ bunyan: "1.8.0" });
+    expect(result.name).toBe("bunyan");
+    expect(result.instrumentationPackage).toBe("@opentelemetry/instrumentation-bunyan");
+  });
+
+  it("returns null when no logger found", () => {
+    const result = detectLogger({ express: "4.18.0" });
+    expect(result.name).toBeNull();
+    expect(result.instrumentationPackage).toBeNull();
+  });
+
+  it("prefers pino when multiple loggers present", () => {
+    const result = detectLogger({ pino: "8.0.0", winston: "3.10.0" });
+    expect(result.name).toBe("pino");
   });
 });
 
@@ -196,6 +232,8 @@ describe("isEsmProject()", () => {
 describe("runInit()", () => {
   let tmpDir: string;
   let origCwd: string;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let stderrSpy: any;
 
   beforeEach(() => {
     tmpDir = join(tmpdir(), `init-test-${Date.now()}`);
@@ -204,6 +242,7 @@ describe("runInit()", () => {
     process.chdir(tmpDir);
     vi.mocked(execSync).mockReset();
     vi.mocked(execSync).mockImplementation(() => Buffer.from(""));
+    stderrSpy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
   });
 
   afterEach(() => {
@@ -378,7 +417,6 @@ describe("runInit()", () => {
     vi.mocked(execSync).mockImplementation(() => { throw new Error("install failed"); });
 
     const exitSpy = vi.spyOn(process, "exit").mockImplementation((() => {}) as never);
-    const stderrSpy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
     const stdoutSpy = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
 
     await runInit([]);
@@ -395,18 +433,94 @@ describe("runInit()", () => {
     expect(existsSync(join(tmpDir, ".env"))).toBe(false);
 
     exitSpy.mockRestore();
-    stderrSpy.mockRestore();
     stdoutSpy.mockRestore();
+  });
+
+  it("includes logger instrumentation package when pino is in deps", async () => {
+    writeFileSync(
+      join(tmpDir, "package.json"),
+      JSON.stringify({ name: "my-app", dependencies: { express: "4.18.0", pino: "8.0.0" } }),
+    );
+
+    const stdoutSpy = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+
+    await runInit([]);
+
+    stdoutSpy.mockRestore();
+
+    const installCall = vi.mocked(execSync).mock.calls[0]?.[0] as string;
+    expect(installCall).toContain("@opentelemetry/instrumentation-pino");
+  });
+
+  it("shows self-check with logger detected", async () => {
+    writeFileSync(
+      join(tmpDir, "package.json"),
+      JSON.stringify({ name: "my-app", dependencies: { express: "4.18.0", winston: "3.10.0" } }),
+    );
+
+    const stdoutChunks: string[] = [];
+    const stdoutSpy = vi.spyOn(process.stdout, "write").mockImplementation((chunk) => {
+      stdoutChunks.push(String(chunk));
+      return true;
+    });
+
+    await runInit([]);
+
+    stdoutSpy.mockRestore();
+
+    const combined = stdoutChunks.join("");
+    expect(combined).toContain("Traces");
+    expect(combined).toContain("Metrics");
+    expect(combined).toContain("winston detected, bridge installed");
+  });
+
+  it("shows warning when no logger detected", async () => {
+    writeFileSync(
+      join(tmpDir, "package.json"),
+      JSON.stringify({ name: "my-app", dependencies: { express: "4.18.0" } }),
+    );
+
+    const stdoutSpy = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    // Re-mock stderr to capture chunks (overrides beforeEach mock)
+    stderrSpy.mockRestore();
+    const stderrChunks: string[] = [];
+    stderrSpy = vi.spyOn(process.stderr, "write").mockImplementation((chunk) => {
+      stderrChunks.push(String(chunk));
+      return true;
+    });
+
+    await runInit([]);
+
+    stdoutSpy.mockRestore();
+
+    const combined = stderrChunks.join("");
+    expect(combined).toContain("no structured logger detected");
+  });
+
+  it("does not include logger instrumentation when no logger in deps", async () => {
+    writeFileSync(
+      join(tmpDir, "package.json"),
+      JSON.stringify({ name: "my-app", dependencies: { express: "4.18.0" } }),
+    );
+
+    const stdoutSpy = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+
+    await runInit([]);
+
+    stdoutSpy.mockRestore();
+
+    const installCall = vi.mocked(execSync).mock.calls[0]?.[0] as string;
+    expect(installCall).not.toContain("instrumentation-pino");
+    expect(installCall).not.toContain("instrumentation-winston");
+    expect(installCall).not.toContain("instrumentation-bunyan");
   });
 
   it("exits with error when no package.json", async () => {
     const exitSpy = vi.spyOn(process, "exit").mockImplementation((() => {}) as never);
-    const stderrSpy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
 
     await runInit([]);
 
     expect(exitSpy).toHaveBeenCalledWith(1);
-    stderrSpy.mockRestore();
     exitSpy.mockRestore();
   });
 });
