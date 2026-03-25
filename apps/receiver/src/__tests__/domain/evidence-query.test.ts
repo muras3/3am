@@ -310,7 +310,7 @@ describe('buildEvidenceQueryAnswer', () => {
 
   it('span summary includes httpStatus when using deprecated attribute http.status_code (backward compat)', async () => {
     // Override the store to return a span with the deprecated attribute form
-    const spans: import('../../telemetry/interface.js').TelemetrySpan[] = [{
+    const spans: TelemetrySpan[] = [{
       traceId: 'trace-1',
       spanId: 'span-1',
       parentSpanId: undefined,
