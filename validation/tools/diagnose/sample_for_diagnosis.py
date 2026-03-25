@@ -239,7 +239,7 @@ def build_compact_summary(run_dir: Path) -> str:
             dur_ms = (end_ts - ts) // 1_000_000
             status = "ERR" if is_err else "ok"
             attrs = {a["key"]: list(a.get("value", {}).values())[0] if a.get("value") else "" for a in span.get("attributes", [])}
-            key_attrs = {k: v for k, v in attrs.items() if k in ("http.status_code", "error.type", "db.statement", "http.url", "rpc.method")}
+            key_attrs = {k: v for k, v in attrs.items() if k in ("http.response.status_code", "http.status_code", "error.type", "db.query.text", "db.statement", "url.full", "http.url", "rpc.method")}
             attr_str = " ".join(f"{k}={v}" for k, v in list(key_attrs.items())[:3])
             events = span.get("events", [])
             ev_str = f" events=[{','.join(e.get('name','?') for e in events[:2])}]" if events else ""
