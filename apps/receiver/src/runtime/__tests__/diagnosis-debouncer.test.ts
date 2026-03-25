@@ -296,13 +296,13 @@ describe("claim release on diagnosis failure", () => {
     expect(runner.run).toHaveBeenCalledTimes(2);
   });
 
-  it("does not release claim when runner.run succeeds (returns true)", async () => {
+  it("releases claim after runner.run succeeds so pending can resolve back to ready", async () => {
     const storage = createMockStorage({ diagnosisResult: undefined });
     const runner = createMockRunner();
 
     await runIfNeeded("inc_1", storage, runner);
 
-    expect(storage.releaseDiagnosisDispatch).not.toHaveBeenCalled();
+    expect(storage.releaseDiagnosisDispatch).toHaveBeenCalledWith("inc_1");
     expect(runner.run).toHaveBeenCalledWith("inc_1");
   });
 

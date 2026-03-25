@@ -73,11 +73,22 @@ export interface EvidenceQueryRequest {
   isFollowup?: boolean;
 }
 
+export interface RerunDiagnosisResponse {
+  status: "accepted";
+}
+
 export const curatedMutations = {
   evidenceQuery: (id: string) =>
     mutationOptions({
       mutationKey: ["curated", "incidents", id, "evidence-query"],
       mutationFn: (body: EvidenceQueryRequest) =>
         apiFetchPost<EvidenceQueryResponse>(`/api/incidents/${encodeIncidentId(id)}/evidence/query`, body),
+    }),
+
+  rerunDiagnosis: (id: string) =>
+    mutationOptions({
+      mutationKey: ["curated", "incidents", id, "rerun-diagnosis"],
+      mutationFn: () =>
+        apiFetchPost<RerunDiagnosisResponse>(`/api/incidents/${encodeIncidentId(id)}/rerun-diagnosis`, {}),
     }),
 };

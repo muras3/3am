@@ -19,6 +19,7 @@ import { buildExtendedIncident } from "../domain/incident-detail-extension.js";
 import { buildCuratedEvidence } from "../domain/curated-evidence.js";
 import { buildEvidenceQueryAnswer } from "../domain/evidence-query.js";
 import type { DiagnosisRunner } from "../runtime/diagnosis-runner.js";
+import { resolveWaitUntil, runClaimedDiagnosis } from "../runtime/diagnosis-debouncer.js";
 
 const CHAT_MAX_HISTORY = 10;
 const CHAT_MAX_MESSAGE_CHARS = 500;
@@ -108,6 +109,7 @@ export function createApiRouter(storage: StorageDriver, spanBuffer: SpanBuffer |
     app.use("/api/*", jwtCookieSetter({ authToken, secure: !allowInsecure }));
     app.use("/api/chat/*", jwtCookieValidator(authToken));
     app.use("/api/incidents/*/evidence/query", jwtCookieValidator(authToken));
+    app.use("/api/incidents/*/rerun-diagnosis", jwtCookieValidator(authToken));
   }
 
   // Rate limit chat endpoint — LLM cost protection (B-11)
@@ -143,6 +145,31 @@ export function createApiRouter(storage: StorageDriver, spanBuffer: SpanBuffer |
     }
     return c.json(await buildCuratedEvidence(incident, telemetryStore));
   });
+
+  if (diagnosisRunner) {
+    app.post("/api/incidents/:id/rerun-diagnosis", async (c) => {
+      const id = c.req.param("id");
+      const incident = await storage.getIncident(id);
+      if (incident === null) {
+        return c.json({ error: "not found" }, 404);
+      }
+
+      const claimed = await storage.claimDiagnosisDispatch(id);
+      if (!claimed) {
+        return c.json({ error: "already_running" }, 409);
+      }
+
+      const waitUntil = await resolveWaitUntil();
+      waitUntil((async () => {
+        try {
+          await runClaimedDiagnosis(id, storage, diagnosisRunner);
+        } catch (error) {
+          console.error(`[api] rerun diagnosis failed for ${id}:`, error);
+        }
+      })());
+      return c.json({ status: "accepted" }, 202);
+    });
+  }
 
   app.post("/api/incidents/:id/evidence/query", apiBodyLimit(4 * 1024), async (c) => {
     const id = c.req.param("id");
@@ -206,6 +233,7 @@ export function createApiRouter(storage: StorageDriver, spanBuffer: SpanBuffer |
     }
 
     await storage.appendDiagnosis(id, result);
+    await storage.releaseDiagnosisDispatch(id);
     return c.json({ status: "ok" });
   });
 

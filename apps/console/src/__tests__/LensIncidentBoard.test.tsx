@@ -1,5 +1,5 @@
-import { render, screen, fireEvent } from "@testing-library/react";
-import { describe, it, expect, vi } from "vitest";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { afterEach, describe, it, expect, vi } from "vitest";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { LensIncidentBoard } from "../components/lens/board/LensIncidentBoard.js";
 import { curatedQueries } from "../api/queries.js";
@@ -31,6 +31,11 @@ function renderBoard(
 function getPendingBanner() {
   return document.querySelector(".lens-board-pending");
 }
+
+afterEach(() => {
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+});
 
 // ── Tests ─────────────────────────────────────────────────────
 
@@ -80,6 +85,59 @@ describe("LensIncidentBoard — diagnosis pending", () => {
     expect(zoomTo).toHaveBeenCalledWith(2, expect.anything());
 
     expect(screen.getByRole("button", { name: /Re-run diagnosis/i })).toBeDisabled();
+  });
+});
+
+describe("LensIncidentBoard — rerun diagnosis", () => {
+  it("starts a rerun request when diagnosis is unavailable", async () => {
+    const qc = makeClient();
+    const unavailableIncident = {
+      ...extendedIncidentPending,
+      state: {
+        ...extendedIncidentPending.state,
+        diagnosis: "unavailable" as const,
+      },
+    };
+    qc.setQueryData(
+      curatedQueries.extendedIncident("inc_0892").queryKey,
+      unavailableIncident,
+    );
+
+    let resolveFetch!: (value: unknown) => void;
+    const fetchMock = vi.fn().mockImplementation((input: RequestInfo | URL, _init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes("/rerun-diagnosis")) {
+        return new Promise((resolve) => {
+          resolveFetch = resolve;
+        });
+      }
+      return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve(unavailableIncident),
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderBoard("inc_0892", vi.fn(), qc);
+
+    fireEvent.click(screen.getByRole("button", { name: /Re-run diagnosis/i }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith("/api/incidents/inc_0892/rerun-diagnosis", expect.objectContaining({
+        method: "POST",
+      }));
+    });
+
+    expect(screen.getByRole("button", { name: /Starting re-run/i })).toBeDisabled();
+
+    resolveFetch({
+      ok: true,
+      json: () => Promise.resolve({ status: "accepted" }),
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText(/Diagnosis re-run requested/i)).toBeInTheDocument();
+    });
   });
 });
 

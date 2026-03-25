@@ -1,5 +1,7 @@
-import { useQuery } from "@tanstack/react-query";
-import { curatedQueries } from "../../../api/queries.js";
+import { useEffect, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { ApiError } from "../../../api/client.js";
+import { curatedMutations, curatedQueries } from "../../../api/queries.js";
 import type { LensLevel } from "../../../routes/__root.js";
 import { WhatHappened } from "./WhatHappened.js";
 import { ImmediateAction } from "./ImmediateAction.js";
@@ -18,13 +20,59 @@ interface Props {
 }
 
 export function LensIncidentBoard({ incidentId, zoomTo }: Props) {
+  const queryClient = useQueryClient();
+  const [rerunFeedback, setRerunFeedback] = useState<string | null>(null);
   const { data, isLoading, isError } = useQuery(
     curatedQueries.extendedIncident(incidentId),
   );
+  const rerunDiagnosis = useMutation(curatedMutations.rerunDiagnosis(incidentId));
 
   function openEvidence(trigger?: HTMLElement) {
     zoomTo(2, trigger);
   }
+
+  function handleRerunDiagnosis() {
+    setRerunFeedback(null);
+    rerunDiagnosis.mutate(undefined, {
+      onSuccess: () => {
+        setRerunFeedback("Diagnosis re-run requested. This board will refresh automatically.");
+        void queryClient.invalidateQueries({ queryKey: curatedQueries.extendedIncident(incidentId).queryKey });
+        void queryClient.invalidateQueries({ queryKey: curatedQueries.evidence(incidentId).queryKey });
+      },
+      onError: (error) => {
+        if (error instanceof ApiError && error.status === 409) {
+          setRerunFeedback("Diagnosis is already running. This board will refresh automatically.");
+          void queryClient.invalidateQueries({ queryKey: curatedQueries.extendedIncident(incidentId).queryKey });
+          void queryClient.invalidateQueries({ queryKey: curatedQueries.evidence(incidentId).queryKey });
+          return;
+        }
+        setRerunFeedback("Could not start a new diagnosis run. Try again in a moment.");
+      },
+    });
+  }
+
+  const shouldPollForRerun =
+    !import.meta.env?.VITE_USE_FIXTURES &&
+    (rerunDiagnosis.isPending || data?.state.diagnosis === "pending");
+
+  useEffect(() => {
+    if (!shouldPollForRerun) return;
+
+    const timer = window.setInterval(() => {
+      void queryClient.invalidateQueries({ queryKey: curatedQueries.extendedIncident(incidentId).queryKey });
+      void queryClient.invalidateQueries({ queryKey: curatedQueries.evidence(incidentId).queryKey });
+    }, 1500);
+
+    return () => {
+      window.clearInterval(timer);
+    };
+  }, [shouldPollForRerun, incidentId, queryClient]);
+
+  useEffect(() => {
+    if (data?.state.diagnosis === "ready" && rerunFeedback) {
+      setRerunFeedback(null);
+    }
+  }, [data?.state.diagnosis, rerunFeedback]);
 
   if (isLoading) {
     return (
@@ -65,6 +113,21 @@ export function LensIncidentBoard({ incidentId, zoomTo }: Props) {
   ];
 
   const hasDiagnosisGap = data.state.diagnosis !== "ready";
+  const rerunAcknowledged =
+    rerunFeedback?.startsWith("Diagnosis re-run requested")
+    || rerunFeedback?.startsWith("Diagnosis is already running");
+  const rerunDisabled =
+    rerunDiagnosis.isPending || rerunAcknowledged || data.state.diagnosis === "pending";
+  const rerunLabel = rerunDiagnosis.isPending ? "Starting re-run…" : "Re-run diagnosis";
+  const pendingMessage =
+    rerunDiagnosis.isPending || rerunFeedback?.startsWith("Diagnosis re-run requested")
+      ? "Diagnosis re-run is in progress"
+      : "Diagnosis is still assembling";
+  const rerunNote = rerunFeedback ?? (
+    data.state.diagnosis === "pending"
+      ? "Diagnosis is already running. Stay on the evidence lanes until this run finishes."
+      : "Use this to request one new diagnosis run from the current incident evidence."
+  );
 
   return (
     <div className="lens-board-content stagger">
@@ -81,7 +144,7 @@ export function LensIncidentBoard({ incidentId, zoomTo }: Props) {
           status={data.state.diagnosis === "pending" ? "pending" : "unavailable"}
           message={
             data.state.diagnosis === "pending"
-              ? "Diagnosis is still assembling"
+              ? pendingMessage
               : "Narrative diagnosis is unavailable"
           }
           subtext={describeBoardState(data.state)}
@@ -89,6 +152,10 @@ export function LensIncidentBoard({ incidentId, zoomTo }: Props) {
           notYetConfirmed={notYetConfirmed}
           nextSteps={nextSteps}
           onOpenEvidence={openEvidence}
+          onRerunDiagnosis={handleRerunDiagnosis}
+          rerunDisabled={rerunDisabled}
+          rerunLabel={rerunLabel}
+          rerunNote={rerunNote}
         />
       ) : null}
 

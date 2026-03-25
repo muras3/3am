@@ -6,6 +6,10 @@ interface Props {
   notYetConfirmed?: string[];
   nextSteps?: string[];
   onOpenEvidence?: (trigger?: HTMLElement) => void;
+  onRerunDiagnosis?: () => void;
+  rerunDisabled?: boolean;
+  rerunLabel?: string;
+  rerunNote?: string;
 }
 
 export function DiagnosisPending({
@@ -16,6 +20,10 @@ export function DiagnosisPending({
   notYetConfirmed = [],
   nextSteps = [],
   onOpenEvidence,
+  onRerunDiagnosis,
+  rerunDisabled = true,
+  rerunLabel = "Re-run diagnosis",
+  rerunNote,
 }: Props) {
   return (
     <div className="lens-board-pending" role="status" aria-live="polite">
@@ -72,15 +80,18 @@ export function DiagnosisPending({
           <button
             type="button"
             className="lens-board-btn-evidence lens-board-btn-evidence-tertiary"
-            disabled
+            disabled={rerunDisabled}
             aria-describedby="lens-board-rerun-note"
+            onClick={onRerunDiagnosis}
           >
-            Re-run diagnosis
+            {rerunLabel}
           </button>
           <p id="lens-board-rerun-note" className="lens-board-pending-note">
-            {status === "pending"
-              ? "Retry will become available once the diagnosis API is wired. Use the evidence lanes until then."
-              : "Retry is reserved here for manual reruns once the diagnosis API is wired."}
+            {rerunNote ?? (
+              status === "pending"
+                ? "Diagnosis is already running. Stay on the evidence lanes until this run finishes."
+                : "Use this to request one new diagnosis run from the current incident evidence."
+            )}
           </p>
         </div>
       </div>
