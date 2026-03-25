@@ -261,6 +261,23 @@
   gap: 10px;
 }
 
+.lens-board-priority-grid,
+.lens-board-insight-grid,
+.lens-board-context-grid {
+  display: grid;
+  gap: 10px;
+}
+
+.lens-board-priority-grid {
+  grid-template-columns: minmax(0, 1.55fr) minmax(280px, 0.95fr);
+  align-items: start;
+}
+
+.lens-board-insight-grid {
+  grid-template-columns: minmax(0, 1.45fr) minmax(220px, 0.85fr);
+  align-items: start;
+}
+
 /* ── Loading / error states ────────────────────────────────── */
 .lens-board-loading,
 .lens-board-error {
@@ -360,6 +377,11 @@
   border-color: var(--line);
 }
 
+.lens-board-pending-panel-strong {
+  background: rgba(255, 255, 255, 0.82);
+  border-color: rgba(13, 115, 119, 0.2);
+}
+
 .lens-board-pending-panel-title {
   margin-bottom: 8px;
   font-size: var(--fs-xxs);
@@ -378,6 +400,28 @@
   font-size: var(--fs-xs);
   color: var(--ink-2);
   line-height: var(--lh-read);
+}
+
+.lens-board-pending-operator {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) auto;
+  gap: 10px;
+  align-items: start;
+}
+
+.lens-board-pending-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: stretch;
+}
+
+.lens-board-pending-note {
+  margin: 0;
+  font-size: var(--fs-xxs);
+  color: var(--ink-3);
+  line-height: 1.4;
+  max-width: 270px;
 }
 
 /* ── Identity ──────────────────────────────────────────────── */
@@ -508,6 +552,14 @@
   margin-bottom: 8px;
 }
 
+.lens-board-action-intro {
+  margin: 0 0 8px;
+  font-size: var(--fs-xs);
+  color: var(--ink-2);
+  line-height: 1.45;
+  max-width: 64ch;
+}
+
 .lens-board-action-steps {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -591,9 +643,7 @@
 
 /* ── Context grid (3 columns) ──────────────────────────────── */
 .lens-board-context-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
-  gap: 8px;
+  grid-template-columns: 1fr 1fr;
 }
 
 /* ── Card base ─────────────────────────────────────────────── */
@@ -740,6 +790,27 @@
   color: var(--amber);
 }
 
+.lens-board-conf-row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 6px;
+}
+
+.lens-board-conf-row-label {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--ink-3);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.lens-board-conf-row-value {
+  font-size: var(--fs-xxs);
+  font-family: var(--mono);
+  color: var(--ink-2);
+}
+
 /* ── Operator check ────────────────────────────────────────── */
 .lens-board-checklist {
   list-style: none;
@@ -778,6 +849,14 @@
   border: 1px solid var(--line);
 }
 
+.lens-board-root-cause-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
 .lens-board-section-label {
   font-size: var(--fs-xs);
   font-weight: 700;
@@ -792,6 +871,25 @@
   color: var(--ink-2);
   line-height: 1.4;
   margin: 0;
+}
+
+.lens-board-state-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: var(--amber-soft);
+  color: var(--amber);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.lens-board-state-chip-confirmed {
+  background: var(--good-soft);
+  color: var(--good);
 }
 
 /* ── Causal chain ──────────────────────────────────────────── */
@@ -938,6 +1036,14 @@
   gap: 6px;
 }
 
+.lens-board-evidence-priority {
+  margin: 2px 0 0;
+  font-size: var(--fs-xs);
+  color: var(--ink-2);
+  line-height: 1.35;
+  max-width: 40ch;
+}
+
 .lens-board-evidence-timestamps {
   font-family: var(--mono);
   font-size: var(--fs-xxs);
@@ -1012,6 +1118,27 @@
   outline-offset: 2px;
 }
 
+.lens-board-btn-evidence:disabled {
+  background: var(--panel-3);
+  color: var(--ink-3);
+  cursor: not-allowed;
+  transform: none;
+}
+
+.lens-board-btn-evidence-secondary {
+  justify-content: center;
+}
+
+.lens-board-btn-evidence-tertiary {
+  background: var(--panel);
+  color: var(--ink-2);
+  border: 1px solid var(--line);
+}
+
+.lens-board-btn-evidence-tertiary:hover {
+  background: var(--panel);
+}
+
 .lens-board-ev-dot {
   display: inline-block;
   width: 6px;
@@ -1019,6 +1146,24 @@
   border-radius: 50%;
   background: var(--good);
   flex-shrink: 0;
+}
+
+@media (max-width: 900px) {
+  .lens-board-priority-grid,
+  .lens-board-insight-grid,
+  .lens-board-context-grid,
+  .lens-board-pending-columns,
+  .lens-board-pending-operator,
+  .lens-board-action-steps,
+  .lens-board-action-support-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .lens-board-pending-note,
+  .lens-board-evidence-priority,
+  .lens-board-action-intro {
+    max-width: none;
+  }
 }
 
 /* ══════════════════════════════════════════════════════════════

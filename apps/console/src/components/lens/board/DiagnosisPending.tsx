@@ -1,11 +1,22 @@
 interface Props {
+  status: "pending" | "unavailable";
   message?: string;
   subtext?: string;
-  availableNow?: string[];
-  nextUp?: string[];
+  confirmedNow?: string[];
+  notYetConfirmed?: string[];
+  nextSteps?: string[];
+  onOpenEvidence?: (trigger?: HTMLElement) => void;
 }
 
-export function DiagnosisPending({ message, subtext, availableNow = [], nextUp = [] }: Props) {
+export function DiagnosisPending({
+  status,
+  message,
+  subtext,
+  confirmedNow = [],
+  notYetConfirmed = [],
+  nextSteps = [],
+  onOpenEvidence,
+}: Props) {
   return (
     <div className="lens-board-pending" role="status" aria-live="polite">
       <div className="lens-board-pending-head">
@@ -21,21 +32,56 @@ export function DiagnosisPending({ message, subtext, availableNow = [], nextUp =
 
       <div className="lens-board-pending-columns">
         <div className="lens-board-pending-panel">
-          <div className="lens-board-pending-panel-title">Visible now</div>
+          <div className="lens-board-pending-panel-title">Confirmed now</div>
           <ul className="lens-board-pending-list">
-            {availableNow.map((item) => (
+            {confirmedNow.map((item) => (
               <li key={item}>{item}</li>
             ))}
           </ul>
         </div>
 
         <div className="lens-board-pending-panel lens-board-pending-panel-muted">
-          <div className="lens-board-pending-panel-title">Still preparing</div>
+          <div className="lens-board-pending-panel-title">Not confirmed yet</div>
           <ul className="lens-board-pending-list">
-            {nextUp.map((item) => (
+            {notYetConfirmed.map((item) => (
               <li key={item}>{item}</li>
             ))}
           </ul>
+        </div>
+      </div>
+
+      <div className="lens-board-pending-operator">
+        <div className="lens-board-pending-panel lens-board-pending-panel-strong">
+          <div className="lens-board-pending-panel-title">Operator next step</div>
+          <ul className="lens-board-pending-list">
+            {nextSteps.map((item) => (
+              <li key={item}>{item}</li>
+            ))}
+          </ul>
+        </div>
+
+        <div className="lens-board-pending-actions">
+          <button
+            type="button"
+            className="lens-board-btn-evidence lens-board-btn-evidence-secondary"
+            aria-label="Open Evidence Studio from diagnosis status"
+            onClick={(event) => onOpenEvidence?.(event.currentTarget)}
+          >
+            Open Evidence Studio first
+          </button>
+          <button
+            type="button"
+            className="lens-board-btn-evidence lens-board-btn-evidence-tertiary"
+            disabled
+            aria-describedby="lens-board-rerun-note"
+          >
+            Re-run diagnosis
+          </button>
+          <p id="lens-board-rerun-note" className="lens-board-pending-note">
+            {status === "pending"
+              ? "Retry will become available once the diagnosis API is wired. Use the evidence lanes until then."
+              : "Retry is reserved here for manual reruns once the diagnosis API is wired."}
+          </p>
         </div>
       </div>
     </div>

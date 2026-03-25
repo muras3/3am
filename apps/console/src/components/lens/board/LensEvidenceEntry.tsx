@@ -18,6 +18,7 @@ function formatTime(iso: string): string {
 export function LensEvidenceEntry({ counts, impact, state, zoomTo }: Props) {
   const showStateNote =
     state.diagnosis !== "ready" || state.baseline !== "ready" || state.evidenceDensity !== "rich";
+  const diagnosisReady = state.diagnosis === "ready";
   const summaryLine = [
     `${counts.traces} traces`,
     `${counts.metrics} anomalous metrics`,
@@ -38,7 +39,14 @@ export function LensEvidenceEntry({ counts, impact, state, zoomTo }: Props) {
   return (
     <div className="lens-board-card lens-board-evidence-entry">
       <div className="lens-board-evidence-header">
-        <div className="lens-board-card-title">Evidence</div>
+        <div>
+          <div className="lens-board-card-title">Evidence</div>
+          <p className="lens-board-evidence-priority">
+            {diagnosisReady
+              ? "Use this to verify the diagnosis against raw traces, metrics, and logs."
+              : "Use this first while diagnosis is incomplete."}
+          </p>
+        </div>
         <div className="lens-board-evidence-timestamps">
           <span>Started {formatTime(impact.startedAt)}</span>
           <span>Full cascade {formatTime(impact.fullCascadeAt)}</span>
@@ -79,10 +87,10 @@ export function LensEvidenceEntry({ counts, impact, state, zoomTo }: Props) {
         className="lens-board-btn-evidence"
         onClick={handleClick}
         onKeyDown={handleKeyDown}
-        aria-label="Open Evidence Studio"
+        aria-label={diagnosisReady ? "Open Evidence Studio now" : "Open Evidence Studio first"}
       >
         <span className="lens-board-ev-dot" aria-hidden="true" />
-        Open Evidence Studio now
+        {diagnosisReady ? "Open Evidence Studio now" : "Open Evidence Studio first"}
       </button>
     </div>
   );

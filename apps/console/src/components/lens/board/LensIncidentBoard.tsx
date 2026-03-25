@@ -22,6 +22,10 @@ export function LensIncidentBoard({ incidentId, zoomTo }: Props) {
     curatedQueries.extendedIncident(incidentId),
   );
 
+  function openEvidence(trigger?: HTMLElement) {
+    zoomTo(2, trigger);
+  }
+
   if (isLoading) {
     return (
       <div className="lens-board-loading" role="status">
@@ -38,7 +42,7 @@ export function LensIncidentBoard({ incidentId, zoomTo }: Props) {
     );
   }
 
-  const availableNow = [
+  const confirmedNow = [
     `${data.severity.toUpperCase()} severity and incident timing are confirmed.`,
     data.blastRadius.length > 0
       ? `${data.blastRadius.length} impacted service path${data.blastRadius.length === 1 ? "" : "s"} already visible in blast radius.`
@@ -48,28 +52,22 @@ export function LensIncidentBoard({ incidentId, zoomTo }: Props) {
       : "Evidence Studio is open now, even while correlation is still collecting its first signals.",
   ];
 
-  const nextUp = [
-    "Immediate action copy once the strongest remediation path is confirmed.",
-    "Root-cause narrative and causal chain once multiple surfaces agree.",
-    "Confidence wording after the system can separate signal from first-pass noise.",
+  const notYetConfirmed = [
+    "A durable root-cause narrative until traces, metrics, and logs agree on the same trigger.",
+    "Whether the first visible dependency is the cause or only adjacent impact.",
+    "Full confidence language and downstream propagation timing.",
   ];
+
+  const nextSteps = [
+    "Open Evidence Studio and inspect the first failing trace before broad remediation.",
+    "Use the next operator step as a safe triage move, not as final root cause confirmation.",
+    "Reserve re-run diagnosis for when the retry API becomes available.",
+  ];
+
+  const hasDiagnosisGap = data.state.diagnosis !== "ready";
 
   return (
     <div className="lens-board-content stagger">
-      {data.state.diagnosis !== "ready" ? (
-        <DiagnosisPending
-          message={
-            data.state.diagnosis === "pending"
-              ? "Diagnosis is still assembling"
-              : "Narrative diagnosis not available"
-          }
-          subtext={describeBoardState(data.state)}
-          availableNow={availableNow}
-          nextUp={nextUp}
-        />
-      ) : null}
-
-      {/* 1. Identity */}
       <WhatHappened
         incidentId={data.incidentId}
         severity={data.severity}
@@ -78,29 +76,43 @@ export function LensIncidentBoard({ incidentId, zoomTo }: Props) {
         state={data.state}
       />
 
-      {/* 2. Action Hero */}
-      <ImmediateAction action={data.action} state={data.state} />
+      {hasDiagnosisGap ? (
+        <DiagnosisPending
+          status={data.state.diagnosis === "pending" ? "pending" : "unavailable"}
+          message={
+            data.state.diagnosis === "pending"
+              ? "Diagnosis is still assembling"
+              : "Narrative diagnosis is unavailable"
+          }
+          subtext={describeBoardState(data.state)}
+          confirmedNow={confirmedNow}
+          notYetConfirmed={notYetConfirmed}
+          nextSteps={nextSteps}
+          onOpenEvidence={openEvidence}
+        />
+      ) : null}
 
-      {/* 3. Context Grid */}
+      <div className="lens-board-priority-grid">
+        <ImmediateAction action={data.action} state={data.state} />
+        <LensEvidenceEntry
+          counts={data.evidenceSummary}
+          impact={data.impactSummary}
+          state={data.state}
+          zoomTo={zoomTo}
+        />
+      </div>
+
+      <div className="lens-board-insight-grid">
+        <RootCauseHypothesis hypothesis={data.rootCauseHypothesis} state={data.state} />
+        <ConfidenceCard confidence={data.confidenceSummary} state={data.state} />
+      </div>
+
       <div className="lens-board-context-grid">
         <BlastRadius entries={data.blastRadius} state={data.state} />
-        <ConfidenceCard confidence={data.confidenceSummary} state={data.state} />
         <OperatorCheck checks={data.operatorChecks} state={data.state} />
       </div>
 
-      {/* 4. Root Cause Hypothesis */}
-      <RootCauseHypothesis hypothesis={data.rootCauseHypothesis} state={data.state} />
-
-      {/* 5. Causal Chain */}
       <CauseCard steps={data.causalChain} state={data.state} />
-
-      {/* 6. Evidence Summary */}
-      <LensEvidenceEntry
-        counts={data.evidenceSummary}
-        impact={data.impactSummary}
-        state={data.state}
-        zoomTo={zoomTo}
-      />
     </div>
   );
 }
