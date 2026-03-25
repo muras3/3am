@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { Command } from "commander";
 import { runDiagnose } from "./commands/diagnose.js";
-import { runInit, runUpgrade } from "./commands/init.js";
+import { runInit } from "./commands/init.js";
 import { runDev } from "./commands/dev.js";
 
 const program = new Command();
@@ -21,19 +21,19 @@ program
 
 program
   .command("init")
-  .description("Set up OpenTelemetry SDK in your project")
-  .option("--upgrade", "Upgrade local OTel config to point to production Receiver")
-  .action(async (options: { upgrade?: boolean }) => {
-    if (options.upgrade) {
-      await runUpgrade(process.argv.slice(3));
-    } else {
-      await runInit(process.argv.slice(3));
-    }
+  .description("Set up OpenTelemetry SDK in your project and start local Receiver")
+  .option("--api-key <key>", "Anthropic API key (saved to ~/.config/3amoncall/credentials)")
+  .option("--no-interactive", "Skip interactive prompts (for CI/Claude Code)")
+  .action(async (options: { apiKey?: string; interactive?: boolean }) => {
+    await runInit(process.argv.slice(3), {
+      apiKey: options.apiKey,
+      noInteractive: options.interactive === false,
+    });
   });
 
 program
   .command("dev")
-  .description("Start local 3amoncall Receiver via Docker (Requires Docker Desktop)")
+  .description("Start local 3amoncall Receiver via Docker")
   .option("--port <number>", "Port to expose (default: 3333)", parseInt)
   .action((options: { port?: number }) => {
     runDev(options.port != null ? { port: options.port } : {});
