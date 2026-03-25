@@ -232,8 +232,7 @@ describe("isEsmProject()", () => {
 describe("runInit()", () => {
   let tmpDir: string;
   let origCwd: string;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let stderrSpy: any;
+  let stderrSpy: { mockRestore: () => void };
 
   beforeEach(() => {
     tmpDir = join(tmpdir(), `init-test-${Date.now()}`);
@@ -480,12 +479,9 @@ describe("runInit()", () => {
       JSON.stringify({ name: "my-app", dependencies: { express: "4.18.0" } }),
     );
 
-    const stdoutSpy = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
-    // Re-mock stderr to capture chunks (overrides beforeEach mock)
-    stderrSpy.mockRestore();
-    const stderrChunks: string[] = [];
-    stderrSpy = vi.spyOn(process.stderr, "write").mockImplementation((chunk) => {
-      stderrChunks.push(String(chunk));
+    const stdoutChunks: string[] = [];
+    const stdoutSpy = vi.spyOn(process.stdout, "write").mockImplementation((chunk) => {
+      stdoutChunks.push(String(chunk));
       return true;
     });
 
@@ -493,7 +489,7 @@ describe("runInit()", () => {
 
     stdoutSpy.mockRestore();
 
-    const combined = stderrChunks.join("");
+    const combined = stdoutChunks.join("");
     expect(combined).toContain("no structured logger detected");
   });
 

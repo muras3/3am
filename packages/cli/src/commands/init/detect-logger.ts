@@ -6,16 +6,15 @@ const LOGGER_INSTRUMENTATION: Record<Logger, string> = {
   bunyan: "@opentelemetry/instrumentation-bunyan",
 };
 
-export interface LoggerDetection {
-  name: Logger | null;
-  instrumentationPackage: string | null;
-}
+export type LoggerDetection =
+  | { detected: true; name: Logger; instrumentationPackage: string }
+  | { detected: false; name: null; instrumentationPackage: null };
 
 export function detectLogger(deps: Record<string, string>): LoggerDetection {
   for (const logger of Object.keys(LOGGER_INSTRUMENTATION) as Logger[]) {
     if (logger in deps) {
-      return { name: logger, instrumentationPackage: LOGGER_INSTRUMENTATION[logger] };
+      return { detected: true, name: logger, instrumentationPackage: LOGGER_INSTRUMENTATION[logger] };
     }
   }
-  return { name: null, instrumentationPackage: null };
+  return { detected: false, name: null, instrumentationPackage: null };
 }

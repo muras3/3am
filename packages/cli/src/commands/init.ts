@@ -95,7 +95,7 @@ export async function runInit(_argv: string[]): Promise<void> {
   copyFileSync(pkgPath, pkgBackupPath);
 
   const depsToInstall = [...OTEL_DEPS];
-  if (logger.instrumentationPackage) {
+  if (logger.detected) {
     depsToInstall.push(logger.instrumentationPackage);
   }
   const installCmd = getInstallCommand(pm, depsToInstall);
@@ -148,10 +148,10 @@ export async function runInit(_argv: string[]): Promise<void> {
   process.stdout.write("Signal check:\n");
   process.stdout.write("  ✓ Traces — auto-instrumented (HTTP, DB, etc.)\n");
   process.stdout.write("  ✓ Metrics — auto-instrumented (request duration, etc.)\n");
-  if (logger.name) {
+  if (logger.detected) {
     process.stdout.write(`  ✓ Logs — ${logger.name} detected, bridge installed\n`);
   } else {
-    process.stderr.write(
+    process.stdout.write(
       "  ✗ Logs — no structured logger detected. Install pino or winston for log-based diagnosis.\n",
     );
   }
