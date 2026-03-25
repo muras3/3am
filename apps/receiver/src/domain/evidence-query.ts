@@ -57,8 +57,8 @@ function buildEvidenceCatalog(evidence: EvidenceResponse): RetrievedEvidence[] {
       surface: "traces" as const,
       summary:
         `${trace.route} span ${span.name} status=${span.status} durationMs=${span.durationMs}` +
-        (span.attributes["http.status_code"] !== undefined
-          ? ` httpStatus=${String(span.attributes["http.status_code"])}` : ""),
+        ((span.attributes["http.response.status_code"] ?? span.attributes["http.status_code"]) !== undefined
+          ? ` httpStatus=${String(span.attributes["http.response.status_code"] ?? span.attributes["http.status_code"])}` : ""),
       score: 0,
     })),
   );
