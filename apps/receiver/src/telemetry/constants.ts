@@ -6,13 +6,7 @@
  * require an ADR amendment; constant value changes do not.
  */
 
-// ── Retention ────────────────────────────────────────────────────────────
-
-/** TTL for raw telemetry data (48 hours). */
-export const RETENTION_MS = 48 * 60 * 60 * 1000
-
-/** Minimum interval between opportunistic cleanup runs (1 hour). */
-export const CLEANUP_INTERVAL_MS = 60 * 60 * 1000
+// Retention constants moved to ../retention/config.ts (RETENTION_HOURS env var).
 
 // ── Output size (ADR 0032 Decision 6) ────────────────────────────────────
 

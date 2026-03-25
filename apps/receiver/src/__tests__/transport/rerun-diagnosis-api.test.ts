@@ -36,6 +36,7 @@ function makeTelemetryStore(): TelemetryStoreDriver {
     queryLogs: vi.fn().mockResolvedValue([]),
     getSnapshots: vi.fn().mockResolvedValue([]),
     deleteExpired: vi.fn(),
+    deleteExpiredSnapshots: vi.fn(),
   } as unknown as TelemetryStoreDriver;
 }
 
