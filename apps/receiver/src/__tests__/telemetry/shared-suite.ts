@@ -537,5 +537,51 @@ export function runTelemetryStoreSuite(
         await expect(driver.deleteExpired(new Date("2020-01-01T00:00:00Z"))).resolves.toBeUndefined();
       });
     });
+
+    // ── deleteExpiredSnapshots ────────────────────────────────────────────────
+
+    describe("deleteExpiredSnapshots", () => {
+      it("removes snapshots where updatedAt < cutoff", async () => {
+        // upsertSnapshot sets updatedAt to now() internally
+        await driver.upsertSnapshot("inc_old", "traces", [{ t: 1 }]);
+
+        // Cutoff far in the future — should delete
+        await driver.deleteExpiredSnapshots(new Date("2030-01-01T00:00:00Z"));
+
+        const snapshots = await driver.getSnapshots("inc_old");
+        expect(snapshots).toHaveLength(0);
+      });
+
+      it("keeps snapshots where updatedAt >= cutoff", async () => {
+        await driver.upsertSnapshot("inc_new", "traces", [{ t: 1 }]);
+
+        // Cutoff in the past — should NOT delete
+        await driver.deleteExpiredSnapshots(new Date("2020-01-01T00:00:00Z"));
+
+        const snapshots = await driver.getSnapshots("inc_new");
+        expect(snapshots).toHaveLength(1);
+      });
+
+      it("no-op when nothing to delete", async () => {
+        await expect(
+          driver.deleteExpiredSnapshots(new Date("2020-01-01T00:00:00Z")),
+        ).resolves.toBeUndefined();
+      });
+
+      it("does not affect raw telemetry data", async () => {
+        const time = new Date("2026-03-09T00:00:00Z").getTime();
+        await driver.ingestSpans([makeSpan({ ingestedAt: time })]);
+        await driver.upsertSnapshot("inc_snap", "traces", [{ t: 1 }]);
+
+        // Delete all snapshots but not spans
+        await driver.deleteExpiredSnapshots(new Date("2030-01-01T00:00:00Z"));
+
+        const snapshots = await driver.getSnapshots("inc_snap");
+        expect(snapshots).toHaveLength(0);
+
+        const spans = await driver.querySpans({ startMs: 0, endMs: Number.MAX_SAFE_INTEGER });
+        expect(spans).toHaveLength(1);
+      });
+    });
   });
 }

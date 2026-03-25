@@ -126,4 +126,14 @@ export class MemoryTelemetryAdapter implements TelemetryStoreDriver {
       if (log.ingestedAt < cutoff) this.logs.delete(key);
     }
   }
+
+  async deleteExpiredSnapshots(before: Date): Promise<void> {
+    const cutoffIso = before.toISOString();
+    for (const [incidentId, typeMap] of this.snapshots) {
+      for (const [type, snapshot] of typeMap) {
+        if (snapshot.updatedAt < cutoffIso) typeMap.delete(type);
+      }
+      if (typeMap.size === 0) this.snapshots.delete(incidentId);
+    }
+  }
 }

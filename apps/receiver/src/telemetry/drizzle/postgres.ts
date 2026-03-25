@@ -473,4 +473,11 @@ export class PostgresTelemetryAdapter implements TelemetryStoreDriver {
     await this.db.delete(pgTelemetryMetrics).where(lt(pgTelemetryMetrics.ingestedAt, cutoff));
     await this.db.delete(pgTelemetryLogs).where(lt(pgTelemetryLogs.ingestedAt, cutoff));
   }
+
+  async deleteExpiredSnapshots(before: Date): Promise<void> {
+    const cutoffIso = before.toISOString();
+    await this.db
+      .delete(pgIncidentEvidenceSnapshots)
+      .where(lt(pgIncidentEvidenceSnapshots.updatedAt, cutoffIso));
+  }
 }

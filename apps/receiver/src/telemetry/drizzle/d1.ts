@@ -400,4 +400,11 @@ export class D1TelemetryAdapter implements TelemetryStoreDriver {
     await this.db.delete(telemetryMetrics).where(lt(telemetryMetrics.ingestedAt, cutoff));
     await this.db.delete(telemetryLogs).where(lt(telemetryLogs.ingestedAt, cutoff));
   }
+
+  async deleteExpiredSnapshots(before: Date): Promise<void> {
+    const cutoffIso = before.toISOString();
+    await this.db
+      .delete(incidentEvidenceSnapshots)
+      .where(lt(incidentEvidenceSnapshots.updatedAt, cutoffIso));
+  }
 }
