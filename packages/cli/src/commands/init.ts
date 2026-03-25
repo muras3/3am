@@ -1,11 +1,12 @@
 import { existsSync, readFileSync, writeFileSync, copyFileSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
-import { createInterface } from "node:readline";
 import { execSync } from "node:child_process";
 import { detectFramework } from "./init/detect-framework.js";
 import { detectLogger } from "./init/detect-logger.js";
 import { detectPackageManager } from "./init/detect-package-manager.js";
 import { getInstrumentationTemplate } from "./init/templates.js";
+import { patchScripts } from "./init/patch-scripts.js";
+import { resolveApiKey } from "./init/credentials.js";
 
 const OTEL_DEPS = [
   "@opentelemetry/sdk-node",
@@ -46,16 +47,27 @@ export function isEsmProject(pkg: { type?: string }): boolean {
   return pkg.type === "module";
 }
 
+/**
+ * Update .env content idempotently.
+ * - Key doesn't exist → append
+ * - Key exists with empty value (KEY= or KEY) → overwrite
+ * - Key exists with non-empty value → preserve (skip)
+ */
 export function updateEnvFile(
   content: string,
   updates: Record<string, string>,
 ): string {
   let result = content;
   for (const [key, value] of Object.entries(updates)) {
-    const regex = new RegExp(`^${key}=.*$`, "m");
+    const regex = new RegExp(`^${key}=(.*?)$`, "m");
+    const match = regex.exec(result);
     const line = `${key}=${value}`;
-    if (regex.test(result)) {
-      result = result.replace(regex, line);
+    if (match) {
+      // Key exists — only overwrite if current value is empty
+      if (match[1]!.trim() === "") {
+        result = result.replace(regex, line);
+      }
+      // else: preserve existing non-empty value
     } else {
       result = result.endsWith("\n") ? result + line + "\n" : result + "\n" + line + "\n";
     }
@@ -63,7 +75,50 @@ export function updateEnvFile(
   return result;
 }
 
-export async function runInit(_argv: string[]): Promise<void> {
+/**
+ * Ensure .gitignore contains .env entry.
+ * Creates .gitignore if it doesn't exist.
+ */
+export function ensureGitignore(cwd: string): void {
+  const gitignorePath = join(cwd, ".gitignore");
+  if (!existsSync(gitignorePath)) {
+    writeFileSync(gitignorePath, ".env\n", "utf-8");
+    process.stdout.write("Created .gitignore with .env entry\n");
+    return;
+  }
+
+  const content = readFileSync(gitignorePath, "utf-8");
+  const lines = content.split("\n").map((l) => l.trim());
+  if (lines.includes(".env")) return;
+
+  const updated = content.endsWith("\n") ? content + ".env\n" : content + "\n.env\n";
+  writeFileSync(gitignorePath, updated, "utf-8");
+  process.stdout.write("Added .env to .gitignore\n");
+}
+
+function isDockerInstalled(): boolean {
+  try {
+    execSync("docker --version", { stdio: "ignore" });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export interface InitOptions {
+  apiKey?: string;
+  noInteractive?: boolean;
+}
+
+type PackageJson = {
+  name?: string;
+  type?: string;
+  scripts?: Record<string, string>;
+  dependencies?: Record<string, string>;
+  devDependencies?: Record<string, string>;
+};
+
+export async function runInit(_argv: string[], options: InitOptions = {}): Promise<void> {
   const cwd = process.cwd();
   const pkgPath = join(cwd, "package.json");
 
@@ -73,9 +128,9 @@ export async function runInit(_argv: string[]): Promise<void> {
     return;
   }
 
-  let pkg: { name?: string; type?: string; dependencies?: Record<string, string>; devDependencies?: Record<string, string> };
+  let pkg: PackageJson;
   try {
-    pkg = JSON.parse(readFileSync(pkgPath, "utf-8")) as typeof pkg;
+    pkg = JSON.parse(readFileSync(pkgPath, "utf-8")) as PackageJson;
   } catch {
     process.stderr.write("Error: could not parse package.json\n");
     process.exit(1);
@@ -89,8 +144,9 @@ export async function runInit(_argv: string[]): Promise<void> {
   const serviceName = pkg.name ?? "my-service";
   const isTs = isTypeScriptProject(cwd, allDeps);
   const isEsm = isEsmProject(pkg);
+  const isNextjs = framework === "nextjs";
 
-  // --- Install deps first (Finding 6: avoid partial state on failure) ---
+  // --- 1. Install deps (backup package.json for rollback on failure) ---
   const pkgBackupPath = pkgPath + ".bak";
   copyFileSync(pkgPath, pkgBackupPath);
 
@@ -118,7 +174,7 @@ export async function runInit(_argv: string[]): Promise<void> {
     // backup cleanup failure is non-fatal
   }
 
-  // --- Generate instrumentation file (Finding 3: match extension to language) ---
+  // --- 2. Generate instrumentation file ---
   const instrumentationExt = isTs ? ".ts" : ".js";
   const instrumentationFile = `instrumentation${instrumentationExt}`;
   const instrumentationPath = join(cwd, instrumentationFile);
@@ -131,7 +187,26 @@ export async function runInit(_argv: string[]): Promise<void> {
     process.stdout.write(`Created ${instrumentationFile}\n`);
   }
 
-  // --- Update .env ---
+  // --- 3. Patch package.json scripts ---
+  // Re-read package.json after dep install (lockfile changes, deps added)
+  const updatedPkg = JSON.parse(readFileSync(pkgPath, "utf-8")) as PackageJson;
+  const patchResult = patchScripts(updatedPkg.scripts, instrumentationFile, isNextjs, isEsm);
+
+  if (Object.keys(patchResult.patched).length > 0) {
+    process.stdout.write("\nPatching package.json scripts:\n");
+    for (const [name, newScript] of Object.entries(patchResult.patched)) {
+      process.stdout.write(`  ${name}: "${updatedPkg.scripts![name]}" → "${newScript}"\n`);
+      updatedPkg.scripts![name] = newScript;
+    }
+    writeFileSync(pkgPath, JSON.stringify(updatedPkg, null, 2) + "\n", "utf-8");
+    process.stdout.write("package.json scripts updated.\n");
+  }
+
+  for (const { name, reason } of patchResult.skipped) {
+    process.stdout.write(`  ${name}: skipped (${reason})\n`);
+  }
+
+  // --- 4. Update .env (idempotent — preserves existing values) ---
   const envPath = join(cwd, ".env");
   const envContent = existsSync(envPath) ? readFileSync(envPath, "utf-8") : "";
   const updatedEnv = updateEnvFile(envContent, {
@@ -143,7 +218,26 @@ export async function runInit(_argv: string[]): Promise<void> {
   writeFileSync(envPath, updatedEnv, "utf-8");
   process.stdout.write("Updated .env\n");
 
-  // --- Self-check: show what signals will be collected ---
+  // --- 5. Ensure .gitignore includes .env ---
+  ensureGitignore(cwd);
+
+  // --- 6. ANTHROPIC_API_KEY ---
+  const apiKey = await resolveApiKey({
+    apiKey: options.apiKey,
+    noInteractive: options.noInteractive,
+  });
+
+  if (apiKey) {
+    process.stdout.write("ANTHROPIC_API_KEY configured.\n");
+  } else {
+    process.stderr.write(
+      "Warning: ANTHROPIC_API_KEY not configured.\n" +
+      "LLM diagnosis will not run until you set it.\n" +
+      "Fix: npx 3amoncall init --api-key <your-key>\n",
+    );
+  }
+
+  // --- 7. Signal check ---
   process.stdout.write("\n3amoncall init complete!\n\n");
   process.stdout.write("Signal check:\n");
   process.stdout.write("  ✓ Traces — auto-instrumented (HTTP, DB, etc.)\n");
@@ -157,11 +251,13 @@ export async function runInit(_argv: string[]): Promise<void> {
   }
   process.stdout.write("\n");
 
-  // --- Startup guidance (Finding 3: match flag to module system) ---
-  if (framework === "nextjs") {
+  // --- 8. Startup guidance ---
+  if (isNextjs) {
     process.stdout.write(
       "Next.js detected: instrumentation.ts uses register() export — Next.js loads it automatically.\n",
     );
+  } else if (Object.keys(patchResult.patched).length > 0) {
+    process.stdout.write("Scripts already patched — instrumentation loads automatically on start.\n");
   } else if (isEsm) {
     process.stdout.write(
       `Add --import to your startup command:\n` +
@@ -174,41 +270,23 @@ export async function runInit(_argv: string[]): Promise<void> {
     );
   }
 
-  process.stdout.write(
-    "\nNext: run `npx 3amoncall dev` to start the local Receiver, then start your app.\n",
-  );
-}
-
-export async function runUpgrade(_argv: string[]): Promise<void> {
-  const cwd = process.cwd();
-  const envPath = join(cwd, ".env");
-
-  const rl = createInterface({ input: process.stdin, output: process.stdout });
-
-  const question = (prompt: string): Promise<string> =>
-    new Promise((resolve) => rl.question(prompt, resolve));
-
-  process.stdout.write("3amoncall init --upgrade\n");
-  process.stdout.write("Switches your OTel config from local dev to production Receiver.\n\n");
-
-  const receiverUrl = await question("Receiver URL (e.g. https://your-app.vercel.app): ");
-  const authToken = await question("AUTH_TOKEN (from Console setup screen): ");
-
-  rl.close();
-
-  const envContent = existsSync(envPath) ? readFileSync(envPath, "utf-8") : "";
-
-  let updated = updateEnvFile(envContent, {
-    OTEL_EXPORTER_OTLP_ENDPOINT: receiverUrl.trim(),
-    OTEL_EXPORTER_OTLP_HEADERS: `Authorization=Bearer ${authToken.trim()}`,
-  });
-
-  updated = updated.replace(
-    /^(OTEL_RESOURCE_ATTRIBUTES=.*deployment\.environment\.name=)development(.*)$/m,
-    "$1production$2",
-  );
-
-  writeFileSync(envPath, updated, "utf-8");
-  process.stdout.write("\n.env updated for production.\n");
-  process.stdout.write("Restart your app to apply the new OTel configuration.\n");
+  // --- 9. Start local Receiver ---
+  if (isDockerInstalled()) {
+    process.stdout.write("\nStarting local Receiver...\n");
+    try {
+      // Import dynamically to avoid circular dependency issues in tests
+      const { runDev } = await import("./dev.js");
+      runDev({ apiKey });
+    } catch {
+      process.stderr.write(
+        "Warning: failed to start Receiver container.\n" +
+        "Fix: run `npx 3amoncall dev` manually after resolving the issue.\n",
+      );
+    }
+  } else {
+    process.stdout.write(
+      "\nDocker not found — skipping Receiver startup.\n" +
+      "Install Docker (Docker Desktop, OrbStack, Podman, or colima) and run `npx 3amoncall dev`.\n",
+    );
+  }
 }

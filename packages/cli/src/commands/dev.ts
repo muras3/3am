@@ -3,6 +3,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { dirname } from "node:path";
+import { loadCredentials } from "./init/credentials.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -47,6 +48,8 @@ function loadEnvApiKey(cwd: string): string | undefined {
 
 export interface DevOptions {
   port?: number;
+  /** Pre-resolved API key (from init flow). Falls back to env/credentials/.env if not provided. */
+  apiKey?: string;
 }
 
 export function runDev(options: DevOptions = {}): void {
@@ -63,7 +66,10 @@ export function runDev(options: DevOptions = {}): void {
   const version = getCLIVersion();
   const image = `ghcr.io/3amoncall/receiver:v${version}`;
 
-  const apiKey = process.env["ANTHROPIC_API_KEY"] ?? loadEnvApiKey(process.cwd());
+  const apiKey = options.apiKey
+    ?? process.env["ANTHROPIC_API_KEY"]
+    ?? loadCredentials().anthropicApiKey
+    ?? loadEnvApiKey(process.cwd());
 
   if (!apiKey) {
     process.stderr.write(
