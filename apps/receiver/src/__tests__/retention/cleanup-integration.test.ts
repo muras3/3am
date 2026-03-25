@@ -2,7 +2,7 @@
  * Integration tests: verify lazy cleanup fires from HTTP endpoints
  * and does not break request handling on failure.
  */
-import { describe, it, expect, beforeEach, vi, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { createApp } from "../../index.js";
 import { MemoryAdapter } from "../../storage/adapters/memory.js";
 import { MemoryTelemetryAdapter } from "../../telemetry/adapters/memory.js";
