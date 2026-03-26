@@ -166,7 +166,7 @@ describe("runDemo()", () => {
       .mockImplementation(async (url: string, init?: RequestInit) => {
         const urlStr = String(url);
         // Receiver health check
-        if (urlStr.includes("/api/incidents?limit=1")) {
+        if (urlStr.includes("/healthz")) {
           return new Response(JSON.stringify({ items: [] }), { status: 200 });
         }
         // Trace ingest
@@ -210,7 +210,7 @@ describe("runDemo()", () => {
       .fn()
       .mockImplementation(async (url: string, init?: RequestInit) => {
         const urlStr = String(url);
-        if (urlStr.includes("/api/incidents?limit=1")) {
+        if (urlStr.includes("/healthz")) {
           return new Response(JSON.stringify({ items: [] }), { status: 200 });
         }
         if (urlStr.includes("/v1/traces") && init?.method === "POST") {
@@ -232,7 +232,7 @@ describe("runDemo()", () => {
       .fn()
       .mockImplementation(async (url: string, init?: RequestInit) => {
         const urlStr = String(url);
-        if (urlStr.includes("/api/incidents?limit=1")) {
+        if (urlStr.includes("/healthz")) {
           return new Response(JSON.stringify({ items: [] }), { status: 200 });
         }
         if (urlStr.includes("/v1/traces") && init?.method === "POST") {
@@ -256,7 +256,7 @@ describe("runDemo()", () => {
       .fn()
       .mockImplementation(async (url: string, init?: RequestInit) => {
         const urlStr = String(url);
-        if (urlStr.includes("/api/incidents?limit=1")) {
+        if (urlStr.includes("/healthz")) {
           return new Response(JSON.stringify({ items: [] }), { status: 200 });
         }
         if (urlStr.includes("/v1/traces") && init?.method === "POST") {
@@ -298,7 +298,7 @@ describe("runDemo()", () => {
       .fn()
       .mockImplementation(async (url: string, init?: RequestInit) => {
         const urlStr = String(url);
-        if (urlStr.includes("/api/incidents?limit=1")) {
+        if (urlStr.includes("/healthz")) {
           return new Response(JSON.stringify({ items: [] }), { status: 200 });
         }
         if (urlStr.includes("/v1/traces") && init?.method === "POST") {
@@ -349,7 +349,7 @@ describe("runDemo()", () => {
       .mockImplementation(async (url: string, init?: RequestInit) => {
         calledUrls.push(String(url));
         const urlStr = String(url);
-        if (urlStr.includes("/api/incidents?limit=1")) {
+        if (urlStr.includes("/healthz")) {
           return new Response(JSON.stringify({ items: [] }), { status: 200 });
         }
         if (urlStr.includes("/v1/traces") && init?.method === "POST") {
