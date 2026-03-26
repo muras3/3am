@@ -124,6 +124,16 @@ export function createVercelProvider(): DeployProvider {
     stdio: "inherit",
   });
 
+  // Provision Neon Postgres (Vercel Marketplace).
+  // --non-interactive skips all prompts including terms acceptance.
+  // Running from a linked project auto-connects the resource and
+  // injects DATABASE_URL into the project's env vars.
+  process.stderr.write("Provisioning Neon Postgres database...\n");
+  execFileSync("vercel", ["integration", "add", "neon", "--non-interactive"], {
+    cwd: tempDir,
+    stdio: "inherit",
+  });
+
   return {
     async deploy() {
       if (!tempDir) throw new Error("cleanup() was already called");
