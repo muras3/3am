@@ -54,4 +54,36 @@ program
     });
   });
 
+program
+  .command("deploy")
+  .description("Deploy Receiver to Vercel or Cloudflare and configure credentials")
+  .option("--platform <platform>", "Target platform (vercel or cloudflare)")
+  .option("--setup", "Force first-time setup flow")
+  .option("--no-setup", "Force re-deploy flow (requires --auth-token)")
+  .option("--auth-token <token>", "Auth token for re-deploy")
+  .option("--yes", "Skip all confirmation prompts")
+  .option("--no-interactive", "CI mode (requires --yes and --platform)")
+  .option("--json", "Output results as JSON")
+  .action(
+    async (options: {
+      platform?: string;
+      setup?: boolean;
+      authToken?: string;
+      yes?: boolean;
+      interactive?: boolean;
+      json?: boolean;
+    }) => {
+      const { runDeploy } = await import("./commands/deploy.js");
+      await runDeploy(process.argv.slice(3), {
+        platform: options.platform as "vercel" | "cloudflare" | undefined,
+        setup: options.setup,
+        noSetup: options.setup === false,
+        authToken: options.authToken,
+        yes: options.yes,
+        noInteractive: options.interactive === false,
+        json: options.json,
+      });
+    },
+  );
+
 program.parse(process.argv);

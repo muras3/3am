@@ -49,8 +49,10 @@ node --require ./instrumentation.js your-app.js
 5. Point your app at the production Receiver:
 
 ```bash
-npx 3amoncall init --upgrade
-# Prompts for: Receiver URL + AUTH_TOKEN
+npx 3amoncall deploy
+
+# Or non-interactively (for CI / Claude Code):
+npx 3amoncall deploy --platform vercel --yes --json
 ```
 
 ---
