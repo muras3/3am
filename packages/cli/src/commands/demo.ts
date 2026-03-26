@@ -155,8 +155,13 @@ async function pollDiagnosis(
         signal: AbortSignal.timeout(5_000),
       });
       if (res.ok) {
-        const data = (await res.json()) as { diagnosisResult?: unknown };
-        if (data.diagnosisResult) return true;
+        const data = (await res.json()) as {
+          diagnosisResult?: unknown;
+          headline?: string;
+        };
+        // buildExtendedIncident flattens diagnosisResult into headline/action/etc.
+        // Check both raw and extended shapes.
+        if (data.diagnosisResult || data.headline) return true;
       }
     } catch {
       // retry on network errors
