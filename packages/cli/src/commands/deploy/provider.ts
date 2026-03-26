@@ -22,7 +22,7 @@ export interface DeployProvider {
   cleanup(): void;
 }
 
-const REPO_URL = "https://github.com/3amoncall/3amoncall.git";
+const REPO_URL = "https://github.com/muras3/3amoncall.git";
 
 // ---------------------------------------------------------------------------
 // Shared helpers
