@@ -173,14 +173,9 @@ export function createVercelProvider(): DeployProvider {
 // ---------------------------------------------------------------------------
 
 function extractWranglerUrl(output: string): string | undefined {
-  const match = output.match(/Published[^\n]*\(https:\/\/[^\s)]+\)/);
-  if (match) {
-    const urlMatch = match[0].match(/\(https:\/\/[^\s)]+\)/);
-    if (urlMatch) {
-      return urlMatch[0].slice(1, -1);
-    }
-  }
-  return undefined;
+  // wrangler 4.x: "  https://<name>.<subdomain>.workers.dev"
+  const match = output.match(/https:\/\/[^\s]+\.workers\.dev/);
+  return match?.[0];
 }
 
 /**
@@ -232,7 +227,7 @@ export function createCloudflareProvider(): DeployProvider {
 
   // Build Console (static assets referenced by wrangler.toml [assets])
   process.stderr.write("Building Console...\n");
-  execFileSync("pnpm", ["turbo", "run", "build", "--filter=console..."], {
+  execFileSync("pnpm", ["turbo", "run", "build", "--filter=@3amoncall/console..."], {
     cwd: tempDir,
     stdio: "inherit",
   });
