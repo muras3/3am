@@ -80,12 +80,12 @@ function extractVercelUrl(output: string): string | undefined {
 }
 
 export function createVercelProvider(): DeployProvider {
-  let tempDir: string | undefined;
+  let tempDir: string | undefined = cloneReceiver();
+  process.stderr.write(`Cloned Receiver to ${tempDir}\n`);
 
   return {
     async deploy() {
-      tempDir = cloneReceiver();
-      process.stderr.write(`Cloned Receiver to ${tempDir}\n`);
+      if (!tempDir) throw new Error("cleanup() was already called");
 
       const result = await spawnAndCapture(
         "vercel",
@@ -109,7 +109,7 @@ export function createVercelProvider(): DeployProvider {
     },
 
     async setEnvVar(key, value) {
-      if (!tempDir) throw new Error("deploy() must be called before setEnvVar()");
+      if (!tempDir) throw new Error("cleanup() was already called");
       // vercel env add reads value from stdin
       const child = spawn("vercel", ["env", "add", key, "production", "--yes"], {
         cwd: tempDir,
@@ -155,17 +155,18 @@ function extractWranglerUrl(output: string): string | undefined {
 }
 
 export function createCloudflareProvider(): DeployProvider {
-  let tempDir: string | undefined;
+  let tempDir: string | undefined = cloneReceiver();
+  const receiverDir = join(tempDir, "apps", "receiver");
+  process.stderr.write(`Cloned Receiver to ${tempDir}\n`);
 
   return {
     async deploy() {
-      tempDir = cloneReceiver();
-      process.stderr.write(`Cloned Receiver to ${tempDir}\n`);
+      if (!tempDir) throw new Error("cleanup() was already called");
 
       const result = await spawnAndCapture(
         "wrangler",
         ["deploy"],
-        tempDir,
+        receiverDir,
       );
 
       if (result.exitCode !== 0) {
@@ -184,10 +185,10 @@ export function createCloudflareProvider(): DeployProvider {
     },
 
     async setEnvVar(key, value) {
-      if (!tempDir) throw new Error("deploy() must be called before setEnvVar()");
+      if (!tempDir) throw new Error("cleanup() was already called");
       // wrangler secret put reads value from stdin
       const child = spawn("wrangler", ["secret", "put", key], {
-        cwd: tempDir,
+        cwd: receiverDir,
         stdio: ["pipe", "pipe", "inherit"],
       });
       child.stdin!.write(value);
