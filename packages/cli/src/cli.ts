@@ -39,4 +39,19 @@ program
     runDev(options.port != null ? { port: options.port } : {});
   });
 
+program
+  .command("demo")
+  .description("Run a demo incident with real LLM diagnosis (local/dev only)")
+  .option("--yes", "Skip cost consent prompt")
+  .option("--no-interactive", "Skip interactive prompts")
+  .option("--receiver-url <url>", "Receiver URL (default: http://localhost:3333)")
+  .action(async (options: { yes?: boolean; interactive?: boolean; receiverUrl?: string }) => {
+    const { runDemo } = await import("./commands/demo.js");
+    await runDemo(process.argv.slice(3), {
+      yes: options.yes,
+      noInteractive: options.interactive === false,
+      receiverUrl: options.receiverUrl,
+    });
+  });
+
 program.parse(process.argv);

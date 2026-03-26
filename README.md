@@ -6,7 +6,7 @@ Diagnose serverless app incidents in under 5 minutes using OTel data + LLM.
 
 ## Quick Start (Local)
 
-**Prerequisites:** Docker Desktop, Node.js 18+
+**Prerequisites:** Docker Desktop, Node.js 18+, [Anthropic API key](https://console.anthropic.com/settings/keys)
 
 ```bash
 # 1. Set up OTel SDK in your app
@@ -15,16 +15,24 @@ npx 3amoncall init
 # 2. Start local Receiver (requires Docker Desktop)
 npx 3amoncall dev
 
-# 3. Start your app (with OTel instrumentation loaded)
-node --require ./instrumentation.js your-app.js
+# 3. (In another terminal) Run a demo incident — see diagnosis in action
+npx 3amoncall demo
 
-# 4. Open Console
+# 4. Open Console to see the diagnosis
 open http://localhost:3333
 ```
 
+`3amoncall demo` injects a synthetic downstream-timeout scenario into the local Receiver and runs a real LLM diagnosis (~¥10/run). No real incident needed — you see the full diagnosis and AI copilot experience immediately. Demo data uses `service.name=3amoncall-demo` and won't mix with your app's telemetry.
+
 `3amoncall init` installs OTel dependencies, creates `instrumentation.ts/js`, and writes `OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:3333` to `.env`.
 
-`3amoncall dev` pulls and runs the Receiver image via Docker. Set `ANTHROPIC_API_KEY` in your `.env` or environment before running — LLM diagnosis requires it.
+`3amoncall dev` pulls and runs the Receiver image via Docker. Set `ANTHROPIC_API_KEY` during `init` or in your environment — LLM diagnosis requires it.
+
+For your own app telemetry, start your app with instrumentation loaded:
+
+```bash
+node --require ./instrumentation.js your-app.js
+```
 
 **Note:** Logs require a structured logger (pino, winston, or bunyan) wired through `@opentelemetry/auto-instrumentations-node`. `console.log` is not captured.
 
