@@ -12,6 +12,7 @@
  */
 import { createInterface } from "node:readline";
 import { resolveApiKey } from "./init/credentials.js";
+import { checkReceiver } from "./shared/health.js";
 
 const DEFAULT_RECEIVER_URL = "http://localhost:3333";
 const POLL_INTERVAL_MS = 3_000;
@@ -104,17 +105,6 @@ export function buildDemoPayload(): object {
       },
     ],
   };
-}
-
-async function checkReceiver(baseUrl: string): Promise<boolean> {
-  try {
-    const res = await fetch(`${baseUrl}/api/incidents?limit=1`, {
-      signal: AbortSignal.timeout(5_000),
-    });
-    return res.ok;
-  } catch {
-    return false;
-  }
 }
 
 async function promptConfirm(message: string): Promise<boolean> {
