@@ -9,11 +9,11 @@ export type SetupTokenResult =
 
 /**
  * Check whether the Receiver is reachable and responding.
- * Hits `GET /api/incidents?limit=1` with a 5-second timeout.
+ * Hits `GET /healthz` (no auth required) with a 5-second timeout.
  */
 export async function checkReceiver(baseUrl: string): Promise<boolean> {
   try {
-    const res = await fetch(`${baseUrl}/api/incidents?limit=1`, {
+    const res = await fetch(`${baseUrl}/healthz`, {
       signal: AbortSignal.timeout(5_000),
     });
     return res.ok;

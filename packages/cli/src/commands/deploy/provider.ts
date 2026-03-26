@@ -179,6 +179,27 @@ function extractWranglerUrl(output: string): string | undefined {
 }
 
 /**
+ * Find an existing D1 database by name, or return undefined.
+ * `wrangler d1 list` outputs TOML-like blocks per database.
+ */
+function findD1Database(name: string, cwd: string): string | undefined {
+  const output = execFileSync("wrangler", ["d1", "list"], {
+    cwd,
+    stdio: "pipe",
+  }).toString();
+
+  // Match the line with our database name and extract the UUID from the same row.
+  // wrangler d1 list output is a table with columns: uuid, name, created_at, ...
+  for (const line of output.split("\n")) {
+    if (line.includes(name)) {
+      const uuidMatch = line.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/);
+      if (uuidMatch) return uuidMatch[0];
+    }
+  }
+  return undefined;
+}
+
+/**
  * Create a D1 database and return its UUID.
  * `wrangler d1 create <name>` outputs something like:
  *   ✅ Successfully created DB '<name>'
@@ -198,6 +219,18 @@ function createD1Database(name: string, cwd: string): string {
     );
   }
   return match[1];
+}
+
+/**
+ * Get or create a D1 database. Reuses existing if found by name.
+ */
+function ensureD1Database(name: string, cwd: string): string {
+  const existing = findD1Database(name, cwd);
+  if (existing) {
+    process.stderr.write(`Reusing existing D1 database: ${existing}\n`);
+    return existing;
+  }
+  return createD1Database(name, cwd);
 }
 
 /**
@@ -232,11 +265,11 @@ export function createCloudflareProvider(): DeployProvider {
     stdio: "inherit",
   });
 
-  // Create a fresh D1 database for this deployment
-  process.stderr.write("Creating D1 database...\n");
-  const dbId = createD1Database("3amoncall-db", receiverDir);
+  // Get or create D1 database (reuses existing on re-deploy)
+  process.stderr.write("Provisioning D1 database...\n");
+  const dbId = ensureD1Database("3amoncall-db", receiverDir);
   patchWranglerToml(receiverDir, dbId);
-  process.stderr.write(`D1 database created: ${dbId}\n`);
+  process.stderr.write(`D1 database ready: ${dbId}\n`);
 
   return {
     async deploy() {
