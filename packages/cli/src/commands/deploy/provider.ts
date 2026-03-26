@@ -118,8 +118,10 @@ export function createVercelProvider(): DeployProvider {
 
   // Create Vercel project link so env vars can be set before deploy.
   // --yes auto-confirms org selection and new project creation.
+  // --project ensures a valid lowercase name (temp dir basenames can
+  // contain uppercase characters which Vercel rejects).
   process.stderr.write("Linking Vercel project...\n");
-  execFileSync("vercel", ["link", "--yes"], {
+  execFileSync("vercel", ["link", "--yes", "--project", "3amoncall-receiver"], {
     cwd: tempDir,
     stdio: "inherit",
   });
