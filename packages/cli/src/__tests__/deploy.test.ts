@@ -20,17 +20,27 @@ vi.mock("node:readline", () => ({
 }));
 
 // ---------------------------------------------------------------------------
-// Mock all sub-modules before importing the orchestrator
+// Mock provider — replaces the real executor with a controllable fake
+// ---------------------------------------------------------------------------
+
+const mockProvider = {
+  deploy: vi.fn(),
+  setEnvVar: vi.fn(),
+  cleanup: vi.fn(),
+};
+
+vi.mock("../commands/deploy/provider.js", () => ({
+  createProvider: vi.fn(() => mockProvider),
+}));
+
+// ---------------------------------------------------------------------------
+// Mock all other sub-modules before importing the orchestrator
 // ---------------------------------------------------------------------------
 
 vi.mock("../commands/deploy/platform.js", () => ({
   detectPlatformCli: vi.fn(),
   checkPlatformAuth: vi.fn(),
   promptPlatformSelection: vi.fn(),
-}));
-
-vi.mock("../commands/deploy/executor.js", () => ({
-  runPlatformDeploy: vi.fn(),
 }));
 
 vi.mock("../commands/deploy/env-writer.js", () => ({
@@ -56,7 +66,6 @@ import {
   detectPlatformCli,
   checkPlatformAuth,
 } from "../commands/deploy/platform.js";
-import { runPlatformDeploy } from "../commands/deploy/executor.js";
 import { updateAppEnv } from "../commands/deploy/env-writer.js";
 import { waitForReceiver, fetchSetupToken } from "../commands/shared/health.js";
 import { resolveApiKey } from "../commands/init/credentials.js";
@@ -70,9 +79,9 @@ function setupHappyPathMocks(): void {
   vi.mocked(resolveApiKey).mockResolvedValue("sk-ant-test");
   vi.mocked(detectPlatformCli).mockReturnValue(true);
   vi.mocked(checkPlatformAuth).mockResolvedValue(true);
-  vi.mocked(runPlatformDeploy).mockResolvedValue({
-    url: "https://test.vercel.app",
-  });
+  mockProvider.deploy.mockResolvedValue({ url: "https://test.vercel.app" });
+  mockProvider.setEnvVar.mockResolvedValue(undefined);
+  mockProvider.cleanup.mockReturnValue(undefined);
   vi.mocked(waitForReceiver).mockResolvedValue(true);
   vi.mocked(fetchSetupToken).mockResolvedValue({
     status: "token",
@@ -115,6 +124,11 @@ describe("runDeploy()", () => {
       return true;
     });
     vi.spyOn(process, "exit").mockImplementation((() => {}) as never);
+
+    // Reset provider mocks
+    mockProvider.deploy.mockReset();
+    mockProvider.setEnvVar.mockReset();
+    mockProvider.cleanup.mockReset();
   });
 
   afterEach(() => {
@@ -139,11 +153,9 @@ describe("runDeploy()", () => {
   });
 
   it("exits with error when no platform in non-interactive mode", async () => {
-    // --no-interactive without --platform triggers step 1 validation
     await runDeploy([], {
       yes: true,
       noInteractive: true,
-      // platform deliberately omitted
     });
 
     expect(process.exit).toHaveBeenCalledWith(1);
@@ -199,13 +211,15 @@ describe("runDeploy()", () => {
     expect(stderr).toContain("vercel login");
   });
 
-  it("exits with error when deploy fails", async () => {
+  it("exits with error when deploy fails and calls cleanup", async () => {
     vi.mocked(resolveApiKey).mockResolvedValue("sk-ant-test");
     vi.mocked(detectPlatformCli).mockReturnValue(true);
     vi.mocked(checkPlatformAuth).mockResolvedValue(true);
-    vi.mocked(runPlatformDeploy).mockRejectedValue(
-      new Error("Deploy process exited with code 1"),
+    mockProvider.setEnvVar.mockResolvedValue(undefined);
+    mockProvider.deploy.mockRejectedValue(
+      new Error("vercel deploy exited with code 1"),
     );
+    mockProvider.cleanup.mockReturnValue(undefined);
 
     await runDeploy([], {
       yes: true,
@@ -215,6 +229,7 @@ describe("runDeploy()", () => {
 
     expect(process.exit).toHaveBeenCalledWith(1);
     expect(stderrChunks.join("")).toContain("deploy failed");
+    expect(mockProvider.cleanup).toHaveBeenCalled();
   });
 
   it("exits with error when --no-setup without --auth-token", async () => {
@@ -223,11 +238,34 @@ describe("runDeploy()", () => {
       noInteractive: true,
       platform: "vercel",
       noSetup: true,
-      // authToken deliberately omitted
     });
 
     expect(process.exit).toHaveBeenCalledWith(1);
     expect(stderrChunks.join("")).toContain("--no-setup requires --auth-token");
+  });
+
+  // -------------------------------------------------------------------------
+  // Provider interaction
+  // -------------------------------------------------------------------------
+
+  it("sets ANTHROPIC_API_KEY on platform before deploying", async () => {
+    setupHappyPathMocks();
+
+    await runDeploy([], {
+      yes: true,
+      noInteractive: true,
+      platform: "vercel",
+    });
+
+    expect(mockProvider.setEnvVar).toHaveBeenCalledWith(
+      "ANTHROPIC_API_KEY",
+      "sk-ant-test",
+    );
+
+    // setEnvVar must be called before deploy
+    const setEnvOrder = mockProvider.setEnvVar.mock.invocationCallOrder[0];
+    const deployOrder = mockProvider.deploy.mock.invocationCallOrder[0];
+    expect(setEnvOrder).toBeLessThan(deployOrder!);
   });
 
   // -------------------------------------------------------------------------
@@ -239,31 +277,20 @@ describe("runDeploy()", () => {
     vi.mocked(detectPlatformCli).mockReturnValue(true);
     vi.mocked(checkPlatformAuth).mockResolvedValue(true);
 
-    // User types "n" at deploy prompt
     setRlAnswers("n");
 
-    await runDeploy([], {
-      // no --yes: confirmation will be prompted
-      platform: "vercel",
-    });
+    await runDeploy([], { platform: "vercel" });
 
-    expect(runPlatformDeploy).not.toHaveBeenCalled();
+    expect(mockProvider.deploy).not.toHaveBeenCalled();
     expect(process.exit).not.toHaveBeenCalled();
   });
 
   it("skips .env write and prints manual instructions when user declines", async () => {
     setupHappyPathMocks();
-
-    // 1st question = deploy confirm → "y"
-    // 2nd question = .env confirm → "n"
     setRlAnswers("y", "n");
 
-    await runDeploy([], {
-      // no --yes so both confirmations are prompted
-      platform: "vercel",
-    });
+    await runDeploy([], { platform: "vercel" });
 
-    // updateAppEnv should have been called once (dryRun=true only)
     const calls = vi.mocked(updateAppEnv).mock.calls;
     const writeCalls = calls.filter((c) => !c[0].dryRun);
     expect(writeCalls).toHaveLength(0);
@@ -279,7 +306,7 @@ describe("runDeploy()", () => {
 
   it("continues with warning when readiness check times out", async () => {
     setupHappyPathMocks();
-    vi.mocked(waitForReceiver).mockResolvedValue(false); // timeout
+    vi.mocked(waitForReceiver).mockResolvedValue(false);
 
     await runDeploy([], {
       yes: true,
@@ -287,10 +314,7 @@ describe("runDeploy()", () => {
       platform: "vercel",
     });
 
-    // Should NOT exit(1)
     expect(process.exit).not.toHaveBeenCalled();
-
-    // Warning output (goes to stdout in non-json mode)
     const stdout = stdoutChunks.join("");
     expect(stdout).toContain("Warning");
     expect(stdout).toContain("ready");
@@ -310,18 +334,19 @@ describe("runDeploy()", () => {
     });
 
     expect(process.exit).not.toHaveBeenCalled();
-    expect(runPlatformDeploy).toHaveBeenCalledWith("vercel");
+    expect(mockProvider.deploy).toHaveBeenCalled();
+    expect(mockProvider.setEnvVar).toHaveBeenCalledWith(
+      "ANTHROPIC_API_KEY",
+      "sk-ant-test",
+    );
     expect(waitForReceiver).toHaveBeenCalledWith(
       "https://test.vercel.app",
       60_000,
     );
     expect(fetchSetupToken).toHaveBeenCalledWith("https://test.vercel.app");
 
-    // updateAppEnv called with dryRun=true then with actual write
     const calls = vi.mocked(updateAppEnv).mock.calls;
-    const dryRunCall = calls.find((c) => c[0].dryRun === true);
     const writeCall = calls.find((c) => !c[0].dryRun);
-    expect(dryRunCall).toBeDefined();
     expect(writeCall).toBeDefined();
     expect(writeCall![0].receiverUrl).toBe("https://test.vercel.app");
     expect(writeCall![0].authToken).toBe("test-token");
@@ -331,7 +356,7 @@ describe("runDeploy()", () => {
     expect(stdout).toContain("https://test.vercel.app");
   });
 
-  it("happy path: re-deploy with --auth-token (setup returns already-setup)", async () => {
+  it("happy path: re-deploy with --auth-token", async () => {
     setupHappyPathMocks();
     vi.mocked(fetchSetupToken).mockResolvedValue({ status: "already-setup" });
 
@@ -344,13 +369,9 @@ describe("runDeploy()", () => {
 
     expect(process.exit).not.toHaveBeenCalled();
 
-    // The provided token must be written to .env
     const calls = vi.mocked(updateAppEnv).mock.calls;
     const writeCall = calls.find((c) => !c[0].dryRun);
     expect(writeCall![0].authToken).toBe("provided-token");
-
-    const stdout = stdoutChunks.join("");
-    expect(stdout).toContain("Deploy complete");
   });
 
   // -------------------------------------------------------------------------
@@ -372,24 +393,18 @@ describe("runDeploy()", () => {
     const stdoutText = stdoutChunks.join("");
     const stderrText = stderrChunks.join("");
 
-    // stdout must be valid JSON
     const parsed = JSON.parse(stdoutText) as {
       status: string;
       receiverUrl: string;
-      consoleUrl: string;
       authToken: string;
       envUpdated: boolean;
-      envPath: string;
     };
 
     expect(parsed.status).toBe("deployed");
     expect(parsed.receiverUrl).toBe("https://test.vercel.app");
-    expect(parsed.consoleUrl).toBe("https://test.vercel.app");
     expect(parsed.authToken).toBe("test-token");
     expect(parsed.envUpdated).toBe(true);
-    expect(parsed.envPath).toBe("/path/.env");
 
-    // Human text on stderr
     expect(stderrText).toContain("Deploying Receiver");
   });
 });

@@ -27,7 +27,7 @@ import {
   promptPlatformSelection,
   type Platform,
 } from "./deploy/platform.js";
-import { runPlatformDeploy } from "./deploy/executor.js";
+import { createProvider } from "./deploy/provider.js";
 import { updateAppEnv, promptAuthToken } from "./deploy/env-writer.js";
 import { waitForReceiver, fetchSetupToken } from "./shared/health.js";
 import { resolveApiKey } from "./init/credentials.js";
@@ -187,14 +187,20 @@ export async function runDeploy(
   }
 
   // -------------------------------------------------------------------------
-  // Step 7: Run platform deploy
+  // Step 7: Provision and deploy Receiver
   // -------------------------------------------------------------------------
   info(`\nDeploying Receiver to ${platform}...\n`, json);
+  const provider = createProvider(platform);
   let deployedUrl: string;
   try {
-    const result = await runPlatformDeploy(platform);
+    // Set ANTHROPIC_API_KEY on the platform before deploying
+    info("Setting ANTHROPIC_API_KEY on platform...\n", json);
+    await provider.setEnvVar("ANTHROPIC_API_KEY", apiKey);
+
+    const result = await provider.deploy();
     deployedUrl = result.url;
   } catch (err) {
+    provider.cleanup();
     process.stderr.write(
       `Error: deploy failed: ${String(err)}\n\n` +
         "Fix:\n" +
@@ -202,6 +208,8 @@ export async function runDeploy(
     );
     process.exit(1);
     return;
+  } finally {
+    provider.cleanup();
   }
 
   info(`\nReceiver deployed: ${deployedUrl}\n`, json);
