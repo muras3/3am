@@ -5,11 +5,17 @@
  * Each provider clones the repo to a temp directory, provisions the platform
  * project, sets env vars, and deploys from there.
  *
- * - Vercel: git clone → vercel deploy --prod --yes
- * - Cloudflare: git clone → wrangler deploy
+ * Vercel flow:
+ *   git clone → vercel link --yes → vercel env add → vercel deploy --prod --yes
+ *   (Vercel handles pnpm install + build via vercel.json)
+ *
+ * Cloudflare flow:
+ *   git clone → pnpm install → pnpm turbo build (Console assets) →
+ *   wrangler d1 create → patch wrangler.toml → wrangler secret put →
+ *   wrangler deploy
  */
 import { spawn, execFileSync } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
@@ -69,6 +75,33 @@ function spawnAndCapture(
   });
 }
 
+/**
+ * Spawn a command that reads a value from stdin (for env var / secret setting).
+ */
+function spawnWithStdin(
+  cmd: string,
+  args: string[],
+  cwd: string,
+  stdinValue: string,
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(cmd, args, {
+      cwd,
+      stdio: ["pipe", "pipe", "inherit"],
+    });
+    child.stdin!.write(stdinValue);
+    child.stdin!.end();
+    child.on("error", reject);
+    child.on("close", (code) => {
+      if (code !== 0) {
+        reject(new Error(`${cmd} ${args.join(" ")} exited with code ${code}`));
+      } else {
+        resolve();
+      }
+    });
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Vercel
 // ---------------------------------------------------------------------------
@@ -82,6 +115,14 @@ function extractVercelUrl(output: string): string | undefined {
 export function createVercelProvider(): DeployProvider {
   let tempDir: string | undefined = cloneReceiver();
   process.stderr.write(`Cloned Receiver to ${tempDir}\n`);
+
+  // Create Vercel project link so env vars can be set before deploy.
+  // --yes auto-confirms org selection and new project creation.
+  process.stderr.write("Linking Vercel project...\n");
+  execFileSync("vercel", ["link", "--yes"], {
+    cwd: tempDir,
+    stdio: "inherit",
+  });
 
   return {
     async deploy() {
@@ -110,24 +151,12 @@ export function createVercelProvider(): DeployProvider {
 
     async setEnvVar(key, value) {
       if (!tempDir) throw new Error("cleanup() was already called");
-      // vercel env add reads value from stdin
-      const child = spawn("vercel", ["env", "add", key, "production", "--yes"], {
-        cwd: tempDir,
-        stdio: ["pipe", "pipe", "inherit"],
-      });
-      child.stdin!.write(value);
-      child.stdin!.end();
-
-      await new Promise<void>((resolve, reject) => {
-        child.on("error", reject);
-        child.on("close", (code) => {
-          if (code !== 0) {
-            reject(new Error(`vercel env add ${key} exited with code ${code}`));
-          } else {
-            resolve();
-          }
-        });
-      });
+      await spawnWithStdin(
+        "vercel",
+        ["env", "add", key, "production", "--yes"],
+        tempDir,
+        value,
+      );
     },
 
     cleanup() {
@@ -154,10 +183,65 @@ function extractWranglerUrl(output: string): string | undefined {
   return undefined;
 }
 
+/**
+ * Create a D1 database and return its UUID.
+ * `wrangler d1 create <name>` outputs something like:
+ *   ✅ Successfully created DB '<name>'
+ *   ...
+ *   database_id = "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+ */
+function createD1Database(name: string, cwd: string): string {
+  const output = execFileSync("wrangler", ["d1", "create", name], {
+    cwd,
+    stdio: "pipe",
+  }).toString();
+
+  const match = output.match(/database_id\s*=\s*"([0-9a-f-]+)"/);
+  if (!match?.[1]) {
+    throw new Error(
+      `Failed to parse D1 database_id from wrangler output.\nOutput:\n${output}`,
+    );
+  }
+  return match[1];
+}
+
+/**
+ * Replace the hardcoded database_id in wrangler.toml with the newly created one.
+ */
+function patchWranglerToml(receiverDir: string, newDbId: string): void {
+  const tomlPath = join(receiverDir, "wrangler.toml");
+  const content = readFileSync(tomlPath, "utf8");
+  const patched = content.replace(
+    /database_id\s*=\s*"[^"]*"/,
+    `database_id = "${newDbId}"`,
+  );
+  writeFileSync(tomlPath, patched, "utf8");
+}
+
 export function createCloudflareProvider(): DeployProvider {
   let tempDir: string | undefined = cloneReceiver();
   const receiverDir = join(tempDir, "apps", "receiver");
   process.stderr.write(`Cloned Receiver to ${tempDir}\n`);
+
+  // Install dependencies (needed for wrangler bundling + console build)
+  process.stderr.write("Installing dependencies...\n");
+  execFileSync("pnpm", ["install", "--frozen-lockfile"], {
+    cwd: tempDir,
+    stdio: "inherit",
+  });
+
+  // Build Console (static assets referenced by wrangler.toml [assets])
+  process.stderr.write("Building Console...\n");
+  execFileSync("pnpm", ["turbo", "run", "build", "--filter=console..."], {
+    cwd: tempDir,
+    stdio: "inherit",
+  });
+
+  // Create a fresh D1 database for this deployment
+  process.stderr.write("Creating D1 database...\n");
+  const dbId = createD1Database("3amoncall-db", receiverDir);
+  patchWranglerToml(receiverDir, dbId);
+  process.stderr.write(`D1 database created: ${dbId}\n`);
 
   return {
     async deploy() {
@@ -186,24 +270,12 @@ export function createCloudflareProvider(): DeployProvider {
 
     async setEnvVar(key, value) {
       if (!tempDir) throw new Error("cleanup() was already called");
-      // wrangler secret put reads value from stdin
-      const child = spawn("wrangler", ["secret", "put", key], {
-        cwd: receiverDir,
-        stdio: ["pipe", "pipe", "inherit"],
-      });
-      child.stdin!.write(value);
-      child.stdin!.end();
-
-      await new Promise<void>((resolve, reject) => {
-        child.on("error", reject);
-        child.on("close", (code) => {
-          if (code !== 0) {
-            reject(new Error(`wrangler secret put ${key} exited with code ${code}`));
-          } else {
-            resolve();
-          }
-        });
-      });
+      await spawnWithStdin(
+        "wrangler",
+        ["secret", "put", key],
+        receiverDir,
+        value,
+      );
     },
 
     cleanup() {
