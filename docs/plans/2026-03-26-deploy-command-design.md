@@ -50,18 +50,44 @@ npx 3amoncall deploy [options]
 
 Options:
   --platform <vercel|cloudflare>  Platform selection (interactive if omitted)
+  --setup                         Force first-time setup flow
+  --no-setup                      Force re-deploy flow (skip setup, requires --auth-token)
+  --auth-token <token>            Auth token (required with --no-setup)
   --yes                           Skip all confirmation prompts
-  --no-interactive                CI mode (requires --yes)
+  --no-interactive                CI mode (requires --yes + --platform)
+  --json                          Output results as JSON
 ```
+
+## Setup / Re-deploy Auto-detection
+
+One command, auto-detects state via `GET /api/setup-status`:
+- No flags → auto-detect (setupComplete: false → setup flow, true → redeploy flow)
+- `--setup` → force setup flow (re-initialize)
+- `--no-setup` → force redeploy flow (`--auth-token` required)
+
+## AUTH_TOKEN Retrieval (Resolved)
+
+Uses existing `GET /api/setup-token` endpoint — no Receiver changes needed.
+- First deploy: CLI fetches token from `/api/setup-token` (one-time reveal, then 403)
+- Re-deploy: `--auth-token` flag or credentials file
+
+## AI / Claude Code Execution
+
+Fully automatable: `npx 3amoncall deploy --platform vercel --yes --json`
+- All steps resolve via flags or env vars
+- `--json` outputs structured result for programmatic consumption
 
 ## Design Decisions
 
 | Decision | Choice | Rationale |
 |----------|--------|-----------|
+| Pattern | Wasp-style launch/deploy in one command | Auto-detect first vs subsequent deploy via setup-status API |
 | Platform scope | Vercel + Cloudflare | Both are target platforms per product architecture |
 | Deploy method | Wrap platform CLIs | Wasp pattern — delegate to `vercel`/`wrangler`, own the orchestration |
+| AUTH_TOKEN | Existing `/api/setup-token` API | No Receiver changes. CLI fetches before Console access |
+| AI execution | `--json` + `--yes` + `--platform` | Fully non-interactive, structured output |
 | Credentials | Single-command flow | Modern deploy tools (Railway, Vercel) do deploy + env in one flow |
-| Readiness check | Receiver + app exporter | Verify the production path works, not just that Receiver is up |
+| Readiness check | Receiver health only (MVP) | GET /healthz. App exporter check is future scope |
 | Approval | Before deploy + before .env write | Explicit consent for side effects, --yes for CI |
 | `--upgrade` | Removed | Replaced entirely by `deploy` |
 
@@ -83,8 +109,8 @@ npx 3amoncall deploy
 npx 3amoncall deploy --platform vercel --yes
 ```
 
-## Open Questions for Implementation
+## Resolved Questions
 
-1. How to obtain AUTH_TOKEN programmatically after deploy (currently shown in Console first-access screen)
-2. Whether to support `vercel link` / `wrangler login` detection or require pre-auth
-3. Exact readiness check for "telemetry reaches production" — prompt user to start app + poll, or run remote demo
+1. **AUTH_TOKEN**: Use existing `GET /api/setup-token` (one-time reveal). No Receiver changes.
+2. **Platform auth**: Check `vercel whoami` / `wrangler whoami`. Error with login instructions if not authenticated.
+3. **Readiness check**: Receiver health only (`GET /healthz`). App exporter check is future scope.

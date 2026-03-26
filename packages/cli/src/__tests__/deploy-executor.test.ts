@@ -16,8 +16,11 @@ import { runPlatformDeploy } from "../commands/deploy/executor.js";
 function createMockProcess(stdoutContent: string, exitCode: number) {
   const proc = new EventEmitter();
   const stdoutEmitter = new EventEmitter();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- mock ChildProcess shape
   (proc as any).stdout = stdoutEmitter;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   (proc as any).stderr = null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   (proc as any).stdin = null;
 
   // Emit stdout data, then close, then exit — all async

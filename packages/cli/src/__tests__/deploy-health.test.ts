@@ -14,7 +14,7 @@ import {
 } from "../commands/shared/health.js";
 
 /** Flush all pending microtasks (Promise callbacks) */
-function flushPromises(): Promise<void> {
+function _flushPromises(): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, 0));
 }
 
@@ -109,7 +109,7 @@ describe("waitForReceiver()", () => {
   });
 
   it("respects the polling interval between retries", async () => {
-    let callTimes: number[] = [];
+    const callTimes: number[] = [];
     globalThis.fetch = vi.fn().mockImplementation(async () => {
       callTimes.push(Date.now());
       return new Response("error", { status: 500 });

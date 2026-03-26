@@ -55,10 +55,9 @@ vi.mock("../commands/init/credentials.js", () => ({
 import {
   detectPlatformCli,
   checkPlatformAuth,
-  promptPlatformSelection,
 } from "../commands/deploy/platform.js";
 import { runPlatformDeploy } from "../commands/deploy/executor.js";
-import { updateAppEnv, promptAuthToken } from "../commands/deploy/env-writer.js";
+import { updateAppEnv } from "../commands/deploy/env-writer.js";
 import { waitForReceiver, fetchSetupToken } from "../commands/shared/health.js";
 import { resolveApiKey } from "../commands/init/credentials.js";
 import { runDeploy } from "../commands/deploy.js";
