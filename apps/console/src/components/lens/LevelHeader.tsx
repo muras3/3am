@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
+import { useTranslation } from "react-i18next";
 import type { LensLevel } from "../../routes/__root.js";
 import { formatShortIncidentId } from "../../lib/incidentId.js";
 
@@ -24,6 +25,7 @@ export function LevelHeader({
   openedAt,
   zoomTo,
 }: LevelHeaderProps) {
+  const { t } = useTranslation();
   const clock = useClock();
 
   if (level === 0) {
@@ -31,10 +33,11 @@ export function LevelHeader({
       <header className="level-header">
         <div className="topbar-logo">
           <span className="pulse" />
-          3amoncall
+          {t("header.logo")}
         </div>
         <span className="topbar-sep" />
-        <span className="env-tag">production</span>
+        <span className="env-tag">{t("header.env")}</span>
+        <LocaleToggle />
         <span className="level-header-clock">{clock}</span>
       </header>
     );
@@ -46,9 +49,9 @@ export function LevelHeader({
         <button
           className="back-btn"
           onClick={(e) => zoomTo(0, e.currentTarget)}
-          aria-label="Back to Map"
+          aria-label={t("header.backToMap")}
         >
-          ← Map
+          {t("header.backToMapLabel")}
         </button>
         <span className="topbar-sep" />
         {incidentId && (
@@ -60,6 +63,7 @@ export function LevelHeader({
           </span>
         )}
         {openedAt && <Duration openedAt={openedAt} />}
+        <LocaleToggle />
         <span className="level-header-clock">{clock}</span>
       </header>
     );
@@ -71,19 +75,82 @@ export function LevelHeader({
       <button
         className="back-btn"
         onClick={(e) => zoomTo(1, e.currentTarget)}
-        aria-label="Back to Incident"
+        aria-label={t("header.backToIncident")}
       >
-        ← {incidentId ? formatShortIncidentId(incidentId) : "Incident"}
+        {incidentId
+          ? t("header.backToIncidentLabel", { id: formatShortIncidentId(incidentId) })
+          : t("header.backToIncidentFallback")}
       </button>
       <span className="topbar-sep" />
-      <span className="level-header-title">Evidence Studio</span>
+      <span className="level-header-title">{t("header.evidenceStudio")}</span>
       {severity && (
         <span className="severity-badge" data-severity={severity}>
           {severity}
         </span>
       )}
+      <LocaleToggle />
       <span className="level-header-clock">{clock}</span>
     </header>
+  );
+}
+
+// ── Locale Toggle ────────────────────────────────────────────
+
+function LocaleToggle() {
+  const { t, i18n } = useTranslation();
+  const currentLocale = i18n.language === "ja" ? "ja" : "en";
+
+  const switchLocale = useCallback(
+    async (locale: "en" | "ja") => {
+      if (locale === currentLocale) return;
+      await i18n.changeLanguage(locale);
+      try {
+        await fetch("/api/settings/locale", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ locale }),
+        });
+      } catch {
+        // Best-effort persist
+      }
+    },
+    [currentLocale, i18n],
+  );
+
+  const handleKey = useCallback(
+    (locale: "en" | "ja") => (e: React.KeyboardEvent) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        void switchLocale(locale);
+      }
+    },
+    [switchLocale],
+  );
+
+  return (
+    <span className="locale-toggle">
+      <button
+        type="button"
+        className={`locale-toggle-btn${currentLocale === "en" ? " locale-toggle-active" : ""}`}
+        onClick={() => void switchLocale("en")}
+        onKeyDown={handleKey("en")}
+        aria-label={currentLocale === "en" ? undefined : t("locale.switchToEn")}
+        tabIndex={0}
+      >
+        EN
+      </button>
+      <span className="locale-toggle-sep" aria-hidden="true">/</span>
+      <button
+        type="button"
+        className={`locale-toggle-btn${currentLocale === "ja" ? " locale-toggle-active" : ""}`}
+        onClick={() => void switchLocale("ja")}
+        onKeyDown={handleKey("ja")}
+        aria-label={currentLocale === "ja" ? undefined : t("locale.switchToJa")}
+        tabIndex={0}
+      >
+        JA
+      </button>
+    </span>
   );
 }
 
@@ -120,5 +187,5 @@ export function formatDuration(openedAt: string): string {
   const m = Math.floor(s / 60);
   const h = Math.floor(m / 60);
   if (h > 0) return `${h}h ${m % 60}m`;
-  return `Duration: ${m}m ${s % 60}s`;
+  return `${m}m ${s % 60}s`;
 }

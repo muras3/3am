@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { useSearch } from "@tanstack/react-router";
+import { useTranslation } from "react-i18next";
 import type { LogsSurface, LogClaim, LogEntry } from "../../../api/curated-types.js";
 import type { LensSearchParams } from "../../../routes/__root.js";
 
@@ -19,6 +20,7 @@ interface ClaimHeaderProps {
 }
 
 function ClaimHeader({ claim }: ClaimHeaderProps) {
+  const { t } = useTranslation();
   const isAbsence = claim.type === "absence";
 
   return (
@@ -31,7 +33,7 @@ function ClaimHeader({ claim }: ClaimHeaderProps) {
       <span className={`lens-logs-claim-label lens-logs-claim-label-${claim.type}`}>
         {claim.label}
       </span>
-      <span className="lens-logs-claim-count">{claim.count}&nbsp;entries</span>
+      <span className="lens-logs-claim-count">{t("evidence.logs.entries", { count: claim.count })}</span>
     </div>
   );
 }
@@ -68,6 +70,7 @@ interface ClaimClusterProps {
 }
 
 function ClaimCluster({ claim, activeProofId, activeTargetId }: ClaimClusterProps) {
+  const { t } = useTranslation();
   const isAbsence = claim.type === "absence";
   const isHighlighted = activeProofId === claim.type || activeTargetId === claim.id;
 
@@ -84,7 +87,7 @@ function ClaimCluster({ claim, activeProofId, activeTargetId }: ClaimClusterProp
         <div className="lens-logs-absence-body">
           <p className="lens-logs-absence-text">
             <em>
-              Expected: {claim.expected ?? claim.label}. Observed: {claim.observed ?? "none"}.
+              {t("evidence.logs.expectedLabel", { expected: claim.expected ?? claim.label, observed: claim.observed ?? "none" })}
             </em>
           </p>
           {claim.explanation && (
@@ -111,6 +114,7 @@ interface LensLogsViewProps {
 }
 
 export function LensLogsView({ surface, evidenceDensity = "rich", isActive = false }: LensLogsViewProps) {
+  const { t } = useTranslation();
   const search = useSearch({ from: "__root__" }) as LensSearchParams;
   const activeProofId = search.proof;
   const activeTargetId = search.targetId;
@@ -130,8 +134,8 @@ export function LensLogsView({ surface, evidenceDensity = "rich", isActive = fal
     return (
       <div className="lens-logs-empty">
         {evidenceDensity === "empty"
-          ? "Log clusters are reserved here. When the first repeated pattern or notable absence is confirmed, it will pin into this lane."
-          : "Log evidence is still sparse. Treat this lane as open for corroboration rather than as proof of health."}
+          ? t("evidence.logs.emptyReserved")
+          : t("evidence.logs.sparseEvidence")}
       </div>
     );
   }

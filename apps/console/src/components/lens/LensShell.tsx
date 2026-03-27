@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, lazy, Suspense } from "react";
+import { useTranslation } from "react-i18next";
 import { useQuery } from "@tanstack/react-query";
 import { useSearch, useNavigate } from "@tanstack/react-router";
 import { curatedQueries } from "../../api/queries.js";
@@ -23,6 +24,7 @@ const LensEvidenceStudio = lazy(() =>
  * The shell owns zoom navigation, focus management, and Escape handling.
  */
 export function LensShell() {
+  const { t } = useTranslation();
   const search = useSearch({ from: "__root__" }) as LensSearchParams;
   const { level, incidentId } = search;
   const navigate = useNavigate();
@@ -127,11 +129,11 @@ export function LensShell() {
           zoomTo={zoomTo}
         />
         <div className="level-content" data-focus-target>
-          <Suspense fallback={<div className="level-placeholder">Loading…</div>}>
+          <Suspense fallback={<div className="level-placeholder">{t("common.loadingWithEllipsis")}</div>}>
             {incidentId ? (
               <LensIncidentBoard incidentId={incidentId} zoomTo={zoomTo} />
             ) : (
-              <div className="level-placeholder">Select an incident from the map</div>
+              <div className="level-placeholder">{t("shell.selectIncident")}</div>
             )}
           </Suspense>
         </div>
@@ -151,11 +153,11 @@ export function LensShell() {
           zoomTo={zoomTo}
         />
         <div className="level-content" data-focus-target>
-          <Suspense fallback={<div className="level-placeholder">Loading…</div>}>
+          <Suspense fallback={<div className="level-placeholder">{t("common.loadingWithEllipsis")}</div>}>
             {incidentId ? (
               <LensEvidenceStudio incidentId={incidentId} zoomTo={zoomTo} />
             ) : (
-              <div className="level-placeholder">Select an incident to view evidence</div>
+              <div className="level-placeholder">{t("shell.selectIncidentEvidence")}</div>
             )}
           </Suspense>
         </div>

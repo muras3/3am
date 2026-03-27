@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { useNavigate, useSearch } from "@tanstack/react-router";
+import { useTranslation } from "react-i18next";
 import type { LensSearchParams } from "../../../routes/__root.js";
 import type { ProofCard } from "../../../api/curated-types.js";
 
@@ -28,6 +29,7 @@ interface ProofCardItemProps {
 }
 
 function ProofCardItem({ card, isActive, onClick }: ProofCardItemProps) {
+  const { t } = useTranslation();
   const variant = iconVariant(card.id);
 
   function handleKeyDown(e: React.KeyboardEvent) {
@@ -57,13 +59,13 @@ function ProofCardItem({ card, isActive, onClick }: ProofCardItemProps) {
         <span className="lens-ev-pc-label">{card.label}</span>
         <span
           className={`lens-ev-pc-status lens-ev-pc-status-${card.status}`}
-          aria-label={`Status: ${card.status}`}
+          aria-label={t("evidence.statusLabel", { status: card.status })}
         >
           {card.status === "confirmed"
-            ? "Confirmed"
+            ? t("evidence.statusConfirmed")
             : card.status === "pending"
-              ? "Pending"
-              : "Inferred"}
+              ? t("evidence.statusPending")
+              : t("evidence.statusInferred")}
         </span>
       </div>
       <div className="lens-ev-pc-summary">{card.summary}</div>
@@ -92,6 +94,7 @@ function selectionTargetId(card: ProofCard): string | undefined {
 }
 
 export function LensProofCards({ cards }: Props) {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const search = useSearch({ from: "__root__" }) as LensSearchParams;
   const activeProofId = search.proof;
@@ -129,7 +132,7 @@ export function LensProofCards({ cards }: Props) {
   }
 
   return (
-    <div className="lens-ev-proof-cards" role="group" aria-label="Proof cards">
+    <div className="lens-ev-proof-cards" role="group" aria-label={t("evidence.proofCardsLabel")}>
       {cards.map((card) => (
         <ProofCardItem
           key={card.id}

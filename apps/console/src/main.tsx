@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { RouterProvider } from "@tanstack/react-router";
 import { router } from "./router.js";
 import { SetupGate } from "./components/setup-gate.js";
+import "./i18n/index.js"; // Initialize i18n (side-effect)
 import "./styles/global.css";
 
 const queryClient = new QueryClient();
