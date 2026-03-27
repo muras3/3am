@@ -1,5 +1,9 @@
 import type { DiagnosisResult, ReasoningStructure } from "@3amoncall/core";
 
+export interface BuildNarrativePromptOptions {
+  locale?: "en" | "ja";
+}
+
 /**
  * Build the stage 2 prompt for console narrative generation.
  *
@@ -10,6 +14,7 @@ import type { DiagnosisResult, ReasoningStructure } from "@3amoncall/core";
 export function buildNarrativePrompt(
   diagnosisResult: DiagnosisResult,
   context: ReasoningStructure,
+  options?: BuildNarrativePromptOptions,
 ): string {
   const dr = diagnosisResult;
   const proofRefsSummary = context.proofRefs
@@ -153,5 +158,10 @@ CRITICAL CONSTRAINTS:
     {"id": "...", "label": "...", "expected": "...", "observed": "...", "explanation": "..."}
   ]
 }
-`;
+${options?.locale === "ja" ? `
+## Language Instruction
+
+Respond in Japanese. Use concise, operator-actionable language suitable for on-call engineers.
+Keep all JSON keys in English. Only the string values should be in Japanese.
+` : ""}`;
 }
