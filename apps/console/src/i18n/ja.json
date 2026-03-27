@@ -16,8 +16,7 @@
     "failedFooter": "If this persists, check that the receiver is running and <code>RECEIVER_AUTH_TOKEN</code> is set correctly."
   },
   "common": {
-    "loading": "Loading...",
-    "loadingWithEllipsis": "Loading\u2026",
+    "loading": "Loading\u2026",
     "error": {
       "somethingWentWrong": "Something went wrong.",
       "reload": "Reload",

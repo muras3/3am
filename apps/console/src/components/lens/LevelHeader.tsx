@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from "react";
 import { useTranslation } from "react-i18next";
+import i18n from "../../i18n/index.js";
 import type { LensLevel } from "../../routes/__root.js";
 import { formatShortIncidentId } from "../../lib/incidentId.js";
 
@@ -117,25 +118,13 @@ function LocaleToggle() {
     [currentLocale, i18n],
   );
 
-  const handleKey = useCallback(
-    (locale: "en" | "ja") => (e: React.KeyboardEvent) => {
-      if (e.key === "Enter" || e.key === " ") {
-        e.preventDefault();
-        void switchLocale(locale);
-      }
-    },
-    [switchLocale],
-  );
-
   return (
     <span className="locale-toggle">
       <button
         type="button"
         className={`locale-toggle-btn${currentLocale === "en" ? " locale-toggle-active" : ""}`}
         onClick={() => void switchLocale("en")}
-        onKeyDown={handleKey("en")}
         aria-label={currentLocale === "en" ? undefined : t("locale.switchToEn")}
-        tabIndex={0}
       >
         EN
       </button>
@@ -144,9 +133,7 @@ function LocaleToggle() {
         type="button"
         className={`locale-toggle-btn${currentLocale === "ja" ? " locale-toggle-active" : ""}`}
         onClick={() => void switchLocale("ja")}
-        onKeyDown={handleKey("ja")}
         aria-label={currentLocale === "ja" ? undefined : t("locale.switchToJa")}
-        tabIndex={0}
       >
         JA
       </button>
@@ -166,7 +153,7 @@ function useClock(): string {
 }
 
 function formatTime(d: Date): string {
-  return d.toISOString().slice(11, 19) + " UTC";
+  return d.toISOString().slice(11, 19) + " " + i18n.t("header.utc");
 }
 
 // ── Duration ──────────────────────────────────────────────────
@@ -186,6 +173,6 @@ export function formatDuration(openedAt: string): string {
   const s = Math.floor(elapsed / 1000);
   const m = Math.floor(s / 60);
   const h = Math.floor(m / 60);
-  if (h > 0) return `${h}h ${m % 60}m`;
-  return `${m}m ${s % 60}s`;
+  if (h > 0) return i18n.t("header.durationHours", { hours: h, minutes: m % 60 });
+  return i18n.t("header.duration", { minutes: m, seconds: s % 60 });
 }

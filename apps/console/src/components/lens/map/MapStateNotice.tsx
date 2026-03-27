@@ -43,7 +43,7 @@ export function MapEmptyState({ state, activeIncidents }: Props) {
         <strong>{title}</strong>
         <p>{detail}</p>
       </div>
-      <div className="map-empty-meta" aria-label="Map empty state details">
+      <div className="map-empty-meta" role="group">
         <span>{t("map.empty.noLiveTopology", { window: state.windowLabel })}</span>
         <span>{t("map.empty.openIncidents", { count: activeIncidents })}</span>
         <span>{reason}</span>

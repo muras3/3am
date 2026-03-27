@@ -91,6 +91,54 @@
   font-feature-settings: "tnum" 1, "ss01" 1;
 }
 
+/* ── Locale toggle ─────────────────────────────────────────── */
+.locale-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: auto;
+  margin-right: 12px;
+}
+
+.locale-toggle-btn {
+  all: unset;
+  font-family: var(--mono);
+  font-size: var(--fs-xs);
+  color: var(--ink-3);
+  cursor: pointer;
+  padding: 4px 6px;
+  min-width: 24px;
+  min-height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-xs);
+  transition: color 0.15s ease;
+}
+
+.locale-toggle-btn:hover {
+  color: var(--ink-2);
+}
+
+.locale-toggle-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.locale-toggle-active {
+  color: var(--ink);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-thickness: 1.5px;
+}
+
+.locale-toggle-sep {
+  font-family: var(--mono);
+  font-size: var(--fs-xs);
+  color: var(--line-strong);
+  user-select: none;
+}
+
 /* ── Shared UI elements (migrated from shell.css) ─────────── */
 .topbar-logo {
   font-size: 14px; font-weight: 700; letter-spacing: -0.03em;

@@ -129,7 +129,7 @@ export function LensShell() {
           zoomTo={zoomTo}
         />
         <div className="level-content" data-focus-target>
-          <Suspense fallback={<div className="level-placeholder">{t("common.loadingWithEllipsis")}</div>}>
+          <Suspense fallback={<div className="level-placeholder">{t("common.loading")}</div>}>
             {incidentId ? (
               <LensIncidentBoard incidentId={incidentId} zoomTo={zoomTo} />
             ) : (
@@ -153,7 +153,7 @@ export function LensShell() {
           zoomTo={zoomTo}
         />
         <div className="level-content" data-focus-target>
-          <Suspense fallback={<div className="level-placeholder">{t("common.loadingWithEllipsis")}</div>}>
+          <Suspense fallback={<div className="level-placeholder">{t("common.loading")}</div>}>
             {incidentId ? (
               <LensEvidenceStudio incidentId={incidentId} zoomTo={zoomTo} />
             ) : (

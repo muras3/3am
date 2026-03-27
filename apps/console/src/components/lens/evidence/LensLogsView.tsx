@@ -87,7 +87,7 @@ function ClaimCluster({ claim, activeProofId, activeTargetId }: ClaimClusterProp
         <div className="lens-logs-absence-body">
           <p className="lens-logs-absence-text">
             <em>
-              {t("evidence.logs.expectedLabel", { expected: claim.expected ?? claim.label, observed: claim.observed ?? "none" })}
+              {t("evidence.logs.expectedLabel", { expected: claim.expected ?? claim.label, observed: claim.observed ?? "—" })}
             </em>
           </p>
           {claim.explanation && (

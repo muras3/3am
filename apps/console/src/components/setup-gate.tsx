@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useTranslation } from "react-i18next";
+import { useTranslation, Trans } from "react-i18next";
 import { saveAuthToken, getStoredAuthToken } from "../api/client.js";
 
 interface SetupStatus {
@@ -142,16 +142,7 @@ function FirstSetupView({ token, onSave }: { token: string; onSave: () => void }
           </button>
         </div>
         <p style={footerStyle}>
-          {t("setup.recoverFooter").split("<code>").map((part, i) => {
-            if (i === 0) return part;
-            const [code, rest] = part.split("</code>");
-            return (
-              <span key={i}>
-                <code style={{ fontFamily: "var(--mono)" }}>{code}</code>
-                {rest}
-              </span>
-            );
-          })}
+          <Trans i18nKey="setup.recoverFooter" components={{ code: <code style={{ fontFamily: "var(--mono)" }} /> }} />
         </p>
       </div>
     </div>
@@ -174,16 +165,7 @@ function TokenRecoveryView({ onSave }: { onSave: (token: string) => void }) {
       <div style={panelStyle}>
         <h1 style={headingStyle}>{t("setup.enterToken")}</h1>
         <p style={bodyStyle}>
-          {t("setup.enterTokenBody").split("<code>").map((part, i) => {
-            if (i === 0) return part;
-            const [code, rest] = part.split("</code>");
-            return (
-              <span key={i}>
-                <code style={{ fontFamily: "var(--mono)" }}>{code}</code>
-                {rest}
-              </span>
-            );
-          })}
+          <Trans i18nKey="setup.enterTokenBody" components={{ code: <code style={{ fontFamily: "var(--mono)" }} /> }} />
         </p>
         <form onSubmit={handleSubmit}>
           <input
@@ -326,16 +308,7 @@ export function SetupGate({ children }: SetupGateProps) {
             {t("setup.retry")}
           </button>
           <p style={footerStyle}>
-            {t("setup.failedFooter").split("<code>").map((part, i) => {
-              if (i === 0) return part;
-              const [code, rest] = part.split("</code>");
-              return (
-                <span key={i}>
-                  <code style={{ fontFamily: "var(--mono)" }}>{code}</code>
-                  {rest}
-                </span>
-              );
-            })}
+            <Trans i18nKey="setup.failedFooter" components={{ code: <code style={{ fontFamily: "var(--mono)" }} /> }} />
           </p>
         </div>
       </div>
