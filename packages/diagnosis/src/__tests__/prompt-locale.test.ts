@@ -87,19 +87,19 @@ const context: ReasoningStructure = {
 describe("buildPrompt locale support", () => {
   it("does not include Japanese instruction when locale is undefined", () => {
     const prompt = buildPrompt(packet);
-    expect(prompt).not.toContain("Respond in Japanese");
+    expect(prompt).not.toContain("Respond entirely in Japanese");
   });
 
   it("does not include Japanese instruction when locale is 'en'", () => {
     const prompt = buildPrompt(packet, { locale: "en" });
-    expect(prompt).not.toContain("Respond in Japanese");
+    expect(prompt).not.toContain("Respond entirely in Japanese");
   });
 
   it("includes Japanese instruction when locale is 'ja'", () => {
     const prompt = buildPrompt(packet, { locale: "ja" });
-    expect(prompt).toContain("Respond in Japanese");
+    expect(prompt).toContain("Respond entirely in Japanese");
     expect(prompt).toContain("Keep all JSON keys in English");
-    expect(prompt).toContain("operator-actionable");
+    expect(prompt).toContain("action-oriented");
   });
 
   it("still includes all standard sections when locale is 'ja'", () => {
@@ -113,17 +113,17 @@ describe("buildPrompt locale support", () => {
 describe("buildNarrativePrompt locale support", () => {
   it("does not include Japanese instruction when locale is undefined", () => {
     const prompt = buildNarrativePrompt(diagnosisResult, context);
-    expect(prompt).not.toContain("Respond in Japanese");
+    expect(prompt).not.toContain("Respond entirely in Japanese");
   });
 
   it("does not include Japanese instruction when locale is 'en'", () => {
     const prompt = buildNarrativePrompt(diagnosisResult, context, { locale: "en" });
-    expect(prompt).not.toContain("Respond in Japanese");
+    expect(prompt).not.toContain("Respond entirely in Japanese");
   });
 
   it("includes Japanese instruction when locale is 'ja'", () => {
     const prompt = buildNarrativePrompt(diagnosisResult, context, { locale: "ja" });
-    expect(prompt).toContain("Respond in Japanese");
+    expect(prompt).toContain("Respond entirely in Japanese");
     expect(prompt).toContain("Keep all JSON keys in English");
   });
 

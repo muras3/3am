@@ -161,7 +161,10 @@ CRITICAL CONSTRAINTS:
 ${options?.locale === "ja" ? `
 ## Language Instruction
 
-Respond in Japanese. Use concise, operator-actionable language suitable for on-call engineers.
+Respond entirely in Japanese. Use concise language that an on-call engineer can act on immediately at 3am — every word should reduce time-to-action.
 Keep all JSON keys in English. Only the string values should be in Japanese.
+Technical terms (service names, trace IDs, metric names, HTTP status codes) stay in English.
+Avoid formal or polite Japanese (敬語); use direct, action-oriented phrasing.
+The "immediate_action" field must read like a command, not a suggestion.
 ` : ""}`;
 }
