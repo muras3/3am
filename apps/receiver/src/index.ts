@@ -20,6 +20,8 @@ export type { TelemetryStoreDriver } from "./telemetry/interface.js";
 
 const SETTINGS_KEY_AUTH_TOKEN = "receiver_auth_token";
 const SETTINGS_KEY_SETUP_COMPLETE = "setup_complete";
+const SETTINGS_KEY_LOCALE = "locale";
+const SUPPORTED_LOCALES = ["en", "ja"] as const;
 
 const APP_VERSION: string = process.env["npm_package_version"] ?? "0.1.0";
 
@@ -214,6 +216,30 @@ export function createApp(storage?: StorageDriver, options?: AppOptions): Hono {
 
     await store.setSettings(SETTINGS_KEY_SETUP_COMPLETE, "true");
     return c.json({ token });
+  });
+
+  // Locale settings endpoints (public, no auth — like setup-status)
+  app.get("/api/settings/locale", async (c) => {
+    const locale = await store.getSettings(SETTINGS_KEY_LOCALE);
+    return c.json({ locale: locale ?? "en" });
+  });
+
+  app.put("/api/settings/locale", async (c) => {
+    let body: unknown;
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ error: "invalid body" }, 400);
+    }
+    if (typeof body !== "object" || body === null) {
+      return c.json({ error: "invalid body" }, 400);
+    }
+    const locale = (body as Record<string, unknown>)["locale"];
+    if (typeof locale !== "string" || !(SUPPORTED_LOCALES as readonly string[]).includes(locale)) {
+      return c.json({ error: `locale must be one of: ${SUPPORTED_LOCALES.join(", ")}` }, 400);
+    }
+    await store.setSettings(SETTINGS_KEY_LOCALE, locale);
+    return c.json({ locale });
   });
 
   app.route("/", createIngestRouter(store, spanBuffer, telemetryStore, diagnosisConfig, runner));
