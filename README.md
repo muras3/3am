@@ -57,6 +57,67 @@ npx 3amoncall deploy --platform vercel --yes --json
 
 ---
 
+## Self-Instrumentation
+
+3amoncall can emit OpenTelemetry about the receiver itself in addition to ingesting telemetry from your application.
+
+- Vercel and local Node.js are the supported self-instrumentation targets.
+- Cloudflare Workers self-instrumentation is experimental and uses Cloudflare's official automatic tracing and logging path.
+- Capability is intentionally not symmetric across platforms.
+- Self telemetry should go to a dedicated OTLP backend, or to a separate 3amoncall environment reserved for dogfooding. Do not point it at the same receiver ingest endpoint that is handling your application telemetry.
+
+### Platform Matrix
+
+| Platform | Status | Traces | Logs | Metrics | How it works |
+|----------|--------|--------|------|---------|--------------|
+| Vercel / Node.js | Supported | Yes | Yes | Not implemented | Receiver starts a Node OpenTelemetry SDK and exports its own HTTP and fetch activity to your OTLP endpoint |
+| Cloudflare Workers | Experimental | Yes | Yes | Not supported | Cloudflare Workers Observability automatic tracing and invocation logging are enabled in `wrangler.toml` |
+
+### Vercel / Node.js Setup
+
+Set these environment variables for the receiver deployment:
+
+```bash
+SELF_OTEL_ENABLED=true
+SELF_OTEL_EXPORTER_OTLP_ENDPOINT=https://your-otel-backend.example.com
+SELF_OTEL_SERVICE_NAME=3amoncall-receiver
+SELF_OTEL_SERVICE_NAMESPACE=3amoncall
+SELF_OTEL_DEPLOYMENT_ENVIRONMENT=production
+```
+
+Optional:
+
+```bash
+SELF_OTEL_EXPORTER_OTLP_HEADERS=Authorization=Bearer your-token,x-tenant=dogfood
+SELF_OTEL_CONSOLE_LOGS=true
+```
+
+What is emitted on Node/Vercel:
+
+- inbound receiver HTTP requests such as `/healthz`, `/v1/traces`, and `/api/*`
+- outbound `fetch` and Undici requests made by the receiver runtime
+- receiver request completion logs with HTTP method, path, status, and duration
+
+### Cloudflare Workers Setup
+
+Cloudflare Workers support is experimental. The receiver enables Workers Observability in [`apps/receiver/wrangler.toml`](/Users/murase/project/3amoncall-self-instrumentation/apps/receiver/wrangler.toml), which is the intended path for automatic tracing and log capture on Workers.
+
+- traces: supported
+- logs: supported
+- metrics: not supported for receiver self-instrumentation
+- custom spans: not a pre-release requirement and not implemented here
+
+For deployment and verification details, see [`docs/self-instrumentation.md`](/Users/murase/project/3amoncall-self-instrumentation/docs/self-instrumentation.md).
+
+### User Telemetry vs 3amoncall Self Telemetry
+
+- user telemetry is the telemetry your application sends to the 3amoncall receiver via `/v1/traces`, `/v1/logs`, and `/v1/metrics`
+- self telemetry is the telemetry emitted by the 3amoncall receiver process or worker about its own requests and internal activity
+
+Use separate destinations, projects, or tenants so dogfooding data does not pollute the incident stream you are analyzing for your application.
+
+---
+
 ## How It Works
 
 ```

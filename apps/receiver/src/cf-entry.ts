@@ -50,6 +50,9 @@ let cachedDbId: string | null = null;
  * that read process.env work without changes.
  */
 function populateProcessEnv(env: Env): void {
+  process.env["THREEAMONCALL_RUNTIME"] = "cloudflare-workers";
+  process.env["SELF_OTEL_ENABLED"] = "true";
+  process.env["SELF_OTEL_CONSOLE_LOGS"] = "true";
   for (const [key, value] of Object.entries(env)) {
     if (typeof value === "string") {
       process.env[key] = value;

@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { bearerAuth } from "hono/bearer-auth";
 import { cors } from "hono/cors";
+import { trace } from "@opentelemetry/api";
 import type { StorageDriver } from "./storage/interface.js";
 import type { TelemetryStoreDriver } from "./telemetry/interface.js";
 import { MemoryAdapter } from "./storage/adapters/memory.js";
@@ -10,6 +11,7 @@ import { createApiRouter } from "./transport/api.js";
 import { SpanBuffer } from "./ambient/span-buffer.js";
 import type { DiagnosisConfig } from "./runtime/diagnosis-debouncer.js";
 import { DiagnosisRunner } from "./runtime/diagnosis-runner.js";
+import { emitSelfTelemetryLog, isSelfTelemetryActive } from "./self-telemetry/log.js";
 
 export type { StorageDriver } from "./storage/interface.js";
 export type { Incident, IncidentPage } from "./storage/interface.js";
@@ -38,7 +40,11 @@ export async function resolveAuthToken(storage: StorageDriver): Promise<string |
 
   const generated = crypto.randomUUID();
   await storage.setSettings(SETTINGS_KEY_AUTH_TOKEN, generated);
-  console.log("[receiver] Generated new auth token — retrieve via /api/setup-token on first access");
+  emitSelfTelemetryLog({
+    severity: "INFO",
+    body: "[receiver] generated new auth token",
+    attributes: { "3amoncall.receiver.event": "auth-token-generated" },
+  });
   return generated;
 }
 
@@ -60,6 +66,44 @@ export function createApp(storage?: StorageDriver, options?: AppOptions): Hono {
   const store = storage ?? new MemoryAdapter();
   const app = new Hono();
   const allowInsecure = process.env["ALLOW_INSECURE_DEV_MODE"] === "true";
+
+  if (isSelfTelemetryActive()) {
+    app.use("*", async (c, next) => {
+      const startedAt = Date.now();
+      let failed = false;
+      try {
+        await next();
+      } catch (error) {
+        failed = true;
+        throw error;
+      } finally {
+        const url = new URL(c.req.url);
+        const status = failed ? 500 : c.res.status;
+        const durationMs = Date.now() - startedAt;
+        const span = trace.getActiveSpan();
+        span?.setAttributes({
+          "3amoncall.telemetry.stream": "self",
+          "http.route": c.req.path,
+          "http.request.method": c.req.method,
+          "http.response.status_code": status,
+          "url.path": url.pathname,
+        });
+        emitSelfTelemetryLog({
+          severity: status >= 500 ? "ERROR" : status >= 400 ? "WARN" : "INFO",
+          body: "receiver.request",
+          attributes: {
+            "http.request.method": c.req.method,
+            "http.route": c.req.path,
+            "http.response.status_code": status,
+            "url.path": url.pathname,
+            "server.address": url.hostname,
+            "server.port": Number(url.port || (url.protocol === "https:" ? 443 : 80)),
+            "3amoncall.request.duration_ms": durationMs,
+          },
+        });
+      }
+    });
+  }
 
   // Health check — no auth, no CORS (infra-only)
   app.get("/healthz", (c) => c.json({ status: "ok", version: APP_VERSION }));
@@ -101,7 +145,11 @@ export function createApp(storage?: StorageDriver, options?: AppOptions): Hono {
           "For local dev only, set ALLOW_INSECURE_DEV_MODE=true (ADR 0011)",
       );
     }
-    console.warn("[receiver] auth disabled — ALLOW_INSECURE_DEV_MODE=true (dev only, ADR 0011)");
+    emitSelfTelemetryLog({
+      severity: "WARN",
+      body: "[receiver] auth disabled for insecure dev mode",
+      attributes: { "3amoncall.receiver.event": "auth-disabled-dev-mode" },
+    });
   } else {
     // /v1/*: OTel SDK ingest — requires Bearer token
     app.use("/v1/*", bearerAuth({ token: authToken }));

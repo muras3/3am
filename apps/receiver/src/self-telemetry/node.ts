@@ -1,0 +1,82 @@
+import { diag, DiagConsoleLogger, DiagLogLevel } from "@opentelemetry/api";
+import { OTLPLogExporter } from "@opentelemetry/exporter-logs-otlp-http";
+import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
+import { HttpInstrumentation } from "@opentelemetry/instrumentation-http";
+import { UndiciInstrumentation } from "@opentelemetry/instrumentation-undici";
+import { resourceFromAttributes } from "@opentelemetry/resources";
+import { BatchLogRecordProcessor } from "@opentelemetry/sdk-logs";
+import { NodeSDK } from "@opentelemetry/sdk-node";
+import {
+  ATTR_SERVICE_NAME,
+  ATTR_SERVICE_NAMESPACE,
+  ATTR_SERVICE_VERSION,
+} from "@opentelemetry/semantic-conventions";
+import { resolveSelfTelemetryConfig, type SelfTelemetryRuntime } from "./config.js";
+
+let sdkPromise: Promise<NodeSDK | null> | null = null;
+
+function appendPath(endpoint: string, suffix: "/v1/traces" | "/v1/logs"): string {
+  return `${endpoint.replace(/\/$/, "")}${suffix}`;
+}
+
+export async function initializeNodeSelfTelemetry(
+  runtime: Exclude<SelfTelemetryRuntime, "cloudflare-workers">,
+): Promise<NodeSDK | null> {
+  process.env["THREEAMONCALL_RUNTIME"] = runtime;
+
+  if (sdkPromise) {
+    return sdkPromise;
+  }
+
+  const config = resolveSelfTelemetryConfig(runtime);
+  if (!config.enabled || !config.exporterEndpoint) {
+    sdkPromise = Promise.resolve(null);
+    return sdkPromise;
+  }
+
+  if (process.env["SELF_OTEL_DEBUG"] === "true") {
+    diag.setLogger(new DiagConsoleLogger(), DiagLogLevel.INFO);
+  }
+
+  sdkPromise = (async () => {
+    const sdk = new NodeSDK({
+      resource: resourceFromAttributes({
+        [ATTR_SERVICE_NAME]: config.serviceName,
+        [ATTR_SERVICE_NAMESPACE]: config.serviceNamespace,
+        [ATTR_SERVICE_VERSION]: config.serviceVersion,
+        "deployment.environment.name": config.deploymentEnvironment,
+        "3amoncall.telemetry.stream": "self",
+        "3amoncall.runtime": runtime,
+      }),
+      traceExporter: new OTLPTraceExporter({
+        url: appendPath(config.exporterEndpoint!, "/v1/traces"),
+        headers: config.exporterHeaders,
+      }),
+      logRecordProcessors: [
+        new BatchLogRecordProcessor(
+          new OTLPLogExporter({
+            url: appendPath(config.exporterEndpoint!, "/v1/logs"),
+            headers: config.exporterHeaders,
+          }),
+          { scheduledDelayMillis: 200 },
+        ),
+      ],
+      instrumentations: [new HttpInstrumentation(), new UndiciInstrumentation()],
+    });
+
+    sdk.start();
+    return sdk;
+  })();
+
+  return sdkPromise;
+}
+
+export async function flushNodeSelfTelemetry(): Promise<void> {
+  await Promise.resolve();
+}
+
+export async function shutdownNodeSelfTelemetry(): Promise<void> {
+  const sdk = await sdkPromise;
+  sdkPromise = null;
+  await sdk?.shutdown();
+}

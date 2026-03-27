@@ -3,6 +3,17 @@ main = "src/cf-entry.ts"
 compatibility_date = "2025-03-01"
 compatibility_flags = ["nodejs_compat_v2"]
 
+[observability]
+enabled = true
+
+[observability.logs]
+enabled = true
+invocation_logs = true
+
+[observability.traces]
+enabled = true
+head_sampling_rate = 1.0
+
 [vars]
 ALLOW_INSECURE_DEV_MODE = "false"
 DIAGNOSIS_MAX_WAIT_MS = "0"
