@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import type { BlastRadiusEntry, CuratedState } from "../../../api/curated-types.js";
 import { sectionFallback } from "./board-state.js";
 
@@ -13,12 +14,13 @@ function statusModifier(status: BlastRadiusEntry["status"]): string {
 }
 
 export function BlastRadius({ entries, state }: Props) {
+  const { t } = useTranslation();
   const visibleEntries = entries.slice(0, 3);
   const hiddenCount = Math.max(entries.length - visibleEntries.length, 0);
 
   return (
     <div className="lens-board-card">
-      <div className="lens-board-card-title">Blast Radius</div>
+      <div className="lens-board-card-title">{t("board.blastRadius.title")}</div>
       <div className="lens-board-blast-rows">
         {entries.length > 0 ? visibleEntries.map((entry, i) => (
           <div key={i} className="lens-board-blast-row">
@@ -43,7 +45,7 @@ export function BlastRadius({ entries, state }: Props) {
       </div>
       {hiddenCount > 0 ? (
         <details className="lens-board-inline-details">
-          <summary>{hiddenCount} more impacted path{hiddenCount === 1 ? "" : "s"}</summary>
+          <summary>{t("board.blastRadius.morePaths", { count: hiddenCount })}</summary>
           <div className="lens-board-inline-details-body lens-board-compact-list">
             {entries.slice(visibleEntries.length).map((entry, index) => (
               <div key={`${entry.target}-${index}`}>

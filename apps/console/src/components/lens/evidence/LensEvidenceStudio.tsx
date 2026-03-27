@@ -1,6 +1,7 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { useSearch } from "@tanstack/react-router";
+import { useTranslation } from "react-i18next";
 import { ApiError } from "../../../api/client.js";
 import { curatedMutations, curatedQueries } from "../../../api/queries.js";
 import type { EvidenceQueryResponse } from "../../../api/curated-types.js";
@@ -20,6 +21,7 @@ interface Props {
 }
 
 export function LensEvidenceStudio({ incidentId }: Props) {
+  const { t } = useTranslation();
   const search = useSearch({ from: "__root__" }) as LensSearchParams;
   const tab = search.tab ?? "traces";
   const [queryDraft, setQueryDraft] = useState(search.query ?? "");
@@ -40,7 +42,7 @@ export function LensEvidenceStudio({ incidentId }: Props) {
   if (incidentQuery.isLoading || evidenceQuery.isLoading) {
     return (
       <div className="lens-ev-loading" role="status">
-        Loading evidence…
+        {t("evidence.loading")}
       </div>
     );
   }
@@ -48,7 +50,7 @@ export function LensEvidenceStudio({ incidentId }: Props) {
   if (incidentQuery.isError || evidenceQuery.isError || !incidentQuery.data || !evidenceQuery.data) {
     return (
       <div className="lens-ev-error" role="alert">
-        Failed to load evidence data.
+        {t("evidence.error")}
       </div>
     );
   }
@@ -62,39 +64,43 @@ export function LensEvidenceStudio({ incidentId }: Props) {
     || evidence.state.baseline !== "ready";
 
   const statusTitle = evidence.state.diagnosis === "pending"
-    ? "Evidence Studio is live while diagnosis assembles"
+    ? t("evidence.banner.diagnosisPending")
     : evidence.state.evidenceDensity === "sparse"
-      ? "A directional read is available now"
+      ? t("evidence.banner.evidenceSparse")
       : evidence.state.diagnosis === "unavailable"
-        ? "Evidence Studio remains available without a narrative diagnosis"
-        : "Evidence coverage is still maturing";
+        ? t("evidence.banner.diagnosisUnavailable")
+        : t("evidence.banner.coverageMaturing");
 
   const statusBody = evidence.state.diagnosis === "pending"
-    ? "Use the confirmed traces and logs first. Metrics, confidence wording, and the final narrative will tighten as correlation completes."
+    ? t("evidence.banner.diagnosisPendingBody")
     : evidence.state.evidenceDensity === "sparse"
-      ? "The strongest confirmed signals are shown first. Treat missing lanes as open questions, not as healthy evidence."
+      ? t("evidence.banner.evidenceSparseBody")
       : evidence.state.diagnosis === "unavailable"
-        ? "Confirmed telemetry remains reviewable here. The system is withholding narrative claims it cannot support."
-        : "Observed behavior is available now, but baseline or comparison coverage is still limited.";
+        ? t("evidence.banner.diagnosisUnavailableBody")
+        : t("evidence.banner.coverageMaturingBody");
 
   const statusVisibleNow = [
-    `${confirmedProofCount} proof card${confirmedProofCount === 1 ? "" : "s"} already point to confirmed evidence.`,
-    `${evidence.qa.evidenceSummary.traces} traces, ${evidence.qa.evidenceSummary.metrics} metrics, and ${evidence.qa.evidenceSummary.logs} logs are currently summarized in the Q&A frame.`,
+    t("evidence.visibleNow.proofCards", { count: confirmedProofCount }),
+    t("evidence.visibleNow.qaSummary", {
+      traces: evidence.qa.evidenceSummary.traces,
+      metrics: evidence.qa.evidenceSummary.metrics,
+      logs: evidence.qa.evidenceSummary.logs,
+    }),
     evidence.surfaces.traces.observed.length > 0
-      ? "Traces can be opened now to inspect the first failing path."
-      : "Trace lane stays reserved and will populate as the first captured request arrives.",
+      ? t("evidence.visibleNow.tracesAvailable")
+      : t("evidence.visibleNow.tracesReserved"),
   ];
 
   const statusStillPreparing = [
     evidence.surfaces.metrics.hypotheses.length > 0
-      ? "Metric comparison is already present and will sharpen as more samples arrive."
-      : "Metric comparison will appear once drift repeats across enough samples.",
+      ? t("evidence.stillPreparing.metricsPresent")
+      : t("evidence.stillPreparing.metricsWaiting"),
     evidence.surfaces.logs.claims.length > 0
-      ? "Log clusters are visible now; absence evidence may still be added."
-      : "Log clusters will pin confirmed patterns and absences here once correlation completes.",
+      ? t("evidence.stillPreparing.logsPresent")
+      : t("evidence.stillPreparing.logsWaiting"),
     evidence.state.baseline === "ready"
-      ? "Baseline context is attached and may still expand with more comparable requests."
-      : "Expected baseline remains open, so recovery and comparison guidance stays provisional.",
+      ? t("evidence.stillPreparing.baselineReady")
+      : t("evidence.stillPreparing.baselineOpen"),
   ];
 
   function handleSubmitQuestion(question: string, isFollowup = false) {
@@ -107,10 +113,10 @@ export function LensEvidenceStudio({ incidentId }: Props) {
         },
         onError: (error) => {
           if (error instanceof ApiError && error.status === 404) {
-            setSubmitError("Grounded Q&A is unavailable for this incident. The evidence surfaces below remain available.");
+            setSubmitError(t("evidence.qa.qaUnavailable"));
             return;
           }
-          setSubmitError(error instanceof Error ? error.message : "Failed to submit question.");
+          setSubmitError(error instanceof Error ? error.message : t("evidence.qa.submitFailed"));
         },
       },
     );
@@ -119,7 +125,7 @@ export function LensEvidenceStudio({ incidentId }: Props) {
   return (
     <div
       className="lens-ev-studio"
-      aria-label="Evidence Studio"
+      aria-label={t("evidence.studioLabel")}
       data-evidence-density={evidence.state.evidenceDensity}
       data-diagnosis-state={evidence.state.diagnosis}
     >
@@ -134,7 +140,7 @@ export function LensEvidenceStudio({ incidentId }: Props) {
           </div>
           <div className="lens-ev-empty-columns">
             <div className="lens-ev-empty-panel">
-              <div className="lens-ev-empty-panel-title">Available now</div>
+              <div className="lens-ev-empty-panel-title">{t("evidence.banner.availableNow")}</div>
               <ul className="lens-ev-empty-list">
                 {statusVisibleNow.map((item) => (
                   <li key={item}>{item}</li>
@@ -142,7 +148,7 @@ export function LensEvidenceStudio({ incidentId }: Props) {
               </ul>
             </div>
             <div className="lens-ev-empty-panel lens-ev-empty-panel-muted">
-              <div className="lens-ev-empty-panel-title">Still filling in</div>
+              <div className="lens-ev-empty-panel-title">{t("evidence.banner.stillFillingIn")}</div>
               <ul className="lens-ev-empty-list">
                 {statusStillPreparing.map((item) => (
                   <li key={item}>{item}</li>

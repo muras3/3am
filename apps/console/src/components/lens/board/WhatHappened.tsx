@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import type { CuratedState, ExtendedIncident } from "../../../api/curated-types.js";
 import { formatShortIncidentId } from "../../../lib/incidentId.js";
 import { describeBoardState, sectionFallback } from "./board-state.js";
@@ -12,6 +13,7 @@ interface Props {
 }
 
 export function WhatHappened({ incidentId, severity, headline, chips, state }: Props) {
+  const { t } = useTranslation();
   const displayHeadline = headline.trim() || sectionFallback(state, "headline");
   const viewportHeadline = shortenForViewport(displayHeadline, 72);
   const showStateNote =
@@ -38,7 +40,7 @@ export function WhatHappened({ incidentId, severity, headline, chips, state }: P
       )}
       {headlineShortened ? (
         <details className="lens-board-inline-details">
-          <summary>Full headline</summary>
+          <summary>{t("board.whatHappened.fullHeadline")}</summary>
           <div className="lens-board-inline-details-body">{displayHeadline}</div>
         </details>
       ) : null}

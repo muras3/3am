@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import type { MapNode as MapNodeType } from "../../../api/curated-types.js";
 import type { LensLevel } from "../../../routes/__root.js";
 
@@ -61,6 +62,8 @@ export function MapNode({ node, style, zoomTo }: Props) {
 }
 
 function NodeSubline({ node }: { node: MapNodeType }) {
+  const { t } = useTranslation();
+
   // For entry_point: show subtitle with error rate colouring
   if (node.tier === "entry_point") {
     const errRate = typeof node.metrics["errorRate"] === "number"
@@ -71,7 +74,7 @@ function NodeSubline({ node }: { node: MapNodeType }) {
         <span>{node.subtitle}</span>
         {errRate !== null && errRate > 0 && (
           <span className={errRate >= 0.5 ? "bad" : "warn"}>
-            {Math.round(errRate * 100)}% err
+            {t("map.incident.err", { rate: Math.round(errRate * 100) })}
           </span>
         )}
       </div>

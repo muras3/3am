@@ -1,5 +1,6 @@
 import { Component } from "react";
 import type { ErrorInfo, ReactNode } from "react";
+import { Translation } from "react-i18next";
 import { Button } from "../ui/button.js";
 
 interface Props {
@@ -27,15 +28,19 @@ export class ErrorBoundary extends Component<Props, State> {
   render() {
     if (this.state.hasError) {
       return (
-        <div className="error-boundary-fallback">
-          <p className="error-boundary-message">Something went wrong.</p>
-          <Button
-            variant="outline"
-            onClick={() => window.location.reload()}
-          >
-            Reload
-          </Button>
-        </div>
+        <Translation>
+          {(t) => (
+            <div className="error-boundary-fallback">
+              <p className="error-boundary-message">{t("common.error.somethingWentWrong")}</p>
+              <Button
+                variant="outline"
+                onClick={() => window.location.reload()}
+              >
+                {t("common.error.reload")}
+              </Button>
+            </div>
+          )}
+        </Translation>
       );
     }
     return this.props.children;

@@ -1,0 +1,373 @@
+{
+  "setup": {
+    "title": "3amoncall Setup",
+    "tokenGenerated": "Your auth token has been generated. Save it now — it will not be shown again.",
+    "copied": "Copied!",
+    "copy": "Copy",
+    "saveAndContinue": "I have saved this token — Continue",
+    "recoverFooter": "To recover a lost token, set <code>RECEIVER_AUTH_TOKEN</code> in your Vercel environment variables.",
+    "enterToken": "Enter Auth Token",
+    "enterTokenBody": "Your auth token was previously set up but is not present in this browser. Enter your token to continue. You can find it in your Vercel environment variables (<code>RECEIVER_AUTH_TOKEN</code>) or from when you first set up 3amoncall.",
+    "tokenPlaceholder": "Paste your auth token here",
+    "saveAndContinueShort": "Save and Continue",
+    "failed": "Setup Failed",
+    "failedBody": "Could not connect to the receiver to complete setup.",
+    "retry": "Retry",
+    "failedFooter": "If this persists, check that the receiver is running and <code>RECEIVER_AUTH_TOKEN</code> is set correctly."
+  },
+  "common": {
+    "loading": "Loading\u2026",
+    "error": {
+      "somethingWentWrong": "Something went wrong.",
+      "reload": "Reload",
+      "notFound": "Not found.",
+      "unauthorized": "Unauthorized.",
+      "serverError": "Server error. Please try again.",
+      "requestFailed": "Request failed ({{status}})."
+    }
+  },
+  "header": {
+    "logo": "3amoncall",
+    "env": "production",
+    "backToMap": "Back to Map",
+    "backToMapLabel": "\u2190 Map",
+    "backToIncident": "Back to Incident",
+    "backToIncidentLabel": "\u2190 {{id}}",
+    "backToIncidentFallback": "\u2190 Incident",
+    "evidenceStudio": "Evidence Studio",
+    "utc": "UTC",
+    "duration": "Duration: {{minutes}}m {{seconds}}s",
+    "durationHours": "{{hours}}h {{minutes}}m"
+  },
+  "nav": {
+    "map": "Map",
+    "incident": "Incident",
+    "evidence": "Evidence",
+    "zoomLabel": "Zoom navigation"
+  },
+  "shell": {
+    "selectIncident": "Select an incident from the map",
+    "selectIncidentEvidence": "Select an incident to view evidence"
+  },
+  "board": {
+    "loading": "Loading\u2026",
+    "error": "Failed to load incident data.",
+    "whatHappened": {
+      "fullHeadline": "Full headline"
+    },
+    "immediateAction": {
+      "title": "Immediate Action",
+      "titleDirectional": "Next Operator Step",
+      "directionalIntro": "Use this as the safest next move with current evidence, not as a confirmed remediation.",
+      "stepsLabel": "Immediate action steps",
+      "supportLabel": "Why",
+      "supportLabelDirectional": "Why this first",
+      "doNotLabel": "Do not",
+      "doNotLabelDirectional": "Avoid assuming",
+      "doNotEmpty": "No contrary guidance returned.",
+      "fullDetails": "Full action details",
+      "actionLabel": "Action:",
+      "whyLabel": "Why:",
+      "doNotFullLabel": "Do not:"
+    },
+    "rootCause": {
+      "title": "Root Cause Hypothesis",
+      "titleProvisional": "Working Theory",
+      "statusConfirmed": "Correlated",
+      "statusProvisional": "Unconfirmed",
+      "fullRootCause": "Full root cause",
+      "fullWorkingTheory": "Full working theory"
+    },
+    "blastRadius": {
+      "title": "Blast Radius",
+      "morePaths_one": "{{count}} more impacted path",
+      "morePaths_other": "{{count}} more impacted paths"
+    },
+    "confidence": {
+      "title": "Current confidence",
+      "titlePending": "Confidence now",
+      "scoreLabel": "Confidence score: {{pct}}%",
+      "scoreUnavailable": "Confidence unavailable",
+      "buildingConfidence": "Building confidence",
+      "limitedConfidence": "Limited confidence",
+      "reviewingConfidence": "Reviewing confidence",
+      "basedOn": "Based on",
+      "uncertainty": "Uncertainty:",
+      "defaultRisk": "Early narrative can shift as more corroborating evidence lands.",
+      "details": "Confidence details",
+      "basisLabel": "Basis:",
+      "riskLabel": "Risk:"
+    },
+    "operatorCheck": {
+      "title": "Operator Check",
+      "showAll": "Show all checks ({{count}})"
+    },
+    "causalChain": {
+      "title": "Causal Chain"
+    },
+    "evidenceEntry": {
+      "title": "Evidence",
+      "priorityReady": "Use this to verify the diagnosis against raw traces, metrics, and logs.",
+      "priorityPending": "Use this first while diagnosis is incomplete.",
+      "started": "Started {{time}}",
+      "fullCascade": "Full cascade {{time}}",
+      "diagnosed": "Diagnosed {{time}}",
+      "traces": "Traces",
+      "metrics": "Metrics",
+      "logs": "Logs",
+      "tracesCount": "{{count}} traces",
+      "anomalousMetrics": "{{count}} anomalous metrics",
+      "logsCount": "{{count}} logs",
+      "anomalous": "{{count}} anomalous",
+      "errors": "({{count}} errors)",
+      "openEvidenceReady": "Open Evidence Studio now",
+      "openEvidencePending": "Open Evidence Studio first"
+    },
+    "diagnosisPending": {
+      "statusLabel": "Diagnosis status",
+      "defaultMessage": "Diagnosis in progress",
+      "defaultSubtext": "The incident is visible now. The diagnosis narrative usually follows once evidence links settle.",
+      "confirmedNow": "Confirmed now",
+      "notConfirmedYet": "Not confirmed yet",
+      "operatorNextStep": "Operator next step",
+      "openEvidenceStudioFirst": "Open Evidence Studio first",
+      "openEvidenceLabel": "Open Evidence Studio from diagnosis status",
+      "rerunDefault": "Re-run diagnosis",
+      "rerunPendingNote": "Diagnosis is already running. Stay on the evidence lanes until this run finishes.",
+      "rerunDefaultNote": "Use this to request one new diagnosis run from the current incident evidence."
+    },
+    "rerun": {
+      "requested": "Diagnosis re-run requested. This board will refresh automatically.",
+      "alreadyRunning": "Diagnosis is already running. This board will refresh automatically.",
+      "failed": "Could not start a new diagnosis run. Try again in a moment.",
+      "startingLabel": "Starting re-run\u2026",
+      "label": "Re-run diagnosis",
+      "inProgress": "Diagnosis re-run is in progress",
+      "assembling": "Diagnosis is still assembling",
+      "unavailable": "Narrative diagnosis is unavailable",
+      "alreadyRunningNote": "Diagnosis is already running. Stay on the evidence lanes until this run finishes.",
+      "defaultNote": "Use this to request one new diagnosis run from the current incident evidence."
+    },
+    "confirmedNow": {
+      "severity": "{{severity}} severity and incident timing are confirmed.",
+      "blastRadiusVisible_one": "{{count}} impacted service path already visible in blast radius.",
+      "blastRadiusVisible_other": "{{count}} impacted service paths already visible in blast radius.",
+      "blastRadiusReserved": "The blast-radius panel is reserved and will fill as affected paths are confirmed.",
+      "evidenceAvailable": "{{traces}} traces, {{metrics}} metrics, and {{logs}} logs can already be inspected.",
+      "evidenceStudioOpen": "Evidence Studio is open now, even while correlation is still collecting its first signals."
+    },
+    "notYetConfirmed": {
+      "rootCause": "A durable root-cause narrative until traces, metrics, and logs agree on the same trigger.",
+      "dependency": "Whether the first visible dependency is the cause or only adjacent impact.",
+      "confidence": "Full confidence language and downstream propagation timing."
+    },
+    "nextSteps": {
+      "openEvidence": "Open Evidence Studio and inspect the first failing trace before broad remediation.",
+      "useNextStep": "Use the next operator step as a safe triage move, not as final root cause confirmation.",
+      "reserveRerun": "Reserve re-run diagnosis for when the retry API becomes available."
+    }
+  },
+  "boardState": {
+    "diagnosisPending": "Severity, timing, and evidence lanes are visible now. The diagnosis narrative is still being assembled.",
+    "diagnosisUnavailable": "A narrative diagnosis could not be produced. Confirmed telemetry remains available for manual review.",
+    "evidenceEmpty": "Evidence lanes are prepared, but the first traces, metrics, and log clusters are still arriving.",
+    "evidenceSparse": "A first-pass diagnosis is available. Treat it as directional until more evidence fills in the gaps.",
+    "baselineInsufficient": "Observed behavior is visible now; expected baseline coverage is still limited.",
+    "baselineUnavailable": "Observed behavior is visible now; no reliable baseline is attached yet.",
+    "default": "Core incident context is visible. Supporting evidence is still maturing.",
+    "fallback": {
+      "pending": {
+        "headline": "Impact is confirmed. Diagnosis narrative is still taking shape.",
+        "action": "Start with the evidence lanes below and verify the first failing request before taking broad remediation steps.",
+        "rootCause": "A root-cause narrative will appear after traces, metrics, and logs align on the same explanation.",
+        "blastRadius": "Service impact will expand here as the system confirms which downstream paths share this failure pattern.",
+        "confidence": "Confidence is building from deterministic evidence. Expect a clearer score once multiple surfaces agree.",
+        "checks": "Use the current traces, metrics, and logs to confirm the first failing path while diagnosis continues.",
+        "chain": "The causal chain stays reserved until the trigger, propagation path, and user impact can be linked safely.",
+        "evidence": "Evidence Studio is already useful now. Counts and milestones will tighten as more telemetry is correlated."
+      },
+      "sparse": {
+        "headline": "A partial diagnosis is available. Some impact is confirmed, but the full story is still forming.",
+        "action": "Use the confirmed signals first, then validate any gaps before applying irreversible remediation.",
+        "rootCause": "This hypothesis is directional. Keep validating adjacent dependencies and baseline drift.",
+        "blastRadius": "Confirmed impact is shown here first. Additional affected paths will appear as telemetry fills in.",
+        "confidence": "Confidence remains intentionally conservative until more than one evidence surface agrees.",
+        "checks": "Prioritize checks that validate the currently confirmed trigger and rule out nearby false positives.",
+        "chain": "Only the confirmed segment of the chain is shown. Upstream and downstream links remain open.",
+        "evidence": "Evidence Studio contains the strongest confirmed signals now; other lanes remain open for comparison."
+      },
+      "unavailable": {
+        "headline": "No narrative diagnosis was produced for this incident.",
+        "action": "Use the confirmed evidence surfaces to decide the next operator step.",
+        "rootCause": "A root-cause narrative is not available. Review the confirmed telemetry instead.",
+        "blastRadius": "Blast radius will expand here if additional affected paths are confirmed.",
+        "confidence": "Confidence cannot be summarized automatically yet.",
+        "checks": "Use Evidence Studio to verify the first failing path and dependency behavior.",
+        "chain": "The causal chain is intentionally withheld until the system can connect the steps safely.",
+        "evidence": "Evidence Studio remains the best place to review confirmed traces, metrics, and logs."
+      }
+    }
+  },
+  "evidence": {
+    "loading": "Loading evidence\u2026",
+    "error": "Failed to load evidence data.",
+    "studioLabel": "Evidence Studio",
+    "contextBarLabel": "Incident context",
+    "contextBarFallback": "Evidence Studio is waiting for a diagnosis narrative.",
+    "contextBarAction": "Action: {{text}}",
+    "surfacesLabel": "Evidence surfaces",
+    "itemsLabel": "{{count}} items",
+    "proofCardsLabel": "Proof cards",
+    "statusConfirmed": "Confirmed",
+    "statusPending": "Pending",
+    "statusInferred": "Inferred",
+    "statusLabel": "Status: {{status}}",
+    "banner": {
+      "diagnosisPending": "Evidence Studio is live while diagnosis assembles",
+      "evidenceSparse": "A directional read is available now",
+      "diagnosisUnavailable": "Evidence Studio remains available without a narrative diagnosis",
+      "coverageMaturing": "Evidence coverage is still maturing",
+      "diagnosisPendingBody": "Use the confirmed traces and logs first. Metrics, confidence wording, and the final narrative will tighten as correlation completes.",
+      "evidenceSparseBody": "The strongest confirmed signals are shown first. Treat missing lanes as open questions, not as healthy evidence.",
+      "diagnosisUnavailableBody": "Confirmed telemetry remains reviewable here. The system is withholding narrative claims it cannot support.",
+      "coverageMaturingBody": "Observed behavior is available now, but baseline or comparison coverage is still limited.",
+      "availableNow": "Available now",
+      "stillFillingIn": "Still filling in"
+    },
+    "visibleNow": {
+      "proofCards_one": "{{count}} proof card already points to confirmed evidence.",
+      "proofCards_other": "{{count}} proof cards already point to confirmed evidence.",
+      "qaSummary": "{{traces}} traces, {{metrics}} metrics, and {{logs}} logs are currently summarized in the Q&A frame.",
+      "tracesAvailable": "Traces can be opened now to inspect the first failing path.",
+      "tracesReserved": "Trace lane stays reserved and will populate as the first captured request arrives."
+    },
+    "stillPreparing": {
+      "metricsPresent": "Metric comparison is already present and will sharpen as more samples arrive.",
+      "metricsWaiting": "Metric comparison will appear once drift repeats across enough samples.",
+      "logsPresent": "Log clusters are visible now; absence evidence may still be added.",
+      "logsWaiting": "Log clusters will pin confirmed patterns and absences here once correlation completes.",
+      "baselineReady": "Baseline context is attached and may still expand with more comparable requests.",
+      "baselineOpen": "Expected baseline remains open, so recovery and comparison guidance stays provisional."
+    },
+    "qa": {
+      "label": "Question and answer",
+      "placeholder": "Ask what the evidence can actually support",
+      "inputLabel": "Ask a grounded question about this incident",
+      "summaryLabel": "Evidence summary",
+      "checking": "Checking\u2026",
+      "ask": "Ask",
+      "noAnswer": "No answer",
+      "groundedAnswer": "Grounded answer",
+      "preparedRead": "Prepared read",
+      "currentRead": "Current read",
+      "stillPreparing": "Still preparing",
+      "followupsLabel": "Follow-up questions",
+      "answerSegmentsLabel": "Answer segments",
+      "preparedSegmentsLabel": "Prepared answer segments",
+      "evidenceRefsLabel": "Evidence references",
+      "viewEvidence": "View evidence: {{kind}} {{id}}",
+      "segmentFact": "Fact",
+      "segmentInference": "Inference",
+      "segmentUnknown": "Unknown",
+      "qaUnavailable": "Grounded Q&A is unavailable for this incident. The evidence surfaces below remain available.",
+      "submitFailed": "Failed to submit question."
+    },
+    "tabs": {
+      "traces": "Traces",
+      "metrics": "Metrics",
+      "logs": "Logs"
+    },
+    "sideRail": {
+      "label": "Contextual notes",
+      "confidence": "Confidence",
+      "uncertainty": "Uncertainty",
+      "dependencies": "Dependencies in Scope",
+      "confidenceReady": "Narrative confidence is still being refined from the current evidence mix.",
+      "confidencePending": "Confidence will appear here once multiple evidence surfaces agree on the same explanation.",
+      "uncertaintyUnavailable": "No expected baseline is attached yet, so treat observed slowdowns and failures as directional rather than fully comparative.",
+      "uncertaintyDefault": "Open questions will stay pinned here while the system separates confirmed facts from still-unresolved possibilities.",
+      "dependenciesDefault": "Dependency notes stay pinned here as trace and log correlation confirms what is truly involved."
+    },
+    "traces": {
+      "attributes": "Attributes",
+      "correlatedLogs": "Correlated Logs",
+      "expectedBehavior": "expected behavior",
+      "expected": "expected: {{duration}}ms",
+      "emptyObserved": "Observed trace lane is reserved. Deterministic trace evidence will appear here when telemetry arrives.",
+      "limitedTraces": "Only limited traces are available for this incident.",
+      "baselineUnavailable": "Expected trace not captured yet",
+      "baselineSparse": "Expected trace is still sparse",
+      "hideExpected": "Hide expected trace",
+      "showExpected": "Show expected trace",
+      "noBaseline": "No baseline trace has been attached to this incident window yet.",
+      "baselineTooSparse": "Baseline comparison is still too sparse to render expected behavior safely."
+    },
+    "metrics": {
+      "expected": "expected:\u00a0{{value}}",
+      "emptyReserved": "Metric comparison is reserved. As soon as the incident repeats across enough samples, expected vs observed drift will appear here.",
+      "thinSignal": "Only a thin metric signal is available so far. Keep this lane open for confirming or disproving the current hypothesis."
+    },
+    "logs": {
+      "entries": "{{count}}\u00a0entries",
+      "expectedLabel": "Expected: {{expected}}. Observed: {{observed}}.",
+      "emptyReserved": "Log clusters are reserved here. When the first repeated pattern or notable absence is confirmed, it will pin into this lane.",
+      "sparseEvidence": "Log evidence is still sparse. Treat this lane as open for corroboration rather than as proof of health."
+    }
+  },
+  "map": {
+    "loading": "Loading map\u2026",
+    "error": "Unable to load runtime map.",
+    "runtimeDependencyMap": "Runtime Dependency Map",
+    "sourceIncidentScope": "\u2014 observed from preserved incident spans ({{window}})",
+    "sourceNoTelemetry": "\u2014 waiting for observed spans ({{window}})",
+    "sourceRecent": "\u2014 observed from recent spans ({{window}})",
+    "activeIncidents": "Active Incidents",
+    "entryPoints": "Entry Points",
+    "runtimeUnits": "Runtime Units",
+    "dependencies": "Dependencies",
+    "legendObserved": "Observed from spans",
+    "legendEntry": "entry point",
+    "legendRuntime": "runtime unit",
+    "legendDependency": "dependency",
+    "legendErrors": "errors",
+    "legendDegraded": "degraded",
+    "legendHealthy": "healthy",
+    "mapLabel": "Runtime dependency map",
+    "stats": {
+      "activeIncidents": "Active Incidents",
+      "degradedServices": "Degraded Services",
+      "reqPerSec": "Req/s (cluster)",
+      "p95Latency": "P95 Latency"
+    },
+    "empty": {
+      "noRecentSpansWithIncidents": "No recent spans in the live window.",
+      "noSpansYet": "No spans observed yet in this environment.",
+      "detailWithIncidents": "Open incidents still exist below. Use one to inspect preserved incident evidence while the runtime map waits for fresh traffic.",
+      "detailNoIncidents": "The map only draws observed call paths from spans. Once traffic arrives, entry points, runtime units, and dependencies will appear here.",
+      "noPreservedSpans": "No preserved incident spans were available to reconstruct a scoped map.",
+      "noIncidentFallback": "No incident-scoped fallback was available.",
+      "noOpenIncidents": "No open incidents were returned.",
+      "observedFromSpans": "Observed from spans",
+      "noLiveTopology": "{{window}} has no live topology",
+      "openIncidents": "{{count}} open incidents"
+    },
+    "statusBanner": {
+      "liveWindowEmpty": "Live window empty",
+      "showingSpans": "Showing observed spans captured with {{window}}.",
+      "incidentScopedFallback": "This is incident-scoped fallback, not an inferred topology."
+    },
+    "incident": {
+      "stateLabel": "STATE",
+      "noActive": "No active incidents returned.",
+      "ready": "Ready",
+      "noOpen": "0 open",
+      "openLabel": "Open incident {{id}}: {{label}}",
+      "ago": "{{time}} ago",
+      "err": "{{rate}}% err"
+    }
+  },
+  "locale": {
+    "switchToJa": "Switch language to Japanese",
+    "switchToEn": "\u8a00\u8a9e\u3092\u82f1\u8a9e\u306b\u5207\u308a\u66ff\u3048"
+  }
+}

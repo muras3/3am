@@ -1,5 +1,6 @@
 import { useRef } from "react";
 import { useNavigate, useSearch } from "@tanstack/react-router";
+import { useTranslation } from "react-i18next";
 import type { EvidenceTab, LensSearchParams } from "../../../routes/__root.js";
 import type { EvidenceSurfaces } from "../../../api/curated-types.js";
 
@@ -7,11 +8,7 @@ interface Props {
   surfaces: EvidenceSurfaces;
 }
 
-const TABS: { id: EvidenceTab; label: string }[] = [
-  { id: "traces", label: "Traces" },
-  { id: "metrics", label: "Metrics" },
-  { id: "logs", label: "Logs" },
-];
+const TAB_IDS: EvidenceTab[] = ["traces", "metrics", "logs"];
 
 function countBadge(surfaces: EvidenceSurfaces, tab: EvidenceTab): number {
   if (tab === "traces") return surfaces.traces.observed.length + surfaces.traces.expected.length;
@@ -27,10 +24,17 @@ function countBadge(surfaces: EvidenceSurfaces, tab: EvidenceTab): number {
  * Active tab controlled by URL ?tab= param. Arrow keys for navigation.
  */
 export function LensEvidenceTabs({ surfaces }: Props) {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const search = useSearch({ from: "__root__" }) as LensSearchParams;
   const activeTab = search.tab ?? "traces";
   const tabRefs = useRef<(HTMLButtonElement | null)[]>([]);
+
+  const TABS: { id: EvidenceTab; label: string }[] = [
+    { id: "traces", label: t("evidence.tabs.traces") },
+    { id: "metrics", label: t("evidence.tabs.metrics") },
+    { id: "logs", label: t("evidence.tabs.logs") },
+  ];
 
   function activateTab(tab: EvidenceTab) {
     void navigate({
@@ -44,13 +48,13 @@ export function LensEvidenceTabs({ surfaces }: Props) {
     let nextIndex: number | null = null;
 
     if (e.key === "ArrowRight") {
-      nextIndex = (index + 1) % TABS.length;
+      nextIndex = (index + 1) % TAB_IDS.length;
     } else if (e.key === "ArrowLeft") {
-      nextIndex = (index - 1 + TABS.length) % TABS.length;
+      nextIndex = (index - 1 + TAB_IDS.length) % TAB_IDS.length;
     } else if (e.key === "Home") {
       nextIndex = 0;
     } else if (e.key === "End") {
-      nextIndex = TABS.length - 1;
+      nextIndex = TAB_IDS.length - 1;
     }
 
     if (nextIndex !== null) {
@@ -65,7 +69,7 @@ export function LensEvidenceTabs({ surfaces }: Props) {
   return (
     <div
       role="tablist"
-      aria-label="Evidence surfaces"
+      aria-label={t("evidence.surfacesLabel")}
       className="lens-ev-tabs"
     >
       {TABS.map((tab, index) => {
@@ -87,7 +91,7 @@ export function LensEvidenceTabs({ surfaces }: Props) {
             type="button"
           >
             {tab.label}
-            <span className="lens-ev-tab-count" aria-label={`${count} items`}>
+            <span className="lens-ev-tab-count" aria-label={t("evidence.itemsLabel", { count })}>
               {count}
             </span>
           </button>

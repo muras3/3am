@@ -1,4 +1,5 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import type { CausalStep, CuratedState } from "../../../api/curated-types.js";
 import { sectionFallback } from "./board-state.js";
 
@@ -101,11 +102,12 @@ function TurnConnector({ direction }: { direction: "right-to-left" | "left-to-ri
 /* ── Main component ────────────────────────────────────────── */
 
 export function CauseCard({ steps, state }: Props) {
+  const { t } = useTranslation();
   const { rows, containerRef } = useSerpentineRows(steps);
 
   return (
     <div className="lens-board-chain-section">
-      <h2 className="lens-board-section-label">Causal Chain</h2>
+      <h2 className="lens-board-section-label">{t("board.causalChain.title")}</h2>
       <div className="lens-board-chain-flow" ref={containerRef} role="list">
         {steps.length > 0 ? rows.map((rowSteps, rowIdx) => {
           const reversed = rowIdx % 2 === 1;

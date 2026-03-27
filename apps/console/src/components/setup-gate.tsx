@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useTranslation, Trans } from "react-i18next";
 import { saveAuthToken, getStoredAuthToken } from "../api/client.js";
 
 interface SetupStatus {
@@ -112,6 +113,7 @@ const primaryBtnStyle: React.CSSProperties = {
 
 /** First-boot: show generated token, prompt user to save it. */
 function FirstSetupView({ token, onSave }: { token: string; onSave: () => void }) {
+  const { t } = useTranslation();
   const [copied, setCopied] = useState(false);
 
   const handleCopy = () => {
@@ -124,25 +126,23 @@ function FirstSetupView({ token, onSave }: { token: string; onSave: () => void }
   return (
     <div style={cardStyle}>
       <div style={panelStyle}>
-        <h1 style={headingStyle}>3amoncall Setup</h1>
+        <h1 style={headingStyle}>{t("setup.title")}</h1>
         <p style={bodyStyle}>
-          Your auth token has been generated. Save it now — it will not be shown again.
+          {t("setup.tokenGenerated")}
         </p>
         <div style={tokenBoxStyle}>
           <p style={tokenTextStyle}>{token}</p>
         </div>
         <div style={{ display: "flex", gap: "8px" }}>
           <button onClick={handleCopy} style={secondaryBtnStyle}>
-            {copied ? "Copied!" : "Copy"}
+            {copied ? t("setup.copied") : t("setup.copy")}
           </button>
           <button onClick={onSave} style={primaryBtnStyle}>
-            I have saved this token — Continue
+            {t("setup.saveAndContinue")}
           </button>
         </div>
         <p style={footerStyle}>
-          To recover a lost token, set{" "}
-          <code style={{ fontFamily: "var(--mono)" }}>RECEIVER_AUTH_TOKEN</code>{" "}
-          in your Vercel environment variables.
+          <Trans i18nKey="setup.recoverFooter" components={{ code: <code style={{ fontFamily: "var(--mono)" }} /> }} />
         </p>
       </div>
     </div>
@@ -151,6 +151,7 @@ function FirstSetupView({ token, onSave }: { token: string; onSave: () => void }
 
 /** Recovery: setup already complete but no token in localStorage. User must enter token manually. */
 function TokenRecoveryView({ onSave }: { onSave: (token: string) => void }) {
+  const { t } = useTranslation();
   const [input, setInput] = useState("");
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -162,19 +163,16 @@ function TokenRecoveryView({ onSave }: { onSave: (token: string) => void }) {
   return (
     <div style={cardStyle}>
       <div style={panelStyle}>
-        <h1 style={headingStyle}>Enter Auth Token</h1>
+        <h1 style={headingStyle}>{t("setup.enterToken")}</h1>
         <p style={bodyStyle}>
-          Your auth token was previously set up but is not present in this browser. Enter your
-          token to continue. You can find it in your Vercel environment variables
-          (<code style={{ fontFamily: "var(--mono)" }}>RECEIVER_AUTH_TOKEN</code>) or from when
-          you first set up 3amoncall.
+          <Trans i18nKey="setup.enterTokenBody" components={{ code: <code style={{ fontFamily: "var(--mono)" }} /> }} />
         </p>
         <form onSubmit={handleSubmit}>
           <input
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder="Paste your auth token here"
+            placeholder={t("setup.tokenPlaceholder")}
             style={{
               fontFamily: "var(--mono)",
               fontSize: "var(--fs-sm)",
@@ -194,7 +192,7 @@ function TokenRecoveryView({ onSave }: { onSave: (token: string) => void }) {
             disabled={!input.trim()}
             style={{ ...primaryBtnStyle, flex: "none", width: "100%", padding: "8px 16px" }}
           >
-            Save and Continue
+            {t("setup.saveAndContinueShort")}
           </button>
         </form>
       </div>
@@ -203,6 +201,7 @@ function TokenRecoveryView({ onSave }: { onSave: (token: string) => void }) {
 }
 
 export function SetupGate({ children }: SetupGateProps) {
+  const { t } = useTranslation();
   const [state, setState] = useState<"loading" | "first-setup" | "recovery" | "error" | "ready">("loading");
   const [token, setToken] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string>("");
@@ -264,7 +263,7 @@ export function SetupGate({ children }: SetupGateProps) {
   if (state === "loading") {
     return (
       <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100vh", background: "var(--bg)" }}>
-        <span style={{ fontFamily: "var(--font)", color: "var(--ink-3)", fontSize: "var(--fs-sm)" }}>Loading...</span>
+        <span style={{ fontFamily: "var(--font)", color: "var(--ink-3)", fontSize: "var(--fs-sm)" }}>{t("common.loading")}</span>
       </div>
     );
   }
@@ -296,9 +295,9 @@ export function SetupGate({ children }: SetupGateProps) {
     return (
       <div style={cardStyle}>
         <div style={panelStyle}>
-          <h1 style={{ ...headingStyle, color: "var(--accent)" }}>Setup Failed</h1>
+          <h1 style={{ ...headingStyle, color: "var(--accent)" }}>{t("setup.failed")}</h1>
           <p style={bodyStyle}>
-            Could not connect to the receiver to complete setup.
+            {t("setup.failedBody")}
           </p>
           {errorMsg && (
             <div style={tokenBoxStyle}>
@@ -306,12 +305,10 @@ export function SetupGate({ children }: SetupGateProps) {
             </div>
           )}
           <button onClick={runSetup} style={primaryBtnStyle}>
-            Retry
+            {t("setup.retry")}
           </button>
           <p style={footerStyle}>
-            If this persists, check that the receiver is running and{" "}
-            <code style={{ fontFamily: "var(--mono)" }}>RECEIVER_AUTH_TOKEN</code>{" "}
-            is set correctly.
+            <Trans i18nKey="setup.failedFooter" components={{ code: <code style={{ fontFamily: "var(--mono)" }} /> }} />
           </p>
         </div>
       </div>
