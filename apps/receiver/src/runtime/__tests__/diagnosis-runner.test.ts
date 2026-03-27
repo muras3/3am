@@ -123,7 +123,10 @@ describe("DiagnosisRunner", () => {
 
     expect(result).toBe(true);
     expect(storage.getIncident).toHaveBeenCalledWith("inc_test");
-    expect(diagnose).toHaveBeenCalledWith(expect.objectContaining({ incidentId: "inc_test" }));
+    expect(diagnose).toHaveBeenCalledWith(
+      expect.objectContaining({ incidentId: "inc_test" }),
+      expect.objectContaining({ locale: "en" }),
+    );
     expect(storage.appendDiagnosis).toHaveBeenCalledWith("inc_test", mockResult);
   });
 
@@ -173,7 +176,11 @@ describe("DiagnosisRunner", () => {
 
       expect(result).toBe(true);
       expect(buildReasoningStructure).toHaveBeenCalled();
-      expect(generateConsoleNarrative).toHaveBeenCalledWith(mockDiagnosisResult, mockReasoningStructure);
+      expect(generateConsoleNarrative).toHaveBeenCalledWith(
+        mockDiagnosisResult,
+        mockReasoningStructure,
+        expect.objectContaining({ locale: "en" }),
+      );
       expect(storage.appendConsoleNarrative).toHaveBeenCalledWith("inc_test", mockNarrative);
     });
 

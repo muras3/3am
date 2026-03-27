@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import type { SideNote } from "../../../api/curated-types.js";
 
 interface Props {
@@ -28,25 +29,26 @@ function SideNoteCard({ note }: SideNoteCardProps) {
 function buildPlaceholderNotes(
   diagnosisState: Props["diagnosisState"],
   baselineState: Props["baselineState"],
+  t: (key: string) => string,
 ): SideNote[] {
   return [
     {
-      title: "Confidence",
+      title: t("evidence.sideRail.confidence"),
       text: diagnosisState === "ready"
-        ? "Narrative confidence is still being refined from the current evidence mix."
-        : "Confidence will appear here once multiple evidence surfaces agree on the same explanation.",
+        ? t("evidence.sideRail.confidenceReady")
+        : t("evidence.sideRail.confidencePending"),
       kind: "confidence",
     },
     {
-      title: "Uncertainty",
+      title: t("evidence.sideRail.uncertainty"),
       text: baselineState === "unavailable"
-        ? "No expected baseline is attached yet, so treat observed slowdowns and failures as directional rather than fully comparative."
-        : "Open questions will stay pinned here while the system separates confirmed facts from still-unresolved possibilities.",
+        ? t("evidence.sideRail.uncertaintyUnavailable")
+        : t("evidence.sideRail.uncertaintyDefault"),
       kind: "uncertainty",
     },
     {
-      title: "Dependencies in Scope",
-      text: "Dependency notes stay pinned here as trace and log correlation confirms what is truly involved.",
+      title: t("evidence.sideRail.dependencies"),
+      text: t("evidence.sideRail.dependenciesDefault"),
       kind: "dependency",
     },
   ];
@@ -57,12 +59,13 @@ function buildPlaceholderNotes(
  * "primary" variant gets teal border + teal title.
  */
 export function LensSideRail({ notes, diagnosisState, baselineState }: Props) {
+  const { t } = useTranslation();
   const renderedNotes = notes.length > 0
     ? notes
-    : buildPlaceholderNotes(diagnosisState, baselineState);
+    : buildPlaceholderNotes(diagnosisState, baselineState, t);
 
   return (
-    <aside className="lens-ev-side" aria-label="Contextual notes">
+    <aside className="lens-ev-side" aria-label={t("evidence.sideRail.label")}>
       {renderedNotes.map((note) => (
         <SideNoteCard key={note.title} note={note} />
       ))}

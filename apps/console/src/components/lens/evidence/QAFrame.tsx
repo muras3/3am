@@ -1,6 +1,7 @@
 import type { FormEvent } from "react";
 import { useEffect, useState } from "react";
 import { useNavigate, useSearch } from "@tanstack/react-router";
+import { useTranslation } from "react-i18next";
 import type {
   QABlock,
   EvidenceRef,
@@ -40,6 +41,7 @@ function evidenceRefTarget(
 }
 
 function EvidenceRefLink({ ref: evidenceRef }: { ref: EvidenceRef | EvidenceQueryRef }) {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const search = useSearch({ from: "__root__" }) as LensSearchParams;
   const { tab, targetId } = evidenceRefTarget(evidenceRef);
@@ -70,7 +72,7 @@ function EvidenceRefLink({ ref: evidenceRef }: { ref: EvidenceRef | EvidenceQuer
       className="lens-ev-qa-ref"
       onClick={apply}
       onKeyDown={handleKeyDown}
-      aria-label={`View evidence: ${evidenceRef.kind} ${evidenceRef.id}`}
+      aria-label={t("evidence.qa.viewEvidence", { kind: evidenceRef.kind, id: evidenceRef.id })}
     >
       {evidenceRef.kind}:{evidenceRef.id}
     </span>
@@ -78,7 +80,8 @@ function EvidenceRefLink({ ref: evidenceRef }: { ref: EvidenceRef | EvidenceQuer
 }
 
 function SegmentBadge({ kind }: { kind: EvidenceQuerySegment["kind"] }) {
-  const label = kind === "fact" ? "Fact" : kind === "inference" ? "Inference" : "Unknown";
+  const { t } = useTranslation();
+  const label = kind === "fact" ? t("evidence.qa.segmentFact") : kind === "inference" ? t("evidence.qa.segmentInference") : t("evidence.qa.segmentUnknown");
   return <span className={`lens-ev-qa-segment-badge lens-ev-qa-segment-badge-${kind}`}>{label}</span>;
 }
 
@@ -112,6 +115,7 @@ export function QAFrame({
   onInputChange,
   onSubmitQuestion,
 }: Props) {
+  const { t } = useTranslation();
   const [draft, setDraft] = useState(inputValue);
   const latestSegments = latestResponse?.segments ?? [];
   const initialSegments = qa.segments ?? [];
@@ -139,7 +143,7 @@ export function QAFrame({
   }
 
   return (
-    <div className="lens-ev-qa-frame" role="region" aria-label="Question and answer">
+    <div className="lens-ev-qa-frame" role="region" aria-label={t("evidence.qa.label")}>
       <form className="lens-ev-qa-question-row lens-ev-qa-form" onSubmit={handleSubmit}>
         <span className="lens-ev-qa-icon" aria-hidden="true">?</span>
         <input
@@ -150,12 +154,12 @@ export function QAFrame({
             setDraft(e.target.value);
             onInputChange(e.target.value);
           }}
-          placeholder="Ask what the evidence can actually support"
-          aria-label="Ask a grounded question about this incident"
+          placeholder={t("evidence.qa.placeholder")}
+          aria-label={t("evidence.qa.inputLabel")}
           disabled={isSubmitting}
         />
         {evidenceSummaryText && (
-          <span className="lens-ev-qa-time" aria-label="Evidence summary">
+          <span className="lens-ev-qa-time" aria-label={t("evidence.qa.summaryLabel")}>
             {evidenceSummaryText}
           </span>
         )}
@@ -164,7 +168,7 @@ export function QAFrame({
           type="submit"
           disabled={isSubmitting || draft.trim().length === 0}
         >
-          {isSubmitting ? "Checking…" : "Ask"}
+          {isSubmitting ? t("evidence.qa.checking") : t("evidence.qa.ask")}
         </button>
       </form>
 
@@ -178,7 +182,7 @@ export function QAFrame({
         <div className="lens-ev-qa-answer lens-ev-qa-answer-live" role="status" aria-live="polite">
           <div className="lens-ev-qa-answer-head">
             <span className="lens-ev-qa-state-label">
-              {latestResponse.status === "no_answer" ? "No answer" : "Grounded answer"}
+              {latestResponse.status === "no_answer" ? t("evidence.qa.noAnswer") : t("evidence.qa.groundedAnswer")}
             </span>
             {latestResponse.noAnswerReason && (
               <span className="lens-ev-qa-answer-note">{latestResponse.noAnswerReason}</span>
@@ -186,14 +190,14 @@ export function QAFrame({
           </div>
 
           {latestSegments.length > 0 ? (
-            <div className="lens-ev-qa-segments" role="article" aria-label="Answer segments">
+            <div className="lens-ev-qa-segments" role="article" aria-label={t("evidence.qa.answerSegmentsLabel")}>
               {latestSegments.map((segment) => (
                 <div key={segment.id} className={`lens-ev-qa-segment lens-ev-qa-segment-${segment.kind}`}>
                   <div className="lens-ev-qa-segment-line">
                     <SegmentBadge kind={segment.kind} />
                     <span className="lens-ev-qa-segment-text">{segment.text}</span>
                   </div>
-                  <div className="lens-ev-qa-refs" aria-label="Evidence references">
+                  <div className="lens-ev-qa-refs" aria-label={t("evidence.qa.evidenceRefsLabel")}>
                     {segment.evidenceRefs.map((ref, i) => (
                       <EvidenceRefLink key={`${ref.kind}-${ref.id}-${i}`} ref={ref} />
                     ))}
@@ -212,7 +216,7 @@ export function QAFrame({
         >
           <div className="lens-ev-qa-answer-head">
             <span className="lens-ev-qa-state-label">
-              {qa.status === "no_answer" ? "No answer" : "Prepared read"}
+              {qa.status === "no_answer" ? t("evidence.qa.noAnswer") : t("evidence.qa.preparedRead")}
             </span>
             {qa.noAnswerReason && (
               <span className="lens-ev-qa-answer-note">{qa.noAnswerReason}</span>
@@ -220,7 +224,7 @@ export function QAFrame({
           </div>
           <div
             className={qa.status === "no_answer" ? "lens-ev-qa-no-answer" : "lens-ev-qa-segments"}
-            aria-label="Prepared answer segments"
+            aria-label={t("evidence.qa.preparedSegmentsLabel")}
           >
             {initialSegments.map((segment) => (
               <div key={segment.id} className={`lens-ev-qa-segment lens-ev-qa-segment-${segment.kind}`}>
@@ -228,7 +232,7 @@ export function QAFrame({
                   <SegmentBadge kind={segment.kind} />
                   <span className="lens-ev-qa-segment-text">{segment.text}</span>
                 </div>
-                <div className="lens-ev-qa-refs" aria-label="Evidence references">
+                <div className="lens-ev-qa-refs" aria-label={t("evidence.qa.evidenceRefsLabel")}>
                   {segment.evidenceRefs.map((ref, i) => (
                     <EvidenceRefLink key={`${ref.kind}-${ref.id}-${i}`} ref={ref} />
                   ))}
@@ -239,22 +243,22 @@ export function QAFrame({
         </div>
       ) : qa.noAnswerReason ? (
         <div className="lens-ev-qa-answer lens-ev-qa-answer-placeholder">
-          <div className="lens-ev-qa-state-label">Current read</div>
+          <div className="lens-ev-qa-state-label">{t("evidence.qa.currentRead")}</div>
           <div>{qa.answer}</div>
           <div className="lens-ev-qa-no-answer">
-            <span className="lens-ev-qa-state-label">Still preparing</span>
+            <span className="lens-ev-qa-state-label">{t("evidence.qa.stillPreparing")}</span>
             {qa.noAnswerReason}
           </div>
         </div>
       ) : (
         <div className="lens-ev-qa-answer" role="article">
           <div className="lens-ev-qa-answer-head">
-            <span className="lens-ev-qa-state-label">Prepared read</span>
+            <span className="lens-ev-qa-state-label">{t("evidence.qa.preparedRead")}</span>
           </div>
           <div>{qa.answer}</div>
 
           {qa.evidenceRefs.length > 0 && (
-            <div className="lens-ev-qa-refs" aria-label="Evidence references">
+            <div className="lens-ev-qa-refs" aria-label={t("evidence.qa.evidenceRefsLabel")}>
               {qa.evidenceRefs.map((ref, i) => (
                 <EvidenceRefLink key={`${ref.kind}-${ref.id}-${i}`} ref={ref} />
               ))}
@@ -264,7 +268,7 @@ export function QAFrame({
       )}
 
       {activeFollowups.length > 0 && (
-        <div className="lens-ev-qa-followups" role="group" aria-label="Follow-up questions">
+        <div className="lens-ev-qa-followups" role="group" aria-label={t("evidence.qa.followupsLabel")}>
           {activeFollowups.map((followup) => (
             <FollowupChip
               key={followup.question}

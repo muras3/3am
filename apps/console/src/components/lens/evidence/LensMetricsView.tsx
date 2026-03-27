@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { useSearch } from "@tanstack/react-router";
+import { useTranslation } from "react-i18next";
 import type { MetricsSurface, HypothesisGroup } from "../../../api/curated-types.js";
 import type { LensSearchParams } from "../../../routes/__root.js";
 
@@ -52,6 +53,7 @@ interface HypGroupBlockProps {
 }
 
 function HypGroupBlock({ group, activeProofId, activeTargetId }: HypGroupBlockProps) {
+  const { t } = useTranslation();
   const isConfirmed = group.verdict === "Confirmed";
   const isHighlighted = activeProofId === group.type || activeTargetId === group.id;
 
@@ -99,7 +101,7 @@ function HypGroupBlock({ group, activeProofId, activeTargetId }: HypGroupBlockPr
               />
             </div>
             <span className="lens-metrics-metric-expected">
-              expected:&nbsp;{metric.expected}
+              {t("evidence.metrics.expected", { value: metric.expected })}
             </span>
           </div>
         ))}
@@ -116,6 +118,7 @@ interface LensMetricsViewProps {
 }
 
 export function LensMetricsView({ surface, evidenceDensity = "rich", isActive = false }: LensMetricsViewProps) {
+  const { t } = useTranslation();
   const search = useSearch({ from: "__root__" }) as LensSearchParams;
   const activeProofId = search.proof;
   const activeTargetId = search.targetId;
@@ -135,8 +138,8 @@ export function LensMetricsView({ surface, evidenceDensity = "rich", isActive = 
     return (
       <div className="lens-metrics-empty">
         {evidenceDensity === "empty"
-          ? "Metric comparison is reserved. As soon as the incident repeats across enough samples, expected vs observed drift will appear here."
-          : "Only a thin metric signal is available so far. Keep this lane open for confirming or disproving the current hypothesis."}
+          ? t("evidence.metrics.emptyReserved")
+          : t("evidence.metrics.thinSignal")}
       </div>
     );
   }

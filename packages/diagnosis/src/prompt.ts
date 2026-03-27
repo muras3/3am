@@ -1,6 +1,10 @@
 import type { IncidentPacket } from "@3amoncall/core";
 
-export function buildPrompt(packet: IncidentPacket): string {
+export interface BuildPromptOptions {
+  locale?: "en" | "ja";
+}
+
+export function buildPrompt(packet: IncidentPacket, options?: BuildPromptOptions): string {
   const { window, scope, triggerSignals, evidence, pointers, signalSeverity } = packet;
 
   const windowSection = [
@@ -71,6 +75,19 @@ export function buildPrompt(packet: IncidentPacket): string {
           })
           .join("\n")}`
       : "";
+
+  const jaInstruction = options?.locale === "ja"
+    ? `
+
+## Language Instruction
+
+Respond entirely in Japanese. Use concise language that an on-call engineer can act on immediately at 3am — every word should reduce time-to-action.
+Keep all JSON keys in English. Only the string values should be in Japanese.
+Technical terms (service names, trace IDs, metric names, HTTP status codes) stay in English.
+Avoid formal or polite Japanese (敬語); use direct, action-oriented phrasing.
+The "immediate_action" field must read like a command, not a suggestion.
+`
+    : "";
 
   return `You are an expert SRE performing on-call incident diagnosis.
 
@@ -164,5 +181,5 @@ Respond with ONLY the JSON object below. No prose, no markdown, no explanation b
     "uncertainty": "..."
   }
 }
-`;
+${jaInstruction}`;
 }

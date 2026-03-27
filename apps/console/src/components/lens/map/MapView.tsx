@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { useTranslation } from "react-i18next";
 import { curatedQueries } from "../../../api/queries.js";
 import type { LensLevel } from "../../../routes/__root.js";
 import { StatsBar } from "./StatsBar.js";
@@ -21,13 +22,14 @@ interface Props {
  * Data is loaded via curatedQueries.runtimeMap().
  */
 export function MapView({ zoomTo }: Props) {
+  const { t } = useTranslation();
   const { data, isLoading, isError } = useQuery(curatedQueries.runtimeMap());
 
   if (isLoading) {
     return (
       <div className="l0-content">
         <div className="map-empty">
-          <span>Loading map…</span>
+          <span>{t("map.loading")}</span>
         </div>
       </div>
     );
@@ -37,24 +39,24 @@ export function MapView({ zoomTo }: Props) {
     return (
       <div className="l0-content">
         <div className="map-empty">
-          <span>Unable to load runtime map.</span>
+          <span>{t("map.error")}</span>
         </div>
       </div>
     );
   }
 
   const sourceLabel = data.state.source === "incident_scope"
-    ? `— observed from preserved incident spans (${data.state.windowLabel})`
+    ? t("map.sourceIncidentScope", { window: data.state.windowLabel })
     : data.state.source === "no_telemetry"
-    ? `— waiting for observed spans (${data.state.windowLabel})`
-    : `— observed from recent spans (${data.state.windowLabel})`;
+    ? t("map.sourceNoTelemetry", { window: data.state.windowLabel })
+    : t("map.sourceRecent", { window: data.state.windowLabel });
 
   return (
     <div className="l0-content" data-testid="map-view">
       <StatsBar summary={data.summary} />
 
       <h2 className="l0-section-title">
-        Runtime Dependency Map{" "}
+        {t("map.runtimeDependencyMap")}{" "}
         <span
           style={{
             fontWeight: 400,
@@ -83,7 +85,7 @@ export function MapView({ zoomTo }: Props) {
       />
 
       <h2 className="l0-section-title" style={{ marginTop: 12 }}>
-        Active Incidents
+        {t("map.activeIncidents")}
       </h2>
       <IncidentStrip incidents={data.incidents} zoomTo={zoomTo} />
     </div>

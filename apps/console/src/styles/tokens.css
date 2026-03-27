@@ -18,7 +18,7 @@
   --amber-soft: rgba(184,134,11,0.08);
   --good: #2E7D52;
   --good-soft: rgba(46,125,82,0.08);
-  --font: 'DM Sans', system-ui, sans-serif;
+  --font: 'DM Sans', 'Hiragino Sans', 'Noto Sans JP', system-ui, sans-serif;
   --mono: 'JetBrains Mono', ui-monospace, monospace;
   --radius: 6px;
   --radius-sm: 4px;

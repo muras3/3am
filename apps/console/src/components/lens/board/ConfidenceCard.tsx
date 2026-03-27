@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import type { ConfidenceSummary, CuratedState } from "../../../api/curated-types.js";
 import { sectionFallback } from "./board-state.js";
 import { shortenForViewport } from "./viewport-text.js";
@@ -14,22 +15,23 @@ function scoreColorClass(value: number): string {
 }
 
 export function ConfidenceCard({ confidence, state }: Props) {
+  const { t } = useTranslation();
   const hasConfidence =
     confidence.label.trim().length > 0 || confidence.basis.trim().length > 0 || confidence.value > 0;
   const pct = Math.round(confidence.value * 100);
   const fallbackLabel = state.diagnosis === "pending"
-    ? "Building confidence"
+    ? t("board.confidence.buildingConfidence")
     : state.evidenceDensity === "sparse" || state.baseline !== "ready"
-      ? "Limited confidence"
-      : "Reviewing confidence";
+      ? t("board.confidence.limitedConfidence")
+      : t("board.confidence.reviewingConfidence");
   const basisText = confidence.basis.trim() || sectionFallback(state, "confidence");
   const riskText =
     confidence.risk.trim() ||
-    "Early narrative can shift as more corroborating evidence lands.";
+    t("board.confidence.defaultRisk");
   const basisPreview = shortenForViewport(basisText, 46);
   const riskPreview = shortenForViewport(riskText, 88);
   const hasExpandableDetail = basisPreview !== basisText || riskPreview !== riskText;
-  const confidenceStatus = state.diagnosis === "ready" ? "Current confidence" : "Confidence now";
+  const confidenceStatus = state.diagnosis === "ready" ? t("board.confidence.title") : t("board.confidence.titlePending");
 
   return (
     <div className="lens-board-card">
@@ -37,7 +39,7 @@ export function ConfidenceCard({ confidence, state }: Props) {
       <div className="lens-board-conf-top">
         <div
           className={`lens-board-conf-score ${scoreColorClass(confidence.value)}`}
-          aria-label={hasConfidence ? `Confidence score: ${pct}%` : "Confidence unavailable"}
+          aria-label={hasConfidence ? t("board.confidence.scoreLabel", { pct }) : t("board.confidence.scoreUnavailable")}
         >
           {hasConfidence ? `${pct}%` : "—"}
         </div>
@@ -51,21 +53,21 @@ export function ConfidenceCard({ confidence, state }: Props) {
         </div>
       </div>
       <div className="lens-board-conf-row">
-        <span className="lens-board-conf-row-label">Based on</span>
+        <span className="lens-board-conf-row-label">{t("board.confidence.basedOn")}</span>
         <span className="lens-board-conf-row-value">{basisPreview}</span>
       </div>
       <div className="lens-board-conf-risk">
-        <span className="lens-board-conf-risk-label">Uncertainty:</span> {riskPreview}
+        <span className="lens-board-conf-risk-label">{t("board.confidence.uncertainty")}</span> {riskPreview}
       </div>
       {hasExpandableDetail ? (
         <details className="lens-board-inline-details">
-          <summary>Confidence details</summary>
+          <summary>{t("board.confidence.details")}</summary>
           <div className="lens-board-inline-details-body lens-board-action-detail-copy">
             <div>
-              <strong>Basis:</strong> {basisText}
+              <strong>{t("board.confidence.basisLabel")}</strong> {basisText}
             </div>
             <div>
-              <strong>Risk:</strong> {riskText}
+              <strong>{t("board.confidence.riskLabel")}</strong> {riskText}
             </div>
           </div>
         </details>

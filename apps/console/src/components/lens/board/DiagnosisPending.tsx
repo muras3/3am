@@ -1,3 +1,5 @@
+import { useTranslation } from "react-i18next";
+
 interface Props {
   status: "pending" | "unavailable";
   message?: string;
@@ -22,25 +24,27 @@ export function DiagnosisPending({
   onOpenEvidence,
   onRerunDiagnosis,
   rerunDisabled = true,
-  rerunLabel = "Re-run diagnosis",
+  rerunLabel,
   rerunNote,
 }: Props) {
+  const { t } = useTranslation();
+  const effectiveRerunLabel = rerunLabel ?? t("board.diagnosisPending.rerunDefault");
   return (
     <div className="lens-board-pending" role="status" aria-live="polite">
       <div className="lens-board-pending-head">
         <div className="lens-board-pending-pulse" aria-hidden="true" />
         <div className="lens-board-pending-copy">
-          <p className="lens-board-pending-kicker">Diagnosis status</p>
-          <p className="lens-board-pending-text">{message ?? "Diagnosis in progress"}</p>
+          <p className="lens-board-pending-kicker">{t("board.diagnosisPending.statusLabel")}</p>
+          <p className="lens-board-pending-text">{message ?? t("board.diagnosisPending.defaultMessage")}</p>
           <p className="lens-board-pending-sub">
-            {subtext ?? "The incident is visible now. The diagnosis narrative usually follows once evidence links settle."}
+            {subtext ?? t("board.diagnosisPending.defaultSubtext")}
           </p>
         </div>
       </div>
 
       <div className="lens-board-pending-columns">
         <div className="lens-board-pending-panel">
-          <div className="lens-board-pending-panel-title">Confirmed now</div>
+          <div className="lens-board-pending-panel-title">{t("board.diagnosisPending.confirmedNow")}</div>
           <ul className="lens-board-pending-list">
             {confirmedNow.map((item) => (
               <li key={item}>{item}</li>
@@ -49,7 +53,7 @@ export function DiagnosisPending({
         </div>
 
         <div className="lens-board-pending-panel lens-board-pending-panel-muted">
-          <div className="lens-board-pending-panel-title">Not confirmed yet</div>
+          <div className="lens-board-pending-panel-title">{t("board.diagnosisPending.notConfirmedYet")}</div>
           <ul className="lens-board-pending-list">
             {notYetConfirmed.map((item) => (
               <li key={item}>{item}</li>
@@ -60,7 +64,7 @@ export function DiagnosisPending({
 
       <div className="lens-board-pending-operator">
         <div className="lens-board-pending-panel lens-board-pending-panel-strong">
-          <div className="lens-board-pending-panel-title">Operator next step</div>
+          <div className="lens-board-pending-panel-title">{t("board.diagnosisPending.operatorNextStep")}</div>
           <ul className="lens-board-pending-list">
             {nextSteps.map((item) => (
               <li key={item}>{item}</li>
@@ -72,10 +76,10 @@ export function DiagnosisPending({
           <button
             type="button"
             className="lens-board-btn-evidence lens-board-btn-evidence-secondary"
-            aria-label="Open Evidence Studio from diagnosis status"
+            aria-label={t("board.diagnosisPending.openEvidenceLabel")}
             onClick={(event) => onOpenEvidence?.(event.currentTarget)}
           >
-            Open Evidence Studio first
+            {t("board.diagnosisPending.openEvidenceStudioFirst")}
           </button>
           <button
             type="button"
@@ -84,13 +88,13 @@ export function DiagnosisPending({
             aria-describedby="lens-board-rerun-note"
             onClick={onRerunDiagnosis}
           >
-            {rerunLabel}
+            {effectiveRerunLabel}
           </button>
           <p id="lens-board-rerun-note" className="lens-board-pending-note">
             {rerunNote ?? (
               status === "pending"
-                ? "Diagnosis is already running. Stay on the evidence lanes until this run finishes."
-                : "Use this to request one new diagnosis run from the current incident evidence."
+                ? t("board.diagnosisPending.rerunPendingNote")
+                : t("board.diagnosisPending.rerunDefaultNote")
             )}
           </p>
         </div>

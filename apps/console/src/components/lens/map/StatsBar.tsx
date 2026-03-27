@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import type { RuntimeMapSummary } from "../../../api/curated-types.js";
 
 interface Props {
@@ -9,6 +10,8 @@ interface Props {
  * Displayed at the top of Level 0 (Map view).
  */
 export function StatsBar({ summary }: Props) {
+  const { t } = useTranslation();
+
   return (
     <div className="l0-stats" data-testid="stats-bar">
       <div className="stat-block">
@@ -18,7 +21,7 @@ export function StatsBar({ summary }: Props) {
         >
           {summary.activeIncidents}
         </span>
-        <span className="stat-label">Active Incidents</span>
+        <span className="stat-label">{t("map.stats.activeIncidents")}</span>
       </div>
       <div className="stat-block">
         <span
@@ -27,19 +30,19 @@ export function StatsBar({ summary }: Props) {
         >
           {summary.degradedNodes}
         </span>
-        <span className="stat-label">Degraded Services</span>
+        <span className="stat-label">{t("map.stats.degradedServices")}</span>
       </div>
       <div className="stat-block">
         <span className="stat-value" data-testid="stat-req-per-sec">
           {Math.round(summary.clusterReqPerSec)}
         </span>
-        <span className="stat-label">Req/s (cluster)</span>
+        <span className="stat-label">{t("map.stats.reqPerSec")}</span>
       </div>
       <div className="stat-block">
         <span className="stat-value" data-testid="stat-p95">
           {Math.round(summary.clusterP95Ms)}ms
         </span>
-        <span className="stat-label">P95 Latency</span>
+        <span className="stat-label">{t("map.stats.p95Latency")}</span>
       </div>
     </div>
   );

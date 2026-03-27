@@ -12,6 +12,7 @@ import { createInterface } from "node:readline";
 
 export interface Credentials {
   anthropicApiKey?: string;
+  locale?: string;
 }
 
 function getCredentialsDir(): string {
@@ -109,7 +110,8 @@ export async function resolveApiKey(options: {
 }): Promise<string | undefined> {
   // 1. CLI flag
   if (options.apiKey) {
-    saveCredentials({ anthropicApiKey: options.apiKey });
+    const existing = loadCredentials();
+    saveCredentials({ ...existing, anthropicApiKey: options.apiKey });
     return options.apiKey;
   }
 
@@ -128,7 +130,8 @@ export async function resolveApiKey(options: {
 
   const key = await promptApiKey();
   if (key) {
-    saveCredentials({ anthropicApiKey: key });
+    const existing = loadCredentials();
+    saveCredentials({ ...existing, anthropicApiKey: key });
     return key;
   }
 

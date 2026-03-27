@@ -1,3 +1,5 @@
+import i18n from "../../../i18n/index.js";
+
 export function shortenForViewport(text: string, maxChars: number): string {
   const trimmed = text.trim();
   if (trimmed.length <= maxChars) return trimmed;
@@ -7,12 +9,22 @@ export function shortenForViewport(text: string, maxChars: number): string {
   return `${trimmed.slice(0, cutoff).trimEnd()}…`;
 }
 
+/**
+ * Split action text into steps for viewport display.
+ * English splits on ", " / " and " / " then ".
+ * Japanese splits on "、" / "。".
+ */
 export function splitActionForViewport(text: string, maxSteps = 3): string[] {
   const trimmed = text.trim();
   if (!trimmed) return [];
 
+  const locale = i18n.language;
+  const splitter = locale === "ja"
+    ? /[、。]/
+    : /\s*(?:,\s+| and (?=[a-z])| then (?=[a-z]))/i;
+
   const parts = trimmed
-    .split(/\s*(?:,\s+| and (?=[a-z])| then (?=[a-z]))/i)
+    .split(splitter)
     .map((part) => part.trim())
     .filter(Boolean);
 

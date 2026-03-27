@@ -6,7 +6,8 @@ import { detectLogger } from "./init/detect-logger.js";
 import { detectPackageManager } from "./init/detect-package-manager.js";
 import { getInstrumentationTemplate } from "./init/templates.js";
 import { patchScripts } from "./init/patch-scripts.js";
-import { resolveApiKey } from "./init/credentials.js";
+import { resolveApiKey, loadCredentials, saveCredentials } from "./init/credentials.js";
+import { createInterface } from "node:readline";
 
 const OTEL_DEPS = [
   "@opentelemetry/sdk-node",
@@ -237,56 +238,78 @@ export async function runInit(_argv: string[], options: InitOptions = {}): Promi
     );
   }
 
+  // --- 6b. Language selection ---
+  let locale: "en" | "ja" = "en";
+  if (!options.noInteractive && process.stdin.isTTY) {
+    const rl = createInterface({ input: process.stdin, output: process.stdout });
+    const localeAnswer = await new Promise<string>((resolve) => {
+      rl.question("Preferred language / 言語選択 (en/ja) [en]: ", (answer) => {
+        rl.close();
+        resolve(answer.trim().toLowerCase() || "en");
+      });
+    });
+    locale = localeAnswer === "ja" ? "ja" : "en";
+    const creds = loadCredentials();
+    saveCredentials({ ...creds, locale });
+    process.stdout.write(locale === "ja" ? `言語: 日本語\n` : `Language: English\n`);
+  }
+
+  const ja = locale === "ja";
+
   // --- 7. Signal check ---
-  process.stdout.write("\n3amoncall init complete!\n\n");
-  process.stdout.write("Signal check:\n");
-  process.stdout.write("  ✓ Traces — auto-instrumented (HTTP, DB, etc.)\n");
-  process.stdout.write("  ✓ Metrics — auto-instrumented (request duration, etc.)\n");
+  process.stdout.write(ja ? "\n3amoncall init 完了!\n\n" : "\n3amoncall init complete!\n\n");
+  process.stdout.write(ja ? "シグナル確認:\n" : "Signal check:\n");
+  process.stdout.write(ja
+    ? "  ✓ トレース — 自動計装 (HTTP, DB 等)\n"
+    : "  ✓ Traces — auto-instrumented (HTTP, DB, etc.)\n");
+  process.stdout.write(ja
+    ? "  ✓ メトリクス — 自動計装 (リクエスト所要時間等)\n"
+    : "  ✓ Metrics — auto-instrumented (request duration, etc.)\n");
   if (logger.detected) {
-    process.stdout.write(`  ✓ Logs — ${logger.name} detected, bridge installed\n`);
+    process.stdout.write(ja
+      ? `  ✓ ログ — ${logger.name} 検出済み、ブリッジをインストール\n`
+      : `  ✓ Logs — ${logger.name} detected, bridge installed\n`);
   } else {
-    process.stdout.write(
-      "  ✗ Logs — no structured logger detected. Install pino or winston for log-based diagnosis.\n",
-    );
+    process.stdout.write(ja
+      ? "  ✗ ログ — 構造化ロガー未検出。ログ診断には pino か winston をインストールしてください。\n"
+      : "  ✗ Logs — no structured logger detected. Install pino or winston for log-based diagnosis.\n");
   }
   process.stdout.write("\n");
 
   // --- 8. Startup guidance ---
   if (isNextjs) {
-    process.stdout.write(
-      "Next.js detected: instrumentation.ts uses register() export — Next.js loads it automatically.\n",
-    );
+    process.stdout.write(ja
+      ? "Next.js を検出: instrumentation.ts の register() を使用 — Next.js が自動的に読み込みます。\n"
+      : "Next.js detected: instrumentation.ts uses register() export — Next.js loads it automatically.\n");
   } else if (Object.keys(patchResult.patched).length > 0) {
-    process.stdout.write("Scripts already patched — instrumentation loads automatically on start.\n");
+    process.stdout.write(ja
+      ? "scripts パッチ適用済み — 起動時に自動で計装が読み込まれます。\n"
+      : "Scripts already patched — instrumentation loads automatically on start.\n");
   } else if (isEsm) {
-    process.stdout.write(
-      `Add --import to your startup command:\n` +
-      `  node --import ./${instrumentationFile} app.js\n`,
-    );
+    process.stdout.write(ja
+      ? `起動コマンドに --import を追加:\n  node --import ./${instrumentationFile} app.js\n`
+      : `Add --import to your startup command:\n  node --import ./${instrumentationFile} app.js\n`);
   } else {
-    process.stdout.write(
-      `Add --require to your startup command:\n` +
-      `  node --require ./${instrumentationFile} app.js\n`,
-    );
+    process.stdout.write(ja
+      ? `起動コマンドに --require を追加:\n  node --require ./${instrumentationFile} app.js\n`
+      : `Add --require to your startup command:\n  node --require ./${instrumentationFile} app.js\n`);
   }
 
   // --- 9. Start local Receiver ---
   if (isDockerInstalled()) {
-    process.stdout.write("\nStarting local Receiver...\n");
+    process.stdout.write(ja ? "\nローカル Receiver を起動中...\n" : "\nStarting local Receiver...\n");
     try {
       // Import dynamically to avoid circular dependency issues in tests
       const { runDev } = await import("./dev.js");
       runDev({ apiKey });
     } catch {
-      process.stderr.write(
-        "Warning: failed to start Receiver container.\n" +
-        "Fix: run `npx 3amoncall dev` manually after resolving the issue.\n",
-      );
+      process.stderr.write(ja
+        ? "警告: Receiver コンテナの起動に失敗しました。\n対処: 問題を解決してから `npx 3amoncall dev` を実行してください。\n"
+        : "Warning: failed to start Receiver container.\nFix: run `npx 3amoncall dev` manually after resolving the issue.\n");
     }
   } else {
-    process.stdout.write(
-      "\nDocker not found — skipping Receiver startup.\n" +
-      "Install Docker (Docker Desktop, OrbStack, Podman, or colima) and run `npx 3amoncall dev`.\n",
-    );
+    process.stdout.write(ja
+      ? "\nDocker が見つかりません — Receiver の起動をスキップします。\nDocker (Docker Desktop, OrbStack, Podman, colima) をインストールし、`npx 3amoncall dev` を実行してください。\n"
+      : "\nDocker not found — skipping Receiver startup.\nInstall Docker (Docker Desktop, OrbStack, Podman, or colima) and run `npx 3amoncall dev`.\n");
   }
 }

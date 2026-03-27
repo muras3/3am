@@ -516,6 +516,26 @@ export function runStorageSuite(
       expect(result).toBe(false);
     });
 
+    // getSettings / setSettings ─────────────────────────────────────────────
+
+    it("getSettings returns null for non-existent key", async () => {
+      const value = await driver.getSettings("nonexistent_key");
+      expect(value).toBeNull();
+    });
+
+    it("setSettings then getSettings returns stored value", async () => {
+      await driver.setSettings("test_key", "test_value");
+      const value = await driver.getSettings("test_key");
+      expect(value).toBe("test_value");
+    });
+
+    it("setSettings overwrites existing value", async () => {
+      await driver.setSettings("overwrite_key", "first");
+      await driver.setSettings("overwrite_key", "second");
+      const value = await driver.getSettings("overwrite_key");
+      expect(value).toBe("second");
+    });
+
     // createIncident initializes compact fields ──────────────────────────────
 
     it("createIncident initializes telemetryScope, spanMembership, anomalousSignals, and platformEvents", async () => {

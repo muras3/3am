@@ -6,6 +6,7 @@ import { parseResult } from "./parse-result.js";
 export type DiagnoseOptions = {
   model?: string;
   promptVersion?: string;
+  locale?: "en" | "ja";
 };
 
 export async function diagnose(
@@ -14,7 +15,7 @@ export async function diagnose(
 ): Promise<DiagnosisResult> {
   const model = options?.model ?? "claude-sonnet-4-6";
   const promptVersion = options?.promptVersion ?? "v5";
-  const prompt = buildPrompt(packet);
+  const prompt = buildPrompt(packet, { locale: options?.locale });
   const raw = await callModel(prompt, { model, maxTokens: 8192 });
   return parseResult(raw, {
     incidentId: packet.incidentId,

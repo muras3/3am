@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 import type { MapNode as MapNodeType, MapEdge } from "../../../api/curated-types.js";
 import type { LensLevel } from "../../../routes/__root.js";
 import { MapNode } from "./MapNode.js";
@@ -41,14 +42,15 @@ const LEFT_OFFSET = 28; // leave room for tier labels
  * SVG edges are drawn behind nodes and animate traffic dots via animateMotion.
  */
 export function MapGraph({ nodes, edges, emptyState, zoomTo }: Props) {
+  const { t } = useTranslation();
   const nodePositions = computeNodePositions(nodes);
 
   return (
-    <div className="system-map" aria-label="Runtime dependency map">
+    <div className="system-map" aria-label={t("map.mapLabel")}>
       {/* Tier labels */}
-      <span className="map-tier-label t0">Entry Points</span>
-      <span className="map-tier-label t1">Runtime Units</span>
-      <span className="map-tier-label t2">Dependencies</span>
+      <span className="map-tier-label t0">{t("map.entryPoints")}</span>
+      <span className="map-tier-label t1">{t("map.runtimeUnits")}</span>
+      <span className="map-tier-label t2">{t("map.dependencies")}</span>
 
       {/* Tier dividers */}
       {TIER_DIVIDERS.map((top) => (
@@ -134,21 +136,21 @@ export function MapGraph({ nodes, edges, emptyState, zoomTo }: Props) {
 
       {/* Map legend */}
       <div className="map-legend">
-        <span style={{ color: "var(--ink-2)" }}>Observed from spans</span>
-        <span>&#9644; entry point</span>
-        <span>&#9673; runtime unit</span>
-        <span>&#9634; dependency</span>
+        <span style={{ color: "var(--ink-2)" }}>{t("map.legendObserved")}</span>
+        <span>&#9644; {t("map.legendEntry")}</span>
+        <span>&#9673; {t("map.legendRuntime")}</span>
+        <span>&#9634; {t("map.legendDependency")}</span>
         <span>
           <span className="legend-line" style={{ background: "var(--accent)" }} />
-          errors
+          {t("map.legendErrors")}
         </span>
         <span>
           <span className="legend-line" style={{ background: "var(--amber)" }} />
-          degraded
+          {t("map.legendDegraded")}
         </span>
         <span>
           <span className="legend-line" style={{ background: "var(--good)" }} />
-          healthy
+          {t("map.legendHealthy")}
         </span>
       </div>
     </div>

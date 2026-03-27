@@ -440,7 +440,7 @@ describe("LensLogsView", () => {
     const absenceText = document.querySelector(".lens-logs-absence-text");
     expect(absenceText).not.toBeNull();
     expect(absenceText?.textContent).toMatch(/expected/i);
-    expect(absenceText?.textContent).toMatch(/observed: none/i);
+    expect(absenceText?.textContent).toMatch(/observed: —/i);
   });
 
   it("absence cluster has teal header", () => {

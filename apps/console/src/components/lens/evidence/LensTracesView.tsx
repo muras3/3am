@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from "react";
 import { useSearch } from "@tanstack/react-router";
+import { useTranslation } from "react-i18next";
 import type { TraceSurface, TraceGroup, TraceSpan } from "../../../api/curated-types.js";
 import type { LensSearchParams } from "../../../routes/__root.js";
 
@@ -31,6 +32,7 @@ function SpanRow({
   proofType,
   selectedTargetId,
 }: SpanRowProps) {
+  const { t } = useTranslation();
   const [expanded, setExpanded] = useState(false);
   const hasDetail =
     (span.attributes && Object.keys(span.attributes).length > 0)
@@ -106,7 +108,7 @@ function SpanRow({
           <div className="lens-traces-detail-grid">
             {span.attributes && Object.keys(span.attributes).length > 0 && (
               <div className="lens-traces-attrs">
-                <div className="lens-traces-detail-label">Attributes</div>
+                <div className="lens-traces-detail-label">{t("evidence.traces.attributes")}</div>
                 <dl className="lens-traces-attr-list">
                   {Object.entries(span.attributes).map(([k, v]) => (
                     <div key={k} className="lens-traces-attr-row">
@@ -120,7 +122,7 @@ function SpanRow({
 
             {span.correlatedLogs && span.correlatedLogs.length > 0 && (
               <div className="lens-traces-corr-logs">
-                <div className="lens-traces-detail-label">Correlated Logs</div>
+                <div className="lens-traces-detail-label">{t("evidence.traces.correlatedLogs")}</div>
                 {span.correlatedLogs.map((log, i) => (
                   <div key={`${log.timestamp}-${i}`} className="lens-traces-corr-log-row">
                     <span className="lens-traces-corr-log-ts">{log.timestamp}</span>
@@ -195,6 +197,7 @@ function TraceGroupBlock({
   proofType,
   selectedTargetId,
 }: TraceGroupBlockProps) {
+  const { t } = useTranslation();
   const isError = group.status >= 500;
   const headerClass = [
     "lens-traces-trace-header",
@@ -219,11 +222,11 @@ function TraceGroupBlock({
         <span className={`lens-traces-trace-dur${isError && !isExpected ? " anomalous" : ""}`}>
           {group.durationMs.toLocaleString()}ms
           {group.expectedDurationMs && !isExpected && (
-            <span className="lens-traces-dur-expected"> expected: {group.expectedDurationMs}ms</span>
+            <span className="lens-traces-dur-expected"> {t("evidence.traces.expected", { duration: group.expectedDurationMs })}</span>
           )}
         </span>
         {isExpected && (
-          <span className="lens-traces-expected-badge">expected behavior</span>
+          <span className="lens-traces-expected-badge">{t("evidence.traces.expectedBehavior")}</span>
         )}
       </div>
 
@@ -249,6 +252,7 @@ export function LensTracesView({
   baselineState = "ready",
   evidenceDensity = "rich",
 }: LensTracesViewProps) {
+  const { t } = useTranslation();
   const [baselineVisible, setBaselineVisible] = useState(false);
   const search = useSearch({ from: "__root__" }) as LensSearchParams;
   const selectedTargetId = search.targetId;
@@ -268,19 +272,19 @@ export function LensTracesView({
   const baselineUnavailable = expected.length === 0;
   const baselineToggleLabel = baselineUnavailable
     ? baselineState === "unavailable"
-      ? "Expected trace not captured yet"
-      : "Expected trace is still sparse"
+      ? t("evidence.traces.baselineUnavailable")
+      : t("evidence.traces.baselineSparse")
     : baselineVisible
-      ? "Hide expected trace"
-      : "Show expected trace";
+      ? t("evidence.traces.hideExpected")
+      : t("evidence.traces.showExpected");
 
   return (
     <div className="lens-traces-root">
       {observed.length === 0 ? (
         <div className="lens-traces-empty">
           {evidenceDensity === "empty"
-            ? "Observed trace lane is reserved. Deterministic trace evidence will appear here when telemetry arrives."
-            : "Only limited traces are available for this incident."}
+            ? t("evidence.traces.emptyObserved")
+            : t("evidence.traces.limitedTraces")}
         </div>
       ) : (
         observed.map((group) => (
@@ -321,8 +325,8 @@ export function LensTracesView({
         ) : (
           <div className="lens-traces-empty lens-traces-empty-baseline">
             {baselineState === "unavailable"
-              ? "No baseline trace has been attached to this incident window yet."
-              : "Baseline comparison is still too sparse to render expected behavior safely."}
+              ? t("evidence.traces.noBaseline")
+              : t("evidence.traces.baselineTooSparse")}
           </div>
         )}
       </div>

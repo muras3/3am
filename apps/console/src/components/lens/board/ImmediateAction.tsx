@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import type { CuratedState, IncidentAction } from "../../../api/curated-types.js";
 import { sectionFallback } from "./board-state.js";
 import { shortenForViewport, splitActionForViewport } from "./viewport-text.js";
@@ -8,13 +9,14 @@ interface Props {
 }
 
 export function ImmediateAction({ action, state }: Props) {
+  const { t } = useTranslation();
   const text = action.text.trim() || sectionFallback(state, "action");
   const rationale =
     action.rationale.trim() || sectionFallback(state, "action");
   const doNot = action.doNot.trim();
   const actionSteps = splitActionForViewport(text);
   const rationalePreview = shortenForViewport(rationale, 110);
-  const doNotText = doNot || "No contrary guidance returned.";
+  const doNotText = doNot || t("board.immediateAction.doNotEmpty");
   const doNotPreview = shortenForViewport(doNotText, 110);
   const showFullDetails =
     actionSteps.join(" ").trim() !== text ||
@@ -22,9 +24,9 @@ export function ImmediateAction({ action, state }: Props) {
     doNotPreview !== doNotText;
   const isDirectional =
     state.diagnosis !== "ready" || state.evidenceDensity === "sparse";
-  const title = isDirectional ? "Next Operator Step" : "Immediate Action";
-  const supportLabel = isDirectional ? "Why this first" : "Why";
-  const doNotLabel = isDirectional ? "Avoid assuming" : "Do not";
+  const title = isDirectional ? t("board.immediateAction.titleDirectional") : t("board.immediateAction.title");
+  const supportLabel = isDirectional ? t("board.immediateAction.supportLabelDirectional") : t("board.immediateAction.supportLabel");
+  const doNotLabel = isDirectional ? t("board.immediateAction.doNotLabelDirectional") : t("board.immediateAction.doNotLabel");
 
   return (
     <div className="lens-board-action-hero">
@@ -39,10 +41,10 @@ export function ImmediateAction({ action, state }: Props) {
       </div>
       {isDirectional ? (
         <p className="lens-board-action-intro">
-          Use this as the safest next move with current evidence, not as a confirmed remediation.
+          {t("board.immediateAction.directionalIntro")}
         </p>
       ) : null}
-      <div className="lens-board-action-steps" role="list" aria-label="Immediate action steps">
+      <div className="lens-board-action-steps" role="list" aria-label={t("board.immediateAction.stepsLabel")}>
         {actionSteps.map((step, index) => (
           <div key={`${step}-${index}`} className="lens-board-action-step" role="listitem">
             <span className="lens-board-action-step-index">{index + 1}</span>
@@ -64,16 +66,16 @@ export function ImmediateAction({ action, state }: Props) {
       </div>
       {showFullDetails ? (
         <details className="lens-board-inline-details lens-board-inline-details-strong">
-          <summary>Full action details</summary>
+          <summary>{t("board.immediateAction.fullDetails")}</summary>
           <div className="lens-board-inline-details-body lens-board-action-detail-copy">
             <div>
-              <strong>Action:</strong> {text}
+              <strong>{t("board.immediateAction.actionLabel")}</strong> {text}
             </div>
             <div>
-              <strong>Why:</strong> {rationale}
+              <strong>{t("board.immediateAction.whyLabel")}</strong> {rationale}
             </div>
             <div>
-              <strong>Do not:</strong> {doNotText}
+              <strong>{t("board.immediateAction.doNotFullLabel")}</strong> {doNotText}
             </div>
           </div>
         </details>

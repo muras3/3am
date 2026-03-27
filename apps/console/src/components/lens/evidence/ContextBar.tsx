@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import type { ExtendedIncident } from "../../../api/curated-types.js";
 
 interface Props {
@@ -9,11 +10,12 @@ interface Props {
  * Shows health dot + incident ID (mono) + em-dash + headline + action summary.
  */
 export function ContextBar({ incident }: Props) {
-  const headline = incident.headline.trim() || "Evidence Studio is waiting for a diagnosis narrative.";
+  const { t } = useTranslation();
+  const headline = incident.headline.trim() || t("evidence.contextBarFallback");
   const actionText = incident.action.text.trim();
 
   return (
-    <div className="lens-ev-context-bar" role="region" aria-label="Incident context">
+    <div className="lens-ev-context-bar" role="region" aria-label={t("evidence.contextBarLabel")}>
       <span
         className={`lens-ev-health-dot lens-ev-health-dot-${incident.severity}`}
         aria-hidden="true"
@@ -23,7 +25,7 @@ export function ContextBar({ incident }: Props) {
       <span className="lens-ev-ctx-headline">{headline}</span>
       {actionText && (
         <span className="lens-ev-ctx-action">
-          Action: {actionText}
+          {t("evidence.contextBarAction", { text: actionText })}
         </span>
       )}
     </div>

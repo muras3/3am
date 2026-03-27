@@ -9,6 +9,11 @@ export class DiagnosisRunner {
     private readonly telemetryStore: TelemetryStoreDriver,
   ) {}
 
+  private async resolveLocale(): Promise<"en" | "ja"> {
+    const stored = await this.storage.getSettings("locale");
+    return stored === "ja" ? "ja" : "en";
+  }
+
   async run(incidentId: string): Promise<boolean> {
     if (!process.env["ANTHROPIC_API_KEY"]) {
       console.warn("[diagnosis-runner] ANTHROPIC_API_KEY not set — skipping diagnosis");
@@ -22,15 +27,17 @@ export class DiagnosisRunner {
         return false;
       }
 
+      const locale = await this.resolveLocale();
+
       // Stage 1: incident diagnosis (DIAGNOSIS_MODEL env var overrides default model)
       const diagnosisModel = process.env["DIAGNOSIS_MODEL"];
       const result = diagnosisModel
-        ? await diagnose(incident.packet, { model: diagnosisModel })
-        : await diagnose(incident.packet);
+        ? await diagnose(incident.packet, { model: diagnosisModel, locale })
+        : await diagnose(incident.packet, { locale });
       await this.storage.appendDiagnosis(incidentId, result);
 
       // Stage 2: console narrative generation (graceful degradation — failure does not affect stage 1)
-      await this.runNarrativeGeneration(incident, result);
+      await this.runNarrativeGeneration(incident, result, locale);
 
       return true;
     } catch (err) {
@@ -54,7 +61,8 @@ export class DiagnosisRunner {
       return false;
     }
 
-    return this.runNarrativeGeneration(incident, incident.diagnosisResult);
+    const locale = await this.resolveLocale();
+    return this.runNarrativeGeneration(incident, incident.diagnosisResult, locale);
   }
 
   /**
@@ -65,6 +73,7 @@ export class DiagnosisRunner {
   private async runNarrativeGeneration(
     incident: Incident,
     diagnosisResult: Awaited<ReturnType<typeof diagnose>>,
+    locale?: "en" | "ja",
   ): Promise<boolean> {
     const incidentId = incident.incidentId;
     try {
@@ -76,8 +85,9 @@ export class DiagnosisRunner {
       const tryGenerate = async (): Promise<void> => {
         // NARRATIVE_MODEL env var overrides default model (e.g. claude-haiku-4-5-20251001 for faster execution)
         const narrativeModel = process.env["NARRATIVE_MODEL"];
-        const narrative = narrativeModel
-          ? await generateConsoleNarrative(diagnosisResult, reasoningStructure, { model: narrativeModel })
+        const narrativeOpts = { ...(narrativeModel ? { model: narrativeModel } : {}), ...(locale ? { locale } : {}) };
+        const narrative = Object.keys(narrativeOpts).length > 0
+          ? await generateConsoleNarrative(diagnosisResult, reasoningStructure, narrativeOpts)
           : await generateConsoleNarrative(diagnosisResult, reasoningStructure);
         await this.storage.appendConsoleNarrative(incidentId, narrative);
       };

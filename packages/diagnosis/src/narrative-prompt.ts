@@ -1,5 +1,9 @@
 import type { DiagnosisResult, ReasoningStructure } from "@3amoncall/core";
 
+export interface BuildNarrativePromptOptions {
+  locale?: "en" | "ja";
+}
+
 /**
  * Build the stage 2 prompt for console narrative generation.
  *
@@ -10,6 +14,7 @@ import type { DiagnosisResult, ReasoningStructure } from "@3amoncall/core";
 export function buildNarrativePrompt(
   diagnosisResult: DiagnosisResult,
   context: ReasoningStructure,
+  options?: BuildNarrativePromptOptions,
 ): string {
   const dr = diagnosisResult;
   const proofRefsSummary = context.proofRefs
@@ -153,5 +158,13 @@ CRITICAL CONSTRAINTS:
     {"id": "...", "label": "...", "expected": "...", "observed": "...", "explanation": "..."}
   ]
 }
-`;
+${options?.locale === "ja" ? `
+## Language Instruction
+
+Respond entirely in Japanese. Use concise language that an on-call engineer can act on immediately at 3am — every word should reduce time-to-action.
+Keep all JSON keys in English. Only the string values should be in Japanese.
+Technical terms (service names, trace IDs, metric names, HTTP status codes) stay in English.
+Avoid formal or polite Japanese (敬語); use direct, action-oriented phrasing.
+The "immediate_action" field must read like a command, not a suggestion.
+` : ""}`;
 }

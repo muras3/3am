@@ -12,6 +12,8 @@ export type GenerateNarrativeOptions = {
   model?: string;
   /** Prompt version identifier. Defaults to "narrative-v1". */
   promptVersion?: string;
+  /** Output locale. "ja" appends Japanese language instruction. Defaults to "en". */
+  locale?: "en" | "ja";
 };
 
 const DEFAULT_MODEL = "claude-haiku-4-5-20251001";
@@ -35,7 +37,7 @@ export async function generateConsoleNarrative(
   const model = options?.model ?? DEFAULT_MODEL;
   const promptVersion = options?.promptVersion ?? DEFAULT_PROMPT_VERSION;
 
-  const prompt = buildNarrativePrompt(diagnosisResult, context);
+  const prompt = buildNarrativePrompt(diagnosisResult, context, { locale: options?.locale });
   const raw = await callModel(prompt, { model, maxTokens: MAX_TOKENS });
 
   return parseNarrative(raw, {
