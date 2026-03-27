@@ -34,6 +34,7 @@ import { resolveApiKey } from "./init/credentials.js";
 
 export interface DeployOptions {
   platform?: "vercel" | "cloudflare";
+  projectName?: string;
   /** --setup: force first-time flow */
   setup?: boolean;
   /** --no-setup: force re-deploy flow */
@@ -190,7 +191,9 @@ export async function runDeploy(
   // Step 7: Provision and deploy Receiver
   // -------------------------------------------------------------------------
   info(`\nDeploying Receiver to ${platform}...\n`, json);
-  const provider = createProvider(platform);
+  const provider = createProvider(platform, {
+    projectName: options.projectName,
+  });
   let deployedUrl: string;
   try {
     // Set ANTHROPIC_API_KEY on the platform before deploying

@@ -28,6 +28,10 @@ export interface DeployProvider {
   cleanup(): void;
 }
 
+export interface ProviderOptions {
+  projectName?: string;
+}
+
 const REPO_URL = "https://github.com/muras3/3amoncall.git";
 
 // ---------------------------------------------------------------------------
@@ -36,7 +40,11 @@ const REPO_URL = "https://github.com/muras3/3amoncall.git";
 
 function cloneReceiver(): string {
   const dir = mkdtempSync(join(tmpdir(), "3amoncall-deploy-"));
-  execFileSync("git", ["clone", "--depth", "1", "--single-branch", REPO_URL, dir], {
+  const repoSource = process.env["THREEAMONCALL_DEPLOY_REPO"] ?? REPO_URL;
+  const cloneArgs = repoSource.startsWith("http")
+    ? ["clone", "--depth", "1", "--single-branch", repoSource, dir]
+    : ["clone", repoSource, dir];
+  execFileSync("git", cloneArgs, {
     stdio: "pipe",
   });
   return dir;
@@ -102,6 +110,28 @@ function spawnWithStdin(
   });
 }
 
+function listVercelEnvKeys(cwd: string, environment = "production"): string[] {
+  const output = execFileSync(
+    "vercel",
+    ["env", "ls", environment, "--format", "json"],
+    { cwd, stdio: "pipe" },
+  ).toString();
+
+  try {
+    const parsed = JSON.parse(output) as { envs?: Array<{ key?: string }> };
+    return (parsed.envs ?? []).flatMap((env) =>
+      typeof env.key === "string" ? [env.key] : [],
+    );
+  } catch {
+    return [];
+  }
+}
+
+function hasExistingVercelDatabaseEnv(cwd: string): boolean {
+  const envKeys = new Set(listVercelEnvKeys(cwd));
+  return envKeys.has("DATABASE_URL") || envKeys.has("POSTGRES_URL");
+}
+
 // ---------------------------------------------------------------------------
 // Vercel
 // ---------------------------------------------------------------------------
@@ -112,8 +142,9 @@ function extractVercelUrl(output: string): string | undefined {
   return match?.[0];
 }
 
-export function createVercelProvider(): DeployProvider {
+export function createVercelProvider(options: ProviderOptions = {}): DeployProvider {
   let tempDir: string | undefined = cloneReceiver();
+  const projectName = options.projectName ?? "3amoncall-receiver";
   process.stderr.write(`Cloned Receiver to ${tempDir}\n`);
 
   // Create Vercel project link so env vars can be set before deploy.
@@ -121,20 +152,24 @@ export function createVercelProvider(): DeployProvider {
   // --project ensures a valid lowercase name (temp dir basenames can
   // contain uppercase characters which Vercel rejects).
   process.stderr.write("Linking Vercel project...\n");
-  execFileSync("vercel", ["link", "--yes", "--project", "3amoncall-receiver"], {
+  execFileSync("vercel", ["link", "--yes", "--project", projectName], {
     cwd: tempDir,
     stdio: "inherit",
   });
 
-  // Provision Neon Postgres (Vercel Marketplace).
-  // --non-interactive skips all prompts including terms acceptance.
-  // Running from a linked project auto-connects the resource and
-  // injects DATABASE_URL into the project's env vars.
-  process.stderr.write("Provisioning Neon Postgres database...\n");
-  execFileSync("vercel", ["integration", "add", "neon", "--non-interactive"], {
-    cwd: tempDir,
-    stdio: "inherit",
-  });
+  if (hasExistingVercelDatabaseEnv(tempDir)) {
+    process.stderr.write("Existing Postgres env detected — reusing current Vercel database.\n");
+  } else {
+    // Provision Neon Postgres (Vercel Marketplace).
+    // --non-interactive skips all prompts including terms acceptance.
+    // Running from a linked project auto-connects the resource and
+    // injects DATABASE_URL into the project's env vars.
+    process.stderr.write("Provisioning Neon Postgres database...\n");
+    execFileSync("vercel", ["integration", "add", "neon", "--non-interactive"], {
+      cwd: tempDir,
+      stdio: "inherit",
+    });
+  }
 
   return {
     async deploy() {
@@ -142,7 +177,7 @@ export function createVercelProvider(): DeployProvider {
 
       const result = await spawnAndCapture(
         "vercel",
-        ["deploy", "--prod", "--yes"],
+        ["deploy", "--prod", "--yes", "--archive", "tgz"],
         tempDir,
       );
 
@@ -163,11 +198,10 @@ export function createVercelProvider(): DeployProvider {
 
     async setEnvVar(key, value) {
       if (!tempDir) throw new Error("cleanup() was already called");
-      await spawnWithStdin(
+      execFileSync(
         "vercel",
-        ["env", "add", key, "production", "--yes"],
-        tempDir,
-        value,
+        ["env", "add", key, "production", "--value", value, "--yes", "--force"],
+        { cwd: tempDir, stdio: "inherit" },
       );
     },
 
@@ -331,7 +365,10 @@ export function createCloudflareProvider(): DeployProvider {
 // Factory
 // ---------------------------------------------------------------------------
 
-export function createProvider(platform: "vercel" | "cloudflare"): DeployProvider {
-  if (platform === "vercel") return createVercelProvider();
+export function createProvider(
+  platform: "vercel" | "cloudflare",
+  options: ProviderOptions = {},
+): DeployProvider {
+  if (platform === "vercel") return createVercelProvider(options);
   return createCloudflareProvider();
 }

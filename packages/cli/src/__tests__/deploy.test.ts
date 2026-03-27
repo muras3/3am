@@ -268,6 +268,22 @@ describe("runDeploy()", () => {
     expect(setEnvOrder).toBeLessThan(deployOrder!);
   });
 
+  it("passes projectName to the provider factory", async () => {
+    setupHappyPathMocks();
+    const { createProvider } = await import("../commands/deploy/provider.js");
+
+    await runDeploy([], {
+      yes: true,
+      noInteractive: true,
+      platform: "vercel",
+      projectName: "3amoncall-receiver-dev",
+    });
+
+    expect(vi.mocked(createProvider)).toHaveBeenCalledWith("vercel", {
+      projectName: "3amoncall-receiver-dev",
+    });
+  });
+
   // -------------------------------------------------------------------------
   // Confirmation flow
   // -------------------------------------------------------------------------
