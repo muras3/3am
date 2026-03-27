@@ -42,12 +42,58 @@ export function saveCredentials(creds: Credentials): void {
 }
 
 export async function promptApiKey(): Promise<string> {
-  const rl = createInterface({ input: process.stdin, output: process.stdout });
-  return new Promise((resolve) => {
-    rl.question("Enter your ANTHROPIC_API_KEY: ", (answer) => {
-      rl.close();
-      resolve(answer.trim());
+  process.stdout.write("Enter your ANTHROPIC_API_KEY: ");
+
+  // Non-TTY fallback (piped input in CI)
+  if (!process.stdin.isTTY || typeof (process.stdin as NodeJS.ReadStream).setRawMode !== "function") {
+    const rl = createInterface({ input: process.stdin, output: process.stdout });
+    return new Promise((resolve) => {
+      rl.question("", (answer) => {
+        rl.close();
+        resolve(answer.trim());
+      });
     });
+  }
+
+  const stdin = process.stdin as NodeJS.ReadStream;
+  return new Promise((resolve) => {
+    stdin.setRawMode(true);
+    stdin.resume();
+    stdin.setEncoding("utf8");
+
+    let value = "";
+
+    const onData = (ch: string) => {
+      const code = ch.charCodeAt(0);
+
+      if (code === 0x03) {
+        // Ctrl+C
+        process.stdout.write("\n");
+        stdin.setRawMode(false);
+        stdin.pause();
+        stdin.removeListener("data", onData);
+        process.exit(1);
+      } else if (code === 0x0d || code === 0x0a) {
+        // Enter
+        process.stdout.write("\n");
+        stdin.setRawMode(false);
+        stdin.pause();
+        stdin.removeListener("data", onData);
+        resolve(value.trim());
+      } else if (code === 0x7f || code === 0x08) {
+        // Backspace
+        if (value.length > 0) {
+          value = value.slice(0, -1);
+          process.stdout.write("\b \b");
+        }
+      } else if (code >= 0x20) {
+        // Printable character
+        value += ch;
+        process.stdout.write("*");
+      }
+    };
+
+    stdin.on("data", onData);
   });
 }
 
