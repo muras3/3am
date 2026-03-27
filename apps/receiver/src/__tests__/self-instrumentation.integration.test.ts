@@ -26,6 +26,7 @@ describe("self-instrumentation integration", () => {
   let receiverServer: ReturnType<typeof serve>;
   const traceBodies: unknown[] = [];
   const logBodies: unknown[] = [];
+  const metricBodies: unknown[] = [];
 
   beforeEach(async () => {
     process.env["ALLOW_INSECURE_DEV_MODE"] = "true";
@@ -43,6 +44,8 @@ describe("self-instrumentation integration", () => {
         traceBodies.push(body);
       } else if (req.url === "/v1/logs") {
         logBodies.push(body);
+      } else if (req.url === "/v1/metrics") {
+        metricBodies.push(body);
       }
 
       res.writeHead(200, { "content-type": "application/json" });
@@ -73,13 +76,14 @@ describe("self-instrumentation integration", () => {
 
     traceBodies.length = 0;
     logBodies.length = 0;
+    metricBodies.length = 0;
     delete process.env["ALLOW_INSECURE_DEV_MODE"];
     delete process.env["SELF_OTEL_CONSOLE_LOGS"];
     delete process.env["SELF_OTEL_ENABLED"];
     delete process.env["SELF_OTEL_EXPORTER_OTLP_ENDPOINT"];
   });
 
-  it("emits real OTLP traces and logs for receiver HTTP traffic", async () => {
+  it("emits real OTLP traces, logs, and metrics for receiver HTTP traffic", async () => {
     const address = receiverServer.address();
     if (!address || typeof address === "string") {
       throw new Error("receiver did not expose a TCP address");
@@ -102,7 +106,7 @@ describe("self-instrumentation integration", () => {
     const missingRes = await fetch(`${baseUrl}/api/incidents/missing`);
     expect(missingRes.status).toBe(404);
 
-    await wait(500);
+    await wait(2500);
     await shutdownNodeSelfTelemetry();
 
     const serviceNames = traceBodies
@@ -143,5 +147,21 @@ describe("self-instrumentation integration", () => {
         ),
       ),
     ).toBe(true);
+
+    const metrics = metricBodies
+      .flatMap((body) => (body as { resourceMetrics?: Array<{ resource?: { attributes?: Array<{ key?: string; value?: { stringValue?: string } }> }; scopeMetrics?: Array<{ metrics?: Array<{ name?: string }> }> }> }).resourceMetrics ?? []);
+
+    const metricServiceNames = metrics
+      .flatMap((resourceMetric) => resourceMetric.resource?.attributes ?? [])
+      .filter((attribute) => attribute.key === "service.name")
+      .map((attribute) => attribute.value?.stringValue);
+    expect(metricServiceNames).toContain("3amoncall-receiver");
+
+    const metricNames = metrics
+      .flatMap((resourceMetric) => resourceMetric.scopeMetrics ?? [])
+      .flatMap((scopeMetric) => scopeMetric.metrics ?? [])
+      .map((metric) => metric.name);
+    expect(metricNames).toContain("3amoncall.receiver.requests");
+    expect(metricNames).toContain("3amoncall.receiver.request.duration");
   });
 });

@@ -1,10 +1,12 @@
 import { diag, DiagConsoleLogger, DiagLogLevel } from "@opentelemetry/api";
 import { OTLPLogExporter } from "@opentelemetry/exporter-logs-otlp-http";
+import { OTLPMetricExporter } from "@opentelemetry/exporter-metrics-otlp-http";
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
 import { HttpInstrumentation } from "@opentelemetry/instrumentation-http";
 import { UndiciInstrumentation } from "@opentelemetry/instrumentation-undici";
 import { resourceFromAttributes } from "@opentelemetry/resources";
-import { BatchLogRecordProcessor } from "@opentelemetry/sdk-logs";
+import { BatchLogRecordProcessor, type LogRecordExporter } from "@opentelemetry/sdk-logs";
+import { PeriodicExportingMetricReader, type PushMetricExporter } from "@opentelemetry/sdk-metrics";
 import { NodeSDK } from "@opentelemetry/sdk-node";
 import {
   ATTR_SERVICE_NAME,
@@ -15,7 +17,7 @@ import { resolveSelfTelemetryConfig, type SelfTelemetryRuntime } from "./config.
 
 let sdkPromise: Promise<NodeSDK | null> | null = null;
 
-function appendPath(endpoint: string, suffix: "/v1/traces" | "/v1/logs"): string {
+function appendPath(endpoint: string, suffix: "/v1/traces" | "/v1/logs" | "/v1/metrics"): string {
   return `${endpoint.replace(/\/$/, "")}${suffix}`;
 }
 
@@ -57,10 +59,18 @@ export async function initializeNodeSelfTelemetry(
           new OTLPLogExporter({
             url: appendPath(config.exporterEndpoint!, "/v1/logs"),
             headers: config.exporterHeaders,
-          }),
+          }) as unknown as LogRecordExporter,
           { scheduledDelayMillis: 200 },
         ),
       ],
+      metricReader: new PeriodicExportingMetricReader({
+        exporter: new OTLPMetricExporter({
+          url: appendPath(config.exporterEndpoint!, "/v1/metrics"),
+          headers: config.exporterHeaders,
+        }) as unknown as PushMetricExporter,
+        exportIntervalMillis: 5000,
+        exportTimeoutMillis: 2000,
+      }),
       instrumentations: [new HttpInstrumentation(), new UndiciInstrumentation()],
     });
 

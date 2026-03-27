@@ -58,6 +58,7 @@ program
   .command("deploy")
   .description("Deploy Receiver to Vercel or Cloudflare and configure credentials")
   .option("--platform <platform>", "Target platform (vercel or cloudflare)")
+  .option("--project-name <name>", "Project name override for platform provisioning")
   .option("--setup", "Force first-time setup flow")
   .option("--no-setup", "Force re-deploy flow (requires --auth-token)")
   .option("--auth-token <token>", "Auth token for re-deploy")
@@ -67,6 +68,7 @@ program
   .action(
     async (options: {
       platform?: string;
+      projectName?: string;
       setup?: boolean;
       authToken?: string;
       yes?: boolean;
@@ -76,6 +78,7 @@ program
       const { runDeploy } = await import("./commands/deploy.js");
       await runDeploy(process.argv.slice(3), {
         platform: options.platform as "vercel" | "cloudflare" | undefined,
+        projectName: options.projectName,
         setup: options.setup,
         noSetup: options.setup === false,
         authToken: options.authToken,

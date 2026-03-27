@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { bearerAuth } from "hono/bearer-auth";
 import { cors } from "hono/cors";
-import { trace } from "@opentelemetry/api";
+import { SpanKind, SpanStatusCode, trace } from "@opentelemetry/api";
 import type { StorageDriver } from "./storage/interface.js";
 import type { TelemetryStoreDriver } from "./telemetry/interface.js";
 import { MemoryAdapter } from "./storage/adapters/memory.js";
@@ -12,6 +12,7 @@ import { SpanBuffer } from "./ambient/span-buffer.js";
 import type { DiagnosisConfig } from "./runtime/diagnosis-debouncer.js";
 import { DiagnosisRunner } from "./runtime/diagnosis-runner.js";
 import { emitSelfTelemetryLog, isSelfTelemetryActive } from "./self-telemetry/log.js";
+import { recordSelfTelemetryMetrics } from "./self-telemetry/metrics.js";
 
 export type { StorageDriver } from "./storage/interface.js";
 export type { Incident, IncidentPage } from "./storage/interface.js";
@@ -68,40 +69,65 @@ export function createApp(storage?: StorageDriver, options?: AppOptions): Hono {
   const allowInsecure = process.env["ALLOW_INSECURE_DEV_MODE"] === "true";
 
   if (isSelfTelemetryActive()) {
+    const tracer = trace.getTracer("3amoncall.receiver.self");
     app.use("*", async (c, next) => {
-      const startedAt = Date.now();
-      let failed = false;
-      try {
-        await next();
-      } catch (error) {
-        failed = true;
-        throw error;
-      } finally {
-        const url = new URL(c.req.url);
-        const status = failed ? 500 : c.res.status;
-        const durationMs = Date.now() - startedAt;
-        const span = trace.getActiveSpan();
-        span?.setAttributes({
-          "3amoncall.telemetry.stream": "self",
-          "http.route": c.req.path,
-          "http.request.method": c.req.method,
-          "http.response.status_code": status,
-          "url.path": url.pathname,
-        });
-        emitSelfTelemetryLog({
-          severity: status >= 500 ? "ERROR" : status >= 400 ? "WARN" : "INFO",
-          body: "receiver.request",
+      return tracer.startActiveSpan(
+        `${c.req.method} ${c.req.path}`,
+        {
+          kind: SpanKind.SERVER,
           attributes: {
-            "http.request.method": c.req.method,
+            "3amoncall.telemetry.stream": "self",
             "http.route": c.req.path,
-            "http.response.status_code": status,
-            "url.path": url.pathname,
-            "server.address": url.hostname,
-            "server.port": Number(url.port || (url.protocol === "https:" ? 443 : 80)),
-            "3amoncall.request.duration_ms": durationMs,
+            "http.request.method": c.req.method,
+            "url.path": new URL(c.req.url).pathname,
           },
-        });
-      }
+        },
+        async (span) => {
+          const startedAt = Date.now();
+          let failed = false;
+          try {
+            await next();
+          } catch (error) {
+            failed = true;
+            span.recordException(error instanceof Error ? error : new Error(String(error)));
+            span.setStatus({ code: SpanStatusCode.ERROR });
+            throw error;
+          } finally {
+            const url = new URL(c.req.url);
+            const status = failed ? 500 : c.res.status;
+            const durationMs = Date.now() - startedAt;
+            span.setAttributes({
+              "http.response.status_code": status,
+              "server.address": url.hostname,
+              "server.port": Number(url.port || (url.protocol === "https:" ? 443 : 80)),
+              "3amoncall.request.duration_ms": durationMs,
+            });
+            if (status >= 400 && !failed) {
+              span.setStatus({ code: SpanStatusCode.ERROR });
+            }
+            recordSelfTelemetryMetrics({
+              method: c.req.method,
+              route: c.req.path,
+              statusCode: status,
+              durationMs,
+            });
+            emitSelfTelemetryLog({
+              severity: status >= 500 ? "ERROR" : status >= 400 ? "WARN" : "INFO",
+              body: "receiver.request",
+              attributes: {
+                "http.request.method": c.req.method,
+                "http.route": c.req.path,
+                "http.response.status_code": status,
+                "url.path": url.pathname,
+                "server.address": url.hostname,
+                "server.port": Number(url.port || (url.protocol === "https:" ? 443 : 80)),
+                "3amoncall.request.duration_ms": durationMs,
+              },
+            });
+            span.end();
+          }
+        },
+      );
     });
   }
 
