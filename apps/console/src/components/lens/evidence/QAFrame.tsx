@@ -243,12 +243,8 @@ export function QAFrame({
         </div>
       ) : qa.noAnswerReason ? (
         <div className="lens-ev-qa-answer lens-ev-qa-answer-placeholder">
-          <div className="lens-ev-qa-state-label">{t("evidence.qa.currentRead")}</div>
-          <div>{qa.answer}</div>
-          <div className="lens-ev-qa-no-answer">
-            <span className="lens-ev-qa-state-label">{t("evidence.qa.stillPreparing")}</span>
-            {qa.noAnswerReason}
-          </div>
+          <div className="lens-ev-qa-state-label">{t("evidence.qa.noAnswer")}</div>
+          <div className="lens-ev-qa-no-answer">{qa.noAnswerReason}</div>
         </div>
       ) : (
         <div className="lens-ev-qa-answer" role="article">
