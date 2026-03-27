@@ -9,7 +9,7 @@
  *   className, data-, aria-, type, interface, Error boundary class names, etc.).
  */
 
-import { describe, it, expect } from "vitest";
+import { describe, it } from "vitest";
 import { readFileSync } from "fs";
 import { resolve } from "path";
 
