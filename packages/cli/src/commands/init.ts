@@ -6,7 +6,8 @@ import { detectLogger } from "./init/detect-logger.js";
 import { detectPackageManager } from "./init/detect-package-manager.js";
 import { getInstrumentationTemplate } from "./init/templates.js";
 import { patchScripts } from "./init/patch-scripts.js";
-import { resolveApiKey } from "./init/credentials.js";
+import { resolveApiKey, loadCredentials, saveCredentials } from "./init/credentials.js";
+import { createInterface } from "node:readline";
 
 const OTEL_DEPS = [
   "@opentelemetry/sdk-node",
@@ -235,6 +236,21 @@ export async function runInit(_argv: string[], options: InitOptions = {}): Promi
       "LLM diagnosis will not run until you set it.\n" +
       "Fix: npx 3amoncall init --api-key <your-key>\n",
     );
+  }
+
+  // --- 6b. Language selection ---
+  if (!options.noInteractive && process.stdin.isTTY) {
+    const rl = createInterface({ input: process.stdin, output: process.stdout });
+    const localeAnswer = await new Promise<string>((resolve) => {
+      rl.question("Preferred language? (en/ja) [en]: ", (answer) => {
+        rl.close();
+        resolve(answer.trim().toLowerCase() || "en");
+      });
+    });
+    const locale = localeAnswer === "ja" ? "ja" : "en";
+    const creds = loadCredentials();
+    saveCredentials({ ...creds, locale });
+    process.stdout.write(`Language set to: ${locale}\n`);
   }
 
   // --- 7. Signal check ---

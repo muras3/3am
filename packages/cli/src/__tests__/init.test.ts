@@ -362,6 +362,22 @@ describe("credentials", () => {
     const stat = statSync(join(tmpDir, ".config", "3amoncall", "credentials"));
     expect(stat.mode & 0o777).toBe(0o600);
   });
+
+  it("saves and loads locale in credentials", () => {
+    saveCredentials({ anthropicApiKey: "sk-test-123", locale: "ja" });
+    const loaded = loadCredentials();
+    expect(loaded.anthropicApiKey).toBe("sk-test-123");
+    expect(loaded.locale).toBe("ja");
+  });
+
+  it("preserves locale when updating api key", () => {
+    saveCredentials({ locale: "ja" });
+    const existing = loadCredentials();
+    saveCredentials({ ...existing, anthropicApiKey: "sk-new" });
+    const loaded = loadCredentials();
+    expect(loaded.locale).toBe("ja");
+    expect(loaded.anthropicApiKey).toBe("sk-new");
+  });
 });
 
 // ---------------------------------------------------------------------------
