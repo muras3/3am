@@ -310,6 +310,41 @@ describe("POST /api/chat/:incidentId", () => {
     expect(callArgs.messages[2]?.role).toBe("user");
   });
 
+  // ── Locale-aware system prompt ────────────────────────────────────────────
+
+  it("passes Japanese instruction in system prompt when locale is 'ja'", async () => {
+    // Set locale to "ja" via the settings API
+    await app.request("/api/settings/locale", {
+      method: "PUT",
+      headers: { ...authHeader(), "Content-Type": "application/json" },
+      body: JSON.stringify({ locale: "ja" }),
+    });
+
+    const cookie = await getSessionCookie(app);
+    const incidentId = await seedIncidentWithDiagnosis(app);
+    await app.request(`/api/chat/${incidentId}`, {
+      method: "POST",
+      headers: chatHeaders(cookie),
+      body: JSON.stringify({ message: "What happened?", history: [] }),
+    });
+
+    const callArgs = mockCreate.mock.calls[0]?.[0] as { system: string };
+    expect(callArgs.system).toContain("Respond in Japanese");
+  });
+
+  it("does not include Japanese instruction when locale is default 'en'", async () => {
+    const cookie = await getSessionCookie(app);
+    const incidentId = await seedIncidentWithDiagnosis(app);
+    await app.request(`/api/chat/${incidentId}`, {
+      method: "POST",
+      headers: chatHeaders(cookie),
+      body: JSON.stringify({ message: "What happened?", history: [] }),
+    });
+
+    const callArgs = mockCreate.mock.calls[0]?.[0] as { system: string };
+    expect(callArgs.system).not.toContain("Respond in Japanese");
+  });
+
   // ── Rate limiting (B-11) ──────────────────────────────────────────────────
 
   it("returns 429 when rate limit is exceeded (B-11)", async () => {

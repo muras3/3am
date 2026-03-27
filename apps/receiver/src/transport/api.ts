@@ -50,15 +50,19 @@ function toIncidentPageResponse(page: IncidentPage): IncidentPageResponse {
   };
 }
 
-function buildChatSystemPrompt(dr: DiagnosisResult): string {
+function buildChatSystemPrompt(dr: DiagnosisResult, locale?: "en" | "ja"): string {
   const chain = dr.reasoning.causal_chain.map((s) => s.title).join(" → ");
+  const jaInstruction = locale === "ja"
+    ? "\n\nRespond in Japanese. Use concise, operator-actionable language."
+    : "";
   return (
     "You are an incident responder assistant. The engineer is investigating an active incident.\n\n" +
     `Incident summary: ${dr.summary.what_happened}\n` +
     `Root cause: ${dr.summary.root_cause_hypothesis}\n` +
     `Recommended action: ${dr.recommendation.immediate_action}\n` +
     `Causal chain: ${chain}\n\n` +
-    "Answer concisely in 1-3 sentences. Do not speculate beyond the provided context."
+    "Answer concisely in 1-3 sentences. Do not speculate beyond the provided context." +
+    jaInstruction
   );
 }
 
@@ -264,7 +268,9 @@ export function createApiRouter(storage: StorageDriver, spanBuffer: SpanBuffer |
       return c.json({ error: "diagnosis not yet available for this incident" }, 404);
     }
 
-    const systemPrompt = buildChatSystemPrompt(incident.diagnosisResult);
+    const storedLocale = await storage.getSettings("locale");
+    const locale: "en" | "ja" = storedLocale === "ja" ? "ja" : "en";
+    const systemPrompt = buildChatSystemPrompt(incident.diagnosisResult, locale);
     const sandboxedMessage = `<user_message>${message}</user_message>`;
 
     const messages: Anthropic.MessageParam[] = [
