@@ -9,4 +9,8 @@
  *
  * Named HTTP method exports are required by @vercel/node for Web Standard API.
  */
+import { initializeNodeSelfTelemetry } from "../apps/receiver/src/self-telemetry/node.js";
+
+void initializeNodeSelfTelemetry("vercel");
+
 export { GET, POST, PUT, PATCH, DELETE, OPTIONS } from "../apps/receiver/src/vercel-entry.js";
