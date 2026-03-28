@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useRef, lazy, Suspense } from "react";
 import { useTranslation } from "react-i18next";
 import { useQuery } from "@tanstack/react-query";
-import { useSearch, useNavigate } from "@tanstack/react-router";
+import { useNavigate } from "@tanstack/react-router";
 import { curatedQueries } from "../../api/queries.js";
-import type { LensLevel, LensSearchParams } from "../../routes/__root.js";
+import { useLensSearch, type LensLevel, type LensSearchParams } from "../../routes/__root.js";
 import { LevelHeader } from "./LevelHeader.js";
 import { ZoomNav } from "./ZoomNav.js";
 import { MapView } from "./map/MapView.js";
@@ -25,7 +25,7 @@ const LensEvidenceStudio = lazy(() =>
  */
 export function LensShell() {
   const { t } = useTranslation();
-  const search = useSearch({ from: "__root__" }) as LensSearchParams;
+  const search = useLensSearch();
   const { level, incidentId } = search;
   const navigate = useNavigate();
   const { data: incidentMeta } = useQuery({

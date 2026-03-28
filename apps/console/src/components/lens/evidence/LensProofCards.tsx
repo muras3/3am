@@ -1,7 +1,7 @@
 import { useEffect } from "react";
-import { useNavigate, useSearch } from "@tanstack/react-router";
+import { useNavigate } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
-import type { LensSearchParams } from "../../../routes/__root.js";
+import { useLensSearch } from "../../../routes/__root.js";
 import type { ProofCard } from "../../../api/curated-types.js";
 
 interface Props {
@@ -96,7 +96,7 @@ function selectionTargetId(card: ProofCard): string | undefined {
 export function LensProofCards({ cards }: Props) {
   const { t } = useTranslation();
   const navigate = useNavigate();
-  const search = useSearch({ from: "__root__" }) as LensSearchParams;
+  const search = useLensSearch();
   const activeProofId = search.proof;
   const activeTargetId = search.targetId;
 

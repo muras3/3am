@@ -1,8 +1,7 @@
 import { useEffect } from "react";
-import { useSearch } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import type { LogsSurface, LogClaim, LogEntry } from "../../../api/curated-types.js";
-import type { LensSearchParams } from "../../../routes/__root.js";
+import { useLensSearch } from "../../../routes/__root.js";
 
 type ClaimType = LogClaim["type"];
 
@@ -115,7 +114,7 @@ interface LensLogsViewProps {
 
 export function LensLogsView({ surface, evidenceDensity = "rich", isActive = false }: LensLogsViewProps) {
   const { t } = useTranslation();
-  const search = useSearch({ from: "__root__" }) as LensSearchParams;
+  const search = useLensSearch();
   const activeProofId = search.proof;
   const activeTargetId = search.targetId;
 

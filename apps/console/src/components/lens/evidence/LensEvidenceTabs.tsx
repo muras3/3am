@@ -1,7 +1,7 @@
 import { useRef } from "react";
-import { useNavigate, useSearch } from "@tanstack/react-router";
+import { useNavigate } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
-import type { EvidenceTab, LensSearchParams } from "../../../routes/__root.js";
+import { useLensSearch, type EvidenceTab } from "../../../routes/__root.js";
 import type { EvidenceSurfaces } from "../../../api/curated-types.js";
 
 interface Props {
@@ -26,7 +26,7 @@ function countBadge(surfaces: EvidenceSurfaces, tab: EvidenceTab): number {
 export function LensEvidenceTabs({ surfaces }: Props) {
   const { t } = useTranslation();
   const navigate = useNavigate();
-  const search = useSearch({ from: "__root__" }) as LensSearchParams;
+  const search = useLensSearch();
   const activeTab = search.tab ?? "traces";
   const tabRefs = useRef<(HTMLButtonElement | null)[]>([]);
 

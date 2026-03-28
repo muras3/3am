@@ -1,11 +1,10 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
-import { useSearch } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import { ApiError } from "../../../api/client.js";
 import { curatedMutations, curatedQueries } from "../../../api/queries.js";
 import type { EvidenceQueryResponse } from "../../../api/curated-types.js";
-import type { LensLevel, LensSearchParams } from "../../../routes/__root.js";
+import { useLensSearch, type LensLevel } from "../../../routes/__root.js";
 import { ContextBar } from "./ContextBar.js";
 import { LensProofCards } from "./LensProofCards.js";
 import { QAFrame } from "./QAFrame.js";
@@ -22,7 +21,7 @@ interface Props {
 
 export function LensEvidenceStudio({ incidentId }: Props) {
   const { t } = useTranslation();
-  const search = useSearch({ from: "__root__" }) as LensSearchParams;
+  const search = useLensSearch();
   const tab = search.tab ?? "traces";
   const [queryDraft, setQueryDraft] = useState(search.query ?? "");
   const [latestResponse, setLatestResponse] = useState<EvidenceQueryResponse>();
