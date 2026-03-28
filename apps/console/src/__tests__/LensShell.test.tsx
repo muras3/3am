@@ -12,7 +12,7 @@ let mockSearch: LensSearchParams = { level: 0, tab: "traces" };
 const mockNavigate = vi.fn();
 
 vi.mock("@tanstack/react-router", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@tanstack/react-router")>()),
+  ...((await importOriginal()) as Record<string, unknown>),
   useSearch: () => mockSearch,
   useNavigate: () => mockNavigate,
 }));

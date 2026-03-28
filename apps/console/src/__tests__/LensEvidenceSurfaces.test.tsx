@@ -16,7 +16,7 @@ let mockSearchState = {
 } as Record<string, unknown>;
 
 vi.mock("@tanstack/react-router", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@tanstack/react-router")>()),
+  ...((await importOriginal()) as Record<string, unknown>),
   useSearch: () => mockSearchState,
   useNavigate: () => mockNavigate,
 }));
