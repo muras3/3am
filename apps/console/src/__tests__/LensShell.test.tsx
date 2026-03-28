@@ -11,7 +11,8 @@ import type { LensSearchParams } from "../routes/__root.js";
 let mockSearch: LensSearchParams = { level: 0, tab: "traces" };
 const mockNavigate = vi.fn();
 
-vi.mock("@tanstack/react-router", () => ({
+vi.mock("@tanstack/react-router", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@tanstack/react-router")>()),
   useSearch: () => mockSearch,
   useNavigate: () => mockNavigate,
 }));

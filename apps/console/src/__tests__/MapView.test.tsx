@@ -12,7 +12,8 @@ import {
 import type { LensLevel } from "../routes/__root.js";
 
 // ── Stub TanStack Router (MapView doesn't use it directly, but sub-components may) ──
-vi.mock("@tanstack/react-router", () => ({
+vi.mock("@tanstack/react-router", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@tanstack/react-router")>()),
   useSearch: () => ({ level: 0, tab: "traces" }),
   useNavigate: () => vi.fn(),
 }));

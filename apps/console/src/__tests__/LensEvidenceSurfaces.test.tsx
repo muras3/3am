@@ -15,7 +15,8 @@ let mockSearchState = {
   incidentId: "inc_0892",
 } as Record<string, unknown>;
 
-vi.mock("@tanstack/react-router", () => ({
+vi.mock("@tanstack/react-router", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@tanstack/react-router")>()),
   useSearch: () => mockSearchState,
   useNavigate: () => mockNavigate,
 }));
