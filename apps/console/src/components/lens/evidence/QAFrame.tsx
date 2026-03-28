@@ -1,6 +1,6 @@
 import type { FormEvent } from "react";
 import { useEffect, useState } from "react";
-import { useNavigate, useSearch } from "@tanstack/react-router";
+import { useNavigate } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import type {
   QABlock,
@@ -10,7 +10,7 @@ import type {
   EvidenceQuerySegment,
   Followup,
 } from "../../../api/curated-types.js";
-import type { LensSearchParams } from "../../../routes/__root.js";
+import { useLensSearch } from "../../../routes/__root.js";
 
 interface Props {
   qa: QABlock;
@@ -43,7 +43,7 @@ function evidenceRefTarget(
 function EvidenceRefLink({ ref: evidenceRef }: { ref: EvidenceRef | EvidenceQueryRef }) {
   const { t } = useTranslation();
   const navigate = useNavigate();
-  const search = useSearch({ from: "__root__" }) as LensSearchParams;
+  const search = useLensSearch();
   const { tab, targetId } = evidenceRefTarget(evidenceRef);
 
   function apply() {
