@@ -11,6 +11,7 @@
  */
 import type { Hono } from "hono";
 import { createApp, resolveAuthToken } from "./index.js";
+import { setRequestWaitUntil } from "./runtime/diagnosis-debouncer.js";
 import { D1StorageAdapter } from "./storage/drizzle/d1.js";
 import { D1TelemetryAdapter } from "./telemetry/drizzle/d1.js";
 
@@ -87,6 +88,8 @@ export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     // Ensure env is available for modules reading process.env during request handling
     populateProcessEnv(env);
+    // Inject CF Workers ctx.waitUntil so diagnosis-debouncer can extend isolate lifetime
+    setRequestWaitUntil((p) => ctx.waitUntil(p));
     const app = await getApp(env);
     return app.fetch(request, env, ctx);
   },
