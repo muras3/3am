@@ -33,14 +33,15 @@ export function MapGraph({ services, dependencies, edges, emptyState, zoomTo }: 
             ))}
           </div>
 
-          {/* Center: SVG edges */}
+          {/* Center: SVG edges — hidden when no dependencies */}
           <EdgeZone
             services={services}
             dependencies={dependencies}
             edges={edges}
+            hasDependencies={dependencies.length > 0}
           />
 
-          {/* Right: Dependencies */}
+          {/* Right: Dependencies — zone-deps:empty collapses via CSS */}
           <div className="zone-deps">
             {dependencies.map((dep) => (
               <DependencyCard key={dep.id} dep={dep} zoomTo={zoomTo} />
@@ -93,9 +94,11 @@ interface EdgeZoneProps {
   services: MapService[];
   dependencies: MapDependency[];
   edges: MapEdge[];
+  hasDependencies: boolean;
 }
 
-function EdgeZone({ services, dependencies, edges }: EdgeZoneProps) {
+function EdgeZone({ services, dependencies, edges, hasDependencies }: EdgeZoneProps) {
+  if (!hasDependencies) return null;
   if (edges.length === 0) return <div className="zone-edges" />;
 
   // Build index maps for y-position calculation
@@ -139,7 +142,7 @@ function EdgeZone({ services, dependencies, edges }: EdgeZoneProps) {
       <svg
         viewBox={`0 0 ${svgW} ${svgH}`}
         fill="none"
-        style={{ height: svgH, width: svgW }}
+        style={{ height: svgH }}
         aria-hidden="true"
       >
         {edges.map((edge, i) => {
@@ -174,11 +177,32 @@ function EdgeZone({ services, dependencies, edges }: EdgeZoneProps) {
                 opacity={opacity}
                 fill="none"
               />
-              <circle r={dotR} fill={color} opacity={dotOpacity}>
-                <animateMotion dur={dur} repeatCount="indefinite">
-                  <mpath href={`#${pathId}`} />
-                </animateMotion>
-              </circle>
+              {/* Critical edges get 3 staggered dots for urgency; others get 1 */}
+              {isCrit ? (
+                <>
+                  <circle r={dotR} fill={color} opacity={dotOpacity}>
+                    <animateMotion dur={dur} repeatCount="indefinite" begin="0s">
+                      <mpath href={`#${pathId}`} />
+                    </animateMotion>
+                  </circle>
+                  <circle r={dotR} fill={color} opacity={dotOpacity * 0.7}>
+                    <animateMotion dur={dur} repeatCount="indefinite" begin={`${parseFloat(dur) * 0.33}s`}>
+                      <mpath href={`#${pathId}`} />
+                    </animateMotion>
+                  </circle>
+                  <circle r={dotR} fill={color} opacity={dotOpacity * 0.45}>
+                    <animateMotion dur={dur} repeatCount="indefinite" begin={`${parseFloat(dur) * 0.66}s`}>
+                      <mpath href={`#${pathId}`} />
+                    </animateMotion>
+                  </circle>
+                </>
+              ) : (
+                <circle r={dotR} fill={color} opacity={dotOpacity}>
+                  <animateMotion dur={dur} repeatCount="indefinite">
+                    <mpath href={`#${pathId}`} />
+                  </animateMotion>
+                </circle>
+              )}
             </g>
           );
         })}

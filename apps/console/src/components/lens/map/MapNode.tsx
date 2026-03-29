@@ -20,9 +20,9 @@ export function ServiceCard({ service, zoomTo }: ServiceCardProps) {
     >
       <div className="svc-header">
         <span className={`dot ${dotClass(service.status)}`} />
-        <span className="svc-name">{service.serviceName}</span>
+        <span className="svc-name" title={service.serviceName}>{service.serviceName}</span>
         <span className="svc-meta">
-          <span>{Math.round(service.metrics.reqPerSec)} req/s</span>
+          <span>{formatRps(service.metrics.reqPerSec)}</span>
           <span>p95 {Math.round(service.metrics.p95Ms)}ms</span>
         </span>
       </div>
@@ -78,10 +78,10 @@ function RouteRow({ route, zoomTo }: RouteRowProps) {
       <span className="route-label">{route.label}</span>
       {route.errorRate > 0 && (
         <span className={`route-err${route.status === "degraded" ? " warn" : ""}`}>
-          {Math.round(route.errorRate * 100)}% err
+          {formatErrRate(route.errorRate)} err
         </span>
       )}
-      <span className="route-rps">{Math.round(route.reqPerSec)}/s</span>
+      <span className="route-rps">{formatRps(route.reqPerSec)}</span>
     </div>
   );
 }
@@ -122,20 +122,44 @@ export function DependencyCard({ dep, zoomTo }: DependencyCardProps) {
     >
       <div className="dep-header">
         <span className={`dot ${dotClass(dep.status)}`} />
-        <span className="dep-name">{dep.name}</span>
+        <span className="dep-name" title={dep.name}>{dep.name}</span>
         <span className="dep-tag">External</span>
       </div>
       <div className="dep-metrics">
         {dep.errorRate > 0 && (
-          <span className="bad">{Math.round(dep.errorRate * 100)}% errors</span>
+          <span className="bad">{formatErrRate(dep.errorRate)} errors</span>
         )}
-        <span>{Math.round(dep.reqPerSec)} req/s</span>
+        <span>{formatRps(dep.reqPerSec)}</span>
       </div>
     </div>
   );
 }
 
 // ── Helpers ───────────────────────────────────────────────────
+
+/**
+ * Format an error rate (0–1) for compact display.
+ * - 0 → never shown (callers guard with `> 0`)
+ * - < 0.005 (< 0.5%) → "<1%"    (rounds to 0 with Math.round, so use a floor guard)
+ * - 100% → "100%"
+ * - otherwise → "N%" with no decimals
+ */
+function formatErrRate(rate: number): string {
+  const pct = rate * 100;
+  if (pct < 0.5) return "<1%";
+  if (pct >= 99.5) return "100%";
+  return `${Math.round(pct)}%`;
+}
+
+/**
+ * Format req/s: show integer unless < 1, then show one decimal.
+ * Zero stays "0/s".
+ */
+function formatRps(rps: number): string {
+  if (rps === 0) return "0/s";
+  if (rps < 1) return `${rps.toFixed(1)}/s`;
+  return `${Math.round(rps)}/s`;
+}
 
 function dotClass(status: string): string {
   switch (status) {

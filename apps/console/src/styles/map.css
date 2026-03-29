@@ -110,6 +110,15 @@
   max-width: 220px;
 }
 
+/* Collapse dep zone and edge zone when no dependencies exist */
+.zone-deps:empty {
+  display: none;
+}
+
+.zone-edges.is-hidden {
+  display: none;
+}
+
 /* ── Service card ─────────────────────────────────────────────── */
 .svc-card {
   border: 1px solid var(--line);
@@ -118,9 +127,21 @@
   transition: border-color 0.2s, box-shadow 0.2s;
 }
 
+.svc-card:hover {
+  border-color: var(--line-strong);
+  box-shadow: 0 1px 3px rgba(26, 26, 26, 0.06), 0 4px 12px rgba(26, 26, 26, 0.08);
+}
+
 .svc-card.has-error {
   border-color: rgba(232, 93, 58, 0.3);
   box-shadow: 0 0 0 3px var(--accent-soft);
+  animation: pulse-error 3s ease-in-out infinite;
+}
+
+/* Subtle glow pulse on critical service cards — signals live severity */
+@keyframes pulse-error {
+  0%, 100% { box-shadow: 0 0 0 3px var(--accent-soft); }
+  50%       { box-shadow: 0 0 0 5px rgba(232, 93, 58, 0.14); }
 }
 
 .svc-card.has-warn {
@@ -140,6 +161,10 @@
   font-size: var(--fs-md);
   font-weight: 700;
   flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .svc-meta {
@@ -173,6 +198,8 @@
 /* ── Route rows ───────────────────────────────────────────────── */
 .route-list {
   padding: 3px 0;
+  max-height: 280px;
+  overflow-y: auto;
 }
 
 .route-row {
@@ -239,6 +266,12 @@
   cursor: pointer;
 }
 
+.route-row.clickable:active,
+.route-row.is-critical:active,
+.route-row.is-degraded:active {
+  background: rgba(26, 26, 26, 0.06);
+}
+
 .route-row:focus-visible {
   outline: 2px solid var(--teal);
   outline-offset: 2px;
@@ -287,6 +320,11 @@
 .dep-name {
   font-size: var(--fs-sm);
   font-weight: 600;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .dep-tag {
@@ -547,8 +585,11 @@
 /* ── Reduced motion ──────────────────────────────────────────── */
 @media (prefers-reduced-motion: reduce) {
   .svc-card,
-  .dep-card {
+  .dep-card,
+  .route-row,
+  .incident-row {
     transition: none;
+    animation: none;
   }
 
   .zone-edges circle {
@@ -565,16 +606,21 @@
 
   .zone-services {
     max-width: 100%;
+    min-width: 0;
   }
 
   .zone-edges {
     flex-direction: row;
     padding: 0 16px;
     min-height: auto;
+    /* Override the flex: 0 0 72px so it doesn't take up the full 72px as a column */
+    flex: 0 0 auto;
   }
 
   .zone-edges svg {
-    width: 48px;
+    /* Let CSS control width; override any inline style via max-width */
+    max-width: 48px !important;
+    width: 48px !important;
     transform: rotate(90deg);
   }
 
@@ -583,11 +629,53 @@
     gap: 10px;
     flex-wrap: wrap;
     max-width: 100%;
+    min-width: 0;
   }
 
   .dep-card {
-    min-width: 160px;
-    flex: 1 1 160px;
+    min-width: 140px;
+    flex: 1 1 140px;
+  }
+
+  .svc-card {
+    min-width: 0;
+  }
+}
+
+@media (max-width: 480px) {
+  .l0-content {
+    padding-inline: 12px;
+  }
+
+  .svc-header {
+    gap: 6px;
+    padding: 8px 10px 6px;
+  }
+
+  .svc-meta {
+    /* Stack req/s and p95 vertically on very small screens to avoid overflow */
+    flex-direction: column;
+    gap: 0;
+    align-items: flex-end;
+  }
+
+  .route-row {
+    padding: 5px 10px;
+    gap: 6px;
+  }
+
+  .dep-card {
+    min-width: 120px;
+    flex: 1 1 120px;
+    padding: 10px 14px;
+  }
+
+  .map-legend {
+    gap: 10px;
+  }
+
+  .stat-value {
+    font-size: 22px;
   }
 }
 
