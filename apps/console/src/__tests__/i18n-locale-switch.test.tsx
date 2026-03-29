@@ -1,8 +1,8 @@
 /**
- * i18n locale switch tests — covers LocaleToggle behaviour, component locale
- * switching, and plural forms for both en and ja locales.
+ * i18n locale tests — covers shared translation behaviour and the header's
+ * locale-independent chrome.
  */
-import { render, screen, fireEvent, act } from "@testing-library/react";
+import { render, screen, act } from "@testing-library/react";
 import { describe, it, expect, vi, beforeAll, afterEach, beforeEach } from "vitest";
 import i18n from "i18next";
 import { initReactI18next } from "react-i18next";
@@ -45,144 +45,60 @@ afterEach(async () => {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-/**
- * Render LevelHeader at level 0 (Map view), which always contains LocaleToggle.
- * We mock the router hooks that LevelHeader's sub-tree relies on so that the
- * component can mount without a full router context.
- */
 async function renderLevelHeaderLevel0() {
-  // LevelHeader uses useTranslation — no router hooks at level 0.
-  // Dynamic import so vi.mock hoisting can take effect before the import.
   const { LevelHeader } = await import("../components/lens/LevelHeader.js");
   const zoomTo = vi.fn();
   return render(<LevelHeader level={0} zoomTo={zoomTo} />);
 }
+// ── 1. Header chrome ──────────────────────────────────────────────────────────
 
-/**
- * The inactive locale button has an aria-label (e.g. "Switch language to
- * Japanese") which becomes its accessible name and replaces "JA" / "EN" in
- * ARIA queries.  Use getByText to always find by visible text content instead.
- */
-function getLocaleBtn(label: "EN" | "JA") {
-  // querySelectorAll finds both buttons; filter by text content.
-  const btns = document.querySelectorAll<HTMLButtonElement>(".locale-toggle-btn");
-  for (const btn of btns) {
-    if (btn.textContent?.trim() === label) return btn;
-  }
-  throw new Error(`Locale button "${label}" not found`);
-}
-
-// ── 1. LocaleToggle unit tests ────────────────────────────────────────────────
-
-describe("LocaleToggle", () => {
+describe("LevelHeader", () => {
   beforeEach(() => {
     vi.stubGlobal(
       "fetch",
-      vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve({}) }),
+      vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve({ locale: "en" }) }),
     );
   });
 
-  it("renders EN and JA buttons", async () => {
+  it("does not render locale toggle controls in the header", async () => {
+    let view: Awaited<ReturnType<typeof renderLevelHeaderLevel0>> | undefined;
     await act(async () => {
-      await renderLevelHeaderLevel0();
+      view = await renderLevelHeaderLevel0();
     });
-    expect(getLocaleBtn("EN")).toBeInTheDocument();
-    expect(getLocaleBtn("JA")).toBeInTheDocument();
+    const { container } = view!;
+    expect(container.querySelector(".locale-toggle")).toBeNull();
+    expect(container.querySelector(".locale-toggle-btn")).toBeNull();
   });
 
-  it("EN button has locale-toggle-active class when locale is en", async () => {
-    await act(async () => {
-      await renderLevelHeaderLevel0();
-    });
-    expect(getLocaleBtn("EN").className).toContain("locale-toggle-active");
-    expect(getLocaleBtn("JA").className).not.toContain("locale-toggle-active");
-  });
+  it("formats the header clock in local time with a timezone label", async () => {
+    const { formatTime } = await import("../components/lens/LevelHeader.js");
+    const dateTimeFormatSpy = vi.spyOn(Intl, "DateTimeFormat").mockImplementation(
+      () =>
+        ({
+          format: () => "ignored",
+          formatToParts: () => ([
+            { type: "hour", value: "14" },
+            { type: "literal", value: ":" },
+            { type: "minute", value: "30" },
+            { type: "literal", value: ":" },
+            { type: "second", value: "05" },
+            { type: "literal", value: " " },
+            { type: "timeZoneName", value: "JST" },
+          ]),
+        }) as Intl.DateTimeFormat,
+    );
 
-  it("clicking JA calls PUT /api/settings/locale with { locale: 'ja' } and changes language", async () => {
-    await act(async () => {
-      await renderLevelHeaderLevel0();
-    });
-
-    await act(async () => {
-      fireEvent.click(getLocaleBtn("JA"));
-    });
-
-    expect(fetch).toHaveBeenCalledWith(
-      "/api/settings/locale",
+    expect(formatTime(new Date("2026-03-29T05:30:05.000Z"))).toBe("14:30:05 JST");
+    expect(dateTimeFormatSpy).toHaveBeenCalledWith(
+      undefined,
       expect.objectContaining({
-        method: "PUT",
-        body: JSON.stringify({ locale: "ja" }),
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+        hourCycle: "h23",
+        timeZoneName: "short",
       }),
     );
-    expect(i18n.language).toBe("ja");
-  });
-
-  it("clicking EN calls PUT /api/settings/locale with { locale: 'en' } and changes language", async () => {
-    // Start in Japanese so the EN click is an actual switch.
-    await act(async () => {
-      await i18n.changeLanguage("ja");
-    });
-
-    await act(async () => {
-      await renderLevelHeaderLevel0();
-    });
-
-    await act(async () => {
-      fireEvent.click(getLocaleBtn("EN"));
-    });
-
-    expect(fetch).toHaveBeenCalledWith(
-      "/api/settings/locale",
-      expect.objectContaining({
-        method: "PUT",
-        body: JSON.stringify({ locale: "en" }),
-      }),
-    );
-    expect(i18n.language).toBe("en");
-  });
-
-  it("JA button has locale-toggle-active class when locale is ja", async () => {
-    await act(async () => {
-      await i18n.changeLanguage("ja");
-    });
-
-    await act(async () => {
-      await renderLevelHeaderLevel0();
-    });
-
-    expect(getLocaleBtn("JA").className).toContain("locale-toggle-active");
-    expect(getLocaleBtn("EN").className).not.toContain("locale-toggle-active");
-  });
-
-  it("inactive EN button has aria-label when locale is ja", async () => {
-    await act(async () => {
-      await i18n.changeLanguage("ja");
-    });
-
-    await act(async () => {
-      await renderLevelHeaderLevel0();
-    });
-
-    // When EN is not active, it should carry the aria-label for switching.
-    expect(getLocaleBtn("EN")).toHaveAttribute("aria-label");
-  });
-
-  it("inactive JA button has aria-label when locale is en", async () => {
-    await act(async () => {
-      await renderLevelHeaderLevel0();
-    });
-
-    // When JA is not active, it should carry the aria-label for switching.
-    expect(getLocaleBtn("JA")).toHaveAttribute("aria-label");
-  });
-
-  it("active EN button does not have an aria-label (its text is already descriptive)", async () => {
-    await act(async () => {
-      await renderLevelHeaderLevel0();
-    });
-
-    // The active button (EN when locale=en) has no aria-label — visible text suffices.
-    expect(getLocaleBtn("EN")).not.toHaveAttribute("aria-label");
   });
 });
 

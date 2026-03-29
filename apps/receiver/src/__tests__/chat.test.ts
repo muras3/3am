@@ -11,11 +11,15 @@ import { COOKIE_NAME } from "../middleware/session-cookie.js";
 import type { DiagnosisResult } from "@3amoncall/core";
 
 // ── Mock Anthropic SDK ─────────────────────────────────────────────────────
-const mockCreate = vi.fn();
+const { mockCreate, mockAnthropic } = vi.hoisted(() => {
+  const create = vi.fn();
+  const anthropic = vi.fn().mockImplementation(() => ({
+    messages: { create },
+  }));
+  return { mockCreate: create, mockAnthropic: anthropic };
+});
 vi.mock("@anthropic-ai/sdk", () => ({
-  default: class MockAnthropic {
-    messages = { create: mockCreate };
-  },
+  default: mockAnthropic,
 }));
 
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -148,6 +152,7 @@ describe("POST /api/chat/:incidentId", () => {
     seedCounter = 0;
     app = makeApp();
     mockCreate.mockClear();
+    mockAnthropic.mockClear();
     mockCreate.mockResolvedValue({
       content: [{ type: "text", text: "This is the assistant reply." }],
     });
@@ -287,6 +292,24 @@ describe("POST /api/chat/:incidentId", () => {
     const body = (await res.json()) as { reply: string };
     expect(body.reply).toBe("This is the assistant reply.");
     expect(mockCreate).toHaveBeenCalledOnce();
+  });
+
+  it("instantiates Anthropic with timeout and maxRetries", async () => {
+    const cookie = await getSessionCookie(app);
+    const incidentId = await seedIncidentWithDiagnosis(app);
+
+    await app.request(`/api/chat/${incidentId}`, {
+      method: "POST",
+      headers: chatHeaders(cookie),
+      body: JSON.stringify({ message: "What should I do first?", history: [] }),
+    });
+
+    expect(mockAnthropic).toHaveBeenCalledWith(
+      expect.objectContaining({
+        timeout: 120_000,
+        maxRetries: 2,
+      }),
+    );
   });
 
   it("passes conversation history to the model", async () => {
