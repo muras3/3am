@@ -6,8 +6,6 @@ import { curatedMutations, curatedQueries } from "../../../api/queries.js";
 import type { LensLevel } from "../../../routes/__root.js";
 import { WhatHappened } from "./WhatHappened.js";
 import { ImmediateAction } from "./ImmediateAction.js";
-import { BlastRadius } from "./BlastRadius.js";
-import { ConfidenceCard } from "./ConfidenceCard.js";
 import { OperatorCheck } from "./OperatorCheck.js";
 import { RootCauseHypothesis } from "./RootCauseHypothesis.js";
 import { CauseCard } from "./CauseCard.js";
@@ -153,6 +151,7 @@ export function LensIncidentBoard({ incidentId, zoomTo }: Props) {
 
   return (
     <div className="lens-board-content stagger">
+      {/* 1. Identity + confidence badge */}
       <WhatHappened
         incidentId={data.incidentId}
         status={data.status}
@@ -161,6 +160,7 @@ export function LensIncidentBoard({ incidentId, zoomTo }: Props) {
         headline={data.headline}
         chips={data.chips}
         state={data.state}
+        confidence={data.confidenceSummary}
       />
 
       <div className="lens-board-operator-actions">
@@ -200,27 +200,29 @@ export function LensIncidentBoard({ incidentId, zoomTo }: Props) {
         />
       ) : null}
 
-      <div className="lens-board-priority-grid">
-        <ImmediateAction action={data.action} state={data.state} />
-        <LensEvidenceEntry
-          counts={data.evidenceSummary}
-          impact={data.impactSummary}
-          state={data.state}
-          zoomTo={zoomTo}
-        />
-      </div>
+      {/* 2. Immediate Action — full width hero */}
+      <ImmediateAction action={data.action} state={data.state} />
 
-      <div className="lens-board-insight-grid">
-        <RootCauseHypothesis hypothesis={data.rootCauseHypothesis} state={data.state} />
-        <ConfidenceCard confidence={data.confidenceSummary} state={data.state} />
-      </div>
+      {/* 3. Operator Check — directly below action */}
+      <OperatorCheck checks={data.operatorChecks} state={data.state} />
 
-      <div className="lens-board-context-grid">
-        <BlastRadius entries={data.blastRadius} state={data.state} />
-        <OperatorCheck checks={data.operatorChecks} state={data.state} />
-      </div>
-
+      {/* 4. Causal Chain */}
       <CauseCard steps={data.causalChain} state={data.state} />
+
+      {/* 5. Root Cause Hypothesis + confidence details */}
+      <RootCauseHypothesis
+        hypothesis={data.rootCauseHypothesis}
+        state={data.state}
+        confidence={data.confidenceSummary}
+      />
+
+      {/* 6. Evidence — thin status bar */}
+      <LensEvidenceEntry
+        counts={data.evidenceSummary}
+        impact={data.impactSummary}
+        state={data.state}
+        zoomTo={zoomTo}
+      />
     </div>
   );
 }

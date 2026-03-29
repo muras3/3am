@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import { useLensSearch } from "../../../routes/__root.js";
@@ -8,69 +8,11 @@ interface Props {
   cards: ProofCard[];
 }
 
-function iconFor(id: string): string {
-  if (id === "trigger") return "T";
-  if (id === "design_gap") return "D";
-  if (id === "recovery") return "R";
-  return "•";
-}
-
-function iconVariant(id: string): string {
+function dotVariant(id: string): string {
   if (id === "trigger") return "accent";
   if (id === "design_gap") return "amber";
   if (id === "recovery") return "good";
   return "ink";
-}
-
-interface ProofCardItemProps {
-  card: ProofCard;
-  isActive: boolean;
-  onClick: (card: ProofCard) => void;
-}
-
-function ProofCardItem({ card, isActive, onClick }: ProofCardItemProps) {
-  const { t } = useTranslation();
-  const variant = iconVariant(card.id);
-
-  function handleKeyDown(e: React.KeyboardEvent) {
-    if (e.key === "Enter" || e.key === " ") {
-      e.preventDefault();
-      onClick(card);
-    }
-  }
-
-  return (
-    <div
-      role="button"
-      tabIndex={0}
-      className={[
-        "lens-ev-proof-card",
-        isActive ? "lens-ev-proof-card-active" : "",
-      ].filter(Boolean).join(" ")}
-      onClick={() => onClick(card)}
-      onKeyDown={handleKeyDown}
-      data-proof-id={card.id}
-      aria-pressed={isActive}
-    >
-      <div className="lens-ev-pc-top">
-        <div className={`lens-ev-pc-icon lens-ev-pc-icon-${variant}`} aria-hidden="true">
-          {iconFor(card.id)}
-        </div>
-        <span className="lens-ev-pc-label">{card.label}</span>
-        <span
-          className={`lens-ev-pc-status lens-ev-pc-status-${card.status}`}
-          aria-label={t("evidence.statusLabel", { status: card.status })}
-        >
-          {card.status === "confirmed"
-            ? t("evidence.statusConfirmed")
-            : card.status === "pending"
-              ? t("evidence.statusPending")
-              : t("evidence.statusInferred")}
-        </span>
-      </div>
-      <div className="lens-ev-pc-summary">{card.summary}</div>
-    </div>
-  );
 }
 
 function selectionTargetId(card: ProofCard): string | undefined {
@@ -99,6 +41,7 @@ export function LensProofCards({ cards }: Props) {
   const search = useLensSearch();
   const activeProofId = search.proof;
   const activeTargetId = search.targetId;
+  const [inlineMessage, setInlineMessage] = useState<string | null>(null);
 
   useEffect(() => {
     if (!activeProofId && !activeTargetId) return;
@@ -116,8 +59,25 @@ export function LensProofCards({ cards }: Props) {
     }
   }, [activeProofId, activeTargetId, search.tab]);
 
-  function handleCardClick(card: ProofCard) {
+  // Clear inline message when proof changes away from design_gap
+  useEffect(() => {
+    if (activeProofId !== "design_gap") {
+      setInlineMessage(null);
+    }
+  }, [activeProofId]);
+
+  function handleClick(card: ProofCard) {
     const targetId = selectionTargetId(card);
+
+    // For design_gap with inferred/pending status, show explanation
+    if (card.id === "design_gap" && card.status !== "confirmed") {
+      setInlineMessage(
+        card.summary
+        || t("evidence.designGapFallback"),
+      );
+    } else {
+      setInlineMessage(null);
+    }
 
     void navigate({
       to: "/",
@@ -131,16 +91,57 @@ export function LensProofCards({ cards }: Props) {
     });
   }
 
+  function handleKeyDown(e: React.KeyboardEvent, card: ProofCard) {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      handleClick(card);
+    }
+  }
+
   return (
-    <div className="lens-ev-proof-cards" role="group" aria-label={t("evidence.proofCardsLabel")}>
-      {cards.map((card) => (
-        <ProofCardItem
-          key={card.id}
-          card={card}
-          isActive={activeProofId === card.id}
-          onClick={handleCardClick}
-        />
-      ))}
+    <div className="lens-ev-proof-nav" role="group" aria-label={t("evidence.proofCardsLabel")}>
+      <div className="lens-ev-proof-btns">
+        {cards.map((card) => {
+          const isActive = activeProofId === card.id;
+          const variant = dotVariant(card.id);
+
+          return (
+            <button
+              key={card.id}
+              type="button"
+              className={[
+                "lens-ev-proof-btn",
+                isActive ? "lens-ev-proof-btn-active" : "",
+              ].filter(Boolean).join(" ")}
+              onClick={() => handleClick(card)}
+              onKeyDown={(e) => handleKeyDown(e, card)}
+              data-proof-id={card.id}
+              aria-pressed={isActive}
+            >
+              <span
+                className={`lens-ev-proof-dot lens-ev-proof-dot-${variant}`}
+                aria-hidden="true"
+              />
+              <span className="lens-ev-proof-label">{card.label}</span>
+              <span
+                className={`lens-ev-proof-status lens-ev-proof-status-${card.status}`}
+                aria-label={t("evidence.statusLabel", { status: card.status })}
+              >
+                {card.status === "confirmed"
+                  ? t("evidence.statusConfirmed")
+                  : card.status === "pending"
+                    ? t("evidence.statusPending")
+                    : t("evidence.statusInferred")}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+      {inlineMessage ? (
+        <p className="lens-ev-proof-inline-msg" role="status" aria-live="polite">
+          {inlineMessage}
+        </p>
+      ) : null}
     </div>
   );
 }

@@ -1,14 +1,15 @@
 import { useTranslation } from "react-i18next";
-import type { CuratedState } from "../../../api/curated-types.js";
+import type { ConfidenceSummary, CuratedState } from "../../../api/curated-types.js";
 import { sectionFallback } from "./board-state.js";
 import { shortenForViewport } from "./viewport-text.js";
 
 interface Props {
   hypothesis: string;
   state: CuratedState;
+  confidence?: ConfidenceSummary;
 }
 
-export function RootCauseHypothesis({ hypothesis, state }: Props) {
+export function RootCauseHypothesis({ hypothesis, state, confidence }: Props) {
   const { t } = useTranslation();
   const fullText = hypothesis.trim() || sectionFallback(state, "rootCause");
   const previewText = shortenForViewport(fullText, 170);
@@ -19,6 +20,10 @@ export function RootCauseHypothesis({ hypothesis, state }: Props) {
     ? t("board.rootCause.statusProvisional")
     : t("board.rootCause.statusConfirmed");
 
+  const basisText = confidence?.basis.trim() || "";
+  const riskText = confidence?.risk.trim() || "";
+  const hasConfidenceDetail = basisText.length > 0 || riskText.length > 0;
+
   return (
     <div className="lens-board-root-cause">
       <div className="lens-board-root-cause-head">
@@ -28,6 +33,21 @@ export function RootCauseHypothesis({ hypothesis, state }: Props) {
         </span>
       </div>
       <p className="lens-board-root-cause-text" title={fullText}>{previewText}</p>
+      {hasConfidenceDetail ? (
+        <div className="lens-board-root-cause-conf">
+          {basisText ? (
+            <div className="lens-board-conf-row">
+              <span className="lens-board-conf-row-label">{t("board.confidence.basedOn")}</span>
+              <span className="lens-board-conf-row-value">{basisText}</span>
+            </div>
+          ) : null}
+          {riskText ? (
+            <div className="lens-board-conf-risk">
+              <span className="lens-board-conf-risk-label">{t("board.confidence.uncertainty")}</span> {riskText}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
       {isShortened ? (
         <details className="lens-board-inline-details">
           <summary>{isProvisional ? t("board.rootCause.fullWorkingTheory") : t("board.rootCause.fullRootCause")}</summary>

@@ -64,7 +64,7 @@ test.describe("L2 Evidence Studio — interactions", () => {
   test("proof cards are visible", async ({ page }) => {
     await gotoEvidenceStudioOrSkip(page);
 
-    const cards = page.locator(".lens-ev-proof-card");
+    const cards = page.locator(".lens-ev-proof-btn");
     await expect(cards.first()).toBeVisible({ timeout: 10_000 });
     const count = await cards.count();
     expect(count).toBeGreaterThanOrEqual(3);
@@ -73,7 +73,7 @@ test.describe("L2 Evidence Studio — interactions", () => {
   test("clicking proof card switches tab", async ({ page }) => {
     await gotoEvidenceStudioOrSkip(page);
 
-    await page.locator(".lens-ev-proof-card").first().waitFor({ state: "visible", timeout: 10_000 });
+    await page.locator(".lens-ev-proof-btn").first().waitFor({ state: "visible", timeout: 10_000 });
 
     // Click trigger card → traces tab
     const triggerCard = page.locator('[data-proof-id="trigger"]');

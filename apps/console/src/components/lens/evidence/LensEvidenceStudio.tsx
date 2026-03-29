@@ -173,8 +173,6 @@ export function LensEvidenceStudio({ incidentId }: Props) {
         </div>
       )}
 
-      <LensProofCards cards={evidence.proofCards} />
-
       <QAFrame
         qa={evidence.qa}
         inputValue={queryDraft}
@@ -184,7 +182,10 @@ export function LensEvidenceStudio({ incidentId }: Props) {
         onSubmitQuestion={handleSubmitQuestion}
       />
 
-      <LensEvidenceTabs surfaces={evidence.surfaces} />
+      <div className="lens-ev-tabs-row">
+        <LensEvidenceTabs surfaces={evidence.surfaces} />
+        <LensProofCards cards={evidence.proofCards} />
+      </div>
 
       <div className="lens-ev-grid">
         <div className="lens-ev-main">
