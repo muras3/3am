@@ -1,233 +1,217 @@
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import type { MapNode as MapNodeType, MapEdge } from "../../../api/curated-types.js";
+import type { MapService, MapDependency, MapEdge } from "../../../api/curated-types.js";
 import type { LensLevel } from "../../../routes/__root.js";
-import { MapNode } from "./MapNode.js";
+import { ServiceCard, DependencyCard } from "./MapNode.js";
 
 interface Props {
-  nodes: MapNodeType[];
+  services: MapService[];
+  dependencies: MapDependency[];
   edges: MapEdge[];
   emptyState?: ReactNode;
   zoomTo: (level: LensLevel, trigger?: HTMLElement, incidentId?: string) => void;
 }
 
-// Layout constants (matching the mock's 1100x380 coordinate space)
-const SVG_W = 1100;
-const SVG_H = 380;
-
-// Tier Y positions (center of each node card)
-const TIER_Y: Record<string, number> = {
-  entry_point: 20,
-  runtime_unit: 150,
-  dependency: 280,
-};
-
-// Tier divider Y positions
-const TIER_DIVIDERS = [120, 252];
-
-// Node card dimensions
-const NODE_W = 160;
-const NODE_H = 58;
-const LEFT_OFFSET = 28; // leave room for tier labels
-
 /**
- * MapGraph — SVG-backed dependency map with tier-based auto layout.
+ * MapGraph -- 3-zone layout: services (left), SVG edges (center), dependencies (right).
  *
- * Tiers:
- * - Tier 0 (entry_point): top row
- * - Tier 1 (runtime_unit): middle row
- * - Tier 2 (dependency): bottom row
- *
- * Nodes are positioned absolutely within a 1100×380 container.
- * SVG edges are drawn behind nodes and animate traffic dots via animateMotion.
+ * Replaces the previous tier-based SVG coordinate space with a flex-based
+ * spatial layout matching the v2 mock design.
  */
-export function MapGraph({ nodes, edges, emptyState, zoomTo }: Props) {
+export function MapGraph({ services, dependencies, edges, emptyState, zoomTo }: Props) {
   const { t } = useTranslation();
-  const nodePositions = computeNodePositions(nodes);
+  const hasContent = services.length > 0 || dependencies.length > 0;
 
   return (
     <div className="system-map" aria-label={t("map.mapLabel")}>
-      {/* Tier labels */}
-      <span className="map-tier-label t0">{t("map.entryPoints")}</span>
-      <span className="map-tier-label t1">{t("map.runtimeUnits")}</span>
-      <span className="map-tier-label t2">{t("map.dependencies")}</span>
+      {hasContent ? (
+        <div className="map-zoned">
+          {/* Left: Services */}
+          <div className="zone-services">
+            {services.map((svc) => (
+              <ServiceCard key={svc.serviceName} service={svc} zoomTo={zoomTo} />
+            ))}
+          </div>
 
-      {/* Tier dividers */}
-      {TIER_DIVIDERS.map((top) => (
-        <div key={top} className="map-tier-border" style={{ top }} />
-      ))}
-
-      {/* SVG edges */}
-      <svg
-        className="map-edges"
-        viewBox={`0 0 ${SVG_W} ${SVG_H}`}
-        preserveAspectRatio="xMidYMid meet"
-        aria-hidden="true"
-      >
-        <defs>
-          {edges.map((edge, i) => {
-            const path = computeEdgePath(edge, nodePositions);
-            if (!path) return null;
-            return <path key={`path-def-${i}`} id={`e${i}`} d={path} fill="none" />;
-          })}
-        </defs>
-
-        {edges.map((edge, i) => {
-          const path = computeEdgePath(edge, nodePositions);
-          if (!path) return null;
-          const color = statusColor(edge.status);
-          const opacity = edge.status === "healthy" ? 0.16 : 0.22;
-          const strokeW = edge.status === "critical" ? 2.5 : edge.status === "degraded" ? 2 : 1.5;
-          const dashed = edge.kind === "external" ? "6 4" : undefined;
-          const dotColor = statusDotColor(edge.status);
-          const dotR = edge.status === "critical" ? 3 : 2.5;
-          const dotOpacity = edge.status === "critical" ? 0.7 : edge.status === "degraded" ? 0.5 : 0.4;
-          const dur = edge.status === "critical" ? "0.9s" : edge.status === "degraded" ? "1.5s" : "2.5s";
-          const dotsCount = edge.status === "critical" ? 3 : 1;
-
-          return (
-            <g key={`edge-${i}`}>
-              <path
-                d={path}
-                stroke={color}
-                strokeWidth={strokeW}
-                opacity={opacity}
-                fill="none"
-                strokeDasharray={dashed}
-              />
-              {edge.label && (
-                <EdgeLabel path={path} label={edge.label} />
-              )}
-              {Array.from({ length: dotsCount }, (_, di) => (
-                <circle key={di} r={dotR} fill={dotColor} opacity={dotOpacity}>
-                  <animateMotion
-                    dur={dur}
-                    begin={di > 0 ? `${di * (parseFloat(dur) / dotsCount)}s` : undefined}
-                    repeatCount="indefinite"
-                  >
-                    <mpath href={`#e${i}`} />
-                  </animateMotion>
-                </circle>
-              ))}
-            </g>
-          );
-        })}
-      </svg>
-
-      {/* Nodes */}
-      {nodes.map((node) => {
-        const pos = nodePositions.get(node.id);
-        if (!pos) return null;
-        return (
-          <MapNode
-            key={node.id}
-            node={node}
-            style={{ left: pos.x, top: pos.y, width: NODE_W }}
-            zoomTo={zoomTo}
+          {/* Center: SVG edges — hidden when no dependencies */}
+          <EdgeZone
+            services={services}
+            dependencies={dependencies}
+            edges={edges}
+            hasDependencies={dependencies.length > 0}
           />
-        );
-      })}
 
-      {nodes.length === 0 && emptyState ? (
+          {/* Right: Dependencies — zone-deps:empty collapses via CSS */}
+          <div className="zone-deps">
+            {dependencies.map((dep) => (
+              <DependencyCard key={dep.id} dep={dep} zoomTo={zoomTo} />
+            ))}
+          </div>
+        </div>
+      ) : null}
+
+      {!hasContent && emptyState ? (
         <div className="map-empty map-empty-overlay">
           {emptyState}
         </div>
       ) : null}
 
-      {/* Map legend */}
+      {/* Legend */}
       <div className="map-legend">
-        <span style={{ color: "var(--ink-2)" }}>{t("map.legendObserved")}</span>
-        <span>&#9644; {t("map.legendEntry")}</span>
-        <span>&#9673; {t("map.legendRuntime")}</span>
-        <span>&#9634; {t("map.legendDependency")}</span>
         <span>
-          <span className="legend-line" style={{ background: "var(--accent)" }} />
-          {t("map.legendErrors")}
+          <span className="legend-swatch healthy" />
+          {t("map.legendHealthy")}
         </span>
         <span>
-          <span className="legend-line" style={{ background: "var(--amber)" }} />
+          <span className="legend-swatch degraded" />
           {t("map.legendDegraded")}
         </span>
         <span>
-          <span className="legend-line" style={{ background: "var(--good)" }} />
-          {t("map.legendHealthy")}
+          <span className="legend-swatch errors" />
+          {t("map.legendErrors")}
+        </span>
+        <span>
+          <span className="legend-line-dashed" />
+          {t("map.legendDependency")}
         </span>
       </div>
     </div>
   );
 }
 
-// ── Layout helpers ─────────────────────────────────────────────
+// ── Edge zone ─────────────────────────────────────────────────
 
-interface NodePos {
-  x: number;
-  y: number;
-  cx: number; // center x (for edge attachment)
-  cy: number; // center y
+/** Estimated vertical height per service card (header + ~2 routes avg). */
+const SVC_CARD_H = 100;
+/** Gap between service cards. */
+const SVC_GAP = 10;
+/** Estimated vertical height per dependency card. */
+const DEP_CARD_H = 70;
+/** Gap between dependency cards. */
+const DEP_GAP = 10;
+
+interface EdgeZoneProps {
+  services: MapService[];
+  dependencies: MapDependency[];
+  edges: MapEdge[];
+  hasDependencies: boolean;
 }
 
-function computeNodePositions(nodes: MapNodeType[]): Map<string, NodePos> {
-  const byTier: Record<string, MapNodeType[]> = {
-    entry_point: [],
-    runtime_unit: [],
-    dependency: [],
-  };
+function EdgeZone({ services, dependencies, edges, hasDependencies }: EdgeZoneProps) {
+  if (!hasDependencies) return null;
+  if (edges.length === 0) return <div className="zone-edges" />;
 
-  for (const node of nodes) {
-    const tier = byTier[node.tier];
-    if (tier) tier.push(node);
+  // Build index maps for y-position calculation
+  const svcIndex = new Map<string, number>();
+  services.forEach((svc, i) => svcIndex.set(svc.serviceName, i));
+
+  const depIndex = new Map<string, number>();
+  dependencies.forEach((dep, i) => depIndex.set(dep.id, i));
+
+  // Compute estimated service card heights based on route count
+  const svcHeights = services.map((svc) => {
+    const headerH = 38;         // svc-header height
+    const routeH = 28;          // each route-row
+    const routeListPad = 6;     // padding in route-list
+    return headerH + routeListPad + svc.routes.length * routeH + 2; // 2px border
+  });
+
+  // Y center of each service card
+  const svcCenters: number[] = [];
+  let runningY = 0;
+  for (let i = 0; i < svcHeights.length; i++) {
+    svcCenters.push(runningY + svcHeights[i]! / 2);
+    runningY += svcHeights[i]! + SVC_GAP;
   }
 
-  // Sort within tier by positionHint if available
-  for (const tier of Object.values(byTier)) {
-    tier.sort((a, b) => {
-      const ah = a.positionHint ?? 999;
-      const bh = b.positionHint ?? 999;
-      return ah - bh;
-    });
+  // Y center of each dependency card
+  const depCenters: number[] = [];
+  let depRunningY = 0;
+  for (let i = 0; i < dependencies.length; i++) {
+    depCenters.push(depRunningY + DEP_CARD_H / 2);
+    depRunningY += DEP_CARD_H + DEP_GAP;
   }
 
-  const result = new Map<string, NodePos>();
-  const usableWidth = SVG_W - LEFT_OFFSET - 20; // leave right margin
+  const totalSvcH = runningY > 0 ? runningY - SVC_GAP : SVC_CARD_H;
+  const totalDepH = depRunningY > 0 ? depRunningY - DEP_GAP : DEP_CARD_H;
+  const svgH = Math.max(totalSvcH, totalDepH, 60);
+  const svgW = 72;
 
-  for (const [tierName, tierNodes] of Object.entries(byTier)) {
-    if (tierNodes.length === 0) continue;
-    const topY = TIER_Y[tierName] ?? 0;
-    const spacing = usableWidth / (tierNodes.length + 1);
+  return (
+    <div className="zone-edges">
+      <svg
+        viewBox={`0 0 ${svgW} ${svgH}`}
+        fill="none"
+        style={{ height: svgH }}
+        aria-hidden="true"
+      >
+        {edges.map((edge, i) => {
+          const si = svcIndex.get(edge.fromService);
+          const di = depIndex.get(edge.toDependency);
+          if (si === undefined || di === undefined) return null;
 
-    tierNodes.forEach((node, idx) => {
-      const x = LEFT_OFFSET + spacing * (idx + 1) - NODE_W / 2;
-      const y = topY;
-      result.set(node.id, {
-        x,
-        y,
-        cx: x + NODE_W / 2,
-        cy: y + NODE_H / 2,
-      });
-    });
-  }
+          const y1 = svcCenters[si] ?? svgH / 2;
+          const y2 = depCenters[di] ?? svgH / 2;
 
-  return result;
+          const isCrit = edge.status === "critical";
+          const color = statusColor(edge.status);
+          const strokeW = isCrit ? 1.5 : 1.2;
+          const opacity = isCrit ? 0.7 : edge.status === "degraded" ? 0.4 : 0.3;
+          const dotR = isCrit ? 3 : 2.5;
+          const dotOpacity = isCrit ? 0.6 : 0.35;
+          const dur = isCrit ? "1s" : edge.status === "degraded" ? "1.5s" : "2.5s";
+
+          const path = `M0,${y1} C${svgW * 0.42},${y1} ${svgW * 0.58},${y2} ${svgW},${y2}`;
+          const pathId = `edge-path-${i}`;
+
+          return (
+            <g key={i}>
+              <defs>
+                <path id={pathId} d={path} />
+              </defs>
+              <path
+                d={path}
+                stroke={color}
+                strokeWidth={strokeW}
+                strokeDasharray="5 3.5"
+                opacity={opacity}
+                fill="none"
+              />
+              {/* Critical edges get 3 staggered dots for urgency; others get 1 */}
+              {isCrit ? (
+                <>
+                  <circle r={dotR} fill={color} opacity={dotOpacity}>
+                    <animateMotion dur={dur} repeatCount="indefinite" begin="0s">
+                      <mpath href={`#${pathId}`} />
+                    </animateMotion>
+                  </circle>
+                  <circle r={dotR} fill={color} opacity={dotOpacity * 0.7}>
+                    <animateMotion dur={dur} repeatCount="indefinite" begin={`${parseFloat(dur) * 0.33}s`}>
+                      <mpath href={`#${pathId}`} />
+                    </animateMotion>
+                  </circle>
+                  <circle r={dotR} fill={color} opacity={dotOpacity * 0.45}>
+                    <animateMotion dur={dur} repeatCount="indefinite" begin={`${parseFloat(dur) * 0.66}s`}>
+                      <mpath href={`#${pathId}`} />
+                    </animateMotion>
+                  </circle>
+                </>
+              ) : (
+                <circle r={dotR} fill={color} opacity={dotOpacity}>
+                  <animateMotion dur={dur} repeatCount="indefinite">
+                    <mpath href={`#${pathId}`} />
+                  </animateMotion>
+                </circle>
+              )}
+            </g>
+          );
+        })}
+      </svg>
+    </div>
+  );
 }
 
-function computeEdgePath(
-  edge: MapEdge,
-  positions: Map<string, NodePos>,
-): string | null {
-  const from = positions.get(edge.fromNodeId);
-  const to = positions.get(edge.toNodeId);
-  if (!from || !to) return null;
-
-  // Connect from bottom-center of source to top-center of target
-  const x1 = from.cx;
-  const y1 = from.y + NODE_H;
-  const x2 = to.cx;
-  const y2 = to.y;
-
-  return `M${x1},${y1} L${x2},${y2}`;
-}
-
-// ── Color helpers ──────────────────────────────────────────────
+// ── Color helpers ─────────────────────────────────────────────
 
 function statusColor(status: string): string {
   switch (status) {
@@ -235,34 +219,4 @@ function statusColor(status: string): string {
     case "degraded": return "var(--amber)";
     default: return "var(--good)";
   }
-}
-
-function statusDotColor(status: string): string {
-  return statusColor(status);
-}
-
-// ── Edge label ────────────────────────────────────────────────
-
-function EdgeLabel({ path, label }: { path: string; label: string }) {
-  // Parse midpoint from "Mx1,y1 Lx2,y2"
-  const parts = path.replace(/[ML]/g, "").trim().split(" ");
-  if (parts.length < 2) return null;
-  const p1 = parts[0]!.split(",").map(Number);
-  const p2 = parts[1]!.split(",").map(Number);
-  if (p1.length < 2 || p2.length < 2) return null;
-  const mx = ((p1[0] ?? 0) + (p2[0] ?? 0)) / 2;
-  const my = ((p1[1] ?? 0) + (p2[1] ?? 0)) / 2;
-
-  return (
-    <text
-      x={mx}
-      y={my}
-      fontSize="8"
-      fill="var(--ink-3)"
-      fontFamily="var(--mono)"
-      textAnchor="middle"
-    >
-      {label}
-    </text>
-  );
 }

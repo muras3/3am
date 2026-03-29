@@ -17,30 +17,49 @@ export const RuntimeMapStateSchema = CuratedStateSchema.pick({
 
 export const RuntimeMapSummarySchema = z.object({
   activeIncidents: z.number(),
-  degradedNodes: z.number(),
+  degradedServices: z.number(),
   clusterReqPerSec: z.number(),
   clusterP95Ms: z.number(),
 }).strict();
 
-export const RuntimeMapNodeSchema = z.object({
+// ── Service-centric model ────────────────────────────────────────────────
+
+const StatusEnum = z.enum(["healthy", "degraded", "critical"]);
+
+export const RuntimeMapRouteSchema = z.object({
   id: z.string(),
-  tier: z.enum(["entry_point", "runtime_unit", "dependency"]),
   label: z.string(),
-  subtitle: z.string(),
-  status: z.enum(["healthy", "degraded", "critical"]),
-  metrics: z.record(z.string(), z.number()),
-  badges: z.array(z.string()),
+  status: StatusEnum,
+  errorRate: z.number(),
+  reqPerSec: z.number(),
   incidentId: z.string().optional(),
-  positionHint: z.number().optional(),
 }).strict();
 
-export const RuntimeMapEdgeSchema = z.object({
-  fromNodeId: z.string(),
-  toNodeId: z.string(),
-  kind: z.enum(["internal", "external"]),
-  status: z.enum(["healthy", "degraded", "critical"]),
-  label: z.string().optional(),
-  trafficHint: z.string().optional(),
+export const RuntimeMapServiceSchema = z.object({
+  serviceName: z.string(),
+  status: StatusEnum,
+  routes: z.array(RuntimeMapRouteSchema),
+  metrics: z.object({
+    errorRate: z.number(),
+    p95Ms: z.number(),
+    reqPerSec: z.number(),
+  }).strict(),
+  incidentId: z.string().optional(),
+}).strict();
+
+export const RuntimeMapDependencySchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  status: StatusEnum,
+  errorRate: z.number(),
+  reqPerSec: z.number(),
+  incidentId: z.string().optional(),
+}).strict();
+
+export const RuntimeMapServiceEdgeSchema = z.object({
+  fromService: z.string(),
+  toDependency: z.string(),
+  status: StatusEnum,
 }).strict();
 
 export const RuntimeMapIncidentSchema = z.object({
@@ -52,16 +71,21 @@ export const RuntimeMapIncidentSchema = z.object({
 
 export const RuntimeMapResponseSchema = z.object({
   summary: RuntimeMapSummarySchema,
-  nodes: z.array(RuntimeMapNodeSchema),
-  edges: z.array(RuntimeMapEdgeSchema),
+  services: z.array(RuntimeMapServiceSchema),
+  dependencies: z.array(RuntimeMapDependencySchema),
+  edges: z.array(RuntimeMapServiceEdgeSchema),
   incidents: z.array(RuntimeMapIncidentSchema),
   state: RuntimeMapStateSchema,
 }).strict();
+
+// ── Exported types ───────────────────────────────────────────────────────
 
 export type CuratedState = z.infer<typeof CuratedStateSchema>;
 export type RuntimeMapState = z.infer<typeof RuntimeMapStateSchema>;
 export type RuntimeMapSummary = z.infer<typeof RuntimeMapSummarySchema>;
 export type RuntimeMapResponse = z.infer<typeof RuntimeMapResponseSchema>;
-export type RuntimeMapNode = z.infer<typeof RuntimeMapNodeSchema>;
-export type RuntimeMapEdge = z.infer<typeof RuntimeMapEdgeSchema>;
+export type RuntimeMapRoute = z.infer<typeof RuntimeMapRouteSchema>;
+export type RuntimeMapService = z.infer<typeof RuntimeMapServiceSchema>;
+export type RuntimeMapDependency = z.infer<typeof RuntimeMapDependencySchema>;
+export type RuntimeMapServiceEdge = z.infer<typeof RuntimeMapServiceEdgeSchema>;
 export type RuntimeMapIncident = z.infer<typeof RuntimeMapIncidentSchema>;

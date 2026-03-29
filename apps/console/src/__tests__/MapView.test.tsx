@@ -45,7 +45,7 @@ describe("MapView — stats bar", () => {
     renderMapView(queryClient);
 
     expect(screen.getByTestId("stat-active-incidents").textContent).toBe("2");
-    expect(screen.getByTestId("stat-degraded-nodes").textContent).toBe("2");
+    expect(screen.getByTestId("stat-degraded-services").textContent).toBe("1");
     expect(screen.getByTestId("stat-req-per-sec").textContent).toBe("866");
     expect(screen.getByTestId("stat-p95").textContent).toBe("89ms");
   });
@@ -60,59 +60,74 @@ describe("MapView — stats bar", () => {
   });
 });
 
-describe("MapView — map nodes", () => {
-  it("renders correct number of map nodes (5 in ready fixture)", () => {
+describe("MapView — service cards", () => {
+  it("renders correct number of service cards", () => {
     const queryClient = makeClient();
     queryClient.setQueryData(curatedQueries.runtimeMap().queryKey, runtimeMapReady);
 
     renderMapView(queryClient);
 
-    const nodes = document.querySelectorAll(".map-node");
-    expect(nodes).toHaveLength(runtimeMapReady.nodes.length);
+    const serviceCards = document.querySelectorAll(".svc-card");
+    expect(serviceCards).toHaveLength(runtimeMapReady.services.length);
   });
 
-  it("entry_point nodes have n-entry class", () => {
+  it("critical service card has has-error class", () => {
     const queryClient = makeClient();
     queryClient.setQueryData(curatedQueries.runtimeMap().queryKey, runtimeMapReady);
 
     renderMapView(queryClient);
 
-    const entryNodes = document.querySelectorAll(".map-node.n-entry");
-    const expectedCount = runtimeMapReady.nodes.filter((n: (typeof runtimeMapReady.nodes)[number]) => n.tier === "entry_point").length;
-    expect(entryNodes).toHaveLength(expectedCount);
+    const errorCards = document.querySelectorAll(".svc-card.has-error");
+    const expectedCount = runtimeMapReady.services.filter((s) => s.status === "critical").length;
+    expect(errorCards).toHaveLength(expectedCount);
   });
 
-  it("runtime_unit nodes have n-unit class", () => {
+  it("renders route rows within service cards", () => {
     const queryClient = makeClient();
     queryClient.setQueryData(curatedQueries.runtimeMap().queryKey, runtimeMapReady);
 
     renderMapView(queryClient);
 
-    const unitNodes = document.querySelectorAll(".map-node.n-unit");
-    const expectedCount = runtimeMapReady.nodes.filter((n: (typeof runtimeMapReady.nodes)[number]) => n.tier === "runtime_unit").length;
-    expect(unitNodes).toHaveLength(expectedCount);
+    const routeRows = document.querySelectorAll(".route-row");
+    const totalRoutes = runtimeMapReady.services.reduce((sum, svc) => sum + svc.routes.length, 0);
+    expect(routeRows).toHaveLength(totalRoutes);
   });
 
-  it("dependency nodes have n-dep class", () => {
+  it("critical routes have is-critical class", () => {
     const queryClient = makeClient();
     queryClient.setQueryData(curatedQueries.runtimeMap().queryKey, runtimeMapReady);
 
     renderMapView(queryClient);
 
-    const depNodes = document.querySelectorAll(".map-node.n-dep");
-    const expectedCount = runtimeMapReady.nodes.filter((n: (typeof runtimeMapReady.nodes)[number]) => n.tier === "dependency").length;
-    expect(depNodes).toHaveLength(expectedCount);
+    const criticalRoutes = document.querySelectorAll(".route-row.is-critical");
+    const totalCritical = runtimeMapReady.services.reduce(
+      (sum, svc) => sum + svc.routes.filter((r) => r.status === "critical").length,
+      0,
+    );
+    expect(criticalRoutes).toHaveLength(totalCritical);
+  });
+});
+
+describe("MapView — dependency cards", () => {
+  it("renders correct number of dependency cards", () => {
+    const queryClient = makeClient();
+    queryClient.setQueryData(curatedQueries.runtimeMap().queryKey, runtimeMapReady);
+
+    renderMapView(queryClient);
+
+    const depCards = document.querySelectorAll(".dep-card");
+    expect(depCards).toHaveLength(runtimeMapReady.dependencies.length);
   });
 
-  it("critical nodes have n-critical class", () => {
+  it("critical dependency cards have has-error class", () => {
     const queryClient = makeClient();
     queryClient.setQueryData(curatedQueries.runtimeMap().queryKey, runtimeMapReady);
 
     renderMapView(queryClient);
 
-    const criticalNodes = document.querySelectorAll(".map-node.n-critical");
-    const expectedCount = runtimeMapReady.nodes.filter((n: (typeof runtimeMapReady.nodes)[number]) => n.status === "critical").length;
-    expect(criticalNodes).toHaveLength(expectedCount);
+    const errorDeps = document.querySelectorAll(".dep-card.has-error");
+    const expectedCount = runtimeMapReady.dependencies.filter((d) => d.status === "critical").length;
+    expect(errorDeps).toHaveLength(expectedCount);
   });
 });
 
@@ -149,17 +164,13 @@ describe("MapView — incident strip", () => {
 });
 
 describe("MapView — empty map shell", () => {
-  it("keeps the map frame, tier labels, and legend when no nodes are returned", () => {
+  it("shows empty state and legend when no services are returned", () => {
     const queryClient = makeClient();
     queryClient.setQueryData(curatedQueries.runtimeMap().queryKey, runtimeMapUnavailable);
 
     renderMapView(queryClient);
 
     expect(screen.getByLabelText("Runtime dependency map")).toBeInTheDocument();
-    expect(screen.getByText("Entry Points")).toBeInTheDocument();
-    expect(screen.getByText("Runtime Units")).toBeInTheDocument();
-    expect(screen.getByText("Dependencies")).toBeInTheDocument();
-    expect(screen.getAllByText("Observed from spans").length).toBeGreaterThan(0);
     expect(screen.getByTestId("map-empty-state")).toHaveTextContent("No recent spans in the live window.");
     expect(screen.getByTestId("map-empty-state")).toHaveTextContent("2 open incidents");
   });
@@ -172,42 +183,47 @@ describe("MapView — empty map shell", () => {
 
     expect(screen.getByTestId("map-status-banner")).toHaveTextContent("Live window empty");
     expect(screen.getByTestId("map-status-banner")).toHaveTextContent("captured incident window");
-    expect(document.querySelectorAll(".map-node")).toHaveLength(runtimeMapIncidentFallback.nodes.length);
+    expect(document.querySelectorAll(".svc-card")).toHaveLength(runtimeMapIncidentFallback.services.length);
+    expect(document.querySelectorAll(".dep-card")).toHaveLength(runtimeMapIncidentFallback.dependencies.length);
   });
 });
 
 describe("MapView — keyboard navigation", () => {
-  it("pressing Enter on a clickable node triggers zoomTo(1)", () => {
+  it("pressing Enter on a clickable route row triggers zoomTo(1)", () => {
     const zoomTo = vi.fn();
     const queryClient = makeClient();
     queryClient.setQueryData(curatedQueries.runtimeMap().queryKey, runtimeMapReady);
 
     renderMapView(queryClient, zoomTo);
 
-    // Find a node with incidentId (clickable)
-    const clickableNode = runtimeMapReady.nodes.find((n: (typeof runtimeMapReady.nodes)[number]) => !!n.incidentId);
-    expect(clickableNode).toBeDefined();
-    const nodeEl = screen.getByTestId(`map-node-${clickableNode!.id}`);
+    // Find a route with incidentId (clickable)
+    const clickableRoute = runtimeMapReady.services
+      .flatMap((s) => s.routes)
+      .find((r) => !!r.incidentId);
+    expect(clickableRoute).toBeDefined();
+    const routeEl = screen.getByTestId(`route-row-${clickableRoute!.id}`);
 
-    fireEvent.keyDown(nodeEl, { key: "Enter" });
+    fireEvent.keyDown(routeEl, { key: "Enter" });
 
-    expect(zoomTo).toHaveBeenCalledWith(1, expect.any(HTMLElement), clickableNode!.incidentId);
+    expect(zoomTo).toHaveBeenCalledWith(1, expect.any(HTMLElement), clickableRoute!.incidentId);
   });
 
-  it("pressing Space on a clickable node triggers zoomTo(1)", () => {
+  it("pressing Space on a clickable route row triggers zoomTo(1)", () => {
     const zoomTo = vi.fn();
     const queryClient = makeClient();
     queryClient.setQueryData(curatedQueries.runtimeMap().queryKey, runtimeMapReady);
 
     renderMapView(queryClient, zoomTo);
 
-    const clickableNode = runtimeMapReady.nodes.find((n: (typeof runtimeMapReady.nodes)[number]) => !!n.incidentId);
-    expect(clickableNode).toBeDefined();
-    const nodeEl = screen.getByTestId(`map-node-${clickableNode!.id}`);
+    const clickableRoute = runtimeMapReady.services
+      .flatMap((s) => s.routes)
+      .find((r) => !!r.incidentId);
+    expect(clickableRoute).toBeDefined();
+    const routeEl = screen.getByTestId(`route-row-${clickableRoute!.id}`);
 
-    fireEvent.keyDown(nodeEl, { key: " " });
+    fireEvent.keyDown(routeEl, { key: " " });
 
-    expect(zoomTo).toHaveBeenCalledWith(1, expect.any(HTMLElement), clickableNode!.incidentId);
+    expect(zoomTo).toHaveBeenCalledWith(1, expect.any(HTMLElement), clickableRoute!.incidentId);
   });
 
   it("pressing Enter on an incident row triggers zoomTo(1)", () => {
@@ -247,20 +263,20 @@ describe("MapView — loading / error states", () => {
     // Don't set query data — will be in loading state
     renderMapView(queryClient);
 
-    expect(screen.getByText("Loading map…")).toBeInTheDocument();
+    expect(screen.getByText("Loading map\u2026")).toBeInTheDocument();
   });
 });
 
 describe("MapView — tab order", () => {
-  it("all map nodes have tabIndex 0", () => {
+  it("clickable route rows have tabIndex 0", () => {
     const queryClient = makeClient();
     queryClient.setQueryData(curatedQueries.runtimeMap().queryKey, runtimeMapReady);
 
     renderMapView(queryClient);
 
-    const nodes = document.querySelectorAll(".map-node");
-    nodes.forEach((node) => {
-      expect(node.getAttribute("tabindex")).toBe("0");
+    const clickableRoutes = document.querySelectorAll(".route-row.clickable");
+    clickableRoutes.forEach((row) => {
+      expect(row.getAttribute("tabindex")).toBe("0");
     });
   });
 

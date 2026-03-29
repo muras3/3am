@@ -1,5 +1,5 @@
 /**
- * Runtime Map Engine — derives nodes, edges, and summary from TelemetryStore spans.
+ * Runtime Map Engine — derives services, dependencies, edges, and summary from TelemetryStore spans.
  *
  * Serves GET /api/runtime-map. Reads from TelemetryStore (30min default window),
  * not SpanBuffer. Produces a response conforming to RuntimeMapResponseSchema.
@@ -7,7 +7,7 @@
 
 import { buildIncidentQueryFilter, type TelemetrySpan, type TelemetryStoreDriver, type TelemetryQueryFilter } from '../telemetry/interface.js'
 import type { StorageDriver, Incident } from '../storage/interface.js'
-import type { RuntimeMapResponse, RuntimeMapNode, RuntimeMapEdge, RuntimeMapIncident } from '@3amoncall/core/schemas/runtime-map'
+import type { RuntimeMapResponse, RuntimeMapService, RuntimeMapRoute, RuntimeMapDependency, RuntimeMapServiceEdge, RuntimeMapIncident } from '@3amoncall/core/schemas/runtime-map'
 import { normalizeDependency } from '../domain/formation.js'
 
 // ── Node ID normalization ──────────────────────────────────────────────────
@@ -87,6 +87,14 @@ function computeStatus(errorRate: number): 'healthy' | 'degraded' | 'critical' {
   return 'healthy'
 }
 
+function worstStatus(
+  a: 'healthy' | 'degraded' | 'critical',
+  b: 'healthy' | 'degraded' | 'critical',
+): 'healthy' | 'degraded' | 'critical' {
+  const rank = { healthy: 0, degraded: 1, critical: 2 } as const
+  return rank[a] >= rank[b] ? a : b
+}
+
 // ── Span Kind constants ────────────────────────────────────────────────────
 
 const SPAN_KIND_SERVER = 2
@@ -98,6 +106,8 @@ interface NodeAccumulator {
   id: string
   tier: 'entry_point' | 'runtime_unit' | 'dependency'
   label: string
+  /** serviceName owning this node (undefined for dependency nodes) */
+  serviceName: string | undefined
   totalSpans: number
   errorSpans: number
   durations: number[]
@@ -117,6 +127,7 @@ interface DerivedNode {
   nodeId: string
   tier: 'entry_point' | 'runtime_unit' | 'dependency'
   label: string
+  serviceName: string | undefined
 }
 
 interface DerivedEdge {
@@ -147,6 +158,7 @@ function deriveFromSpan(span: TelemetrySpan): SpanDerivation {
         nodeId,
         tier: 'entry_point',
         label: `${method} ${normalizedRoute}`,
+        serviceName: span.serviceName,
       },
       extraNodes: [],
       directEdges: [],
@@ -162,6 +174,7 @@ function deriveFromSpan(span: TelemetrySpan): SpanDerivation {
         nodeId,
         tier: 'entry_point',
         label: normalizedName,
+        serviceName: span.serviceName,
       },
       extraNodes: [],
       directEdges: [],
@@ -180,12 +193,14 @@ function deriveFromSpan(span: TelemetrySpan): SpanDerivation {
           nodeId: unitId,
           tier: 'runtime_unit',
           label: normalizedName,
+          serviceName: span.serviceName,
         },
         extraNodes: [
           {
             nodeId: depId,
             tier: 'dependency',
             label: normalizedPeer,
+            serviceName: undefined,
           },
         ],
         directEdges: [
@@ -207,6 +222,7 @@ function deriveFromSpan(span: TelemetrySpan): SpanDerivation {
       nodeId,
       tier: 'runtime_unit',
       label: normalizedName,
+      serviceName: span.serviceName,
     },
     extraNodes: [],
     directEdges: [],
@@ -316,44 +332,116 @@ function assembleRuntimeMap(input: {
     accumulateEdge(edgeAccumulators, parentNodeId, childNodeId, kind, isSpanError(span))
   }
 
-  // ── Finalize nodes ──
+  // ── Group nodes into services and dependencies ──
 
-  const nodes: RuntimeMapNode[] = []
+  // Collect dependency accumulators
+  const depAccumulators = new Map<string, NodeAccumulator>()
+  // Map serviceName → list of entry_point accumulators
+  const serviceEntryPoints = new Map<string, NodeAccumulator[]>()
+  // Map serviceName → all (entry_point + runtime_unit) accumulators for metric rollup
+  const serviceAllNodes = new Map<string, NodeAccumulator[]>()
+
   for (const acc of nodeAccumulators.values()) {
-    const errorRate = acc.totalSpans > 0 ? acc.errorSpans / acc.totalSpans : 0
-    const p95Ms = computeP95(acc.durations)
-    const reqPerSec = acc.totalSpans / windowSeconds
-    const status = computeStatus(errorRate)
+    if (acc.tier === 'dependency') {
+      depAccumulators.set(acc.id, acc)
+    } else {
+      const svcName = acc.serviceName ?? acc.id
+      if (acc.tier === 'entry_point') {
+        const list = serviceEntryPoints.get(svcName) ?? []
+        list.push(acc)
+        serviceEntryPoints.set(svcName, list)
+      }
+      const allList = serviceAllNodes.get(svcName) ?? []
+      allList.push(acc)
+      serviceAllNodes.set(svcName, allList)
+    }
+  }
 
-    const subtitle = acc.tier === 'entry_point'
-      ? `${reqPerSec.toFixed(1)} req/s`
-      : acc.tier === 'dependency'
-        ? 'external'
-        : `${reqPerSec.toFixed(1)} req/s`
+  // ── Build services ──
 
-    nodes.push({
-      id: acc.id,
-      tier: acc.tier,
-      label: acc.label,
-      subtitle,
-      status,
+  const services: RuntimeMapService[] = []
+  for (const [svcName, allNodes] of serviceAllNodes) {
+    const entryPoints = serviceEntryPoints.get(svcName) ?? []
+
+    // Routes = entry_point nodes
+    const routes: RuntimeMapRoute[] = entryPoints.map((acc) => {
+      const errorRate = acc.totalSpans > 0 ? acc.errorSpans / acc.totalSpans : 0
+      const reqPerSec = acc.totalSpans / windowSeconds
+      return {
+        id: acc.id,
+        label: acc.label,
+        status: computeStatus(errorRate),
+        errorRate,
+        reqPerSec,
+      }
+    })
+
+    // Service metrics: rollup over all (entry_point + runtime_unit) nodes
+    const totalSpans = allNodes.reduce((s, a) => s + a.totalSpans, 0)
+    const errorSpans = allNodes.reduce((s, a) => s + a.errorSpans, 0)
+    const allDurations = entryPoints.flatMap((a) => a.durations) // p95 from entry_points only
+    const errorRate = totalSpans > 0 ? errorSpans / totalSpans : 0
+    const p95Ms = computeP95(allDurations)
+    const reqPerSec = (entryPoints.reduce((s, a) => s + a.totalSpans, 0)) / windowSeconds
+
+    // Service status = worst child route status
+    let serviceStatus: 'healthy' | 'degraded' | 'critical' = 'healthy'
+    for (const route of routes) {
+      serviceStatus = worstStatus(serviceStatus, route.status)
+    }
+    // If no routes, fall back to overall error rate
+    if (routes.length === 0) {
+      serviceStatus = computeStatus(errorRate)
+    }
+
+    services.push({
+      serviceName: svcName,
+      status: serviceStatus,
+      routes,
       metrics: { errorRate, p95Ms, reqPerSec },
-      badges: errorRate > 0 ? [`${Math.round(errorRate * 100)}% err`] : [],
     })
   }
 
-  // ── Finalize edges ──
+  // ── Build dependencies ──
 
-  const edges: RuntimeMapEdge[] = []
+  const dependencies: RuntimeMapDependency[] = []
+  for (const acc of depAccumulators.values()) {
+    const errorRate = acc.totalSpans > 0 ? acc.errorSpans / acc.totalSpans : 0
+    const reqPerSec = acc.totalSpans / windowSeconds
+    dependencies.push({
+      id: acc.id,
+      name: acc.label,
+      status: computeStatus(errorRate),
+      errorRate,
+      reqPerSec,
+    })
+  }
+
+  // ── Build service→dependency edges ──
+
+  // For each edge in edgeAccumulators that goes from a non-dep node to a dep node,
+  // resolve the service name of the source node.
+  const serviceEdgesMap = new Map<string, RuntimeMapServiceEdge>()
   for (const acc of edgeAccumulators.values()) {
-    edges.push({
-      fromNodeId: acc.fromNodeId,
-      toNodeId: acc.toNodeId,
-      kind: acc.kind,
-      status: computeStatus(acc.requestCount > 0 ? acc.errorCount / acc.requestCount : 0),
-      trafficHint: `${acc.requestCount}`,
-    })
+    const toAcc = nodeAccumulators.get(acc.toNodeId)
+    if (toAcc?.tier !== 'dependency') continue
+
+    // Resolve source service name
+    const fromAcc = nodeAccumulators.get(acc.fromNodeId)
+    const fromService = fromAcc?.serviceName ?? acc.fromNodeId
+    const toDependency = toAcc.label
+
+    const edgeKey = `${fromService}→${toDependency}`
+    if (!serviceEdgesMap.has(edgeKey)) {
+      const edgeErrorRate = acc.requestCount > 0 ? acc.errorCount / acc.requestCount : 0
+      serviceEdgesMap.set(edgeKey, {
+        fromService,
+        toDependency,
+        status: computeStatus(edgeErrorRate),
+      })
+    }
   }
+  const edges: RuntimeMapServiceEdge[] = Array.from(serviceEdgesMap.values())
 
   // ── Match incidents ──
 
@@ -368,24 +456,24 @@ function assembleRuntimeMap(input: {
       openedAgo: formatOpenedAgo(incident.openedAt),
     })
 
-    assignIncidentToNodes(nodes, incident)
+    assignIncidentToServiceModel(services, dependencies, incident)
   }
 
   // ── Summary ──
 
-  const entryPointNodes = nodes.filter((n) => n.tier === 'entry_point')
-  const degradedNodes = nodes.filter((n) => n.status !== 'healthy').length
-  const clusterReqPerSec = entryPointNodes.reduce((sum, n) => sum + (n.metrics.reqPerSec ?? 0), 0)
+  const degradedServices = services.filter((s) => s.status !== 'healthy').length
+  const clusterReqPerSec = services.reduce((sum, s) => sum + (s.metrics.reqPerSec ?? 0), 0)
   const clusterP95Ms = computeP95(allEntryPointDurations)
 
   return {
     summary: {
       activeIncidents: incidents.length,
-      degradedNodes,
+      degradedServices,
       clusterReqPerSec,
       clusterP95Ms,
     },
-    nodes,
+    services,
+    dependencies,
     edges,
     incidents: incidentRows,
     state: {
@@ -433,8 +521,9 @@ function emptyRuntimeMap(openIncidents: Incident[], windowMinutes: number): Runt
     : 'no_open_incidents'
 
   return {
-    summary: { activeIncidents: openIncidents.length, degradedNodes: 0, clusterReqPerSec: 0, clusterP95Ms: 0 },
-    nodes: [],
+    summary: { activeIncidents: openIncidents.length, degradedServices: 0, clusterReqPerSec: 0, clusterP95Ms: 0 },
+    services: [],
+    dependencies: [],
     edges: [],
     incidents: incidentRows,
     state: {
@@ -472,6 +561,7 @@ function accumulateNode(
       id: derived.nodeId,
       tier: derived.tier,
       label: derived.label,
+      serviceName: derived.serviceName,
       totalSpans: 1,
       errorSpans: isError ? 1 : 0,
       durations: [durationMs],
@@ -506,34 +596,45 @@ function accumulateEdge(
   }
 }
 
-// ── Helper: assign incident to matching nodes ──
+// ── Helper: assign incident to matching services/dependencies ──
 
-function assignIncidentToNodes(nodes: RuntimeMapNode[], incident: Incident): void {
+function assignIncidentToServiceModel(
+  services: RuntimeMapService[],
+  dependencies: RuntimeMapDependency[],
+  incident: Incident,
+): void {
   const scope = incident.packet.scope
 
-  for (const node of nodes) {
-    if (node.incidentId) continue // already assigned
+  for (const service of services) {
+    if (service.incidentId) continue
 
-    if (node.tier === 'entry_point') {
-      // Match by affectedRoutes or primaryService
-      const routeMatch = scope.affectedRoutes.some((r) => node.id.includes(r.toLowerCase()))
-      const serviceMatch = node.id.includes(`:${scope.primaryService}:`)
+    for (const route of service.routes) {
+      if (route.incidentId) continue
+
+      const routeMatch = scope.affectedRoutes.some((r) => route.id.includes(r.toLowerCase()))
+      const serviceMatch = route.id.includes(`:${scope.primaryService}:`)
       if (routeMatch || serviceMatch) {
-        node.incidentId = incident.incidentId
+        route.incidentId = incident.incidentId
+        service.incidentId = incident.incidentId
       }
-    } else if (node.tier === 'dependency') {
-      // Match by affectedDependencies
-      const depMatch = scope.affectedDependencies.some((d) => node.id === `dep:${d.toLowerCase()}`)
-      if (depMatch) {
-        node.incidentId = incident.incidentId
-      }
-    } else {
-      // runtime_unit: match by primaryService or affectedServices
+    }
+
+    // Also match by primaryService/affectedServices on the service level
+    if (!service.incidentId) {
       const allServices = [scope.primaryService, ...scope.affectedServices]
-      const serviceMatch = allServices.some((s) => node.id.startsWith(`unit:${s}:`))
-      if (serviceMatch) {
-        node.incidentId = incident.incidentId
+      const svcMatch = allServices.some((s) => service.serviceName === s)
+      if (svcMatch) {
+        service.incidentId = incident.incidentId
       }
+    }
+  }
+
+  for (const dep of dependencies) {
+    if (dep.incidentId) continue
+
+    const depMatch = scope.affectedDependencies.some((d) => dep.id === `dep:${d.toLowerCase()}`)
+    if (depMatch) {
+      dep.incidentId = incident.incidentId
     }
   }
 }
