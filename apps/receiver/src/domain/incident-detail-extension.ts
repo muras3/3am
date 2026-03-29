@@ -154,7 +154,7 @@ export async function buildExtendedIncident(
     severity,
     openedAt: incident.openedAt,
     closedAt: incident.closedAt,
-    headline: diagnosis?.summary.what_happened ?? '',
+    headline: incident.consoleNarrative?.headline ?? diagnosis?.summary.what_happened ?? '',
     chips,
     action: {
       text: diagnosis?.recommendation.immediate_action ?? '',

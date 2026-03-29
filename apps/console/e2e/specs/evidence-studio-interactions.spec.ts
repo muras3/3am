@@ -171,24 +171,22 @@ test.describe("L2 Evidence Studio — interactions", () => {
     await expect(submitButton).toBeEnabled();
     await submitButton.click();
 
-    const answerEl = page.locator(".lens-ev-qa-answer-live");
-    await answerEl.waitFor({ state: "visible", timeout: 15_000 });
-    await expect(answerEl).toContainText(/Grounded answer|No answer/);
-    await expect(answerEl.locator(".lens-ev-qa-segment, .lens-ev-qa-no-answer").first()).toBeVisible();
+    const exchange = page.locator(".lens-ev-qa-exchange").last();
+    await expect(exchange).toContainText("What caused the rate limit cascade?", { timeout: 15_000 });
+    await expect(exchange).toContainText(/Grounded answer|No answer/);
+    await expect(exchange.locator(".lens-ev-qa-segment, .lens-ev-qa-no-answer").first()).toBeVisible();
   });
 
-  test("follow-up chip triggers submission", async ({ page }) => {
+  test("submitted Q&A stays visible as a conversation exchange", async ({ page }) => {
     await gotoEvidenceStudioOrSkip(page);
 
-    const chip = page.locator(".lens-ev-qa-chip").first();
-    await chip.waitFor({ state: "visible", timeout: 10_000 });
-    const chipText = (await chip.textContent()) ?? "";
-    await chip.click();
+    const qaInput = page.locator(".lens-ev-qa-input");
+    await qaInput.fill("Is recovery already visible?");
+    await page.locator(".lens-ev-qa-submit").click();
 
-    const answerEl = page.locator(".lens-ev-qa-answer-live");
-    await answerEl.waitFor({ state: "visible", timeout: 15_000 });
-    await expect(answerEl).toContainText(/Grounded answer|No answer/);
-    expect(chipText.trim().length).toBeGreaterThan(0);
+    const exchange = page.locator(".lens-ev-qa-exchange").last();
+    await expect(exchange.locator(".lens-ev-qa-bubble-user")).toContainText("Is recovery already visible?");
+    await expect(exchange.locator(".lens-ev-qa-bubble-assistant")).toContainText(/Grounded answer|No answer/);
   });
 
   test("side rail shows contextual notes", async ({ page }) => {

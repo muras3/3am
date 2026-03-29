@@ -1,13 +1,12 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ApiError } from "../../../api/client.js";
 import { curatedMutations, curatedQueries } from "../../../api/queries.js";
-import type { EvidenceQueryResponse } from "../../../api/curated-types.js";
 import { useLensSearch, type LensLevel } from "../../../routes/__root.js";
 import { ContextBar } from "./ContextBar.js";
 import { LensProofCards } from "./LensProofCards.js";
-import { QAFrame } from "./QAFrame.js";
+import { QAFrame, type QAHistoryItem } from "./QAFrame.js";
 import { LensEvidenceTabs } from "./LensEvidenceTabs.js";
 import { LensSideRail } from "./LensSideRail.js";
 import { LensTracesView } from "./LensTracesView.js";
@@ -24,19 +23,17 @@ export function LensEvidenceStudio({ incidentId }: Props) {
   const search = useLensSearch();
   const tab = search.tab ?? "traces";
   const [queryDraft, setQueryDraft] = useState(search.query ?? "");
-  const [latestResponse, setLatestResponse] = useState<EvidenceQueryResponse>();
-  const [submitError, setSubmitError] = useState<string>();
+  const [history, setHistory] = useState<QAHistoryItem[]>([]);
+  const nextHistoryId = useRef(0);
 
   const incidentQuery = useQuery(curatedQueries.extendedIncident(incidentId));
   const evidenceQuery = useQuery(curatedQueries.evidence(incidentId));
   const groundedQueryMutation = useMutation(curatedMutations.evidenceQuery(incidentId));
 
-  const evidenceQaQuestion = evidenceQuery.data?.qa.question;
   useEffect(() => {
-    if (evidenceQaQuestion != null) {
-      setQueryDraft(search.query ?? evidenceQaQuestion);
-    }
-  }, [evidenceQaQuestion, search.query]);
+    setQueryDraft(search.query ?? "");
+    setHistory([]);
+  }, [incidentId, search.query]);
 
   if (incidentQuery.isLoading || evidenceQuery.isLoading) {
     return (
@@ -102,20 +99,38 @@ export function LensEvidenceStudio({ incidentId }: Props) {
       : t("evidence.stillPreparing.baselineOpen"),
   ];
 
-  function handleSubmitQuestion(question: string, isFollowup = false) {
-    setSubmitError(undefined);
+  function handleSubmitQuestion(question: string) {
+    const entryId = `qa-${nextHistoryId.current++}`;
+    setHistory((current) => [...current, { id: entryId, question, status: "pending" }]);
     groundedQueryMutation.mutate(
-      { question, isFollowup },
+      { question, isFollowup: false },
       {
         onSuccess: (response) => {
-          setLatestResponse(response);
+          setHistory((current) =>
+            current.map((entry) =>
+              entry.id === entryId
+                ? { ...entry, status: "answered", response }
+                : entry,
+            ),
+          );
         },
         onError: (error) => {
+          const errorMessage = error instanceof ApiError && error.status === 404
+            ? t("evidence.qa.qaUnavailable")
+            : error instanceof Error
+              ? error.message
+              : t("evidence.qa.submitFailed");
+
+          setHistory((current) =>
+            current.map((entry) =>
+              entry.id === entryId
+                ? { ...entry, status: "failed", error: errorMessage }
+                : entry,
+            ),
+          );
           if (error instanceof ApiError && error.status === 404) {
-            setSubmitError(t("evidence.qa.qaUnavailable"));
             return;
           }
-          setSubmitError(error instanceof Error ? error.message : t("evidence.qa.submitFailed"));
         },
       },
     );
@@ -163,9 +178,8 @@ export function LensEvidenceStudio({ incidentId }: Props) {
       <QAFrame
         qa={evidence.qa}
         inputValue={queryDraft}
+        history={history}
         isSubmitting={groundedQueryMutation.isPending}
-        submitError={submitError}
-        latestResponse={latestResponse}
         onInputChange={setQueryDraft}
         onSubmitQuestion={handleSubmitQuestion}
       />

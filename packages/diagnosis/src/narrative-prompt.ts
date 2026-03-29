@@ -106,7 +106,7 @@ ${absenceSummary}
 Generate ONLY the JSON object below. No prose, no markdown.
 
 CRITICAL CONSTRAINTS:
-1. headline: ≤120 characters. Concise incident summary.
+1. headline: ≤120 characters. The first sentence must be a short, title-like incident summary that can stand alone in list views. You may add one more sentence of supporting detail after it.
 2. whyThisAction: Expand action_rationale_short into a full paragraph explaining the reasoning.
 3. confidenceSummary.basis: Extract the evidence basis from the stage 1 confidence text.
 4. confidenceSummary.risk: Describe the failure mode of the recommended action.

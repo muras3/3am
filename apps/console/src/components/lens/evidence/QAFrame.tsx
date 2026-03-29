@@ -1,3 +1,4 @@
+import { ArrowUp } from "lucide-react";
 import type { FormEvent } from "react";
 import { useEffect, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
@@ -8,18 +9,24 @@ import type {
   EvidenceQueryRef,
   EvidenceQueryResponse,
   EvidenceQuerySegment,
-  Followup,
 } from "../../../api/curated-types.js";
 import { useLensSearch } from "../../../routes/__root.js";
+
+export interface QAHistoryItem {
+  id: string;
+  question: string;
+  status: "pending" | "answered" | "failed";
+  response?: EvidenceQueryResponse;
+  error?: string;
+}
 
 interface Props {
   qa: QABlock;
   inputValue: string;
+  history: QAHistoryItem[];
   isSubmitting: boolean;
-  submitError?: string;
-  latestResponse?: EvidenceQueryResponse;
   onInputChange: (value: string) => void;
-  onSubmitQuestion: (question: string, isFollowup?: boolean) => void;
+  onSubmitQuestion: (question: string) => void;
 }
 
 function evidenceRefTarget(
@@ -81,60 +88,121 @@ function EvidenceRefLink({ ref: evidenceRef }: { ref: EvidenceRef | EvidenceQuer
 
 function SegmentBadge({ kind }: { kind: EvidenceQuerySegment["kind"] }) {
   const { t } = useTranslation();
-  const label = kind === "fact" ? t("evidence.qa.segmentFact") : kind === "inference" ? t("evidence.qa.segmentInference") : t("evidence.qa.segmentUnknown");
+  const label = kind === "fact"
+    ? t("evidence.qa.segmentFact")
+    : kind === "inference"
+      ? t("evidence.qa.segmentInference")
+      : t("evidence.qa.segmentUnknown");
   return <span className={`lens-ev-qa-segment-badge lens-ev-qa-segment-badge-${kind}`}>{label}</span>;
 }
 
-function FollowupChip({
-  followup,
-  disabled,
-  onAsk,
+function SegmentedAnswer({
+  segments,
+  noAnswerReason,
+  emptyLabel,
+  answerSegmentsLabel,
+  evidenceRefsLabel,
 }: {
-  followup: Followup;
-  disabled: boolean;
-  onAsk: (question: string) => void;
+  segments: Array<{
+    id: string;
+    kind: EvidenceQuerySegment["kind"];
+    text: string;
+    evidenceRefs: Array<EvidenceRef | EvidenceQueryRef>;
+  }>;
+  noAnswerReason?: string;
+  emptyLabel: string;
+  answerSegmentsLabel: string;
+  evidenceRefsLabel: string;
 }) {
+  if (segments.length === 0) {
+    return <div className="lens-ev-qa-no-answer">{noAnswerReason ?? emptyLabel}</div>;
+  }
+
   return (
-    <button
-      className="lens-ev-qa-chip"
-      type="button"
-      disabled={disabled}
-      onClick={() => onAsk(followup.question)}
-    >
-      {followup.question}
-    </button>
+    <div className="lens-ev-qa-segments" role="article" aria-label={answerSegmentsLabel}>
+      {segments.map((segment) => (
+        <div key={segment.id} className={`lens-ev-qa-segment lens-ev-qa-segment-${segment.kind}`}>
+          <div className="lens-ev-qa-segment-line">
+            <SegmentBadge kind={segment.kind} />
+            <span className="lens-ev-qa-segment-text">{segment.text}</span>
+          </div>
+          <div className="lens-ev-qa-refs" aria-label={evidenceRefsLabel}>
+            {segment.evidenceRefs.map((ref, i) => (
+              <EvidenceRefLink key={`${ref.kind}-${ref.id}-${i}`} ref={ref} />
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function PreparedRead({ qa }: { qa: QABlock }) {
+  const { t } = useTranslation();
+  const initialSegments = qa.segments ?? [];
+
+  if (initialSegments.length === 0 && !qa.answer.trim() && !qa.noAnswerReason) {
+    return null;
+  }
+
+  return (
+    <div className={`lens-ev-qa-answer lens-ev-qa-bubble lens-ev-qa-bubble-assistant${qa.status === "no_answer" ? " lens-ev-qa-answer-placeholder" : ""}`}>
+      <div className="lens-ev-qa-bubble-role">{t("evidence.qa.preparedRead")}</div>
+      <div className="lens-ev-qa-answer-head">
+        <span className="lens-ev-qa-state-label">
+          {qa.status === "no_answer" ? t("evidence.qa.noAnswer") : t("evidence.qa.preparedRead")}
+        </span>
+        {qa.noAnswerReason && (
+          <span className="lens-ev-qa-answer-note">{qa.noAnswerReason}</span>
+        )}
+      </div>
+      {initialSegments.length > 0 ? (
+        <SegmentedAnswer
+          segments={initialSegments}
+          noAnswerReason={qa.noAnswerReason ?? undefined}
+          emptyLabel={t("evidence.qa.noAnswer")}
+          answerSegmentsLabel={t("evidence.qa.preparedSegmentsLabel")}
+          evidenceRefsLabel={t("evidence.qa.evidenceRefsLabel")}
+        />
+      ) : qa.noAnswerReason ? (
+        <div className="lens-ev-qa-no-answer">{qa.noAnswerReason}</div>
+      ) : (
+        <>
+          <div>{qa.answer}</div>
+          {qa.evidenceRefs.length > 0 && (
+            <div className="lens-ev-qa-refs" aria-label={t("evidence.qa.evidenceRefsLabel")}>
+              {qa.evidenceRefs.map((ref, i) => (
+                <EvidenceRefLink key={`${ref.kind}-${ref.id}-${i}`} ref={ref} />
+              ))}
+            </div>
+          )}
+        </>
+      )}
+    </div>
   );
 }
 
 export function QAFrame({
   qa,
   inputValue,
+  history,
   isSubmitting,
-  submitError,
-  latestResponse,
   onInputChange,
   onSubmitQuestion,
 }: Props) {
   const { t } = useTranslation();
   const [draft, setDraft] = useState(inputValue);
-  const latestSegments = latestResponse?.segments ?? [];
-  const initialSegments = qa.segments ?? [];
-  const activeFollowups = latestResponse?.followups ?? qa.followups;
-  const summary = latestResponse?.evidenceSummary ?? qa.evidenceSummary;
 
   useEffect(() => {
     setDraft(inputValue);
   }, [inputValue]);
-  const evidenceSummaryText = [
-    summary.traces > 0 ? `${summary.traces} traces` : null,
-    summary.metrics > 0 ? `${summary.metrics} metrics` : null,
-    summary.logs > 0 ? `${summary.logs} logs` : null,
-  ].filter(Boolean).join(", ");
 
-  function submit(question: string, isFollowup = false) {
+  function submit(question: string) {
     const trimmed = question.trim();
     if (!trimmed || isSubmitting) return;
-    onSubmitQuestion(trimmed, isFollowup);
+    onSubmitQuestion(trimmed);
+    setDraft("");
+    onInputChange("");
   }
 
   function handleSubmit(e: FormEvent<HTMLFormElement>) {
@@ -144,137 +212,77 @@ export function QAFrame({
 
   return (
     <div className="lens-ev-qa-frame" role="region" aria-label={t("evidence.qa.label")}>
-      <form className="lens-ev-qa-question-row lens-ev-qa-form" onSubmit={handleSubmit}>
-        <span className="lens-ev-qa-icon" aria-hidden="true">?</span>
-        <input
-          className="lens-ev-qa-input"
-          type="text"
-          value={draft}
-          onChange={(e) => {
-            setDraft(e.target.value);
-            onInputChange(e.target.value);
-          }}
-          placeholder={t("evidence.qa.placeholder")}
-          aria-label={t("evidence.qa.inputLabel")}
-          disabled={isSubmitting}
-        />
-        {evidenceSummaryText && (
-          <span className="lens-ev-qa-time" aria-label={t("evidence.qa.summaryLabel")}>
-            {evidenceSummaryText}
-          </span>
-        )}
-        <button
-          className="lens-ev-qa-submit"
-          type="submit"
-          disabled={isSubmitting || draft.trim().length === 0}
-        >
-          {isSubmitting ? t("evidence.qa.checking") : t("evidence.qa.ask")}
-        </button>
+      <form className="lens-ev-qa-form" onSubmit={handleSubmit}>
+        <div className="lens-ev-qa-input-shell">
+          <input
+            className="lens-ev-qa-input"
+            type="text"
+            value={draft}
+            onChange={(e) => {
+              setDraft(e.target.value);
+              onInputChange(e.target.value);
+            }}
+            placeholder={t("evidence.qa.placeholder")}
+            aria-label={t("evidence.qa.inputLabel")}
+            disabled={isSubmitting}
+          />
+          <button
+            className="lens-ev-qa-submit"
+            type="submit"
+            disabled={isSubmitting || draft.trim().length === 0}
+            aria-label={isSubmitting ? t("evidence.qa.checking") : t("evidence.qa.ask")}
+            title={isSubmitting ? t("evidence.qa.checking") : t("evidence.qa.ask")}
+          >
+            <ArrowUp size={14} strokeWidth={2.25} aria-hidden="true" />
+          </button>
+        </div>
       </form>
 
-      {submitError && (
-        <div className="lens-ev-qa-error" role="alert">
-          {submitError}
-        </div>
-      )}
+      <div className="lens-ev-qa-thread">
+        <PreparedRead qa={qa} />
 
-      {latestResponse ? (
-        <div className="lens-ev-qa-answer lens-ev-qa-answer-live" role="status" aria-live="polite">
-          <div className="lens-ev-qa-answer-head">
-            <span className="lens-ev-qa-state-label">
-              {latestResponse.status === "no_answer" ? t("evidence.qa.noAnswer") : t("evidence.qa.groundedAnswer")}
-            </span>
-            {latestResponse.noAnswerReason && (
-              <span className="lens-ev-qa-answer-note">{latestResponse.noAnswerReason}</span>
-            )}
-          </div>
-
-          {latestSegments.length > 0 ? (
-            <div className="lens-ev-qa-segments" role="article" aria-label={t("evidence.qa.answerSegmentsLabel")}>
-              {latestSegments.map((segment) => (
-                <div key={segment.id} className={`lens-ev-qa-segment lens-ev-qa-segment-${segment.kind}`}>
-                  <div className="lens-ev-qa-segment-line">
-                    <SegmentBadge kind={segment.kind} />
-                    <span className="lens-ev-qa-segment-text">{segment.text}</span>
-                  </div>
-                  <div className="lens-ev-qa-refs" aria-label={t("evidence.qa.evidenceRefsLabel")}>
-                    {segment.evidenceRefs.map((ref, i) => (
-                      <EvidenceRefLink key={`${ref.kind}-${ref.id}-${i}`} ref={ref} />
-                    ))}
-                  </div>
-                </div>
-              ))}
+        {history.map((entry) => (
+          <div key={entry.id} className="lens-ev-qa-exchange">
+            <div className="lens-ev-qa-bubble lens-ev-qa-bubble-user">
+              <div className="lens-ev-qa-bubble-role">{t("evidence.qa.you")}</div>
+              <div className="lens-ev-qa-bubble-text">{entry.question}</div>
             </div>
-          ) : (
-            <div className="lens-ev-qa-no-answer">{latestResponse.noAnswerReason}</div>
-          )}
-        </div>
-      ) : initialSegments.length > 0 ? (
-        <div
-          className={`lens-ev-qa-answer${qa.status === "no_answer" ? " lens-ev-qa-answer-placeholder" : ""}`}
-          role="article"
-        >
-          <div className="lens-ev-qa-answer-head">
-            <span className="lens-ev-qa-state-label">
-              {qa.status === "no_answer" ? t("evidence.qa.noAnswer") : t("evidence.qa.preparedRead")}
-            </span>
-            {qa.noAnswerReason && (
-              <span className="lens-ev-qa-answer-note">{qa.noAnswerReason}</span>
-            )}
-          </div>
-          <div
-            className={qa.status === "no_answer" ? "lens-ev-qa-no-answer" : "lens-ev-qa-segments"}
-            aria-label={t("evidence.qa.preparedSegmentsLabel")}
-          >
-            {initialSegments.map((segment) => (
-              <div key={segment.id} className={`lens-ev-qa-segment lens-ev-qa-segment-${segment.kind}`}>
-                <div className="lens-ev-qa-segment-line">
-                  <SegmentBadge kind={segment.kind} />
-                  <span className="lens-ev-qa-segment-text">{segment.text}</span>
-                </div>
-                <div className="lens-ev-qa-refs" aria-label={t("evidence.qa.evidenceRefsLabel")}>
-                  {segment.evidenceRefs.map((ref, i) => (
-                    <EvidenceRefLink key={`${ref.kind}-${ref.id}-${i}`} ref={ref} />
-                  ))}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      ) : qa.noAnswerReason ? (
-        <div className="lens-ev-qa-answer lens-ev-qa-answer-placeholder">
-          <div className="lens-ev-qa-state-label">{t("evidence.qa.noAnswer")}</div>
-          <div className="lens-ev-qa-no-answer">{qa.noAnswerReason}</div>
-        </div>
-      ) : (
-        <div className="lens-ev-qa-answer" role="article">
-          <div className="lens-ev-qa-answer-head">
-            <span className="lens-ev-qa-state-label">{t("evidence.qa.preparedRead")}</span>
-          </div>
-          <div>{qa.answer}</div>
 
-          {qa.evidenceRefs.length > 0 && (
-            <div className="lens-ev-qa-refs" aria-label={t("evidence.qa.evidenceRefsLabel")}>
-              {qa.evidenceRefs.map((ref, i) => (
-                <EvidenceRefLink key={`${ref.kind}-${ref.id}-${i}`} ref={ref} />
-              ))}
+            <div
+              className={`lens-ev-qa-answer lens-ev-qa-bubble lens-ev-qa-bubble-assistant${entry.status === "failed" ? " lens-ev-qa-answer-placeholder" : ""}`}
+              role={entry.status === "pending" ? "status" : entry.status === "failed" ? "alert" : "article"}
+              aria-live={entry.status === "pending" ? "polite" : undefined}
+            >
+              <div className="lens-ev-qa-bubble-role">{t("evidence.qa.assistant")}</div>
+              {entry.status === "pending" ? (
+                <div className="lens-ev-qa-pending">{t("evidence.qa.checking")}</div>
+              ) : entry.status === "failed" ? (
+                <div className="lens-ev-qa-no-answer">{entry.error ?? t("evidence.qa.submitFailed")}</div>
+              ) : (
+                <>
+                  <div className="lens-ev-qa-answer-head">
+                    <span className="lens-ev-qa-state-label">
+                      {entry.response?.status === "no_answer"
+                        ? t("evidence.qa.noAnswer")
+                        : t("evidence.qa.groundedAnswer")}
+                    </span>
+                    {entry.response?.noAnswerReason && (
+                      <span className="lens-ev-qa-answer-note">{entry.response.noAnswerReason}</span>
+                    )}
+                  </div>
+                  <SegmentedAnswer
+                    segments={entry.response?.segments ?? []}
+                    noAnswerReason={entry.response?.noAnswerReason}
+                    emptyLabel={t("evidence.qa.noAnswer")}
+                    answerSegmentsLabel={t("evidence.qa.answerSegmentsLabel")}
+                    evidenceRefsLabel={t("evidence.qa.evidenceRefsLabel")}
+                  />
+                </>
+              )}
             </div>
-          )}
-        </div>
-      )}
-
-      {activeFollowups.length > 0 && (
-        <div className="lens-ev-qa-followups" role="group" aria-label={t("evidence.qa.followupsLabel")}>
-          {activeFollowups.map((followup) => (
-            <FollowupChip
-              key={followup.question}
-              followup={followup}
-              disabled={isSubmitting}
-              onAsk={(question) => submit(question, true)}
-            />
-          ))}
-        </div>
-      )}
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

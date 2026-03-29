@@ -2,6 +2,7 @@ import { useTranslation } from "react-i18next";
 import type { MapIncident } from "../../../api/curated-types.js";
 import type { LensLevel } from "../../../routes/__root.js";
 import { formatShortIncidentId } from "../../../lib/incidentId.js";
+import { extractTitle } from "../../../lib/headline.js";
 
 interface Props {
   incidents: MapIncident[];
@@ -64,14 +65,14 @@ function IncidentRow({
       className="incident-row"
       tabIndex={0}
       role="button"
-      aria-label={t("map.incident.openLabel", { id: incident.incidentId, label: incident.label })}
+      aria-label={t("map.incident.openLabel", { id: incident.incidentId, label: extractTitle(incident.label) })}
       data-testid={`incident-row-${incident.incidentId}`}
       onClick={handleClick}
       onKeyDown={handleKeyDown}
     >
       <span className={`health-dot ${sevNorm === "critical" || sevNorm === "high" ? "critical" : sevNorm === "medium" ? "degraded" : ""}`} />
       <span className="ir-id">{formatShortIncidentId(incident.incidentId)}</span>
-      <span className="ir-name">{incident.label}</span>
+      <span className="ir-name">{extractTitle(incident.label)}</span>
       <span className={`ir-sev ${sevNorm}`}>{incident.severity}</span>
       <span className="ir-time">{t("map.incident.ago", { time: incident.openedAgo })}</span>
     </div>
