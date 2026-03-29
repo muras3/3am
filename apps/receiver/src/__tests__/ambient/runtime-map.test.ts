@@ -218,10 +218,11 @@ describe('buildRuntimeMap', () => {
 
     expect(result.state.diagnosis).toBe('ready')
     expect(result.state.source).toBe('no_telemetry')
-    expect(result.nodes).toEqual([])
+    expect(result.services).toEqual([])
+    expect(result.dependencies).toEqual([])
     expect(result.edges).toEqual([])
     expect(result.summary.activeIncidents).toBe(0)
-    expect(result.summary.degradedNodes).toBe(0)
+    expect(result.summary.degradedServices).toBe(0)
   })
 
   it('prefers console narrative headline for incident labels', async () => {
@@ -280,12 +281,13 @@ describe('buildRuntimeMap', () => {
 
     expect(result.state.source).toBe('incident_scope')
     expect(result.state.scopeIncidentId).toBe('inc-fallback')
-    expect(result.nodes).toHaveLength(1)
-    expect(result.nodes[0]!.id).toContain('/checkout')
+    // Should produce 1 service with 1 route containing /checkout
+    expect(result.services).toHaveLength(1)
+    expect(result.services[0]!.routes[0]!.id).toContain('/checkout')
     expect(result.summary.activeIncidents).toBe(1)
   })
 
-  it('creates entry_point node from SERVER span with httpRoute', async () => {
+  it('creates entry_point route inside a service from SERVER span with httpRoute', async () => {
     const span = makeSpan({
       spanId: 's1',
       spanKind: 2, // SERVER
@@ -298,14 +300,16 @@ describe('buildRuntimeMap', () => {
 
     const result = await buildRuntimeMap(store, storage)
 
-    expect(result.nodes.length).toBe(1)
-    expect(result.nodes[0]!.tier).toBe('entry_point')
-    expect(result.nodes[0]!.id).toBe('route:api:GET:/users')
-    expect(result.nodes[0]!.label).toBe('GET /users')
+    expect(result.services).toHaveLength(1)
+    expect(result.services[0]!.serviceName).toBe('api')
+    expect(result.services[0]!.routes).toHaveLength(1)
+    expect(result.services[0]!.routes[0]!.id).toBe('route:api:GET:/users')
+    expect(result.services[0]!.routes[0]!.label).toBe('GET /users')
+    expect(result.dependencies).toEqual([])
     expect(result.edges).toEqual([])
   })
 
-  it('creates runtime_unit + dependency from CLIENT span with peerService', async () => {
+  it('creates dependency from CLIENT span with peerService and a service→dep edge', async () => {
     const span = makeSpan({
       spanId: 's1',
       spanKind: 3, // CLIENT
@@ -318,21 +322,105 @@ describe('buildRuntimeMap', () => {
 
     const result = await buildRuntimeMap(store, storage)
 
-    expect(result.nodes.length).toBe(2)
-    const unit = result.nodes.find((n) => n.tier === 'runtime_unit')!
-    const dep = result.nodes.find((n) => n.tier === 'dependency')!
-    expect(unit!.id).toBe('unit:api:stripe.charges.create')
-    expect(dep!.id).toBe('dep:stripe')
-    expect(dep!.label).toBe('stripe')
+    // runtime_unit contributes to service metrics but is not a separate element
+    expect(result.services).toHaveLength(1)
+    expect(result.services[0]!.serviceName).toBe('api')
+    // No routes (no SERVER spans)
+    expect(result.services[0]!.routes).toHaveLength(0)
 
-    // Should have 1 edge: unit → dependency
-    expect(result.edges.length).toBe(1)
-    expect(result.edges[0]!.fromNodeId).toBe(unit!.id)
-    expect(result.edges[0]!.toNodeId).toBe(dep!.id)
-    expect(result.edges[0]!.kind).toBe('external')
+    // One dependency
+    expect(result.dependencies).toHaveLength(1)
+    expect(result.dependencies[0]!.id).toBe('dep:stripe')
+    expect(result.dependencies[0]!.name).toBe('stripe')
+
+    // One service→dep edge
+    expect(result.edges).toHaveLength(1)
+    expect(result.edges[0]!.fromService).toBe('api')
+    expect(result.edges[0]!.toDependency).toBe('stripe')
   })
 
-  it('collapses multiple spans with same route into 1 node with aggregated metrics', async () => {
+  it('groups two entry_point spans with same serviceName into 1 service with 2 routes', async () => {
+    const spans: TelemetrySpan[] = [
+      makeSpan({
+        spanId: 's1',
+        spanKind: 2,
+        httpRoute: '/users',
+        httpMethod: 'GET',
+        serviceName: 'api',
+      }),
+      makeSpan({
+        spanId: 's2',
+        spanKind: 2,
+        httpRoute: '/orders',
+        httpMethod: 'GET',
+        serviceName: 'api',
+      }),
+    ]
+    const store = makeMockTelemetryStore(spans)
+    const storage = makeMockStorage()
+
+    const result = await buildRuntimeMap(store, storage)
+
+    expect(result.services).toHaveLength(1)
+    expect(result.services[0]!.serviceName).toBe('api')
+    expect(result.services[0]!.routes).toHaveLength(2)
+    const routeIds = result.services[0]!.routes.map((r) => r.id)
+    expect(routeIds).toContain('route:api:GET:/users')
+    expect(routeIds).toContain('route:api:GET:/orders')
+  })
+
+  it('runtime_unit nodes contribute to service metrics but are not in response', async () => {
+    const spans: TelemetrySpan[] = [
+      makeSpan({
+        spanId: 'server',
+        spanKind: 2,
+        httpRoute: '/checkout',
+        httpMethod: 'POST',
+        serviceName: 'api',
+        durationMs: 100,
+        httpStatusCode: 200,
+      }),
+      makeSpan({
+        spanId: 'internal',
+        spanKind: 1,
+        spanName: 'db.query',
+        serviceName: 'api',
+        durationMs: 50,
+        httpStatusCode: 500, // error on internal span
+      }),
+    ]
+    const store = makeMockTelemetryStore(spans)
+    const storage = makeMockStorage()
+
+    const result = await buildRuntimeMap(store, storage)
+
+    // Only 1 service, no separate runtime_unit entries
+    expect(result.services).toHaveLength(1)
+    // The service errorRate should include the internal span error
+    const svc = result.services[0]!
+    expect(svc.metrics.errorRate).toBeGreaterThan(0)
+    // No standalone runtime_unit in dependencies
+    expect(result.dependencies).toHaveLength(0)
+  })
+
+  it('service status is worst child route status (critical > degraded > healthy)', async () => {
+    // Route A: healthy (0 errors)
+    // Route B: critical (50% errors)
+    const spans: TelemetrySpan[] = [
+      makeSpan({ spanId: 'a', spanKind: 2, httpRoute: '/health', httpMethod: 'GET', httpStatusCode: 200, serviceName: 'api' }),
+      makeSpan({ spanId: 'b1', spanKind: 2, httpRoute: '/charge', httpMethod: 'POST', httpStatusCode: 200, serviceName: 'api' }),
+      makeSpan({ spanId: 'b2', spanKind: 2, httpRoute: '/charge', httpMethod: 'POST', httpStatusCode: 500, serviceName: 'api' }),
+    ]
+    const store = makeMockTelemetryStore(spans)
+    const storage = makeMockStorage()
+
+    const result = await buildRuntimeMap(store, storage)
+
+    expect(result.services).toHaveLength(1)
+    expect(result.services[0]!.status).toBe('critical')
+  })
+
+  it('collapses multiple spans with same route into 1 route with aggregated metrics', async () => {
     const spans = Array.from({ length: 10 }, (_, i) =>
       makeSpan({
         spanId: `s-${i}`,
@@ -349,14 +437,14 @@ describe('buildRuntimeMap', () => {
 
     const result = await buildRuntimeMap(store, storage)
 
-    expect(result.nodes.length).toBe(1)
-    const node = result.nodes[0]!
-    expect(node.metrics.errorRate).toBeCloseTo(0.1, 5) // 1/10
-    expect(node.metrics.p95Ms).toBe(100) // p95 of [10..100]
-    expect(node.metrics.reqPerSec).toBeGreaterThan(0)
+    expect(result.services).toHaveLength(1)
+    const route = result.services[0]!.routes[0]!
+    expect(route.errorRate).toBeCloseTo(0.1, 5) // 1/10
+    expect(result.services[0]!.metrics.p95Ms).toBe(100) // p95 of [10..100]
+    expect(result.services[0]!.metrics.reqPerSec).toBeGreaterThan(0)
   })
 
-  it('sets status to critical when errorRate >= 0.05', async () => {
+  it('sets route status to critical when errorRate >= 0.05', async () => {
     // 19 OK + 1 error = 5% error rate
     const spans: TelemetrySpan[] = []
     for (let i = 0; i < 19; i++) {
@@ -380,11 +468,12 @@ describe('buildRuntimeMap', () => {
     const storage = makeMockStorage()
 
     const result = await buildRuntimeMap(store, storage)
-    expect(result.nodes[0]!.status).toBe('critical')
-    expect(result.nodes[0]!.metrics.errorRate).toBeCloseTo(0.05, 5)
+    const route = result.services[0]!.routes[0]!
+    expect(route.status).toBe('critical')
+    expect(route.errorRate).toBeCloseTo(0.05, 5)
   })
 
-  it('sets status to degraded when errorRate >= 0.01 but < 0.05', async () => {
+  it('sets route status to degraded when errorRate >= 0.01 but < 0.05', async () => {
     // 99 OK + 1 error = 1% error rate
     const spans: TelemetrySpan[] = []
     for (let i = 0; i < 99; i++) {
@@ -408,11 +497,12 @@ describe('buildRuntimeMap', () => {
     const storage = makeMockStorage()
 
     const result = await buildRuntimeMap(store, storage)
-    expect(result.nodes[0]!.status).toBe('degraded')
+    const route = result.services[0]!.routes[0]!
+    expect(route.status).toBe('degraded')
   })
 
-  it('deduplicates edges with same from/to', async () => {
-    // Two CLIENT spans to the same dependency — should produce 1 merged edge
+  it('deduplicates service→dep edges with same fromService/toDependency', async () => {
+    // Two CLIENT spans to the same dependency — should produce 1 merged service edge
     const spans: TelemetrySpan[] = [
       makeSpan({
         spanId: 's1',
@@ -435,11 +525,13 @@ describe('buildRuntimeMap', () => {
 
     const result = await buildRuntimeMap(store, storage)
 
-    // 1 unit + 1 dep = 2 nodes
-    expect(result.nodes.length).toBe(2)
-    // 1 merged edge
-    expect(result.edges.length).toBe(1)
-    expect(result.edges[0]!.trafficHint).toBe('2')
+    // 1 service, 1 dep
+    expect(result.services).toHaveLength(1)
+    expect(result.dependencies).toHaveLength(1)
+    // 1 merged service edge
+    expect(result.edges).toHaveLength(1)
+    expect(result.edges[0]!.fromService).toBe('api')
+    expect(result.edges[0]!.toDependency).toBe('stripe')
   })
 
   it('excludes self-loop edges', async () => {
@@ -467,12 +559,13 @@ describe('buildRuntimeMap', () => {
 
     const result = await buildRuntimeMap(store, storage)
 
-    // Both spans map to the same node, so no edge should be created
-    expect(result.nodes.length).toBe(1)
-    expect(result.edges.length).toBe(0)
+    // Both spans map to the same route — no dep edge created
+    expect(result.services).toHaveLength(1)
+    expect(result.services[0]!.routes).toHaveLength(1)
+    expect(result.edges).toHaveLength(0)
   })
 
-  it('builds parent-child edges between different nodes', async () => {
+  it('builds parent-child spans correctly (no extra dep edges for internal spans)', async () => {
     const spans: TelemetrySpan[] = [
       makeSpan({
         spanId: 'parent',
@@ -495,15 +588,16 @@ describe('buildRuntimeMap', () => {
 
     const result = await buildRuntimeMap(store, storage)
 
-    expect(result.nodes.length).toBe(2)
-    expect(result.edges.length).toBe(1)
-    expect(result.edges[0]!.fromNodeId).toBe('route:api:POST:/checkout')
-    expect(result.edges[0]!.toNodeId).toBe('unit:api:process-payment')
-    expect(result.edges[0]!.kind).toBe('internal')
+    // 1 service (api) with 1 route; internal span contributes to service but no dep edge
+    expect(result.services).toHaveLength(1)
+    expect(result.services[0]!.routes).toHaveLength(1)
+    expect(result.services[0]!.routes[0]!.id).toBe('route:api:POST:/checkout')
+    expect(result.dependencies).toHaveLength(0)
+    expect(result.edges).toHaveLength(0)
   })
 
   it('calculates summary correctly', async () => {
-    // 2 entry_point nodes, 1 healthy + 1 degraded
+    // 1 healthy service (/health) + 1 degraded service route (/orders)
     const spans: TelemetrySpan[] = []
 
     // Healthy route: 50 spans with 200
@@ -538,7 +632,7 @@ describe('buildRuntimeMap', () => {
       durationMs: 50,
     }))
 
-    // Also add 1 internal span to push total > 100
+    // Also add 1 internal span — contributes to service metrics but not to summary service count
     spans.push(makeSpan({
       spanId: 'internal-1',
       spanKind: 1,
@@ -551,7 +645,8 @@ describe('buildRuntimeMap', () => {
 
     const result = await buildRuntimeMap(store, storage)
 
-    expect(result.summary.degradedNodes).toBe(1) // /orders is degraded
+    // 1 service with status degraded (worst route = degraded /orders)
+    expect(result.summary.degradedServices).toBe(1)
     expect(result.summary.clusterReqPerSec).toBeGreaterThan(0)
     expect(result.summary.clusterP95Ms).toBe(50)
     expect(result.state.diagnosis).toBe('ready')
@@ -572,7 +667,7 @@ describe('buildRuntimeMap', () => {
     expect(result.state.diagnosis).toBe('ready')
   })
 
-  it('assigns incidentId to matching nodes when open incident exists', async () => {
+  it('assigns incidentId to matching services, routes, and dependencies when open incident exists', async () => {
     const spans: TelemetrySpan[] = [
       makeSpan({
         spanId: 's1',
@@ -596,24 +691,24 @@ describe('buildRuntimeMap', () => {
 
     const result = await buildRuntimeMap(store, storage)
 
-    // entry_point node should be matched by primaryService "api"
-    const entryNode = result.nodes.find((n) => n.tier === 'entry_point')!
-    expect(entryNode.incidentId).toBe('inc-1')
+    // service should be matched by primaryService "api"
+    const svc = result.services.find((s) => s.serviceName === 'api')!
+    expect(svc.incidentId).toBe('inc-1')
+
+    // route should be matched by affectedRoutes "/users"
+    const route = svc.routes.find((r) => r.id.includes('/users'))!
+    expect(route.incidentId).toBe('inc-1')
 
     // dependency node should be matched by affectedDependencies "stripe"
-    const depNode = result.nodes.find((n) => n.tier === 'dependency')!
-    expect(depNode.incidentId).toBe('inc-1')
-
-    // runtime_unit node should be matched by affectedServices
-    const unitNode = result.nodes.find((n) => n.tier === 'runtime_unit')!
-    expect(unitNode.incidentId).toBe('inc-1')
+    const dep = result.dependencies.find((d) => d.id === 'dep:stripe')!
+    expect(dep.incidentId).toBe('inc-1')
 
     // incidents list should have the open incident
     expect(result.incidents.length).toBe(1)
     expect(result.incidents[0]!.incidentId).toBe('inc-1')
   })
 
-  it('does not assign closed incidents to nodes', async () => {
+  it('does not assign closed incidents to services or dependencies', async () => {
     const spans = [makeSpan({
       spanId: 's1',
       spanKind: 2,
@@ -628,13 +723,13 @@ describe('buildRuntimeMap', () => {
 
     const result = await buildRuntimeMap(store, storage)
 
-    const node = result.nodes[0]!
-    expect(node.incidentId).toBeUndefined()
+    const svc = result.services[0]!
+    expect(svc.incidentId).toBeUndefined()
     expect(result.incidents.length).toBe(0)
     expect(result.summary.activeIncidents).toBe(0)
   })
 
-  it('counts 429 as error for node status', async () => {
+  it('counts 429 as error for route status', async () => {
     const spans: TelemetrySpan[] = []
     for (let i = 0; i < 19; i++) {
       spans.push(makeSpan({
@@ -657,8 +752,9 @@ describe('buildRuntimeMap', () => {
     const storage = makeMockStorage()
 
     const result = await buildRuntimeMap(store, storage)
-    expect(result.nodes[0]!.metrics.errorRate).toBeCloseTo(0.05, 5)
-    expect(result.nodes[0]!.status).toBe('critical')
+    const route = result.services[0]!.routes[0]!
+    expect(route.errorRate).toBeCloseTo(0.05, 5)
+    expect(route.status).toBe('critical')
   })
 
   it('treats spanStatusCode=2 as error', async () => {
@@ -683,7 +779,7 @@ describe('buildRuntimeMap', () => {
     const storage = makeMockStorage()
 
     const result = await buildRuntimeMap(store, storage)
-    expect(result.nodes[0]!.metrics.errorRate).toBeCloseTo(0.05, 5)
+    expect(result.services[0]!.metrics.errorRate).toBeCloseTo(0.05, 5)
   })
 
   it('treats exceptionCount > 0 as error', async () => {
@@ -706,10 +802,10 @@ describe('buildRuntimeMap', () => {
     const storage = makeMockStorage()
 
     const result = await buildRuntimeMap(store, storage)
-    expect(result.nodes[0]!.metrics.errorRate).toBeCloseTo(0.05, 5)
+    expect(result.services[0]!.metrics.errorRate).toBeCloseTo(0.05, 5)
   })
 
-  it('creates runtime_unit for INTERNAL spans', async () => {
+  it('creates runtime_unit contribution in service for INTERNAL spans', async () => {
     const span = makeSpan({
       spanId: 's1',
       spanKind: 1, // INTERNAL
@@ -721,12 +817,16 @@ describe('buildRuntimeMap', () => {
 
     const result = await buildRuntimeMap(store, storage)
 
-    expect(result.nodes.length).toBe(1)
-    expect(result.nodes[0]!.tier).toBe('runtime_unit')
-    expect(result.nodes[0]!.id).toBe('unit:api:db.query')
+    // The service "api" should exist (from the runtime_unit)
+    expect(result.services).toHaveLength(1)
+    expect(result.services[0]!.serviceName).toBe('api')
+    // No routes (no SERVER spans)
+    expect(result.services[0]!.routes).toHaveLength(0)
+    // Not in dependencies
+    expect(result.dependencies).toHaveLength(0)
   })
 
-  it('creates runtime_unit for spans with no spanKind', async () => {
+  it('creates service for spans with no spanKind', async () => {
     const span = makeSpan({
       spanId: 's1',
       spanKind: undefined,
@@ -738,9 +838,9 @@ describe('buildRuntimeMap', () => {
 
     const result = await buildRuntimeMap(store, storage)
 
-    expect(result.nodes.length).toBe(1)
-    expect(result.nodes[0]!.tier).toBe('runtime_unit')
-    expect(result.nodes[0]!.id).toBe('unit:worker:background.task')
+    expect(result.services).toHaveLength(1)
+    expect(result.services[0]!.serviceName).toBe('worker')
+    expect(result.services[0]!.routes).toHaveLength(0)
   })
 
   it('window reflects query parameters', async () => {
@@ -750,6 +850,6 @@ describe('buildRuntimeMap', () => {
 
     const result = await buildRuntimeMap(store, storage, 15) // 15 minute window
 
-    expect(result.nodes.length).toBe(1)
+    expect(result.services).toHaveLength(1)
   })
 })
