@@ -6,6 +6,8 @@ import type { TelemetryStoreDriver } from "../../telemetry/interface.js";
 
 function mockStorage(): StorageDriver {
   return {
+    listIncidents: vi.fn().mockResolvedValue({ items: [], nextCursor: undefined }),
+    updateIncidentStatus: vi.fn().mockResolvedValue(undefined),
     deleteExpiredIncidents: vi.fn().mockResolvedValue(undefined),
   } as unknown as StorageDriver;
 }
@@ -33,6 +35,26 @@ describe("maybeCleanup", () => {
     expect(storage.deleteExpiredIncidents).toHaveBeenCalledTimes(1);
     expect(telemetry.deleteExpired).toHaveBeenCalledTimes(1);
     expect(telemetry.deleteExpiredSnapshots).toHaveBeenCalledTimes(1);
+  });
+
+  it("auto-closes inactive open incidents before deleting expired closed incidents", async () => {
+    const storage = mockStorage();
+    (storage.listIncidents as ReturnType<typeof vi.fn>).mockResolvedValue({
+      items: [{
+        incidentId: "inc_1",
+        status: "open",
+        openedAt: "2024-01-01T00:00:00Z",
+        lastActivityAt: "2023-12-31T23:00:00Z",
+      }],
+      nextCursor: undefined,
+    });
+    const telemetry = mockTelemetry();
+    const now = Date.parse("2024-01-03T00:00:00Z");
+
+    await maybeCleanup(storage, telemetry, now);
+
+    expect(storage.updateIncidentStatus).toHaveBeenCalledWith("inc_1", "closed");
+    expect(storage.deleteExpiredIncidents).toHaveBeenCalledTimes(1);
   });
 
   it("skips cleanup within CLEANUP_INTERVAL_MS", async () => {
@@ -87,6 +109,8 @@ describe("maybeCleanup", () => {
   it("calls all three cleanup methods in parallel", async () => {
     const order: string[] = [];
     const storage = {
+      listIncidents: vi.fn().mockResolvedValue({ items: [], nextCursor: undefined }),
+      updateIncidentStatus: vi.fn().mockResolvedValue(undefined),
       deleteExpiredIncidents: vi.fn().mockImplementation(async () => {
         order.push("storage");
       }),

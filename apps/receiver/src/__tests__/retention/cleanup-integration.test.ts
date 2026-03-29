@@ -35,7 +35,7 @@ describe("cleanup integration", () => {
     delete process.env["RETENTION_HOURS"];
   });
 
-  it("GET /api/incidents returns 200 and triggers cleanup of expired data", async () => {
+  it("GET /api/incidents returns 200 and hard-deletes closed incidents past retention", async () => {
     const storage = new MemoryAdapter();
     const telemetry = new MemoryTelemetryAdapter();
 
@@ -47,6 +47,9 @@ describe("cleanup integration", () => {
     });
     await storage.createIncident(oldPacket, makeMembership());
     await storage.updateIncidentStatus("inc_expired", "closed");
+    const seeded = await storage.getIncident("inc_expired");
+    if (!seeded) throw new Error("seeded incident missing");
+    seeded.closedAt = "2020-01-01T00:00:00Z";
 
     // Insert old telemetry data
     const oldTime = new Date("2020-01-01T00:00:00Z").getTime();
@@ -56,7 +59,7 @@ describe("cleanup integration", () => {
     const res = await app.request("/api/incidents");
     expect(res.status).toBe(200);
 
-    // Verify cleanup ran — expired incident should be gone
+    // Verify cleanup ran — closed incident past retention should be gone
     const incident = await storage.getIncident("inc_expired");
     expect(incident).toBeNull();
 
@@ -65,7 +68,7 @@ describe("cleanup integration", () => {
     expect(spans).toHaveLength(0);
   });
 
-  it("GET /api/incidents/:id returns 200 and does not delete open incidents", async () => {
+  it("GET /api/incidents/:id returns 200 and auto-closes stale open incidents", async () => {
     const storage = new MemoryAdapter();
     const oldPacket = makePacket({
       incidentId: "inc_open_old",
@@ -79,10 +82,10 @@ describe("cleanup integration", () => {
     const res = await app.request("/api/incidents/inc_open_old");
     expect(res.status).toBe(200);
 
-    // Open incident should NOT be deleted
+    // Open incident should remain but transition to closed after inactivity
     const incident = await storage.getIncident("inc_open_old");
     expect(incident).not.toBeNull();
-    expect(incident?.status).toBe("open");
+    expect(incident?.status).toBe("closed");
   });
 
   it("GET /api/incidents/:id/evidence returns 200 and triggers cleanup", async () => {

@@ -21,6 +21,7 @@ function makeIncident(partial: Partial<Incident> = {}): Incident {
     incidentId: "inc_test",
     status: "open",
     openedAt: new Date().toISOString(),
+    lastActivityAt: new Date().toISOString(),
     packet: {
       incidentId: "inc_test",
       packetId: "pkt_test",
@@ -51,6 +52,7 @@ function makeStorage(overrides: Partial<StorageDriver> = {}): StorageDriver {
     createIncident: vi.fn(),
     updatePacket: vi.fn(),
     updateIncidentStatus: vi.fn(),
+    touchIncidentActivity: vi.fn(),
     appendDiagnosis: vi.fn().mockResolvedValue(undefined),
     appendConsoleNarrative: vi.fn().mockResolvedValue(undefined),
     listIncidents: vi.fn(),
@@ -77,7 +79,9 @@ function makeTelemetryStore(): TelemetryStoreDriver {
     querySpans: vi.fn().mockResolvedValue([]),
     queryMetrics: vi.fn().mockResolvedValue([]),
     queryLogs: vi.fn().mockResolvedValue([]),
+    upsertSnapshot: vi.fn(),
     getSnapshots: vi.fn().mockResolvedValue([]),
+    deleteSnapshots: vi.fn(),
     deleteExpired: vi.fn(),
   } as unknown as TelemetryStoreDriver;
 }

@@ -505,6 +505,17 @@
 .lens-board-sev-medium   { background: var(--amber-soft);  color: var(--amber); }
 .lens-board-sev-low      { background: var(--good-soft);   color: var(--good); }
 
+.lens-board-status-pill {
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: var(--radius-xs);
+  background: color-mix(in srgb, var(--ink-3) 16%, white);
+  color: var(--ink-2);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
 .lens-board-headline {
   font-size: clamp(26px, 3vw, 30px);
   font-weight: 800;
@@ -517,6 +528,47 @@
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
+}
+
+.lens-board-operator-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin: 12px 0 0;
+}
+
+.lens-board-btn-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 140px;
+  padding: 8px 14px;
+  border-radius: var(--radius-sm);
+  border: 1px solid color-mix(in srgb, var(--ink-3) 18%, transparent);
+  background: color-mix(in srgb, var(--ink) 4%, white);
+  color: var(--ink);
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.lens-board-btn-close:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--ink) 8%, white);
+  border-color: color-mix(in srgb, var(--ink-3) 32%, transparent);
+}
+
+.lens-board-btn-close:disabled {
+  cursor: default;
+  opacity: 0.65;
+}
+
+.lens-board-close-note {
+  margin: 0;
+  font-size: var(--fs-xs);
+  color: var(--ink-2);
 }
 
 .lens-board-chip {

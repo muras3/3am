@@ -157,6 +157,7 @@ export function createApiRouter(storage: StorageDriver, spanBuffer: SpanBuffer |
   // Diagnostic endpoint for #169 — evidence empty despite D1 data
   app.get("/api/incidents/:id/evidence/debug", async (c) => {
     const id = c.req.param("id");
+
     const incident = await storage.getIncident(id);
     if (incident === null) {
       return c.json({ error: "not found" }, 404);
@@ -165,7 +166,6 @@ export function createApiRouter(storage: StorageDriver, spanBuffer: SpanBuffer |
     const { telemetryScope, spanMembership } = incident;
     const filter = buildIncidentQueryFilter(telemetryScope);
 
-    // Run raw queries to count results at each stage
     const [spans, metrics, logs, snapshots] = await Promise.all([
       telemetryStore.querySpans(filter),
       telemetryStore.queryMetrics(filter),
@@ -173,23 +173,17 @@ export function createApiRouter(storage: StorageDriver, spanBuffer: SpanBuffer |
       telemetryStore.getSnapshots(id),
     ]);
 
-    // Membership filter
     const membershipSet = new Set(spanMembership);
     const memberSpans = spans.filter(s =>
       membershipSet.has(spanMembershipKey(s.traceId, s.spanId)),
     );
 
-    // Sample key comparison for mismatch debugging
     const sampleSpanKey = spans.length > 0
       ? spanMembershipKey(spans[0]!.traceId, spans[0]!.spanId)
       : null;
     const sampleMembershipKeys = spanMembership.slice(0, 5);
-
-    // Unique services in D1 spans
     const spanServices = [...new Set(spans.map(s => s.serviceName))];
     const spanEnvironments = [...new Set(spans.map(s => s.environment))];
-
-    // Unfiltered count (no services/environment filter — just time window)
     const unfilteredSpans = await telemetryStore.querySpans({
       startMs: filter.startMs,
       endMs: filter.endMs,
@@ -224,6 +218,36 @@ export function createApiRouter(storage: StorageDriver, spanBuffer: SpanBuffer |
         snapshotTypes: snapshots.map(s => s.snapshotType),
         snapshotSizes: snapshots.map(s => JSON.stringify(s.data).length),
       },
+    });
+  });
+
+  app.post("/api/incidents/:id/close", apiBodyLimit(4 * 1024), async (c) => {
+    const id = c.req.param("id");
+
+    let body: unknown = {};
+    try {
+      body = await c.req.json();
+    } catch {
+      body = {};
+    }
+    if (typeof body !== "object" || body === null) {
+      return c.json({ error: "invalid body" }, 400);
+    }
+    if ((body as Record<string, unknown>)["reason"] !== undefined && typeof (body as Record<string, unknown>)["reason"] !== "string") {
+      return c.json({ error: "invalid body" }, 400);
+    }
+    const incident = await storage.getIncident(id);
+    if (incident === null) {
+      return c.json({ error: "not found" }, 404);
+    }
+    if (incident.status !== "closed") {
+      await storage.updateIncidentStatus(id, "closed");
+    }
+
+    const updated = await storage.getIncident(id);
+    return c.json({
+      status: "closed",
+      closedAt: updated?.closedAt ?? new Date().toISOString(),
     });
   });
 

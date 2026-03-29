@@ -148,6 +148,13 @@
       "alreadyRunningNote": "Diagnosis is already running. Stay on the evidence lanes until this run finishes.",
       "defaultNote": "Use this to request one new diagnosis run from the current incident evidence."
     },
+    "close": {
+      "button": "Close incident",
+      "closing": "Closing…",
+      "closedLabel": "Closed",
+      "requested": "Incident closed. It will be permanently deleted after the retention window.",
+      "failed": "Could not close the incident. Try again in a moment."
+    },
     "confirmedNow": {
       "severity": "{{severity}} severity and incident timing are confirmed.",
       "blastRadiusVisible_one": "{{count}} impacted service path already visible in blast radius.",

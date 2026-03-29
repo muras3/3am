@@ -14,6 +14,7 @@ export const incidents = sqliteTable("incidents", {
   status: text("status", { enum: ["open", "closed"] }).notNull().default("open"),
   openedAt: text("opened_at").notNull(),
   closedAt: text("closed_at"),
+  lastActivityAt: text("last_activity_at").notNull(),
   packet: text("packet").notNull(),           // JSON string of IncidentPacket
   diagnosisResult: text("diagnosis_result"),  // JSON string of DiagnosisResult | null
   consoleNarrative: text("console_narrative"), // JSON string of ConsoleNarrative | null

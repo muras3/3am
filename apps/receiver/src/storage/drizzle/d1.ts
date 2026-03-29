@@ -58,6 +58,7 @@ export class D1StorageAdapter implements StorageDriver {
         status            TEXT NOT NULL DEFAULT 'open',
         opened_at         TEXT NOT NULL,
         closed_at         TEXT,
+        last_activity_at  TEXT NOT NULL,
         packet            TEXT NOT NULL,
         diagnosis_result  TEXT,
         console_narrative TEXT,
@@ -78,6 +79,7 @@ export class D1StorageAdapter implements StorageDriver {
       "platform_events TEXT",
       "diagnosis_dispatched_at TEXT",
       "console_narrative TEXT",
+      "last_activity_at TEXT",
     ]) {
       try {
         await this.db.run(sql.raw(`ALTER TABLE incidents ADD COLUMN ${col}`));
@@ -118,6 +120,7 @@ export class D1StorageAdapter implements StorageDriver {
       incidentId: row.incidentId,
       status: row.status,
       openedAt: row.openedAt,
+      lastActivityAt: row.lastActivityAt ?? row.updatedAt,
       packet,
       telemetryScope: row.telemetryScope
         ? (JSON.parse(row.telemetryScope) as TelemetryScope)
@@ -153,6 +156,7 @@ export class D1StorageAdapter implements StorageDriver {
         incidentId: packet.incidentId,
         status: "open",
         openedAt: packet.openedAt,
+        lastActivityAt: packet.openedAt,
         packet: JSON.stringify(packet),
         telemetryScope: JSON.stringify(membership.telemetryScope),
         spanMembership: JSON.stringify(membership.spanMembership),
@@ -177,9 +181,16 @@ export class D1StorageAdapter implements StorageDriver {
       .update(incidents)
       .set({
         status,
-        ...(status === "closed" ? { closedAt: now } : {}),
+        ...(status === "closed" ? { closedAt: now } : { closedAt: null }),
         updatedAt: now,
       })
+      .where(eq(incidents.incidentId, id));
+  }
+
+  async touchIncidentActivity(id: string, at = new Date().toISOString()): Promise<void> {
+    await this.db
+      .update(incidents)
+      .set({ lastActivityAt: at, updatedAt: at })
       .where(eq(incidents.incidentId, id));
   }
 
@@ -220,7 +231,11 @@ export class D1StorageAdapter implements StorageDriver {
     };
     await this.db
       .update(incidents)
-      .set({ telemetryScope: JSON.stringify(updated), updatedAt: new Date().toISOString() })
+      .set({
+        telemetryScope: JSON.stringify(updated),
+        lastActivityAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      })
       .where(eq(incidents.incidentId, incidentId));
   }
 
@@ -245,7 +260,11 @@ export class D1StorageAdapter implements StorageDriver {
     }
     await this.db
       .update(incidents)
-      .set({ spanMembership: JSON.stringify(updated), updatedAt: new Date().toISOString() })
+      .set({
+        spanMembership: JSON.stringify(updated),
+        lastActivityAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      })
       .where(eq(incidents.incidentId, incidentId));
   }
 
@@ -263,7 +282,11 @@ export class D1StorageAdapter implements StorageDriver {
     }
     await this.db
       .update(incidents)
-      .set({ anomalousSignals: JSON.stringify(updated), updatedAt: new Date().toISOString() })
+      .set({
+        anomalousSignals: JSON.stringify(updated),
+        lastActivityAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      })
       .where(eq(incidents.incidentId, incidentId));
   }
 
@@ -278,7 +301,11 @@ export class D1StorageAdapter implements StorageDriver {
     const updated = [...current, ...events];
     await this.db
       .update(incidents)
-      .set({ platformEvents: JSON.stringify(updated), updatedAt: new Date().toISOString() })
+      .set({
+        platformEvents: JSON.stringify(updated),
+        lastActivityAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      })
       .where(eq(incidents.incidentId, incidentId));
   }
 
@@ -358,7 +385,7 @@ export class D1StorageAdapter implements StorageDriver {
       .where(
         and(
           eq(incidents.status, "closed"),
-          lt(incidents.openedAt, before.toISOString()),
+          lt(incidents.closedAt, before.toISOString()),
         ),
       );
   }
