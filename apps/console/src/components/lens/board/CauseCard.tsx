@@ -133,7 +133,7 @@ export function CauseCard({ steps, state }: Props) {
                     >
                       <div className="lens-board-step-tag">{step.tag}</div>
                       <div className="lens-board-step-title">{step.title}</div>
-                      <div className="lens-board-step-detail">{step.detail}</div>
+                      <div className="lens-board-step-detail" title={step.detail}>{step.detail}</div>
                     </div>
                     {i < rowSteps.length - 1 && <ChainArrow />}
                   </Fragment>

@@ -28,7 +28,7 @@ export function BlastRadius({ entries, state }: Props) {
               className={`lens-board-health-dot lens-board-health-dot-${statusModifier(entry.status)}`}
               aria-label={entry.status}
             />
-            <span className="lens-board-blast-target">{entry.target}</span>
+            <span className="lens-board-blast-target" title={entry.target}>{entry.target}</span>
             <div className="lens-board-blast-bar" aria-hidden="true">
               <div
                 className={`lens-board-blast-fill lens-board-blast-fill-${statusModifier(entry.status)}`}
