@@ -83,12 +83,102 @@
 }
 
 .level-header-clock {
-  margin-left: auto;
   font-family: var(--mono);
   font-size: var(--fs-sm);
   color: var(--ink-3);
   font-variant-numeric: tabular-nums;
   font-feature-settings: "tnum" 1, "ss01" 1;
+  margin-left: auto;
+}
+
+.level-header-prefs {
+  position: relative;
+}
+
+.level-header-prefs-btn {
+  border: 1px solid var(--line);
+  background: var(--panel-2);
+  color: var(--ink-2);
+  border-radius: var(--radius-sm);
+  padding: 5px 10px;
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.level-header-prefs-btn:hover {
+  background: var(--panel-3);
+}
+
+.level-header-prefs-btn:focus-visible {
+  outline: 2px solid var(--teal);
+  outline-offset: 2px;
+}
+
+.level-header-prefs-panel {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  width: min(320px, calc(100vw - 32px));
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel);
+  box-shadow: 0 16px 40px rgba(20, 41, 39, 0.14);
+  z-index: 20;
+}
+
+.level-header-prefs-title {
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.level-header-prefs-copy {
+  margin-top: 4px;
+  margin-bottom: 10px;
+  font-size: var(--fs-xs);
+  color: var(--ink-3);
+  line-height: 1.45;
+}
+
+.level-header-prefs-options {
+  display: grid;
+  gap: 8px;
+}
+
+.level-header-prefs-option {
+  text-align: left;
+  border: 1px solid var(--line);
+  background: var(--panel-2);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.level-header-prefs-option.active {
+  border-color: var(--teal);
+  background: var(--teal-soft);
+}
+
+.level-header-prefs-option:focus-visible {
+  outline: 2px solid var(--teal);
+  outline-offset: 2px;
+}
+
+.level-header-prefs-option-label {
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.level-header-prefs-option-detail {
+  font-size: var(--fs-xs);
+  color: var(--ink-3);
+  line-height: 1.45;
 }
 
 /* ── Shared UI elements (migrated from shell.css) ─────────── */

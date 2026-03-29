@@ -15,6 +15,10 @@ function detectBrowserLocale(): "en" | "ja" {
   return "en";
 }
 
+export function detectPreferredContentLanguage(): "en" | "ja" {
+  return detectBrowserLocale();
+}
+
 /**
  * Initialize locale from the server setting, falling back to browser detection.
  * On first visit, POSTs the detected locale to the server so it persists.
@@ -46,6 +50,19 @@ async function resolveLocale(): Promise<"en" | "ja"> {
   }
 
   return detected;
+}
+
+export async function setPreferredLocale(locale: "en" | "ja"): Promise<void> {
+  await i18n.changeLanguage(locale);
+  try {
+    await fetch("/api/settings/locale", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ locale }),
+    });
+  } catch {
+    // Ignore — locale will still work in-memory
+  }
 }
 
 // Start resolving locale immediately (non-blocking)

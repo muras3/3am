@@ -13,7 +13,15 @@
     "failed": "Setup Failed",
     "failedBody": "Could not connect to the receiver to complete setup.",
     "retry": "Retry",
-    "failedFooter": "If this persists, check that the receiver is running and <code>RECEIVER_AUTH_TOKEN</code> is set correctly."
+    "failedFooter": "If this persists, check that the receiver is running and <code>RECEIVER_AUTH_TOKEN</code> is set correctly.",
+    "contentLanguage": {
+      "title": "Content Language",
+      "helper": "UI labels stay in English. This only changes narrative content and prose.",
+      "englishLabel": "English",
+      "englishDetail": "Recommended if you want the diagnosis and evidence copy in English.",
+      "japaneseLabel": "Japanese",
+      "japaneseDetail": "Use Japanese for generated narrative and operator-facing prose."
+    }
   },
   "common": {
     "loading": "Loading\u2026",
@@ -37,6 +45,15 @@
     "evidenceStudio": "Evidence Studio",
     "duration": "Duration: {{minutes}}m {{seconds}}s",
     "durationHours": "{{hours}}h {{minutes}}m"
+  },
+  "preferences": {
+    "button": "Preferences",
+    "title": "Content Language",
+    "copy": "Choose the language for generated narrative and prose. UI labels remain in English.",
+    "englishLabel": "English",
+    "englishDetail": "Best if you want incident summaries and recommendations in English.",
+    "japaneseLabel": "Japanese",
+    "japaneseDetail": "Use Japanese for generated narrative and diagnostic prose."
   },
   "nav": {
     "map": "Map",
