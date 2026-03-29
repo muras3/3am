@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import type { LogsSurface, LogClaim, LogEntry } from "../../../api/curated-types.js";
 import { useLensSearch } from "../../../routes/__root.js";
+import { useCallback, useState } from "react";
 
 type ClaimType = LogClaim["type"];
 
@@ -61,6 +62,95 @@ function LogRow({ entry }: LogRowProps) {
   );
 }
 
+interface EntryCluster {
+  key: string;
+  severity: string;
+  body: string;
+  count: number;
+  entries: LogEntry[];
+  highlighted: boolean;
+}
+
+function normalizeLogBody(body: string): string {
+  return body
+    .replace(/\b\d{2}:\d{2}:\d{2}(?:\.\d+)?Z?\b/g, "<time>")
+    .replace(/\b[0-9a-f]{8,}\b/gi, "<id>")
+    .replace(/\b\d+\b/g, "<num>")
+    .trim();
+}
+
+function buildEntryClusters(entries: LogEntry[]): EntryCluster[] {
+  const clusters = new Map<string, EntryCluster>();
+  for (const entry of entries) {
+    const normalized = normalizeLogBody(entry.body);
+    const key = `${entry.severity}::${normalized}`;
+    const current = clusters.get(key);
+    if (current) {
+      current.count += 1;
+      current.entries.push(entry);
+      current.highlighted = current.highlighted || entry.signal;
+      continue;
+    }
+    clusters.set(key, {
+      key,
+      severity: entry.severity,
+      body: normalized,
+      count: 1,
+      entries: [entry],
+      highlighted: entry.signal,
+    });
+  }
+  return [...clusters.values()];
+}
+
+function EntryClusterBlock({ cluster }: { cluster: EntryCluster }) {
+  const { t } = useTranslation();
+  const [expanded, setExpanded] = useState(cluster.count === 1);
+  const toggle = useCallback(() => {
+    if (cluster.count <= 1) return;
+    setExpanded((value) => !value);
+  }, [cluster.count]);
+  const handleKeyDown = useCallback((event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (cluster.count <= 1) return;
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      toggle();
+    }
+  }, [cluster.count, toggle]);
+
+  return (
+    <div className={`lens-logs-entry-cluster${cluster.highlighted ? " proof-highlight" : ""}${expanded ? " open" : ""}`}>
+      <div
+        className="lens-logs-entry-cluster-card"
+        role={cluster.count > 1 ? "button" : undefined}
+        tabIndex={cluster.count > 1 ? 0 : undefined}
+        aria-expanded={cluster.count > 1 ? expanded : undefined}
+        onClick={toggle}
+        onKeyDown={handleKeyDown}
+      >
+        <div className="lens-logs-entry-cluster-main">
+          <span className={`lens-logs-log-sev lens-logs-log-sev-${cluster.severity}`}>{cluster.severity.toUpperCase()}</span>
+          <span className="lens-logs-entry-cluster-body">{cluster.body}</span>
+          {cluster.count > 1 && <span className="lens-logs-entry-cluster-count">×{cluster.count}</span>}
+        </div>
+        {cluster.count > 1 && (
+          <span className="lens-logs-entry-cluster-toggle">
+            {expanded ? t("evidence.logs.collapseGroup") : t("evidence.logs.expandGroup")}
+          </span>
+        )}
+      </div>
+
+      {expanded && cluster.count > 1 && (
+        <div className="lens-logs-entry-cluster-list">
+          {cluster.entries.map((entry, index) => (
+            <LogRow key={`${entry.timestamp}-${index}`} entry={entry} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Single claim cluster ──────────────────────────────────────
 interface ClaimClusterProps {
   claim: LogClaim;
@@ -96,8 +186,8 @@ function ClaimCluster({ claim, activeProofId, activeTargetId }: ClaimClusterProp
       ) : (
         /* Normal entries */
         <div className="lens-logs-entries">
-          {claim.entries.map((entry, i) => (
-            <LogRow key={`${entry.timestamp}-${i}`} entry={entry} />
+          {buildEntryClusters(claim.entries).map((cluster) => (
+            <EntryClusterBlock key={cluster.key} cluster={cluster} />
           ))}
         </div>
       )}

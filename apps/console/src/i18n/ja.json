@@ -307,19 +307,26 @@
       "baselineSparse": "期待トレースはまだ不十分です",
       "hideExpected": "期待トレースを非表示",
       "showExpected": "期待トレースを表示",
+      "expandGroup": "Expand group",
+      "collapseGroup": "Collapse group",
+      "clusterAvg": "avg {{duration}}ms",
       "noBaseline": "このインシデントウィンドウにはまだベースライントレースが紐付いていません。",
       "baselineTooSparse": "ベースライン比較はまだ疎すぎるため、期待される挙動を安全に描画できません。"
     },
     "metrics": {
       "expected": "期待値:\u00a0{{value}}",
       "emptyReserved": "メトリクス比較は予約済みです。十分なサンプルでインシデントが再現されると、期待値と観測値のドリフトがここに表示されます。",
-      "thinSignal": "メトリクスシグナルはまだ限定的です。現在の仮説の確認・否定のためにこのレーンを開いたままにしてください。"
+      "thinSignal": "メトリクスシグナルはまだ限定的です。現在の仮説の確認・否定のためにこのレーンを開いたままにしてください。",
+      "expandGroup": "Show {{count}} more rows",
+      "collapseGroup": "Collapse rows"
     },
     "logs": {
       "entries": "{{count}}\u00a0件",
       "expectedLabel": "期待値: {{expected}}。観測値: {{observed}}。",
       "emptyReserved": "ログクラスタは予約済みです。最初の繰り返しパターンまたは注目すべき不在が確認されると、このレーンに固定されます。",
-      "sparseEvidence": "ログエビデンスはまだ疎です。正常の証拠としてではなく、裏付け待ちとして扱ってください。"
+      "sparseEvidence": "ログエビデンスはまだ疎です。正常の証拠としてではなく、裏付け待ちとして扱ってください。",
+      "expandGroup": "Expand group",
+      "collapseGroup": "Collapse group"
     }
   },
   "map": {
