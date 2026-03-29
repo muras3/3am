@@ -188,14 +188,25 @@ interface TraceGroupCluster {
   count: number;
   avgDurationMs: number;
   maxDurationMs: number;
+  signatureLabel: string;
   groups: TraceGroup[];
+}
+
+function traceSignature(group: TraceGroup): { key: string; label: string } {
+  const signatureParts = group.spans.map((span) => `${span.name}:${span.status}`);
+  const rootSpan = group.spans[0]?.name ?? group.route;
+  return {
+    key: signatureParts.join(">"),
+    label: rootSpan,
+  };
 }
 
 function buildTraceClusters(groups: TraceGroup[]): TraceGroupCluster[] {
   const clusters = new Map<string, TraceGroupCluster>();
 
   for (const group of groups) {
-    const key = `${group.route}::${group.status}`;
+    const signature = traceSignature(group);
+    const key = `${group.route}::${group.status}::${signature.key}`;
     const current = clusters.get(key);
     if (current) {
       current.groups.push(group);
@@ -211,6 +222,7 @@ function buildTraceClusters(groups: TraceGroup[]): TraceGroupCluster[] {
       count: 1,
       avgDurationMs: group.durationMs,
       maxDurationMs: group.durationMs,
+      signatureLabel: signature.label,
       groups: [group],
     });
   }
@@ -367,12 +379,16 @@ function TraceClusterBlock({
         <div className="lens-traces-cluster-main">
           <span className={`lens-traces-health-dot lens-traces-health-dot-${isError ? "error" : "ok"}`} />
           <span className="lens-traces-cluster-route">{cluster.route}</span>
+          <span className="lens-traces-trace-id">{cluster.signatureLabel}</span>
           <span className={`lens-traces-trace-status lens-traces-trace-status-${isError ? "error" : "ok"}`}>
             {cluster.status}
           </span>
           <span className="lens-traces-cluster-count">×{cluster.count}</span>
           <span className="lens-traces-cluster-duration">
             {t("evidence.traces.clusterAvg", { duration: cluster.avgDurationMs })}
+          </span>
+          <span className="lens-traces-cluster-duration">
+            {t("evidence.traces.clusterMax", { duration: cluster.maxDurationMs })}
           </span>
         </div>
         <span className="lens-traces-cluster-toggle">

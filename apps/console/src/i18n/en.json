@@ -310,6 +310,7 @@
       "expandGroup": "Expand group",
       "collapseGroup": "Collapse group",
       "clusterAvg": "avg {{duration}}ms",
+      "clusterMax": "max {{duration}}ms",
       "noBaseline": "No baseline trace has been attached to this incident window yet.",
       "baselineTooSparse": "Baseline comparison is still too sparse to render expected behavior safely."
     },

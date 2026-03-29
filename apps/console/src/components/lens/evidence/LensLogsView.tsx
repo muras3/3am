@@ -1,8 +1,7 @@
-import { useEffect } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { LogsSurface, LogClaim, LogEntry } from "../../../api/curated-types.js";
 import { useLensSearch } from "../../../routes/__root.js";
-import { useCallback, useState } from "react";
 
 type ClaimType = LogClaim["type"];
 
@@ -65,10 +64,11 @@ function LogRow({ entry }: LogRowProps) {
 interface EntryCluster {
   key: string;
   severity: string;
-  body: string;
+  representativeBody: string;
   count: number;
   entries: LogEntry[];
   highlighted: boolean;
+  latestTimestamp: string;
 }
 
 function normalizeLogBody(body: string): string {
@@ -89,15 +89,19 @@ function buildEntryClusters(entries: LogEntry[]): EntryCluster[] {
       current.count += 1;
       current.entries.push(entry);
       current.highlighted = current.highlighted || entry.signal;
+      current.latestTimestamp = current.latestTimestamp > entry.timestamp
+        ? current.latestTimestamp
+        : entry.timestamp;
       continue;
     }
     clusters.set(key, {
       key,
       severity: entry.severity,
-      body: normalized,
+      representativeBody: entry.body,
       count: 1,
       entries: [entry],
       highlighted: entry.signal,
+      latestTimestamp: entry.timestamp,
     });
   }
   return [...clusters.values()];
@@ -130,7 +134,8 @@ function EntryClusterBlock({ cluster }: { cluster: EntryCluster }) {
       >
         <div className="lens-logs-entry-cluster-main">
           <span className={`lens-logs-log-sev lens-logs-log-sev-${cluster.severity}`}>{cluster.severity.toUpperCase()}</span>
-          <span className="lens-logs-entry-cluster-body">{cluster.body}</span>
+          <span className="lens-logs-log-time">{cluster.latestTimestamp}</span>
+          <span className="lens-logs-entry-cluster-body">{cluster.representativeBody}</span>
           {cluster.count > 1 && <span className="lens-logs-entry-cluster-count">×{cluster.count}</span>}
         </div>
         {cluster.count > 1 && (
