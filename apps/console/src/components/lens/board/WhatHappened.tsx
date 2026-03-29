@@ -6,13 +6,15 @@ import { shortenForViewport } from "./viewport-text.js";
 
 interface Props {
   incidentId: string;
+  status: ExtendedIncident["status"];
+  closedAt?: string;
   severity: string;
   headline: string;
   chips: ExtendedIncident["chips"];
   state: CuratedState;
 }
 
-export function WhatHappened({ incidentId, severity, headline, chips, state }: Props) {
+export function WhatHappened({ incidentId, status, closedAt, severity, headline, chips, state }: Props) {
   const { t } = useTranslation();
   const displayHeadline = headline.trim() || sectionFallback(state, "headline");
   const viewportHeadline = shortenForViewport(displayHeadline, 72);
@@ -25,6 +27,11 @@ export function WhatHappened({ incidentId, severity, headline, chips, state }: P
       <div className="lens-board-identity-meta">
         <span className="lens-board-id">{formatShortIncidentId(incidentId)}</span>
         <span className={`lens-board-sev lens-board-sev-${severity}`}>{severity}</span>
+        {status === "closed" ? (
+          <span className="lens-board-status-pill" title={closedAt ? `Closed at ${closedAt}` : "Closed"}>
+            Closed
+          </span>
+        ) : null}
       </div>
       <h1 className="lens-board-headline" title={displayHeadline}>
         {viewportHeadline}

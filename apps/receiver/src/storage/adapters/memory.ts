@@ -14,6 +14,7 @@ export class MemoryAdapter implements StorageDriver {
       incidentId: packet.incidentId,
       status: "open",
       openedAt: packet.openedAt,
+      lastActivityAt: packet.openedAt,
       packet,
       telemetryScope: membership.telemetryScope,
       spanMembership: [...membership.spanMembership],
@@ -39,7 +40,18 @@ export class MemoryAdapter implements StorageDriver {
     this.incidents.set(id, {
       ...incident,
       status,
-      ...(status === "closed" ? { closedAt: new Date().toISOString() } : {}),
+      ...(status === "closed"
+        ? { closedAt: new Date().toISOString() }
+        : { closedAt: undefined }),
+    });
+  }
+
+  async touchIncidentActivity(id: string, at = new Date().toISOString()): Promise<void> {
+    const incident = this.incidents.get(id);
+    if (!incident) return;
+    this.incidents.set(id, {
+      ...incident,
+      lastActivityAt: at,
     });
   }
 
@@ -162,7 +174,8 @@ export class MemoryAdapter implements StorageDriver {
     for (const [id, incident] of this.incidents) {
       if (
         incident.status === "closed" &&
-        new Date(incident.openedAt) < before
+        incident.closedAt !== undefined &&
+        new Date(incident.closedAt) < before
       ) {
         this.incidents.delete(id);
       }

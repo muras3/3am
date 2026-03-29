@@ -383,6 +383,7 @@ export function createIngestRouter(storage: StorageDriver, spanBuffer: SpanBuffe
         page.items.flatMap((incident) => {
           if (!telemetryMetrics.some((m) => shouldAttachEvidence(m, incident))) return [];
           return [(async () => {
+            await storage.touchIncidentActivity(incident.incidentId);
             await rebuildAndNotify(incident.incidentId, telemetryStore, storage, diagnosisConfig, diagnosisRunner);
           })()];
         }),
@@ -415,6 +416,7 @@ export function createIngestRouter(storage: StorageDriver, spanBuffer: SpanBuffe
         page.items.flatMap((incident) => {
           if (!telemetryLogs.some((l) => shouldAttachEvidence(l, incident))) return [];
           return [(async () => {
+            await storage.touchIncidentActivity(incident.incidentId);
             await rebuildAndNotify(incident.incidentId, telemetryStore, storage, diagnosisConfig, diagnosisRunner);
           })()];
         }),
@@ -426,6 +428,8 @@ export function createIngestRouter(storage: StorageDriver, spanBuffer: SpanBuffe
 
   // Platform events — JSON only (not OTLP format, ADR 0022 scope boundary).
   app.post("/v1/platform-events", async (c) => {
+    await maybeCleanup(storage, telemetryStore);
+
     const ct = c.req.header("Content-Type") ?? "";
     if (!ct.includes("application/json")) {
       return c.json({ error: "unsupported Content-Type" }, 415);
@@ -463,6 +467,7 @@ export function createIngestRouter(storage: StorageDriver, spanBuffer: SpanBuffe
     }
 
     for (const [incidentId, events] of eventsByIncidentId) {
+      await storage.touchIncidentActivity(incidentId);
       await storage.appendPlatformEvents(incidentId, events);
       await rebuildAndNotify(incidentId, telemetryStore, storage, diagnosisConfig, diagnosisRunner);
     }

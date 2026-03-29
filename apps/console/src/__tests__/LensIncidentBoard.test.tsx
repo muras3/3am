@@ -189,6 +189,48 @@ describe("LensIncidentBoard — diagnosis ready", () => {
     expect(screen.getByText("Cascade")).toBeInTheDocument();
     expect(screen.getByText("User Impact")).toBeInTheDocument();
   });
+
+  it("closes the incident from the board", async () => {
+    const qc = setupReady();
+    const fetchMock = vi.fn().mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/close")) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ status: "closed", closedAt: "2026-03-20T15:00:00Z" }),
+        });
+      }
+      return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({ ...extendedIncidentReady, status: "closed", closedAt: "2026-03-20T15:00:00Z" }),
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderBoard("inc_0892", vi.fn(), qc);
+    fireEvent.click(screen.getByRole("button", { name: /Close incident/i }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith("/api/incidents/inc_0892/close", expect.objectContaining({
+        method: "POST",
+      }));
+    });
+    await waitFor(() => {
+      expect(screen.getByText(/Incident closed\./i)).toBeInTheDocument();
+    });
+  });
+
+  it("shows a closed badge when the incident is closed", () => {
+    const qc = makeClient();
+    qc.setQueryData(
+      curatedQueries.extendedIncident("inc_0892").queryKey,
+      { ...extendedIncidentReady, status: "closed" as const, closedAt: "2026-03-20T15:00:00Z" },
+    );
+
+    renderBoard("inc_0892", vi.fn(), qc);
+    expect(document.querySelector(".lens-board-status-pill")?.textContent).toBe("Closed");
+    expect(screen.getByRole("button", { name: "Closed" })).toBeDisabled();
+  });
 });
 
 describe("BlastRadius", () => {

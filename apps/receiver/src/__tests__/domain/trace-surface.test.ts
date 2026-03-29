@@ -114,6 +114,7 @@ function makeIncident(
     incidentId: 'inc-1',
     status: 'open',
     openedAt: '2024-01-01T00:00:00Z',
+    lastActivityAt: '2024-01-01T00:00:00Z',
     packet: makeMinimalPacket(),
     telemetryScope: {
       windowStartMs: 1700000000000,

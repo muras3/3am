@@ -64,6 +64,7 @@ function makeIncident(
     incidentId: 'inc_test',
     status,
     openedAt,
+    lastActivityAt: openedAt,
     packet: makePacket(environment, primaryService, affectedDependencies, affectedServices),
     telemetryScope: {
       ...createEmptyTelemetryScope(),

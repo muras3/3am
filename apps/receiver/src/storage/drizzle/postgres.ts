@@ -34,6 +34,7 @@ const pgIncidents = pgTable("incidents", {
   status: text("status", { enum: ["open", "closed"] as const }).notNull().default("open"),
   openedAt: text("opened_at").notNull(),
   closedAt: text("closed_at"),
+  lastActivityAt: text("last_activity_at").notNull(),
   packet: jsonb("packet").notNull(),
   diagnosisResult: jsonb("diagnosis_result"),
   consoleNarrative: jsonb("console_narrative"),
@@ -85,6 +86,7 @@ export class PostgresAdapter implements StorageDriver {
         status             TEXT NOT NULL DEFAULT 'open',
         opened_at          TEXT NOT NULL,
         closed_at          TEXT,
+        last_activity_at   TEXT NOT NULL,
         packet             JSONB NOT NULL,
         diagnosis_result   JSONB,
         console_narrative  JSONB,
@@ -99,6 +101,9 @@ export class PostgresAdapter implements StorageDriver {
       )
     `);
     // Add new columns to existing tables (idempotent)
+    await this.db.execute(drizzleSql`
+      ALTER TABLE incidents ADD COLUMN IF NOT EXISTS last_activity_at TEXT
+    `);
     await this.db.execute(drizzleSql`
       ALTER TABLE incidents ADD COLUMN IF NOT EXISTS console_narrative JSONB
     `);
@@ -160,6 +165,7 @@ export class PostgresAdapter implements StorageDriver {
       incidentId: row.incidentId,
       status: row.status as "open" | "closed",
       openedAt: row.openedAt,
+      lastActivityAt: row.lastActivityAt ?? row.updatedAt.toISOString(),
       packet,
       telemetryScope: row.telemetryScope
         ? (row.telemetryScope as TelemetryScope)
@@ -194,6 +200,7 @@ export class PostgresAdapter implements StorageDriver {
         incidentId: packet.incidentId,
         status: "open",
         openedAt: packet.openedAt,
+        lastActivityAt: packet.openedAt,
         packet,
         telemetryScope: membership.telemetryScope,
         spanMembership: membership.spanMembership,
@@ -215,9 +222,16 @@ export class PostgresAdapter implements StorageDriver {
       .update(pgIncidents)
       .set({
         status,
-        ...(status === "closed" ? { closedAt: new Date().toISOString() } : {}),
+        ...(status === "closed" ? { closedAt: new Date().toISOString() } : { closedAt: null }),
         updatedAt: new Date(),
       })
+      .where(eq(pgIncidents.incidentId, id));
+  }
+
+  async touchIncidentActivity(id: string, at = new Date().toISOString()): Promise<void> {
+    await this.db
+      .update(pgIncidents)
+      .set({ lastActivityAt: at, updatedAt: new Date(at) })
       .where(eq(pgIncidents.incidentId, id));
   }
 
@@ -259,7 +273,7 @@ export class PostgresAdapter implements StorageDriver {
         dependencyServices: [...depSet],
       };
       await tx.update(pgIncidents)
-        .set({ telemetryScope: updated, updatedAt: new Date() })
+        .set({ telemetryScope: updated, lastActivityAt: new Date().toISOString(), updatedAt: new Date() })
         .where(eq(pgIncidents.incidentId, incidentId));
     });
   }
@@ -287,7 +301,7 @@ export class PostgresAdapter implements StorageDriver {
         updated = updated.slice(updated.length - MAX_SPAN_MEMBERSHIP);
       }
       await tx.update(pgIncidents)
-        .set({ spanMembership: updated, updatedAt: new Date() })
+        .set({ spanMembership: updated, lastActivityAt: new Date().toISOString(), updatedAt: new Date() })
         .where(eq(pgIncidents.incidentId, incidentId));
     });
   }
@@ -307,7 +321,7 @@ export class PostgresAdapter implements StorageDriver {
         updated = updated.slice(updated.length - MAX_ANOMALOUS_SIGNALS);
       }
       await tx.update(pgIncidents)
-        .set({ anomalousSignals: updated, updatedAt: new Date() })
+        .set({ anomalousSignals: updated, lastActivityAt: new Date().toISOString(), updatedAt: new Date() })
         .where(eq(pgIncidents.incidentId, incidentId));
     });
   }
@@ -327,7 +341,7 @@ export class PostgresAdapter implements StorageDriver {
           );
       const updated = [...current, ...events];
       await tx.update(pgIncidents)
-        .set({ platformEvents: updated, updatedAt: new Date() })
+        .set({ platformEvents: updated, lastActivityAt: new Date().toISOString(), updatedAt: new Date() })
         .where(eq(pgIncidents.incidentId, incidentId));
     });
   }
@@ -396,7 +410,7 @@ export class PostgresAdapter implements StorageDriver {
       .where(
         and(
           eq(pgIncidents.status, "closed"),
-          lt(pgIncidents.openedAt, before.toISOString()),
+          lt(pgIncidents.closedAt, before.toISOString()),
         ),
       );
   }

@@ -148,6 +148,13 @@
       "alreadyRunningNote": "診断は実行中です。完了するまでエビデンスレーンで確認を続けてください。",
       "defaultNote": "現在のインシデントエビデンスから新しい診断を1回リクエストします。"
     },
+    "close": {
+      "button": "インシデントをクローズ",
+      "closing": "クローズ中…",
+      "closedLabel": "Closed",
+      "requested": "インシデントをクローズしました。保持期間の経過後に完全削除されます。",
+      "failed": "インシデントをクローズできませんでした。しばらくしてから再試行してください。"
+    },
     "confirmedNow": {
       "severity": "{{severity}} の深刻度とインシデントのタイミングが確認済みです。",
       "blastRadiusVisible_one": "影響範囲に {{count}} 件のサービスパスが表示済みです。",

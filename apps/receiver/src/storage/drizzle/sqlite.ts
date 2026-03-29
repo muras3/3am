@@ -54,6 +54,7 @@ export class SQLiteAdapter implements StorageDriver {
         status            TEXT NOT NULL DEFAULT 'open',
         opened_at         TEXT NOT NULL,
         closed_at         TEXT,
+        last_activity_at  TEXT NOT NULL,
         packet            TEXT NOT NULL,
         diagnosis_result  TEXT,
         console_narrative TEXT,
@@ -75,6 +76,7 @@ export class SQLiteAdapter implements StorageDriver {
       "platform_events TEXT",
       "diagnosis_dispatched_at TEXT",
       "console_narrative TEXT",
+      "last_activity_at TEXT",
     ]) {
       try {
         this.db.run(sql.raw(`ALTER TABLE incidents ADD COLUMN ${col}`));
@@ -115,6 +117,7 @@ export class SQLiteAdapter implements StorageDriver {
       incidentId: row.incidentId,
       status: row.status,
       openedAt: row.openedAt,
+      lastActivityAt: row.lastActivityAt ?? row.updatedAt,
       packet,
       telemetryScope: row.telemetryScope
         ? (JSON.parse(row.telemetryScope) as TelemetryScope)
@@ -150,6 +153,7 @@ export class SQLiteAdapter implements StorageDriver {
         incidentId: packet.incidentId,
         status: "open",
         openedAt: packet.openedAt,
+        lastActivityAt: packet.openedAt,
         packet: JSON.stringify(packet),
         telemetryScope: JSON.stringify(membership.telemetryScope),
         spanMembership: JSON.stringify(membership.spanMembership),
@@ -174,9 +178,16 @@ export class SQLiteAdapter implements StorageDriver {
       .update(incidents)
       .set({
         status,
-        ...(status === "closed" ? { closedAt: now } : {}),
+        ...(status === "closed" ? { closedAt: now } : { closedAt: null }),
         updatedAt: now,
       })
+      .where(eq(incidents.incidentId, id));
+  }
+
+  async touchIncidentActivity(id: string, at = new Date().toISOString()): Promise<void> {
+    await this.db
+      .update(incidents)
+      .set({ lastActivityAt: at, updatedAt: at })
       .where(eq(incidents.incidentId, id));
   }
 
@@ -216,7 +227,11 @@ export class SQLiteAdapter implements StorageDriver {
         dependencyServices: [...depSet],
       };
       tx.update(incidents)
-        .set({ telemetryScope: JSON.stringify(updated), updatedAt: new Date().toISOString() })
+        .set({
+          telemetryScope: JSON.stringify(updated),
+          lastActivityAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        })
         .where(eq(incidents.incidentId, incidentId))
         .run();
     });
@@ -244,7 +259,11 @@ export class SQLiteAdapter implements StorageDriver {
         updated = updated.slice(updated.length - MAX_SPAN_MEMBERSHIP);
       }
       tx.update(incidents)
-        .set({ spanMembership: JSON.stringify(updated), updatedAt: new Date().toISOString() })
+        .set({
+          spanMembership: JSON.stringify(updated),
+          lastActivityAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        })
         .where(eq(incidents.incidentId, incidentId))
         .run();
     });
@@ -264,7 +283,11 @@ export class SQLiteAdapter implements StorageDriver {
         updated = updated.slice(updated.length - MAX_ANOMALOUS_SIGNALS);
       }
       tx.update(incidents)
-        .set({ anomalousSignals: JSON.stringify(updated), updatedAt: new Date().toISOString() })
+        .set({
+          anomalousSignals: JSON.stringify(updated),
+          lastActivityAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        })
         .where(eq(incidents.incidentId, incidentId))
         .run();
     });
@@ -281,7 +304,11 @@ export class SQLiteAdapter implements StorageDriver {
         : derivePlatformEventsFromRawState(rawState, JSON.parse(row.packet) as IncidentPacket);
       const updated = [...current, ...events];
       tx.update(incidents)
-        .set({ platformEvents: JSON.stringify(updated), updatedAt: new Date().toISOString() })
+        .set({
+          platformEvents: JSON.stringify(updated),
+          lastActivityAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        })
         .where(eq(incidents.incidentId, incidentId))
         .run();
     });
@@ -354,7 +381,7 @@ export class SQLiteAdapter implements StorageDriver {
       .where(
         and(
           eq(incidents.status, "closed"),
-          lt(incidents.openedAt, before.toISOString()),
+          lt(incidents.closedAt, before.toISOString()),
         ),
       );
   }

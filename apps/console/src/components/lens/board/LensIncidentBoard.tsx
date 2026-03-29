@@ -24,10 +24,12 @@ export function LensIncidentBoard({ incidentId, zoomTo }: Props) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const [rerunFeedback, setRerunFeedback] = useState<string | null>(null);
+  const [closeFeedback, setCloseFeedback] = useState<string | null>(null);
   const { data, isLoading, isError } = useQuery(
     curatedQueries.extendedIncident(incidentId),
   );
   const rerunDiagnosis = useMutation(curatedMutations.rerunDiagnosis(incidentId));
+  const closeIncident = useMutation(curatedMutations.closeIncident(incidentId));
 
   function openEvidence(trigger?: HTMLElement) {
     zoomTo(2, trigger);
@@ -49,6 +51,20 @@ export function LensIncidentBoard({ incidentId, zoomTo }: Props) {
           return;
         }
         setRerunFeedback(t("board.rerun.failed"));
+      },
+    });
+  }
+
+  function handleCloseIncident() {
+    setCloseFeedback(null);
+    closeIncident.mutate(undefined, {
+      onSuccess: () => {
+        setCloseFeedback(t("board.close.requested"));
+        void queryClient.invalidateQueries({ queryKey: curatedQueries.extendedIncident(incidentId).queryKey });
+        void queryClient.invalidateQueries({ queryKey: curatedQueries.runtimeMap().queryKey });
+      },
+      onError: () => {
+        setCloseFeedback(t("board.close.failed"));
       },
     });
   }
@@ -139,11 +155,30 @@ export function LensIncidentBoard({ incidentId, zoomTo }: Props) {
     <div className="lens-board-content stagger">
       <WhatHappened
         incidentId={data.incidentId}
+        status={data.status}
+        closedAt={data.closedAt}
         severity={data.severity}
         headline={data.headline}
         chips={data.chips}
         state={data.state}
       />
+
+      <div className="lens-board-operator-actions">
+        <button
+          type="button"
+          className="lens-board-btn-close"
+          onClick={handleCloseIncident}
+          disabled={closeIncident.isPending || data.status === "closed"}
+          aria-label={data.status === "closed" ? t("board.close.closedLabel") : t("board.close.button")}
+        >
+          {closeIncident.isPending
+            ? t("board.close.closing")
+            : data.status === "closed"
+              ? t("board.close.closedLabel")
+              : t("board.close.button")}
+        </button>
+        {closeFeedback ? <p className="lens-board-close-note">{closeFeedback}</p> : null}
+      </div>
 
       {hasDiagnosisGap ? (
         <DiagnosisPending

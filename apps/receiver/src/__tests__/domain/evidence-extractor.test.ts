@@ -129,6 +129,7 @@ function makeIncident(): Incident {
     incidentId: 'inc_test',
     status: 'open',
     openedAt: new Date(BASE_TIME_MS).toISOString(),
+    lastActivityAt: new Date(BASE_TIME_MS).toISOString(),
     packet,
     telemetryScope: {
       ...createEmptyTelemetryScope(),

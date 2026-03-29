@@ -49,6 +49,7 @@ function makeMockStorage(incidents: Incident[] = []): StorageDriver {
     createIncident: vi.fn(),
     updatePacket: vi.fn(),
     updateIncidentStatus: vi.fn(),
+    touchIncidentActivity: vi.fn(),
     appendDiagnosis: vi.fn(),
     listIncidents: vi.fn().mockResolvedValue({ items: incidents }),
     getIncident: vi.fn(),
@@ -105,6 +106,7 @@ function makeIncident(overrides: Partial<Incident> = {}): Incident {
     incidentId: 'inc-1',
     status: 'open',
     openedAt: new Date().toISOString(),
+    lastActivityAt: new Date().toISOString(),
     packet: defaultPacket,
     telemetryScope: {
       windowStartMs: Date.now() - 300_000,

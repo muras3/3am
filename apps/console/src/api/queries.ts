@@ -77,6 +77,11 @@ export interface RerunDiagnosisResponse {
   status: "accepted";
 }
 
+export interface CloseIncidentResponse {
+  status: "closed";
+  closedAt: string;
+}
+
 export const curatedMutations = {
   evidenceQuery: (id: string) =>
     mutationOptions({
@@ -90,5 +95,12 @@ export const curatedMutations = {
       mutationKey: ["curated", "incidents", id, "rerun-diagnosis"],
       mutationFn: () =>
         apiFetchPost<RerunDiagnosisResponse>(`/api/incidents/${encodeIncidentId(id)}/rerun-diagnosis`, {}),
+    }),
+
+  closeIncident: (id: string) =>
+    mutationOptions({
+      mutationKey: ["curated", "incidents", id, "close"],
+      mutationFn: () =>
+        apiFetchPost<CloseIncidentResponse>(`/api/incidents/${encodeIncidentId(id)}/close`, {}),
     }),
 };

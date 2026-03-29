@@ -65,6 +65,7 @@ export interface Incident {
   status: "open" | "closed";
   openedAt: string;
   closedAt?: string;
+  lastActivityAt: string;
   packet: IncidentPacket;
   diagnosisResult?: DiagnosisResult;
   consoleNarrative?: ConsoleNarrative;
@@ -98,6 +99,8 @@ export interface StorageDriver {
 
   updateIncidentStatus(id: string, status: "open" | "closed"): Promise<void>;
 
+  touchIncidentActivity(id: string, at?: string): Promise<void>;
+
   appendDiagnosis(id: string, result: DiagnosisResult): Promise<void>;
 
   appendConsoleNarrative(id: string, narrative: ConsoleNarrative): Promise<void>;
@@ -108,7 +111,7 @@ export interface StorageDriver {
 
   getIncidentByPacketId(packetId: string): Promise<Incident | null>;
 
-  /** Remove closed incidents where openedAt < before */
+  /** Remove closed incidents where closedAt < before */
   deleteExpiredIncidents(before: Date): Promise<void>;
 
   /**

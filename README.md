@@ -34,6 +34,9 @@ For your own app telemetry, start your app with instrumentation loaded:
 node --require ./instrumentation.js your-app.js
 ```
 
+Optional receiver tuning:
+- `RETENTION_HOURS=48` controls raw telemetry retention, incident auto-close after inactivity, and hard-delete delay for closed incidents. The same window is used for all three.
+
 **Note:** Logs require a structured logger (pino, winston, or bunyan) wired through `@opentelemetry/auto-instrumentations-node`. `console.log` is not captured.
 
 ---
@@ -45,8 +48,9 @@ node --require ./instrumentation.js your-app.js
 1. Click the button above
 2. Enter your `ANTHROPIC_API_KEY` — this is the only value you need to provide
 3. Neon Postgres is auto-provisioned via the Vercel integration
-4. After deploy, open your Console URL — the first-access screen displays your `AUTH_TOKEN`
-5. Point your app at the production Receiver:
+4. Set `RETENTION_HOURS` in your deployment environment if you need a window other than 48 hours
+5. After deploy, open your Console URL — the first-access screen displays your `AUTH_TOKEN`
+6. Point your app at the production Receiver:
 
 ```bash
 npx 3amoncall deploy

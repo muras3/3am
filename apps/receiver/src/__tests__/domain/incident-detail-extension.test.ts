@@ -103,6 +103,7 @@ function makeIncident(overrides: Partial<Incident> = {}): Incident {
     incidentId: 'inc_001',
     status: 'open',
     openedAt: BASE_ISO,
+    lastActivityAt: BASE_ISO,
     packet: makePacket(),
     telemetryScope: makeScope(),
     spanMembership: [],

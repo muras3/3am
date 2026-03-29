@@ -124,6 +124,7 @@ export function runStorageSuite(
       expect(incident?.incidentId).toBe(packet.incidentId);
       expect(incident?.status).toBe("open");
       expect(incident?.openedAt).toBe(packet.openedAt);
+      expect(incident?.lastActivityAt).toBe(packet.openedAt);
     });
 
     it("createIncident is a no-op for existing incidentId — use updatePacket instead", async () => {
@@ -173,6 +174,15 @@ export function runStorageSuite(
       const incident = await driver.getIncident(packet.incidentId);
       expect(incident?.status).toBe("closed");
       expect(incident?.closedAt).toBeDefined();
+    });
+
+    it("touchIncidentActivity updates lastActivityAt", async () => {
+      const packet = makePacket();
+      await driver.createIncident(packet, makeMembership());
+      await driver.touchIncidentActivity(packet.incidentId, "2026-03-09T04:00:00Z");
+
+      const incident = await driver.getIncident(packet.incidentId);
+      expect(incident?.lastActivityAt).toBe("2026-03-09T04:00:00Z");
     });
 
     it("updateIncidentStatus is a no-op for unknown incidentId", async () => {
@@ -237,18 +247,27 @@ export function runStorageSuite(
 
     // deleteExpiredIncidents ─────────────────────────────────────────────────
 
-    it("deleteExpiredIncidents removes closed incidents older than cutoff", async () => {
-      const old = makePacket({ incidentId: "inc_old", packetId: "pkt_old", openedAt: "2020-01-01T00:00:00Z" });
-      const recent = makePacket({ incidentId: "inc_recent", packetId: "pkt_recent", openedAt: "2026-03-09T00:00:00Z" });
+    it("deleteExpiredIncidents removes closed incidents when closedAt is before cutoff", async () => {
+      const old = makePacket({ incidentId: "inc_old", packetId: "pkt_old" });
+      const open = makePacket({ incidentId: "inc_open", packetId: "pkt_open" });
       await driver.createIncident(old, makeMembership());
-      await driver.createIncident(recent, makeMembership());
+      await driver.createIncident(open, makeMembership());
       await driver.updateIncidentStatus("inc_old", "closed");
-      await driver.updateIncidentStatus("inc_recent", "closed");
 
-      await driver.deleteExpiredIncidents(new Date("2021-01-01T00:00:00Z"));
+      await driver.deleteExpiredIncidents(new Date("2100-01-01T00:00:00Z"));
 
       expect(await driver.getIncident("inc_old")).toBeNull();
-      expect(await driver.getIncident("inc_recent")).not.toBeNull();
+      expect(await driver.getIncident("inc_open")).not.toBeNull();
+    });
+
+    it("deleteExpiredIncidents keeps closed incidents when closedAt is after cutoff", async () => {
+      const packet = makePacket({ incidentId: "inc_closed_recent", packetId: "pkt_closed_recent" });
+      await driver.createIncident(packet, makeMembership());
+      await driver.updateIncidentStatus("inc_closed_recent", "closed");
+
+      await driver.deleteExpiredIncidents(new Date("2000-01-01T00:00:00Z"));
+
+      expect(await driver.getIncident("inc_closed_recent")).not.toBeNull();
     });
 
     it("deleteExpiredIncidents does not remove open incidents", async () => {

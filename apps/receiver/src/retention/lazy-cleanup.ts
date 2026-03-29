@@ -15,6 +15,17 @@ import type { StorageDriver } from "../storage/interface.js";
 import type { TelemetryStoreDriver } from "../telemetry/interface.js";
 import { getRetentionCutoff, CLEANUP_INTERVAL_MS } from "./config.js";
 
+async function listAllIncidents(storage: StorageDriver) {
+  const items = [];
+  let cursor: string | undefined = undefined;
+  do {
+    const page = await storage.listIncidents({ limit: 100, cursor });
+    items.push(...page.items);
+    cursor = page.nextCursor;
+  } while (cursor !== undefined);
+  return items;
+}
+
 let lastCleanupMs = 0;
 
 /**
@@ -34,6 +45,15 @@ export async function maybeCleanup(
 
   const cutoff = getRetentionCutoff(now);
   try {
+    const incidents = await listAllIncidents(storage);
+    await Promise.all(
+      incidents.flatMap((incident) => {
+        if (incident.status === "open" && new Date(incident.lastActivityAt).getTime() < cutoff.getTime()) {
+          return [storage.updateIncidentStatus(incident.incidentId, "closed")];
+        }
+        return [];
+      }),
+    );
     await Promise.all([
       storage.deleteExpiredIncidents(cutoff),
       telemetryStore.deleteExpired(cutoff),
