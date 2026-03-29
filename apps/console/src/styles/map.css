@@ -687,9 +687,7 @@
     gap: 10px;
   }
 
-  .stat-value {
-    font-size: 22px;
-  }
+  /* stat-value uses --fs-xl at all breakpoints — no override needed */
 }
 
 @media (max-width: 900px) {
