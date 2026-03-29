@@ -25,10 +25,10 @@ export function StatsBar({ summary }: Props) {
       </div>
       <div className="stat-block">
         <span
-          className={`stat-value${summary.degradedNodes > 0 ? " warn" : ""}`}
-          data-testid="stat-degraded-nodes"
+          className={`stat-value${summary.degradedServices > 0 ? " warn" : ""}`}
+          data-testid="stat-degraded-services"
         >
-          {summary.degradedNodes}
+          {summary.degradedServices}
         </span>
         <span className="stat-label">{t("map.stats.degradedServices")}</span>
       </div>

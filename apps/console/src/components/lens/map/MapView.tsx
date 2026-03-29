@@ -16,7 +16,7 @@ interface Props {
  *
  * Renders:
  * 1. StatsBar — 4 cluster metrics
- * 2. Section title + MapGraph — SVG dependency map with nodes/edges
+ * 2. Section title + MapGraph — 3-zone dependency map (services / edges / dependencies)
  * 3. Section title + IncidentStrip — clickable incident rows
  *
  * Data is loaded via curatedQueries.runtimeMap().
@@ -73,7 +73,8 @@ export function MapView({ zoomTo }: Props) {
       <MapStatusBanner state={data.state} />
 
       <MapGraph
-        nodes={data.nodes}
+        services={data.services}
+        dependencies={data.dependencies}
         edges={data.edges}
         emptyState={
           <MapEmptyState
