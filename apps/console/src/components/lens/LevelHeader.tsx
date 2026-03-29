@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import i18n from "../../i18n/index.js";
+import { setPreferredLocale } from "../../i18n/index.js";
 import type { LensLevel } from "../../routes/__root.js";
 import { formatShortIncidentId } from "../../lib/incidentId.js";
 
@@ -10,6 +11,81 @@ interface LevelHeaderProps {
   severity?: string | undefined;
   openedAt?: string | undefined;
   zoomTo: (level: LensLevel, trigger?: HTMLElement, incidentId?: string) => void;
+}
+
+function PreferencesMenu() {
+  const { t } = useTranslation();
+  const [open, setOpen] = useState(false);
+  const [saving, setSaving] = useState<"en" | "ja" | null>(null);
+  const wrapperRef = useRef<HTMLDivElement | null>(null);
+  const currentLocale = i18n.language === "ja" ? "ja" : "en";
+
+  useEffect(() => {
+    function handlePointer(event: MouseEvent) {
+      if (!wrapperRef.current?.contains(event.target as Node)) {
+        setOpen(false);
+      }
+    }
+    function handleEscape(event: KeyboardEvent) {
+      if (event.key === "Escape") setOpen(false);
+    }
+    document.addEventListener("mousedown", handlePointer);
+    document.addEventListener("keydown", handleEscape);
+    return () => {
+      document.removeEventListener("mousedown", handlePointer);
+      document.removeEventListener("keydown", handleEscape);
+    };
+  }, []);
+
+  async function handleChange(locale: "en" | "ja") {
+    if (locale === currentLocale) return;
+    setSaving(locale);
+    await setPreferredLocale(locale);
+    setSaving(null);
+    setOpen(false);
+  }
+
+  return (
+    <div className="level-header-prefs" ref={wrapperRef}>
+      <button
+        type="button"
+        className="level-header-prefs-btn"
+        aria-expanded={open}
+        aria-haspopup="dialog"
+        onClick={() => setOpen((value) => !value)}
+      >
+        {t("preferences.button")}
+      </button>
+      {open && (
+        <div className="level-header-prefs-panel" role="dialog" aria-label={t("preferences.title")}>
+          <div className="level-header-prefs-title">{t("preferences.title")}</div>
+          <div className="level-header-prefs-copy">{t("preferences.copy")}</div>
+          <div className="level-header-prefs-options">
+            <button
+              type="button"
+              className={`level-header-prefs-option${currentLocale === "en" ? " active" : ""}`}
+              aria-pressed={currentLocale === "en"}
+              disabled={saving !== null}
+              onClick={() => void handleChange("en")}
+            >
+              <span className="level-header-prefs-option-label">{t("preferences.englishLabel")}</span>
+              <span className="level-header-prefs-option-detail">{t("preferences.englishDetail")}</span>
+            </button>
+            <button
+              type="button"
+              className={`level-header-prefs-option${currentLocale === "ja" ? " active" : ""}`}
+              aria-pressed={currentLocale === "ja"}
+              disabled={saving !== null}
+              onClick={() => void handleChange("ja")}
+            >
+              <span className="level-header-prefs-option-label">{t("preferences.japaneseLabel")}</span>
+              <span className="level-header-prefs-option-detail">{t("preferences.japaneseDetail")}</span>
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
 
 /**
@@ -38,6 +114,7 @@ export function LevelHeader({
         </div>
         <span className="topbar-sep" />
         <span className="env-tag">{t("header.env")}</span>
+        <PreferencesMenu />
         <span className="level-header-clock">{clock}</span>
       </header>
     );
@@ -63,6 +140,7 @@ export function LevelHeader({
           </span>
         )}
         {openedAt && <Duration openedAt={openedAt} />}
+        <PreferencesMenu />
         <span className="level-header-clock">{clock}</span>
       </header>
     );
@@ -87,6 +165,7 @@ export function LevelHeader({
           {severity}
         </span>
       )}
+      <PreferencesMenu />
       <span className="level-header-clock">{clock}</span>
     </header>
   );

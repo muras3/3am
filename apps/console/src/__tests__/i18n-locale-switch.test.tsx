@@ -70,6 +70,37 @@ describe("LevelHeader", () => {
     expect(container.querySelector(".locale-toggle-btn")).toBeNull();
   });
 
+  it("opens preferences and switches locale", async () => {
+    let view: Awaited<ReturnType<typeof renderLevelHeaderLevel0>> | undefined;
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve({ locale: "en" }) });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await act(async () => {
+      view = await renderLevelHeaderLevel0();
+    });
+
+    const prefsButton = screen.getByRole("button", { name: "Preferences" });
+    await act(async () => {
+      prefsButton.click();
+    });
+
+    expect(screen.getByRole("dialog", { name: "Content Language" })).toBeInTheDocument();
+
+    await act(async () => {
+      screen.getByRole("button", { name: /Japanese/i }).click();
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/settings/locale",
+      expect.objectContaining({
+        method: "PUT",
+        body: JSON.stringify({ locale: "ja" }),
+      }),
+    );
+    expect(i18n.language).toBe("ja");
+    void view;
+  });
+
   it("formats the header clock in local time with a timezone label", async () => {
     const { formatTime } = await import("../components/lens/LevelHeader.js");
     const dateTimeFormatSpy = vi.spyOn(Intl, "DateTimeFormat").mockImplementation(

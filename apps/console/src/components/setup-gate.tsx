@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useTranslation, Trans } from "react-i18next";
 import { saveAuthToken, getStoredAuthToken } from "../api/client.js";
+import { detectPreferredContentLanguage, setPreferredLocale } from "../i18n/index.js";
 
 interface SetupStatus {
   setupComplete: boolean;
@@ -111,10 +112,61 @@ const primaryBtnStyle: React.CSSProperties = {
   fontWeight: 600,
 };
 
+const languageGridStyle: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "1fr 1fr",
+  gap: "10px",
+  marginBottom: "18px",
+};
+
+function LanguageChoiceCard({
+  label,
+  detail,
+  selected,
+  onClick,
+}: {
+  label: string;
+  detail: string;
+  selected: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={selected}
+      style={{
+        textAlign: "left",
+        padding: "12px 14px",
+        borderRadius: "var(--radius)",
+        border: `1px solid ${selected ? "var(--teal)" : "var(--line)"}`,
+        background: selected ? "var(--teal-soft)" : "var(--panel-2)",
+        cursor: "pointer",
+        display: "flex",
+        flexDirection: "column",
+        gap: "6px",
+        minHeight: "86px",
+      }}
+    >
+      <span style={{ fontFamily: "var(--font)", fontSize: "var(--fs-sm)", fontWeight: 700, color: "var(--ink)" }}>{label}</span>
+      <span style={{ fontFamily: "var(--font)", fontSize: "var(--fs-xs)", color: "var(--ink-3)", lineHeight: 1.45 }}>{detail}</span>
+    </button>
+  );
+}
+
 /** First-boot: show generated token, prompt user to save it. */
-function FirstSetupView({ token, onSave }: { token: string; onSave: () => void }) {
+function FirstSetupView({
+  token,
+  initialLocale,
+  onSave,
+}: {
+  token: string;
+  initialLocale: "en" | "ja";
+  onSave: (locale: "en" | "ja") => void;
+}) {
   const { t } = useTranslation();
   const [copied, setCopied] = useState(false);
+  const [locale, setLocale] = useState<"en" | "ja">(initialLocale);
 
   const handleCopy = () => {
     void navigator.clipboard.writeText(token).then(() => {
@@ -133,11 +185,29 @@ function FirstSetupView({ token, onSave }: { token: string; onSave: () => void }
         <div style={tokenBoxStyle}>
           <p style={tokenTextStyle}>{token}</p>
         </div>
+        <div style={{ marginBottom: "16px" }}>
+          <p style={{ ...bodyStyle, marginBottom: "10px", color: "var(--ink)" }}>{t("setup.contentLanguage.title")}</p>
+          <div style={languageGridStyle}>
+            <LanguageChoiceCard
+              label={t("setup.contentLanguage.englishLabel")}
+              detail={t("setup.contentLanguage.englishDetail")}
+              selected={locale === "en"}
+              onClick={() => setLocale("en")}
+            />
+            <LanguageChoiceCard
+              label={t("setup.contentLanguage.japaneseLabel")}
+              detail={t("setup.contentLanguage.japaneseDetail")}
+              selected={locale === "ja"}
+              onClick={() => setLocale("ja")}
+            />
+          </div>
+          <p style={{ ...footerStyle, marginTop: "0" }}>{t("setup.contentLanguage.helper")}</p>
+        </div>
         <div style={{ display: "flex", gap: "8px" }}>
           <button onClick={handleCopy} style={secondaryBtnStyle}>
             {copied ? t("setup.copied") : t("setup.copy")}
           </button>
-          <button onClick={onSave} style={primaryBtnStyle}>
+          <button onClick={() => onSave(locale)} style={primaryBtnStyle}>
             {t("setup.saveAndContinue")}
           </button>
         </div>
@@ -205,6 +275,7 @@ export function SetupGate({ children }: SetupGateProps) {
   const [state, setState] = useState<"loading" | "first-setup" | "recovery" | "error" | "ready">("loading");
   const [token, setToken] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string>("");
+  const [initialLocale, setInitialLocale] = useState<"en" | "ja">(detectPreferredContentLanguage());
 
   const runSetup = () => {
     setState("loading");
@@ -226,6 +297,7 @@ export function SetupGate({ children }: SetupGateProps) {
           return fetchSetupToken()
             .then((t) => {
               setToken(t);
+              setInitialLocale(detectPreferredContentLanguage());
               setState("first-setup");
             })
             .catch((tokenErr: unknown) => {
@@ -272,7 +344,9 @@ export function SetupGate({ children }: SetupGateProps) {
     return (
       <FirstSetupView
         token={token}
-        onSave={() => {
+        initialLocale={initialLocale}
+        onSave={(locale) => {
+          void setPreferredLocale(locale);
           saveAuthToken(token);
           setState("ready");
         }}
