@@ -115,7 +115,7 @@ export function flattenOtlpAttributes(attrs: unknown): Record<string, unknown> {
  * Normalize a traceId/spanId value to lowercase hex.
  *
  * OTLP JSON transport uses lowercase hex strings. OTLP protobuf transport
- * (via protobufjs with `bytes: String`) returns base64-encoded strings.
+ * decoded via JSON conversion returns base64-encoded strings for bytes fields.
  * This helper detects the encoding and normalizes to hex.
  *
  * Detection: if the value consists entirely of hex characters, it is already hex.

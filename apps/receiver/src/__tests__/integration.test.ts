@@ -1,29 +1,14 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { createRequire } from "node:module";
 import { gzipSync } from "node:zlib";
-import protobuf from "protobufjs";
 import { MemoryAdapter } from "../storage/adapters/memory.js";
 import { createApp } from "../index.js";
 import { MAX_REPRESENTATIVE_TRACES } from "../domain/packetizer.js";
+import {
+  encodeLogsRequest,
+  encodeMetricsRequest,
+  encodeTraceRequest,
+} from "./fixtures/otlp-proto.js";
 import { secretsRotationReplayPayload } from "./fixtures/scenarios/06-secrets-rotation-replay.js";
-
-// ── Protobuf encode helpers ────────────────────────────────────────────────────
-const _require = createRequire(import.meta.url);
-const descriptor: protobuf.INamespace = _require("../transport/proto/otlp.json");
-const _root = protobuf.Root.fromJSON(descriptor);
-const TraceReq = _root.lookupType(
-  "opentelemetry.proto.collector.trace.v1.ExportTraceServiceRequest",
-);
-const MetricsReq = _root.lookupType(
-  "opentelemetry.proto.collector.metrics.v1.ExportMetricsServiceRequest",
-);
-const LogsReq = _root.lookupType(
-  "opentelemetry.proto.collector.logs.v1.ExportLogsServiceRequest",
-);
-
-function encodeProto(Type: protobuf.Type, obj: object): Uint8Array {
-  return Type.encode(Type.fromObject(obj)).finish();
-}
 
 // Minimal OTLP payload with an error span (spanStatusCode=2, httpStatusCode=500)
 const errorSpanPayload = {
@@ -559,7 +544,7 @@ describe("Receiver integration tests", () => {
   // ── Protobuf ingest (ADR 0022) ────────────────────────────────────────────────
 
   it("POST /v1/traces + protobuf error span → 200 + incidentId", async () => {
-    const buf = encodeProto(TraceReq, {
+    const buf = encodeTraceRequest({
       resourceSpans: [
         {
           resource: {
@@ -603,7 +588,7 @@ describe("Receiver integration tests", () => {
   });
 
   it("POST /v1/traces + protobuf normal span → 200, no incident", async () => {
-    const buf = encodeProto(TraceReq, {
+    const buf = encodeTraceRequest({
       resourceSpans: [
         {
           resource: {
@@ -647,7 +632,7 @@ describe("Receiver integration tests", () => {
   });
 
   it("POST /v1/metrics + protobuf → 200", async () => {
-    const buf = encodeProto(MetricsReq, { resourceMetrics: [] });
+    const buf = encodeMetricsRequest({ resourceMetrics: [] });
     const res = await app.request("/v1/metrics", {
       method: "POST",
       headers: { "Content-Type": "application/x-protobuf" },
@@ -659,7 +644,7 @@ describe("Receiver integration tests", () => {
   });
 
   it("POST /v1/logs + protobuf → 200", async () => {
-    const buf = encodeProto(LogsReq, { resourceLogs: [] });
+    const buf = encodeLogsRequest({ resourceLogs: [] });
     const res = await app.request("/v1/logs", {
       method: "POST",
       headers: { "Content-Type": "application/x-protobuf" },
@@ -671,7 +656,7 @@ describe("Receiver integration tests", () => {
   });
 
   it("POST /v1/traces + protobuf + Content-Encoding: gzip → 200", async () => {
-    const buf = encodeProto(TraceReq, { resourceSpans: [] });
+    const buf = encodeTraceRequest({ resourceSpans: [] });
     const compressed = gzipSync(buf);
     const res = await app.request("/v1/traces", {
       method: "POST",

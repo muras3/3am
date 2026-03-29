@@ -1,0 +1,8 @@
+version: v2
+plugins:
+  - local: protoc-gen-es
+    out: src/transport/proto/gen
+    opt:
+      - target=ts
+      - import_extension=js
+      - json_types=true

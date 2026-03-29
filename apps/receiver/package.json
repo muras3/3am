@@ -4,20 +4,24 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "tsc -p tsconfig.build.json && cp -r src/transport/proto dist/transport/",
+    "build": "tsc -p tsconfig.build.json",
     "bundle": "esbuild src/server.ts --bundle --platform=node --format=esm --outfile=bundle/server.mjs --external:pg-native",
     "test": "vitest run",
+    "test:workers": "vitest run --config vitest.workers.config.ts",
     "test:self-instrumentation": "vitest run src/__tests__/self-instrumentation.integration.test.ts",
     "test:coverage": "vitest run --coverage",
     "typecheck": "tsc -p tsconfig.build.json --noEmit",
     "lint": "eslint src --max-warnings 0",
     "dev": "tsx watch src/server.ts",
     "db:migrate": "tsx src/scripts/migrate.ts",
-    "proto:gen": "bash -c 'TMPD=$(mktemp -d) && BASE=https://raw.githubusercontent.com/open-telemetry/opentelemetry-proto/v1.3.2 && for f in opentelemetry/proto/common/v1/common.proto opentelemetry/proto/resource/v1/resource.proto opentelemetry/proto/trace/v1/trace.proto opentelemetry/proto/collector/trace/v1/trace_service.proto opentelemetry/proto/metrics/v1/metrics.proto opentelemetry/proto/collector/metrics/v1/metrics_service.proto opentelemetry/proto/logs/v1/logs.proto opentelemetry/proto/collector/logs/v1/logs_service.proto; do mkdir -p $TMPD/$(dirname $f) && curl -sf $BASE/$f -o $TMPD/$f; done && pbjs --target json --path $TMPD opentelemetry/proto/collector/trace/v1/trace_service.proto opentelemetry/proto/collector/metrics/v1/metrics_service.proto opentelemetry/proto/collector/logs/v1/logs_service.proto -o src/transport/proto/otlp.json && rm -rf $TMPD && echo done'"
+    "proto:gen": "bash -c 'TMPD=$(mktemp -d) && BASE=https://raw.githubusercontent.com/open-telemetry/opentelemetry-proto/v1.3.2 && BUF_BIN=$(pwd)/../../node_modules/.pnpm/@bufbuild+buf@1.66.1/node_modules/@bufbuild/buf/bin/buf && ES_BIN_DIR=$(pwd)/../../node_modules/.pnpm/@bufbuild+protoc-gen-es@2.11.0_@bufbuild+protobuf@2.11.0/node_modules/@bufbuild/protoc-gen-es/bin && trap \"rm -rf $TMPD\" EXIT && for f in opentelemetry/proto/common/v1/common.proto opentelemetry/proto/resource/v1/resource.proto opentelemetry/proto/trace/v1/trace.proto opentelemetry/proto/collector/trace/v1/trace_service.proto opentelemetry/proto/metrics/v1/metrics.proto opentelemetry/proto/collector/metrics/v1/metrics_service.proto opentelemetry/proto/logs/v1/logs.proto opentelemetry/proto/collector/logs/v1/logs_service.proto; do mkdir -p $TMPD/$(dirname $f) && curl -sf $BASE/$f -o $TMPD/$f; done && PATH=$ES_BIN_DIR:$PATH $BUF_BIN generate $TMPD --template buf.gen.yaml && echo done'"
   },
   "dependencies": {
     "@3amoncall/core": "workspace:*",
     "@3amoncall/diagnosis": "workspace:*",
+    "@anthropic-ai/sdk": "^0.39.0",
+    "@bufbuild/protobuf": "^2.11.0",
+    "@hono/node-server": "^1.0.0",
     "@opentelemetry/api": "^1.9.0",
     "@opentelemetry/api-logs": "^0.205.0",
     "@opentelemetry/exporter-logs-otlp-http": "^0.205.0",
@@ -30,14 +34,11 @@
     "@opentelemetry/sdk-metrics": "^2.6.1",
     "@opentelemetry/sdk-node": "^0.205.0",
     "@opentelemetry/semantic-conventions": "^1.37.0",
-    "@anthropic-ai/sdk": "^0.39.0",
-    "@hono/node-server": "^1.0.0",
     "better-sqlite3": "^12.6.2",
     "drizzle-orm": "^0.45.1",
     "hono": "^4.0.0",
     "jose": "^6.2.2",
     "postgres": "^3.4.8",
-    "protobufjs": "^7.4.0",
     "zod": "^3.25.76"
   },
   "optionalDependencies": {
@@ -46,6 +47,9 @@
   "devDependencies": {
     "@3amoncall/config-eslint": "workspace:*",
     "@3amoncall/config-typescript": "workspace:*",
+    "@bufbuild/buf": "^1.66.1",
+    "@bufbuild/protoc-gen-es": "^2.11.0",
+    "@cloudflare/vitest-pool-workers": "^0.8.39",
     "@cloudflare/workers-types": "^4.20250320.0",
     "@eslint/js": "^9.0.0",
     "@types/better-sqlite3": "^7.6.13",
@@ -54,10 +58,10 @@
     "drizzle-kit": "^0.31.9",
     "esbuild": "^0.27.4",
     "eslint": "^9.0.0",
-    "protobufjs-cli": "^1.1.3",
     "tsx": "^4.0.0",
     "typescript": "5.9.3",
     "typescript-eslint": "^8.0.0",
-    "vitest": "^3.0.0"
+    "vitest": "^3.0.0",
+    "wrangler": "^4.78.0"
   }
 }
