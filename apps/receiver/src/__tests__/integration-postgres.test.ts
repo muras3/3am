@@ -35,7 +35,7 @@ if (!DATABASE_URL) {
   beforeEach(async () => {
     delete process.env["RECEIVER_AUTH_TOKEN"];
     process.env["ALLOW_INSECURE_DEV_MODE"] = "true";
-    await adapter.execute(sql`TRUNCATE TABLE incidents, thin_events RESTART IDENTITY CASCADE`);
+    await adapter.execute(sql`TRUNCATE TABLE incidents, thin_events, settings RESTART IDENTITY CASCADE`);
     app = createApp(adapter);
   });
 

@@ -46,6 +46,7 @@ function makeMockTelemetryStore(spans: TelemetrySpan[] = []): TelemetryStoreDriv
 
 function makeMockStorage(incidents: Incident[] = []): StorageDriver {
   return {
+    nextIncidentSequence: vi.fn().mockResolvedValue(1),
     createIncident: vi.fn(),
     updatePacket: vi.fn(),
     updateIncidentStatus: vi.fn(),

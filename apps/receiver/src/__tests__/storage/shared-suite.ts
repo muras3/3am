@@ -113,6 +113,11 @@ export function runStorageSuite(
       driver = getDriver();
     });
 
+    it("nextIncidentSequence returns incrementing values", async () => {
+      await expect(driver.nextIncidentSequence()).resolves.toBe(1);
+      await expect(driver.nextIncidentSequence()).resolves.toBe(2);
+    });
+
     // createIncident ─────────────────────────────────────────────────────────
 
     it("createIncident stores an incident retrievable by getIncident", async () => {

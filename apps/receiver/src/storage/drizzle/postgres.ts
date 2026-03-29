@@ -193,6 +193,31 @@ export class PostgresAdapter implements StorageDriver {
     return incident;
   }
 
+  async nextIncidentSequence(): Promise<number> {
+    return this.db.transaction(async (tx) => {
+      const [row] = await tx.select().from(pgSettings)
+        .where(eq(pgSettings.key, "__next_incident_sequence"))
+        .for("update");
+      let current = row ? Number.parseInt(row.value, 10) : 0;
+      if (!row) {
+        const [latest] = await tx.select({ incidentId: pgIncidents.incidentId })
+          .from(pgIncidents)
+          .orderBy(desc(pgIncidents.incidentId))
+          .limit(1)
+          .for("update");
+        current = latest ? parseIncidentSequence(latest.incidentId) ?? 0 : 0;
+      }
+      const next = current + 1;
+      await tx.insert(pgSettings)
+        .values({ key: "__next_incident_sequence", value: String(next), updatedAt: new Date() })
+        .onConflictDoUpdate({
+          target: pgSettings.key,
+          set: { value: String(next), updatedAt: new Date() },
+        });
+      return next;
+    });
+  }
+
   async createIncident(packet: IncidentPacket, membership: InitialMembership): Promise<void> {
     await this.db
       .insert(pgIncidents)
@@ -445,4 +470,10 @@ export class PostgresAdapter implements StorageDriver {
       .values({ key, value })
       .onConflictDoUpdate({ target: pgSettings.key, set: { value, updatedAt: new Date() } });
   }
+}
+
+function parseIncidentSequence(incidentId: string): number | null {
+  const match = incidentId.match(/^inc_(\d{6})$/);
+  const digits = match?.[1];
+  return digits ? Number.parseInt(digits, 10) : null;
 }
