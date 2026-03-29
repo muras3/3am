@@ -98,6 +98,8 @@ jobs:
         run: pnpm --filter @3amoncall/receiver test:coverage
         env:
           DATABASE_URL: postgres://receiver:receiver@localhost:5432/receiver
+      - name: Test receiver on Cloudflare Workers runtime
+        run: pnpm --filter @3amoncall/receiver test:workers
       - name: Typecheck receiver
         run: pnpm --filter @3amoncall/receiver typecheck
       - name: Lint receiver
