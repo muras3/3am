@@ -59,15 +59,15 @@ export function MapGraph({ services, dependencies, edges, emptyState, zoomTo }: 
       {/* Legend */}
       <div className="map-legend">
         <span>
-          <span className="legend-swatch" style={{ background: "var(--good)" }} />
+          <span className="legend-swatch healthy" />
           {t("map.legendHealthy")}
         </span>
         <span>
-          <span className="legend-swatch" style={{ background: "var(--amber)" }} />
+          <span className="legend-swatch degraded" />
           {t("map.legendDegraded")}
         </span>
         <span>
-          <span className="legend-swatch" style={{ background: "var(--accent)" }} />
+          <span className="legend-swatch errors" />
           {t("map.legendErrors")}
         </span>
         <span>
