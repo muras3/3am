@@ -638,9 +638,8 @@
   }
 
   .zone-deps {
-    flex-direction: row;
+    flex-flow: row wrap;
     gap: 10px;
-    flex-wrap: wrap;
     max-width: 100%;
     min-width: 0;
   }
