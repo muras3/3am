@@ -44,18 +44,23 @@ export function WhatHappened({ incidentId, status, closedAt, severity, headline,
             Closed
           </span>
         ) : null}
+      </div>
+      <div className="lens-board-headline-row">
+        <h1 className="lens-board-headline" title={displayHeadline}>
+          {viewportHeadline}
+        </h1>
         {hasConfidence ? (
-          <span
-            className={`lens-board-conf-badge ${confidenceColorClass(confidence.value)}`}
+          <div
+            className={`lens-board-conf-block ${confidenceColorClass(confidence.value)}`}
             aria-label={t("board.confidence.scoreLabel", { pct: confPct })}
           >
-            {confPct}% {confidence.label.trim() || ""}
-          </span>
+            <span className="lens-board-conf-block-pct">{confPct}%</span>
+            <span className="lens-board-conf-block-label">
+              {confidence.label.trim() || ""}
+            </span>
+          </div>
         ) : null}
       </div>
-      <h1 className="lens-board-headline" title={displayHeadline}>
-        {viewportHeadline}
-      </h1>
       {chips.length > 0 && (
         <div className="lens-board-chips">
           {chips.map((chip: ExtendedIncident["chips"][number], i: number) => (

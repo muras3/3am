@@ -453,23 +453,67 @@
   letter-spacing: 0.04em;
 }
 
-/* ── Confidence badge (inline in header) ─────────────────────── */
-.lens-board-conf-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 2px 8px;
-  border-radius: var(--radius-xs);
-  font-size: var(--fs-xs);
-  font-weight: 700;
-  font-family: var(--mono);
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
+/* ── Headline row (headline + confidence block) ──────────────── */
+.lens-board-headline-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
 }
 
-.lens-board-conf-badge-high { background: var(--good-soft);   color: var(--good); }
-.lens-board-conf-badge-mid  { background: var(--amber-soft);  color: var(--amber); }
-.lens-board-conf-badge-low  { background: var(--accent-soft); color: var(--accent-text); }
+.lens-board-headline-row .lens-board-headline {
+  flex: 1;
+  min-width: 0;
+}
+
+/* ── Confidence block (prominent, right of headline) ─────────── */
+.lens-board-conf-block {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 72px;
+  min-height: 72px;
+  padding: 8px 6px;
+  border-radius: var(--radius);
+  border: 1px solid var(--line);
+  text-align: center;
+}
+
+.lens-board-conf-block-pct {
+  font-family: var(--mono);
+  font-size: 24px;
+  font-weight: 800;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.lens-board-conf-block-label {
+  font-size: var(--fs-xxs);
+  font-weight: 600;
+  margin-top: 2px;
+  line-height: 1.2;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.lens-board-conf-badge-high {
+  background: var(--good-soft);
+  border-color: rgba(46, 125, 82, 0.2);
+  color: var(--good);
+}
+
+.lens-board-conf-badge-mid {
+  background: var(--amber-soft);
+  border-color: rgba(184, 134, 11, 0.2);
+  color: var(--amber);
+}
+
+.lens-board-conf-badge-low {
+  background: var(--accent-soft);
+  border-color: rgba(232, 93, 58, 0.2);
+  color: var(--accent-text);
+}
 
 .lens-board-headline {
   font-size: clamp(26px, 3vw, 30px);

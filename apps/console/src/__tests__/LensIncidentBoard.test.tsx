@@ -235,16 +235,18 @@ describe("LensIncidentBoard — diagnosis ready", () => {
 });
 
 describe("Confidence badge (in header)", () => {
-  it("displays confidence badge with percentage in header", () => {
+  it("displays confidence block with percentage next to headline", () => {
     const qc = makeClient();
     qc.setQueryData(
       curatedQueries.extendedIncident("inc_0892").queryKey,
       extendedIncidentReady,
     );
     renderBoard("inc_0892", vi.fn(), qc);
-    const badge = document.querySelector(".lens-board-conf-badge");
-    expect(badge).not.toBeNull();
-    expect(badge!.textContent).toContain("85%");
+    const block = document.querySelector(".lens-board-conf-block");
+    expect(block).not.toBeNull();
+    const pct = document.querySelector(".lens-board-conf-block-pct");
+    expect(pct).not.toBeNull();
+    expect(pct!.textContent).toBe("85%");
   });
 
   it("renders confidence basis in root cause section", () => {
