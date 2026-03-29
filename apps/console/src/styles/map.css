@@ -60,197 +60,259 @@
   position: relative;
   max-width: 1100px;
   margin: 0 auto 12px;
-  height: 380px;
   border-radius: var(--radius);
-  overflow: hidden;
 }
 
-/* ── Tier labels ─────────────────────────────────────────────── */
-.map-tier-label {
-  position: absolute;
-  font-size: 8px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  color: var(--ink-3);
-  writing-mode: vertical-rl;
-  transform: rotate(180deg);
-  user-select: none;
+/* ═══════════════════════════════════════════════════════════════
+   ZONED LAYOUT — services (left) | edges (center) | deps (right)
+   ═══════════════════════════════════════════════════════════════ */
+.map-zoned {
+  display: flex;
+  align-items: flex-start;
+  gap: 0;
+  padding: 12px 0 16px;
+  position: relative;
 }
 
-.map-tier-label.t0 { left: 2px; top: 30px; }
-.map-tier-label.t1 { left: 2px; top: 160px; }
-.map-tier-label.t2 { left: 2px; top: 290px; }
-
-/* ── Tier dividers ───────────────────────────────────────────── */
-.map-tier-border {
-  position: absolute;
-  left: 20px;
-  right: 0;
-  border-top: 1px dashed var(--line);
-  z-index: 0;
+/* ── Services zone (left, primary) ────────────────────────────── */
+.zone-services {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: 420px;
 }
 
-/* ── SVG edges overlay ───────────────────────────────────────── */
-.map-edges {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  pointer-events: none;
+/* ── Relationship zone (center, connectors) ───────────────────── */
+.zone-edges {
+  flex: 0 0 72px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 0;
+  position: relative;
+  min-height: 100%;
 }
 
-/* ── Map nodes ───────────────────────────────────────────────── */
-.map-node {
-  position: absolute;
-  width: 155px;
-  padding: 8px 10px;
+.zone-edges svg {
+  width: 72px;
+}
+
+/* ── Dependencies zone (right, secondary) ─────────────────────── */
+.zone-deps {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  flex: 0 0 auto;
+  min-width: 170px;
+  max-width: 220px;
+}
+
+/* ── Service card ─────────────────────────────────────────────── */
+.svc-card {
   border: 1px solid var(--line);
   border-radius: var(--radius);
   background: var(--panel);
-  z-index: 2;
-  transition: border-color 0.2s, box-shadow 0.2s, transform 0.1s;
-  box-sizing: border-box;
+  transition: border-color 0.2s, box-shadow 0.2s;
 }
 
-/* Node type styles */
-.map-node.n-entry {
-  border-left: 3px solid var(--ink);
-  font-weight: 600;
-}
-
-.map-node.n-unit {
-  border-radius: 20px;
-  border-style: solid;
-}
-
-.map-node.n-dep {
-  border-style: dashed;
-  background: var(--panel-2);
-}
-
-/* Status styles */
-.map-node.n-critical {
-  border-color: rgba(232, 93, 58, 0.35);
+.svc-card.has-error {
+  border-color: rgba(232, 93, 58, 0.3);
   box-shadow: 0 0 0 3px var(--accent-soft);
 }
 
-.map-node.n-degraded {
-  border-color: rgba(184, 134, 11, 0.35);
+.svc-card.has-warn {
+  border-color: rgba(184, 134, 11, 0.3);
   box-shadow: 0 0 0 3px var(--amber-soft);
 }
 
-/* Clickable nodes */
-.map-node.clickable {
-  cursor: pointer;
-}
-
-.map-node.clickable:hover {
-  border-color: var(--line-strong);
-  box-shadow: 0 1px 2px rgba(26, 26, 26, 0.04), 0 4px 12px rgba(26, 26, 26, 0.08);
-  transform: translateY(-1px);
-}
-
-.map-node.n-critical.clickable:hover {
-  box-shadow: 0 1px 2px rgba(26, 26, 26, 0.04), 0 4px 12px rgba(26, 26, 26, 0.08), 0 0 0 3px var(--accent-soft);
-}
-
-.map-node.n-degraded.clickable:hover {
-  box-shadow: 0 1px 2px rgba(26, 26, 26, 0.04), 0 4px 12px rgba(26, 26, 26, 0.08), 0 0 0 3px var(--amber-soft);
-}
-
-.map-node.clickable:focus-visible {
-  outline: 2px solid var(--teal);
-  outline-offset: 2px;
-}
-
-/* ── Node internals ──────────────────────────────────────────── */
-.mn-top {
+.svc-header {
   display: flex;
   align-items: center;
-  gap: 6px;
-  margin-bottom: 6px;
+  gap: 8px;
+  padding: 10px 14px 8px;
+  border-bottom: 1px solid var(--line);
 }
 
-.mn-name {
-  font-size: var(--fs-xs);
-  font-weight: 600;
+.svc-name {
+  font-size: var(--fs-md);
+  font-weight: 700;
   flex: 1;
+}
+
+.svc-meta {
+  font-family: var(--mono);
+  font-size: var(--fs-xxs);
+  color: var(--ink-3);
+  display: flex;
+  gap: 10px;
+}
+
+/* ── Status dot ───────────────────────────────────────────────── */
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.dot.ok {
+  background: var(--good);
+}
+
+.dot.crit {
+  background: var(--accent);
+}
+
+.dot.deg {
+  background: var(--amber);
+}
+
+/* ── Route rows ───────────────────────────────────────────────── */
+.route-list {
+  padding: 3px 0;
+}
+
+.route-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 14px;
+  font-family: var(--mono);
+  font-size: var(--fs-xs);
+  cursor: default;
+  transition: background 0.12s;
+  border-left: 3px solid transparent;
+}
+
+.route-row:hover {
+  background: var(--panel-2);
+}
+
+.route-row .dot {
+  width: 6px;
+  height: 6px;
+}
+
+.route-label {
+  flex: 1;
+  color: var(--ink);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.mn-tag {
-  font-size: 8px;
+.route-err {
+  color: var(--accent-text);
   font-weight: 600;
+  font-size: var(--fs-xxs);
+}
+
+.route-err.warn {
+  color: var(--amber);
+}
+
+.route-rps {
+  color: var(--ink-3);
+  font-size: var(--fs-xxs);
+}
+
+/* Critical route emphasis — left accent border + subtle tint */
+.route-row.is-critical {
+  border-left-color: var(--accent);
+  background: var(--accent-soft);
+  cursor: pointer;
+}
+
+.route-row.is-critical:hover {
+  background: rgba(232, 93, 58, 0.12);
+}
+
+.route-row.is-degraded {
+  border-left-color: var(--amber);
+  cursor: pointer;
+}
+
+.route-row.clickable {
+  cursor: pointer;
+}
+
+.route-row:focus-visible {
+  outline: 2px solid var(--teal);
+  outline-offset: 2px;
+}
+
+/* ── Dependency card — PILL SHAPE ─────────────────────────────── */
+.dep-card {
+  border: 1.5px dashed var(--line-strong);
+  border-radius: 24px;
+  background: var(--panel-2);
+  padding: 12px 18px;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.dep-card.has-error {
+  border-color: rgba(232, 93, 58, 0.45);
+  background: linear-gradient(135deg, rgba(232, 93, 58, 0.05), var(--panel-2));
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.dep-card.clickable {
+  cursor: pointer;
+}
+
+.dep-card.clickable:hover {
+  border-color: var(--line-strong);
+  box-shadow: 0 1px 2px rgba(26, 26, 26, 0.04), 0 4px 12px rgba(26, 26, 26, 0.08);
+}
+
+.dep-card.has-error.clickable:hover {
+  box-shadow: 0 1px 2px rgba(26, 26, 26, 0.04), 0 4px 12px rgba(26, 26, 26, 0.08), 0 0 0 3px var(--accent-soft);
+}
+
+.dep-card:focus-visible {
+  outline: 2px solid var(--teal);
+  outline-offset: 2px;
+}
+
+.dep-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.dep-name {
+  font-size: var(--fs-sm);
+  font-weight: 600;
+}
+
+.dep-tag {
+  font-size: 8px;
+  font-weight: 700;
   text-transform: uppercase;
-  padding: 1px 4px;
-  border-radius: var(--radius-xs);
+  padding: 1px 6px;
+  border-radius: 999px;
   background: var(--amber-soft);
   color: var(--amber);
-  flex-shrink: 0;
+  letter-spacing: 0.02em;
 }
 
-.mn-badge {
-  font-size: 8px;
-  font-weight: 600;
-  padding: 1px 5px;
-  border-radius: var(--radius-xs);
-  background: var(--accent-soft);
-  color: var(--accent-text);
-  flex-shrink: 0;
-}
-
-.mn-metrics {
-  display: flex;
-  gap: 6px;
+.dep-metrics {
   font-family: var(--mono);
   font-size: var(--fs-xxs);
   color: var(--ink-3);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-left: 16px;
 }
 
-.mn-metrics .bad {
+.dep-metrics .bad {
   color: var(--accent-text);
   font-weight: 600;
-}
-
-.mn-metrics .warn {
-  color: var(--amber);
-  font-weight: 600;
-}
-
-.mn-detail {
-  font-size: var(--fs-xxs);
-  color: var(--ink-2);
-  margin-top: 2px;
-  font-family: var(--mono);
-}
-
-.mn-detail.critical {
-  color: var(--accent-text);
-  font-weight: 600;
-}
-
-.mn-detail.degraded {
-  color: var(--amber);
-}
-
-/* ── Health dot ──────────────────────────────────────────────── */
-.health-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  flex-shrink: 0;
-  background: var(--good);
-}
-
-.health-dot.critical {
-  background: var(--accent);
-}
-
-.health-dot.degraded {
-  background: var(--amber);
 }
 
 /* ── Map legend ──────────────────────────────────────────────── */
@@ -259,19 +321,11 @@
   gap: 16px;
   font-size: var(--fs-xxs);
   color: var(--ink-3);
-  margin-top: 8px;
+  margin-top: 12px;
   max-width: 1100px;
   margin-left: auto;
   margin-right: auto;
   flex-wrap: wrap;
-}
-
-.map-empty-overlay {
-  position: absolute;
-  inset: 0;
-  z-index: 1;
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.82), rgba(248, 246, 241, 0.92));
 }
 
 .map-legend span {
@@ -280,11 +334,26 @@
   gap: 4px;
 }
 
-.legend-line {
-  width: 20px;
-  height: 2px;
-  border-radius: 1px;
+.legend-swatch {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
   display: inline-block;
+}
+
+.legend-line-dashed {
+  display: inline-block;
+  width: 20px;
+  height: 0;
+  border-top: 1.5px dashed var(--ink-3);
+}
+
+.map-empty-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.82), rgba(248, 246, 241, 0.92));
 }
 
 /* ── Incident strip ──────────────────────────────────────────── */
@@ -477,22 +546,54 @@
 
 /* ── Reduced motion ──────────────────────────────────────────── */
 @media (prefers-reduced-motion: reduce) {
-  .map-node {
+  .svc-card,
+  .dep-card {
     transition: none;
   }
 
-  .map-edges circle {
+  .zone-edges circle {
     display: none;
+  }
+}
+
+/* ── Responsive ──────────────────────────────────────────────── */
+@media (max-width: 720px) {
+  .map-zoned {
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .zone-services {
+    max-width: 100%;
+  }
+
+  .zone-edges {
+    flex-direction: row;
+    padding: 0 16px;
+    min-height: auto;
+  }
+
+  .zone-edges svg {
+    width: 48px;
+    transform: rotate(90deg);
+  }
+
+  .zone-deps {
+    flex-direction: row;
+    gap: 10px;
+    flex-wrap: wrap;
+    max-width: 100%;
+  }
+
+  .dep-card {
+    min-width: 160px;
+    flex: 1 1 160px;
   }
 }
 
 @media (max-width: 900px) {
   .l0-content {
     padding-inline: 16px;
-  }
-
-  .system-map {
-    height: 420px;
   }
 
   .map-empty-shell {
