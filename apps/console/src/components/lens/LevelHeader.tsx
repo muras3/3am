@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import i18n from "../../i18n/index.js";
 import type { LensLevel } from "../../routes/__root.js";
@@ -38,7 +38,6 @@ export function LevelHeader({
         </div>
         <span className="topbar-sep" />
         <span className="env-tag">{t("header.env")}</span>
-        <LocaleToggle />
         <span className="level-header-clock">{clock}</span>
       </header>
     );
@@ -64,7 +63,6 @@ export function LevelHeader({
           </span>
         )}
         {openedAt && <Duration openedAt={openedAt} />}
-        <LocaleToggle />
         <span className="level-header-clock">{clock}</span>
       </header>
     );
@@ -89,55 +87,8 @@ export function LevelHeader({
           {severity}
         </span>
       )}
-      <LocaleToggle />
       <span className="level-header-clock">{clock}</span>
     </header>
-  );
-}
-
-// ── Locale Toggle ────────────────────────────────────────────
-
-function LocaleToggle() {
-  const { t, i18n } = useTranslation();
-  const currentLocale = i18n.language === "ja" ? "ja" : "en";
-
-  const switchLocale = useCallback(
-    async (locale: "en" | "ja") => {
-      if (locale === currentLocale) return;
-      await i18n.changeLanguage(locale);
-      try {
-        await fetch("/api/settings/locale", {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ locale }),
-        });
-      } catch {
-        // Best-effort persist
-      }
-    },
-    [currentLocale, i18n],
-  );
-
-  return (
-    <span className="locale-toggle">
-      <button
-        type="button"
-        className={`locale-toggle-btn${currentLocale === "en" ? " locale-toggle-active" : ""}`}
-        onClick={() => void switchLocale("en")}
-        aria-label={currentLocale === "en" ? undefined : t("locale.switchToEn")}
-      >
-        EN
-      </button>
-      <span className="locale-toggle-sep" aria-hidden="true">/</span>
-      <button
-        type="button"
-        className={`locale-toggle-btn${currentLocale === "ja" ? " locale-toggle-active" : ""}`}
-        onClick={() => void switchLocale("ja")}
-        aria-label={currentLocale === "ja" ? undefined : t("locale.switchToJa")}
-      >
-        JA
-      </button>
-    </span>
   );
 }
 
@@ -152,8 +103,25 @@ function useClock(): string {
   return now;
 }
 
-function formatTime(d: Date): string {
-  return d.toISOString().slice(11, 19) + " " + i18n.t("header.utc");
+export function formatTime(d: Date): string {
+  const formatter = new Intl.DateTimeFormat(undefined, {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23",
+    timeZoneName: "short",
+  });
+  const parts = formatter.formatToParts(d);
+  const hour = parts.find((part) => part.type === "hour")?.value;
+  const minute = parts.find((part) => part.type === "minute")?.value;
+  const second = parts.find((part) => part.type === "second")?.value;
+  const timeZoneName = parts.find((part) => part.type === "timeZoneName")?.value;
+
+  if (hour && minute && second && timeZoneName) {
+    return `${hour}:${minute}:${second} ${timeZoneName}`;
+  }
+
+  return formatter.format(d);
 }
 
 // ── Duration ──────────────────────────────────────────────────

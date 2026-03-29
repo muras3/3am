@@ -35,7 +35,6 @@
     "backToIncidentLabel": "\u2190 {{id}}",
     "backToIncidentFallback": "\u2190 インシデント",
     "evidenceStudio": "Evidence Studio",
-    "utc": "UTC",
     "duration": "経過: {{minutes}}分{{seconds}}秒",
     "durationHours": "{{hours}}時間{{minutes}}分"
   },
@@ -372,9 +371,5 @@
       "ago": "{{time}} 前",
       "err": "{{rate}}% エラー"
     }
-  },
-  "locale": {
-    "switchToJa": "言語を日本語に切り替え",
-    "switchToEn": "言語を英語に切り替え"
   }
 }

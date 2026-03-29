@@ -26,6 +26,8 @@ const CHAT_MAX_HISTORY = 10;
 const CHAT_MAX_MESSAGE_CHARS = 500;
 const CHAT_MAX_TOKENS = 512;
 const CHAT_MODEL = process.env["CHAT_MODEL"] ?? "claude-haiku-4-5-20251001";
+const CHAT_TIMEOUT_MS = 120_000;
+const CHAT_MAX_RETRIES = 2;
 
 interface ChatTurn {
   role: "user" | "assistant";
@@ -380,6 +382,8 @@ export function createApiRouter(storage: StorageDriver, spanBuffer: SpanBuffer |
     const client = new Anthropic({
       baseURL: process.env["ANTHROPIC_BASE_URL"],
       apiKey: process.env["ANTHROPIC_API_KEY"] ?? "no-key",
+      timeout: CHAT_TIMEOUT_MS,
+      maxRetries: CHAT_MAX_RETRIES,
     });
     const response = await client.messages.create({
       model: CHAT_MODEL,
