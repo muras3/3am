@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { MetricsSurface, HypothesisGroup } from "../../../api/curated-types.js";
 import { useLensSearch } from "../../../routes/__root.js";
@@ -55,6 +55,13 @@ function HypGroupBlock({ group, activeProofId, activeTargetId }: HypGroupBlockPr
   const { t } = useTranslation();
   const isConfirmed = group.verdict === "Confirmed";
   const isHighlighted = activeProofId === group.type || activeTargetId === group.id;
+  const [expanded, setExpanded] = useState(group.metrics.length <= 5 || activeTargetId != null);
+  const canCollapse = group.metrics.length > 5;
+  const visibleMetrics = expanded ? group.metrics : group.metrics.slice(0, 5);
+  const toggle = useCallback(() => {
+    if (!canCollapse) return;
+    setExpanded((value) => !value);
+  }, [canCollapse]);
 
   return (
     <div
@@ -77,7 +84,7 @@ function HypGroupBlock({ group, activeProofId, activeTargetId }: HypGroupBlockPr
 
       {/* Metric rows */}
       <div className="lens-metrics-hyp-body">
-        {group.metrics.map((metric) => (
+        {visibleMetrics.map((metric) => (
           <div
             key={metric.name}
             className={`lens-metrics-metric-row${activeTargetId === metric.name ? " proof-highlight" : ""}`}
@@ -104,6 +111,17 @@ function HypGroupBlock({ group, activeProofId, activeTargetId }: HypGroupBlockPr
             </span>
           </div>
         ))}
+        {canCollapse && (
+          <button
+            className="lens-metrics-group-toggle"
+            type="button"
+            onClick={toggle}
+          >
+            {expanded
+              ? t("evidence.metrics.collapseGroup")
+              : t("evidence.metrics.expandGroup", { count: group.metrics.length - visibleMetrics.length })}
+          </button>
+        )}
       </div>
     </div>
   );

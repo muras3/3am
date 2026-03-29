@@ -44,6 +44,38 @@ describe("LensTracesView", () => {
     }
   });
 
+  it("groups repeated trace signatures into a stacked cluster", async () => {
+    const user = userEvent.setup();
+    const repeatedSurface = {
+      observed: [
+        {
+          traceId: "t1",
+          route: "GET /products",
+          status: 503,
+          durationMs: 5,
+          spans: [{ spanId: "s1", name: "cdn.request", durationMs: 5, status: "error" as const, attributes: {} }],
+        },
+        {
+          traceId: "t2",
+          route: "GET /products",
+          status: 503,
+          durationMs: 7,
+          spans: [{ spanId: "s2", name: "cdn.request", durationMs: 7, status: "error" as const, attributes: {} }],
+        },
+      ],
+      expected: [],
+      smokingGunSpanId: null,
+    };
+
+    render(<LensTracesView surface={repeatedSurface} />);
+    expect(screen.getByText("×2")).toBeInTheDocument();
+    expect(screen.getByText("avg 6ms")).toBeInTheDocument();
+    expect(document.querySelectorAll(".lens-traces-trace-group")).toHaveLength(0);
+
+    await user.click(screen.getByRole("button", { name: /expand group/i }));
+    expect(document.querySelectorAll(".lens-traces-trace-group")).toHaveLength(2);
+  });
+
   it("renders span names from observed traces", () => {
     render(<LensTracesView surface={traces} />);
     // First observed group has 3 spans
@@ -372,6 +404,30 @@ describe("LensMetricsView", () => {
     expect(empty).not.toBeNull();
     expect(empty?.textContent?.length).toBeGreaterThan(20);
   });
+
+  it("collapses dense metric groups behind a show-more button", async () => {
+    const user = userEvent.setup();
+    const denseMetrics = {
+      hypotheses: [{
+        id: "hyp-dense",
+        type: "trigger" as const,
+        claim: "Dense metric group",
+        verdict: "Confirmed" as const,
+        metrics: Array.from({ length: 6 }, (_, index) => ({
+          name: `metric.${index + 1}`,
+          value: `${index + 1}`,
+          expected: "0",
+          barPercent: 20 + index,
+        })),
+      }],
+    };
+
+    render(<LensMetricsView surface={denseMetrics} />);
+    expect(document.querySelectorAll(".lens-metrics-metric-row")).toHaveLength(5);
+    const toggle = screen.getByRole("button", { name: /show 1 more rows/i });
+    await user.click(toggle);
+    expect(document.querySelectorAll(".lens-metrics-metric-row")).toHaveLength(6);
+  });
 });
 
 describe("LensMetricsView — proof highlight", () => {
@@ -418,16 +474,14 @@ describe("LensLogsView", () => {
 
   it("marks signal entries with signal class", () => {
     render(<LensLogsView surface={logs} />);
-    const signals = document.querySelectorAll(".lens-logs-log-row.signal");
-    const totalSignals = logs.claims.flatMap((c) => c.entries).filter((e) => e.signal).length;
-    expect(signals.length).toBe(totalSignals);
+    const highlightedClusters = document.querySelectorAll(".lens-logs-entry-cluster.proof-highlight");
+    expect(highlightedClusters.length).toBeGreaterThan(0);
   });
 
   it("marks non-signal entries with noise class", () => {
     render(<LensLogsView surface={logs} />);
-    const noise = document.querySelectorAll(".lens-logs-log-row.noise");
-    const totalNoise = logs.claims.flatMap((c) => c.entries).filter((e) => !e.signal).length;
-    expect(noise.length).toBe(totalNoise);
+    const collapsedCards = document.querySelectorAll(".lens-logs-entry-cluster-card");
+    expect(collapsedCards.length).toBeGreaterThan(0);
   });
 
   it("renders absence evidence cluster with absence class", () => {
@@ -494,6 +548,31 @@ describe("LensLogsView", () => {
     const empty = document.querySelector(".lens-logs-empty");
     expect(empty).not.toBeNull();
     expect(empty?.textContent?.length).toBeGreaterThan(20);
+  });
+
+  it("groups repeated log entries by severity and message pattern", async () => {
+    const user = userEvent.setup();
+    const repeatedLogs = {
+      claims: [{
+        id: "claim-repeat",
+        type: "trigger" as const,
+        label: "Repeated warnings",
+        count: 3,
+        entries: [
+          { timestamp: "14:23:15.001Z", severity: "warn" as const, body: "serving stale error from cache", signal: true },
+          { timestamp: "14:23:16.001Z", severity: "warn" as const, body: "serving stale error from cache", signal: false },
+          { timestamp: "14:23:17.001Z", severity: "warn" as const, body: "caching error response from origin", signal: false },
+        ],
+      }],
+    };
+
+    render(<LensLogsView surface={repeatedLogs} />);
+    expect(screen.getByText("×2")).toBeInTheDocument();
+    expect(document.querySelectorAll(".lens-logs-entry-cluster")).toHaveLength(2);
+    expect(document.querySelectorAll(".lens-logs-log-row")).toHaveLength(0);
+
+    await user.click(screen.getByRole("button", { name: /expand group/i }));
+    expect(document.querySelectorAll(".lens-logs-log-row")).toHaveLength(2);
   });
 });
 

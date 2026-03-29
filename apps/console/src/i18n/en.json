@@ -308,19 +308,27 @@
       "baselineSparse": "Expected trace is still sparse",
       "hideExpected": "Hide expected trace",
       "showExpected": "Show expected trace",
+      "expandGroup": "Expand group",
+      "collapseGroup": "Collapse group",
+      "clusterAvg": "avg {{duration}}ms",
+      "clusterMax": "max {{duration}}ms",
       "noBaseline": "No baseline trace has been attached to this incident window yet.",
       "baselineTooSparse": "Baseline comparison is still too sparse to render expected behavior safely."
     },
     "metrics": {
       "expected": "expected:\u00a0{{value}}",
       "emptyReserved": "Metric comparison is reserved. As soon as the incident repeats across enough samples, expected vs observed drift will appear here.",
-      "thinSignal": "Only a thin metric signal is available so far. Keep this lane open for confirming or disproving the current hypothesis."
+      "thinSignal": "Only a thin metric signal is available so far. Keep this lane open for confirming or disproving the current hypothesis.",
+      "expandGroup": "Show {{count}} more rows",
+      "collapseGroup": "Collapse rows"
     },
     "logs": {
       "entries": "{{count}}\u00a0entries",
       "expectedLabel": "Expected: {{expected}}. Observed: {{observed}}.",
       "emptyReserved": "Log clusters are reserved here. When the first repeated pattern or notable absence is confirmed, it will pin into this lane.",
-      "sparseEvidence": "Log evidence is still sparse. Treat this lane as open for corroboration rather than as proof of health."
+      "sparseEvidence": "Log evidence is still sparse. Treat this lane as open for corroboration rather than as proof of health.",
+      "expandGroup": "Expand group",
+      "collapseGroup": "Collapse group"
     }
   },
   "map": {

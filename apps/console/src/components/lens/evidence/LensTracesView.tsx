@@ -181,6 +181,58 @@ function buildSpanTree(
   return rows;
 }
 
+interface TraceGroupCluster {
+  key: string;
+  route: string;
+  status: number;
+  count: number;
+  avgDurationMs: number;
+  maxDurationMs: number;
+  signatureLabel: string;
+  groups: TraceGroup[];
+}
+
+function traceSignature(group: TraceGroup): { key: string; label: string } {
+  const signatureParts = group.spans.map((span) => `${span.name}:${span.status}`);
+  const rootSpan = group.spans[0]?.name ?? group.route;
+  return {
+    key: signatureParts.join(">"),
+    label: rootSpan,
+  };
+}
+
+function buildTraceClusters(groups: TraceGroup[]): TraceGroupCluster[] {
+  const clusters = new Map<string, TraceGroupCluster>();
+
+  for (const group of groups) {
+    const signature = traceSignature(group);
+    const key = `${group.route}::${group.status}::${signature.key}`;
+    const current = clusters.get(key);
+    if (current) {
+      current.groups.push(group);
+      current.count += 1;
+      current.avgDurationMs += group.durationMs;
+      current.maxDurationMs = Math.max(current.maxDurationMs, group.durationMs);
+      continue;
+    }
+    clusters.set(key, {
+      key,
+      route: group.route,
+      status: group.status,
+      count: 1,
+      avgDurationMs: group.durationMs,
+      maxDurationMs: group.durationMs,
+      signatureLabel: signature.label,
+      groups: [group],
+    });
+  }
+
+  return [...clusters.values()].map((cluster) => ({
+    ...cluster,
+    avgDurationMs: Math.round(cluster.avgDurationMs / cluster.count),
+  }));
+}
+
 interface TraceGroupBlockProps {
   group: TraceGroup;
   smokingGunSpanId: string | null;
@@ -240,6 +292,128 @@ function TraceGroupBlock({
   );
 }
 
+function TraceClusterBlock({
+  cluster,
+  smokingGunSpanId,
+  isExpected = false,
+  proofType,
+  selectedTargetId,
+}: {
+  cluster: TraceGroupCluster;
+  smokingGunSpanId: string | null;
+  isExpected?: boolean;
+  proofType: string | null;
+  selectedTargetId?: string;
+}) {
+  const { t } = useTranslation();
+  const [expanded, setExpanded] = useState(() => {
+    if (cluster.count <= 1) return true;
+    if (!selectedTargetId) return false;
+    return cluster.groups.some((group) =>
+      group.traceId === selectedTargetId
+      || group.spans.some((span) => span.spanId === selectedTargetId),
+    );
+  });
+  const containsHighlight = selectedTargetId
+    ? cluster.groups.some((group) =>
+        group.traceId === selectedTargetId
+        || group.spans.some((span) => span.spanId === selectedTargetId),
+      )
+    : false;
+  const isHighlighted = containsHighlight && cluster.count > 1;
+  const isError = cluster.status >= 500;
+  const canCollapse = cluster.count > 1;
+
+  useEffect(() => {
+    if (!selectedTargetId || cluster.count <= 1) return;
+    if (containsHighlight) setExpanded(true);
+  }, [containsHighlight, cluster.count, selectedTargetId]);
+
+  const handleToggle = useCallback(() => {
+    if (!canCollapse) return;
+    setExpanded((value) => !value);
+  }, [canCollapse]);
+
+  const handleKeyDown = useCallback((event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (!canCollapse) return;
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      handleToggle();
+    }
+  }, [canCollapse, handleToggle]);
+
+  if (!canCollapse) {
+    return (
+      <TraceGroupBlock
+        group={cluster.groups[0]!}
+        smokingGunSpanId={smokingGunSpanId}
+        isExpected={isExpected}
+        proofType={proofType}
+        selectedTargetId={selectedTargetId}
+      />
+    );
+  }
+
+  return (
+    <div
+      className={`lens-traces-cluster${isHighlighted ? " proof-highlight" : ""}${expanded ? " open" : ""}`}
+      data-proof={proofType ?? undefined}
+      data-target-id={cluster.key}
+    >
+      <div
+        className={`lens-traces-cluster-card lens-traces-cluster-card-back lens-traces-cluster-card-back-2${expanded ? " open" : ""}`}
+        aria-hidden="true"
+      />
+      <div
+        className={`lens-traces-cluster-card lens-traces-cluster-card-back lens-traces-cluster-card-back-1${expanded ? " open" : ""}`}
+        aria-hidden="true"
+      />
+      <div
+        className="lens-traces-cluster-card lens-traces-cluster-card-front"
+        role="button"
+        tabIndex={0}
+        aria-expanded={expanded}
+        onClick={handleToggle}
+        onKeyDown={handleKeyDown}
+      >
+        <div className="lens-traces-cluster-main">
+          <span className={`lens-traces-health-dot lens-traces-health-dot-${isError ? "error" : "ok"}`} />
+          <span className="lens-traces-cluster-route">{cluster.route}</span>
+          <span className="lens-traces-trace-id">{cluster.signatureLabel}</span>
+          <span className={`lens-traces-trace-status lens-traces-trace-status-${isError ? "error" : "ok"}`}>
+            {cluster.status}
+          </span>
+          <span className="lens-traces-cluster-count">×{cluster.count}</span>
+          <span className="lens-traces-cluster-duration">
+            {t("evidence.traces.clusterAvg", { duration: cluster.avgDurationMs })}
+          </span>
+          <span className="lens-traces-cluster-duration">
+            {t("evidence.traces.clusterMax", { duration: cluster.maxDurationMs })}
+          </span>
+        </div>
+        <span className="lens-traces-cluster-toggle">
+          {expanded ? t("evidence.traces.collapseGroup") : t("evidence.traces.expandGroup")}
+        </span>
+      </div>
+
+      {expanded && (
+        <div className="lens-traces-cluster-list">
+          {cluster.groups.map((group) => (
+            <TraceGroupBlock
+              key={group.traceId}
+              group={group}
+              smokingGunSpanId={smokingGunSpanId}
+              isExpected={isExpected}
+              proofType={proofType}
+              selectedTargetId={selectedTargetId}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 interface LensTracesViewProps {
   surface: TraceSurface;
   baselineState?: "ready" | "insufficient" | "unavailable";
@@ -286,10 +460,10 @@ export function LensTracesView({
             : t("evidence.traces.limitedTraces")}
         </div>
       ) : (
-        observed.map((group) => (
-          <TraceGroupBlock
-            key={group.traceId}
-            group={group}
+        buildTraceClusters(observed).map((cluster) => (
+          <TraceClusterBlock
+            key={cluster.key}
+            cluster={cluster}
             smokingGunSpanId={smokingGunSpanId}
             proofType="trigger"
             selectedTargetId={selectedTargetId}
@@ -311,10 +485,10 @@ export function LensTracesView({
 
       <div className={`lens-traces-baseline-group${baselineVisible && !baselineUnavailable ? "" : " muted"}`}>
         {expected.length > 0 ? (
-          expected.map((group) => (
-            <TraceGroupBlock
-              key={group.traceId}
-              group={group}
+          buildTraceClusters(expected).map((cluster) => (
+            <TraceClusterBlock
+              key={cluster.key}
+              cluster={cluster}
               smokingGunSpanId={null}
               isExpected
               proofType="recovery"
