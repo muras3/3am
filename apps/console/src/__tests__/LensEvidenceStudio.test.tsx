@@ -162,7 +162,7 @@ describe("LensEvidenceStudio — context bar", () => {
 describe("LensEvidenceStudio — proof cards", () => {
   it("renders 3 proof cards from fixture data", () => {
     renderStudio("inc_0892", setupReady());
-    const cards = document.querySelectorAll(".lens-ev-proof-card");
+    const cards = document.querySelectorAll(".lens-ev-proof-btn");
     expect(cards).toHaveLength(3);
   });
 
@@ -175,9 +175,9 @@ describe("LensEvidenceStudio — proof cards", () => {
 
   it("renders status badges on proof cards", () => {
     renderStudio("inc_0892", setupReady());
-    const confirmed = document.querySelectorAll(".lens-ev-pc-status-confirmed");
+    const confirmed = document.querySelectorAll(".lens-ev-proof-status-confirmed");
     expect(confirmed.length).toBeGreaterThan(0);
-    const inferred = document.querySelectorAll(".lens-ev-pc-status-inferred");
+    const inferred = document.querySelectorAll(".lens-ev-proof-status-inferred");
     expect(inferred.length).toBeGreaterThan(0);
   });
 });
@@ -245,7 +245,7 @@ describe("LensEvidenceStudio — proof card click updates navigation", () => {
   it("clicking proof card calls navigate with proof and tab params", async () => {
     renderStudio("inc_0892", setupReady());
 
-    const triggerCard = screen.getByText("External Trigger").closest("[role='button']");
+    const triggerCard = screen.getByText("External Trigger").closest("button");
     expect(triggerCard).not.toBeNull();
 
     fireEvent.click(triggerCard!);
@@ -265,7 +265,7 @@ describe("LensEvidenceStudio — proof card click updates navigation", () => {
   it("clicking design gap card navigates to metrics tab", () => {
     renderStudio("inc_0892", setupReady());
 
-    const designCard = screen.getByText("Design Gap").closest("[role='button']");
+    const designCard = screen.getByText("Design Gap").closest("button");
     fireEvent.click(designCard!);
 
     expect(mockNavigate).toHaveBeenCalledWith(
@@ -322,7 +322,7 @@ describe("LensEvidenceStudio — empty state", () => {
       evidencePending,
     );
     renderStudio("inc_0892", qc);
-    const cards = document.querySelectorAll(".lens-ev-proof-card");
+    const cards = document.querySelectorAll(".lens-ev-proof-btn");
     expect(cards).toHaveLength(3);
   });
 
@@ -356,34 +356,34 @@ describe("ContextBar", () => {
 describe("LensProofCards", () => {
   it("renders proof cards from fixture data", () => {
     render(<LensProofCards cards={evidenceReady.proofCards} />);
-    const cards = document.querySelectorAll(".lens-ev-proof-card");
+    const cards = document.querySelectorAll(".lens-ev-proof-btn");
     expect(cards).toHaveLength(3);
   });
 
   it("marks active card with active class when proof URL param matches", () => {
     mockSearch = { ...mockSearch, proof: "trigger" };
     render(<LensProofCards cards={evidenceReady.proofCards} />);
-    const activeCards = document.querySelectorAll(".lens-ev-proof-card-active");
+    const activeCards = document.querySelectorAll(".lens-ev-proof-btn-active");
     expect(activeCards).toHaveLength(1);
   });
 
   it("calls navigate when card is clicked", () => {
     render(<LensProofCards cards={evidenceReady.proofCards} />);
-    const firstCard = document.querySelector(".lens-ev-proof-card");
+    const firstCard = document.querySelector(".lens-ev-proof-btn");
     fireEvent.click(firstCard!);
     expect(mockNavigate).toHaveBeenCalled();
   });
 
   it("clicking card keyboard activates navigation on Enter", () => {
     render(<LensProofCards cards={evidenceReady.proofCards} />);
-    const firstCard = document.querySelector(".lens-ev-proof-card");
+    const firstCard = document.querySelector(".lens-ev-proof-btn");
     fireEvent.keyDown(firstCard!, { key: "Enter" });
     expect(mockNavigate).toHaveBeenCalled();
   });
 
   it("renders pending cards from fixed receiver shape", () => {
     render(<LensProofCards cards={evidencePending.proofCards} />);
-    expect(document.querySelectorAll(".lens-ev-proof-card")).toHaveLength(3);
+    expect(document.querySelectorAll(".lens-ev-proof-btn")).toHaveLength(3);
     expect(screen.getAllByText("Pending").length).toBeGreaterThan(0);
   });
 });
@@ -620,7 +620,7 @@ describe("QAFrame — interaction", () => {
 describe("LensProofCards — cross-surface navigation", () => {
   it("clicking trigger card navigates to traces tab with span targetId 'stripe-charge-001'", () => {
     render(<LensProofCards cards={evidenceReady.proofCards} />);
-    const triggerCard = screen.getByText("External Trigger").closest("[role='button']");
+    const triggerCard = screen.getByText("External Trigger").closest("button");
     fireEvent.click(triggerCard!);
     expect(mockNavigate).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -636,7 +636,7 @@ describe("LensProofCards — cross-surface navigation", () => {
 
   it("clicking design_gap navigates to metrics tab with targetId 'stripe_client_error_rate'", () => {
     render(<LensProofCards cards={evidenceReady.proofCards} />);
-    const designCard = screen.getByText("Design Gap").closest("[role='button']");
+    const designCard = screen.getByText("Design Gap").closest("button");
     fireEvent.click(designCard!);
     expect(mockNavigate).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -652,7 +652,7 @@ describe("LensProofCards — cross-surface navigation", () => {
 
   it("keyboard Enter on trigger card triggers same navigation", () => {
     render(<LensProofCards cards={evidenceReady.proofCards} />);
-    const triggerCard = screen.getByText("External Trigger").closest("[role='button']");
+    const triggerCard = screen.getByText("External Trigger").closest("button");
     fireEvent.keyDown(triggerCard!, { key: "Enter" });
     expect(mockNavigate).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -668,7 +668,7 @@ describe("LensProofCards — cross-surface navigation", () => {
 
   it("clicking recovery card navigates to traces tab with span targetId", () => {
     render(<LensProofCards cards={evidenceReady.proofCards} />);
-    const recoveryCard = screen.getByText("Recovery Signal").closest("[role='button']");
+    const recoveryCard = screen.getByText("Recovery Signal").closest("button");
     fireEvent.click(recoveryCard!);
     expect(mockNavigate).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -684,7 +684,7 @@ describe("LensProofCards — cross-surface navigation", () => {
 
   it("keyboard Space on card triggers navigation", () => {
     render(<LensProofCards cards={evidenceReady.proofCards} />);
-    const triggerCard = screen.getByText("External Trigger").closest("[role='button']");
+    const triggerCard = screen.getByText("External Trigger").closest("button");
     fireEvent.keyDown(triggerCard!, { key: " " });
     expect(mockNavigate).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -700,9 +700,9 @@ describe("LensProofCards — cross-surface navigation", () => {
   it("active card has aria-pressed=true", () => {
     mockSearch = { ...mockSearch, proof: "trigger" };
     render(<LensProofCards cards={evidenceReady.proofCards} />);
-    const triggerCard = screen.getByText("External Trigger").closest("[role='button']");
+    const triggerCard = screen.getByText("External Trigger").closest("button");
     expect(triggerCard).toHaveAttribute("aria-pressed", "true");
-    const designCard = screen.getByText("Design Gap").closest("[role='button']");
+    const designCard = screen.getByText("Design Gap").closest("button");
     expect(designCard).toHaveAttribute("aria-pressed", "false");
   });
 
@@ -744,10 +744,10 @@ describe("LensProofCards — cross-surface navigation", () => {
 describe("LensEvidenceStudio — degraded states", () => {
   it("sparse fixture renders proof cards (3 cards, mix of confirmed/pending)", () => {
     renderStudio("inc_0892", setupSparse());
-    const cards = document.querySelectorAll(".lens-ev-proof-card");
+    const cards = document.querySelectorAll(".lens-ev-proof-btn");
     expect(cards).toHaveLength(3);
-    expect(document.querySelectorAll(".lens-ev-pc-status-confirmed").length).toBeGreaterThan(0);
-    expect(document.querySelectorAll(".lens-ev-pc-status-pending").length).toBeGreaterThan(0);
+    expect(document.querySelectorAll(".lens-ev-proof-status-confirmed").length).toBeGreaterThan(0);
+    expect(document.querySelectorAll(".lens-ev-proof-status-pending").length).toBeGreaterThan(0);
   });
 
   it("sparse fixture data attributes: data-evidence-density='sparse', data-diagnosis-state='ready'", () => {

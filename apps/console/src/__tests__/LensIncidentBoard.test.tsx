@@ -64,7 +64,6 @@ describe("LensIncidentBoard — diagnosis pending", () => {
     );
     renderBoard("inc_0892", vi.fn(), qc);
     expect(document.querySelector(".lens-board-action-hero")).not.toBeNull();
-    expect(document.querySelectorAll(".lens-board-blast-row")).toHaveLength(2);
     expect(document.querySelector(".lens-board-chain-placeholder")).not.toBeNull();
     expect(document.querySelector(".lens-board-evidence-note")).not.toBeNull();
   });
@@ -165,11 +164,13 @@ describe("LensIncidentBoard — diagnosis ready", () => {
       .toBeGreaterThan(0);
   });
 
-  it("renders Do not block", () => {
+  it("renders Do not block (always visible)", () => {
     renderBoard("inc_0892", vi.fn(), setupReady());
     expect(screen.getAllByText(/Request a Stripe rate limit increase/).length)
       .toBeGreaterThan(0);
-    expect(screen.getByText("Full action details")).toBeInTheDocument();
+    // DO NOT is now always visible, Why is collapsed
+    expect(document.querySelector(".lens-board-action-donot-block")).not.toBeNull();
+    expect(screen.getByText("Why:")).toBeInTheDocument();
   });
 
   it("renders Root Cause Hypothesis section", () => {
@@ -233,53 +234,27 @@ describe("LensIncidentBoard — diagnosis ready", () => {
   });
 });
 
-describe("BlastRadius", () => {
-  it("shows correct number of rows", () => {
+describe("Confidence badge (in header)", () => {
+  it("displays confidence badge with percentage in header", () => {
     const qc = makeClient();
     qc.setQueryData(
       curatedQueries.extendedIncident("inc_0892").queryKey,
       extendedIncidentReady,
     );
     renderBoard("inc_0892", vi.fn(), qc);
-    // fixture has 3 blast radius entries
-    const rows = document.querySelectorAll(".lens-board-blast-row");
-    expect(rows).toHaveLength(extendedIncidentReady.blastRadius.length);
+    const badge = document.querySelector(".lens-board-conf-badge");
+    expect(badge).not.toBeNull();
+    expect(badge!.textContent).toContain("85%");
   });
 
-  it("shows blast target names", () => {
+  it("renders confidence basis in root cause section", () => {
     const qc = makeClient();
     qc.setQueryData(
       curatedQueries.extendedIncident("inc_0892").queryKey,
       extendedIncidentReady,
     );
     renderBoard("inc_0892", vi.fn(), qc);
-    expect(screen.getByText("payment-service")).toBeInTheDocument();
-    expect(screen.getByText("order-service")).toBeInTheDocument();
-    expect(screen.getByText("4 other services")).toBeInTheDocument();
-  });
-});
-
-describe("ConfidenceCard", () => {
-  it("displays confidence score value", () => {
-    const qc = makeClient();
-    qc.setQueryData(
-      curatedQueries.extendedIncident("inc_0892").queryKey,
-      extendedIncidentReady,
-    );
-    renderBoard("inc_0892", vi.fn(), qc);
-    // fixture confidence.value = 0.85 → 85%
-    expect(screen.getByText("85%")).toBeInTheDocument();
-  });
-
-  it("displays confidence label and basis", () => {
-    const qc = makeClient();
-    qc.setQueryData(
-      curatedQueries.extendedIncident("inc_0892").queryKey,
-      extendedIncidentReady,
-    );
-    renderBoard("inc_0892", vi.fn(), qc);
-    expect(screen.getByText("High confidence")).toBeInTheDocument();
-    expect(screen.getAllByText("Stripe 429 ↔ traffic r=0.97").length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/Stripe 429/).length).toBeGreaterThan(0);
   });
 });
 
