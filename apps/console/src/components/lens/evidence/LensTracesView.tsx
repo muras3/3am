@@ -130,7 +130,7 @@ function SpanRow({
                     >
                       {log.severity}
                     </span>
-                    <span className="lens-traces-corr-log-body">{log.body}</span>
+                    <span className="lens-traces-corr-log-body" title={log.body}>{log.body}</span>
                   </div>
                 ))}
               </div>

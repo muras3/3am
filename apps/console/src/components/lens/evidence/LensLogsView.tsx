@@ -56,7 +56,7 @@ function LogRow({ entry }: LogRowProps) {
       >
         {entry.severity.toUpperCase()}
       </span>
-      <span className="lens-logs-log-body">{entry.body}</span>
+      <span className="lens-logs-log-body" title={entry.body}>{entry.body}</span>
     </div>
   );
 }
@@ -135,7 +135,7 @@ function EntryClusterBlock({ cluster }: { cluster: EntryCluster }) {
         <div className="lens-logs-entry-cluster-main">
           <span className={`lens-logs-log-sev lens-logs-log-sev-${cluster.severity}`}>{cluster.severity.toUpperCase()}</span>
           <span className="lens-logs-log-time">{cluster.latestTimestamp}</span>
-          <span className="lens-logs-entry-cluster-body">{cluster.representativeBody}</span>
+          <span className="lens-logs-entry-cluster-body" title={cluster.representativeBody}>{cluster.representativeBody}</span>
           {cluster.count > 1 && <span className="lens-logs-entry-cluster-count">×{cluster.count}</span>}
         </div>
         {cluster.count > 1 && (

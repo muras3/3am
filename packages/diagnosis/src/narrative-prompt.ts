@@ -106,7 +106,14 @@ ${absenceSummary}
 Generate ONLY the JSON object below. No prose, no markdown.
 
 CRITICAL CONSTRAINTS:
-1. headline: ≤120 characters. The first sentence must be a short, title-like incident summary that can stand alone in list views. You may add one more sentence of supporting detail after it.
+1. headline: Total ≤120 characters. Structure: "<title phrase>. <optional clarifying sentence>"
+   - The title phrase (everything before the first period) MUST be ≤60 characters.
+   - The title phrase is used as the incident title in list/map views — it must be scannable at a glance.
+   - No timestamps, no UUIDs, no trace IDs in the title phrase.
+   - The title phrase MUST end with a period.
+   - You may add one short clarifying sentence after the period.
+   - GOOD: "Stripe 429 rate-limit cascade hit checkout flow. Retries exhausted connection pool within 2 min."
+   - BAD: "mock-cdn began serving HTTP 503 responses between 05:40:15Z and 05:42:30Z causing downstream failures across all product endpoints"
 2. whyThisAction: Expand action_rationale_short into a full paragraph explaining the reasoning.
 3. confidenceSummary.basis: Extract the evidence basis from the stage 1 confidence text.
 4. confidenceSummary.risk: Describe the failure mode of the recommended action.

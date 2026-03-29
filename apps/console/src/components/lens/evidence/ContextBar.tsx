@@ -23,7 +23,7 @@ export function ContextBar({ incident }: Props) {
       />
       <span className="lens-ev-ctx-id">{formatShortIncidentId(incident.incidentId)}</span>
       <span className="lens-ev-ctx-sep" aria-hidden="true">&mdash;</span>
-      <span className="lens-ev-ctx-headline">{headline}</span>
+      <span className="lens-ev-ctx-headline" title={headline}>{headline}</span>
     </div>
   );
 }
