@@ -344,7 +344,7 @@ describe('Integration: Curated API assembly (§6)', () => {
       const result = await buildRuntimeMap(telemetryStore, storage)
       const parsed = RuntimeMapResponseSchema.strict().parse(result)
 
-      expect(parsed.nodes.length).toBeGreaterThan(0)
+      expect(parsed.services.length).toBeGreaterThan(0)
       expect(parsed.summary).toBeDefined()
       expect(parsed.state.diagnosis).toBe('ready')
     })
@@ -934,9 +934,9 @@ describe('Integration: Curated API assembly (§6)', () => {
       const result = await buildRuntimeMap(telemetryStore, storage)
       const parsed = RuntimeMapResponseSchema.strict().parse(result)
 
-      expect(parsed.nodes.length).toBe(1)
+      expect(parsed.services.length).toBe(1)
       expect(parsed.edges).toEqual([])
-      expect(parsed.summary.degradedNodes).toBe(0)
+      expect(parsed.summary.degradedServices).toBe(0)
     })
   })
 })
