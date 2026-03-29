@@ -34,7 +34,7 @@ if (!DATABASE_URL) {
     cleanup: async () => {
       // Truncate between each test for isolation (Postgres is a shared process)
       await adapter.execute(
-        sql`TRUNCATE TABLE incidents, thin_events RESTART IDENTITY CASCADE`,
+        sql`TRUNCATE TABLE incidents, thin_events, settings RESTART IDENTITY CASCADE`,
       );
     },
   });
@@ -44,7 +44,7 @@ if (!DATABASE_URL) {
   describe("PostgresAdapter — concurrent append (race regression)", () => {
     beforeEach(async () => {
       await adapter.execute(
-        sql`TRUNCATE TABLE incidents, thin_events RESTART IDENTITY CASCADE`,
+        sql`TRUNCATE TABLE incidents, thin_events, settings RESTART IDENTITY CASCADE`,
       );
     });
 
