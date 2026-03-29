@@ -154,6 +154,79 @@ export function createApiRouter(storage: StorageDriver, spanBuffer: SpanBuffer |
     return c.json(await buildCuratedEvidence(incident, telemetryStore));
   });
 
+  // Diagnostic endpoint for #169 — evidence empty despite D1 data
+  app.get("/api/incidents/:id/evidence/debug", async (c) => {
+    const id = c.req.param("id");
+    const incident = await storage.getIncident(id);
+    if (incident === null) {
+      return c.json({ error: "not found" }, 404);
+    }
+
+    const { telemetryScope, spanMembership } = incident;
+    const filter = buildIncidentQueryFilter(telemetryScope);
+
+    // Run raw queries to count results at each stage
+    const [spans, metrics, logs, snapshots] = await Promise.all([
+      telemetryStore.querySpans(filter),
+      telemetryStore.queryMetrics(filter),
+      telemetryStore.queryLogs(filter),
+      telemetryStore.getSnapshots(id),
+    ]);
+
+    // Membership filter
+    const membershipSet = new Set(spanMembership);
+    const memberSpans = spans.filter(s =>
+      membershipSet.has(spanMembershipKey(s.traceId, s.spanId)),
+    );
+
+    // Sample key comparison for mismatch debugging
+    const sampleSpanKey = spans.length > 0
+      ? spanMembershipKey(spans[0]!.traceId, spans[0]!.spanId)
+      : null;
+    const sampleMembershipKeys = spanMembership.slice(0, 5);
+
+    // Unique services in D1 spans
+    const spanServices = [...new Set(spans.map(s => s.serviceName))];
+    const spanEnvironments = [...new Set(spans.map(s => s.environment))];
+
+    // Unfiltered count (no services/environment filter — just time window)
+    const unfilteredSpans = await telemetryStore.querySpans({
+      startMs: filter.startMs,
+      endMs: filter.endMs,
+    });
+
+    return c.json({
+      incidentId: id,
+      telemetryScope: {
+        windowStartMs: telemetryScope.windowStartMs,
+        windowEndMs: telemetryScope.windowEndMs,
+        detectTimeMs: telemetryScope.detectTimeMs,
+        environment: telemetryScope.environment,
+        memberServices: telemetryScope.memberServices,
+        dependencyServices: telemetryScope.dependencyServices,
+      },
+      queryFilter: filter,
+      rawCounts: {
+        spans: spans.length,
+        metrics: metrics.length,
+        logs: logs.length,
+        unfilteredSpans: unfilteredSpans.length,
+      },
+      membershipFilter: {
+        membershipSize: spanMembership.length,
+        matchingSpans: memberSpans.length,
+        sampleSpanKey,
+        sampleMembershipKeys,
+      },
+      d1Metadata: {
+        spanServices,
+        spanEnvironments,
+        snapshotTypes: snapshots.map(s => s.snapshotType),
+        snapshotSizes: snapshots.map(s => JSON.stringify(s.data).length),
+      },
+    });
+  });
+
   if (diagnosisRunner) {
     app.post("/api/incidents/:id/rerun-diagnosis", async (c) => {
       const id = c.req.param("id");
