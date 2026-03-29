@@ -149,13 +149,6 @@ export function LensIncidentBoard({ incidentId, zoomTo }: Props) {
       : t("board.rerun.defaultNote")
   );
 
-  // Evidence summary line for the thin bar
-  const evidenceSummaryLine = [
-    t("board.evidenceEntry.tracesCount", { count: data.evidenceSummary.traces }),
-    t("board.evidenceEntry.anomalousMetrics", { count: data.evidenceSummary.metrics }),
-    t("board.evidenceEntry.logsCount", { count: data.evidenceSummary.logs }),
-  ].join(" \u00b7 ");
-
   return (
     <div className="lens-board-content stagger">
       {/* 1. Identity + confidence badge */}

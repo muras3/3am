@@ -15,12 +15,6 @@ function dotVariant(id: string): string {
   return "ink";
 }
 
-function statusGlyph(status: string): string {
-  if (status === "confirmed") return "\u2713";
-  if (status === "pending") return "\u23F3";
-  return "~";
-}
-
 function selectionTargetId(card: ProofCard): string | undefined {
   const firstRef = card.evidenceRefs[0];
   if (!firstRef) return undefined;
