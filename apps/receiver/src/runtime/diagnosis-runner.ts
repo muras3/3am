@@ -41,7 +41,8 @@ export class DiagnosisRunner {
 
       return true;
     } catch (err) {
-      console.error(`[diagnosis-runner] diagnosis failed for ${incidentId}:`, err);
+      const errMsg = err instanceof Error ? `${err.name}: ${err.message}` : String(err);
+      console.error(`[diagnosis-runner] diagnosis failed for ${incidentId}: ${errMsg}`);
       return false;
     }
   }

@@ -141,7 +141,7 @@ describe("DiagnosisRunner", () => {
 
     expect(result).toBe(false);
     expect(storage.appendDiagnosis).not.toHaveBeenCalled();
-    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining("inc_test"), expect.any(Error));
+    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining("inc_test: Error: LLM error"));
     errorSpy.mockRestore();
   });
 

@@ -26,35 +26,55 @@ export function _resetInFlightForTest(): void {
 /** Local Node.js fallback: fire-and-forget (no serverless lifecycle guarantee). */
 const localFallback: WaitUntilFn = (promise) => { void promise; };
 
-/** Cached waitUntil function — resolved once on first use. */
-let cachedWaitUntil: WaitUntilFn | null = null;
+/** Cached platform-level waitUntil (Vercel). Per-request is used for CF Workers. */
+let cachedPlatformWaitUntil: WaitUntilFn | null = null;
 
 /**
- * Resolve the platform's `waitUntil` function (cached after first call).
+ * Injected per-request waitUntil for platforms that provide it via request context
+ * (e.g. CF Workers `ctx.waitUntil`). Set by `setRequestWaitUntil()`, cleared after use.
+ */
+let requestWaitUntil: WaitUntilFn | null = null;
+
+/**
+ * Inject a per-request waitUntil function (e.g. from CF Workers ExecutionContext).
+ * Must be called before `resolveWaitUntil()` for the current request.
+ */
+export function setRequestWaitUntil(fn: WaitUntilFn): void {
+  requestWaitUntil = fn;
+}
+
+/**
+ * Resolve the platform's `waitUntil` function.
  *
- * - Vercel: `import { waitUntil } from '@vercel/functions'`
- * - Local / Node.js fallback: fire-and-forget
+ * Priority:
+ * 1. Per-request injection (CF Workers `ctx.waitUntil` via `setRequestWaitUntil`)
+ * 2. Vercel: `import { waitUntil } from '@vercel/functions'`
+ * 3. Local / Node.js fallback: fire-and-forget
  */
 export async function resolveWaitUntil(): Promise<WaitUntilFn> {
-  if (cachedWaitUntil) return cachedWaitUntil;
+  // Per-request waitUntil takes priority (CF Workers)
+  if (requestWaitUntil) return requestWaitUntil;
+
+  if (cachedPlatformWaitUntil) return cachedPlatformWaitUntil;
 
   try {
     const mod = await import("@vercel/functions");
     if (typeof mod.waitUntil === "function") {
-      cachedWaitUntil = mod.waitUntil;
-      return cachedWaitUntil;
+      cachedPlatformWaitUntil = mod.waitUntil;
+      return cachedPlatformWaitUntil;
     }
   } catch {
     // Not on Vercel — fall through to local fallback.
   }
 
-  cachedWaitUntil = localFallback;
-  return cachedWaitUntil;
+  cachedPlatformWaitUntil = localFallback;
+  return cachedPlatformWaitUntil;
 }
 
 /** Reset the cached waitUntil — for testing only. */
 export function _resetWaitUntilForTest(): void {
-  cachedWaitUntil = null;
+  cachedPlatformWaitUntil = null;
+  requestWaitUntil = null;
 }
 
 /**

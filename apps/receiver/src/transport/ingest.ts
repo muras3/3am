@@ -83,12 +83,28 @@ async function decodeOtlpBody(
     }
     try {
       return { body: protoDecoder(raw) };
-    } catch {
+    } catch (err) {
+      console.error("[otlp] protobuf decode failed:", err);
       return c.json({ error: "invalid protobuf body" }, 400);
     }
   } else if (ct.includes("application/json")) {
     try {
-      const body = await c.req.json();
+      const ce = c.req.header("Content-Encoding");
+      let body: unknown;
+      if (ce) {
+        // OTel Collector sends gzip-compressed JSON by default.
+        // CF Workers do not auto-decompress request bodies, so we must handle it.
+        const raw = await decompressIfNeeded(c);
+        if (typeof raw === "number") {
+          return c.json(
+            { error: raw === 413 ? "payload too large after decompression" : "invalid Content-Encoding or corrupt body" },
+            raw,
+          );
+        }
+        body = JSON.parse(new TextDecoder().decode(raw));
+      } else {
+        body = await c.req.json();
+      }
       if (typeof body !== "object" || body === null) {
         return c.json({ error: "invalid body" }, 400);
       }
