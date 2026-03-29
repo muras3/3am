@@ -228,6 +228,7 @@
     "statusPending": "Pending",
     "statusInferred": "Inferred",
     "statusLabel": "Status: {{status}}",
+    "designGapFallback": "Dependency failure observed but no retry/backoff pattern detected in logs.",
     "banner": {
       "diagnosisPending": "診断の組み立て中も Evidence Studio は利用可能です",
       "evidenceSparse": "方向性の参考になる情報が利用可能です",
