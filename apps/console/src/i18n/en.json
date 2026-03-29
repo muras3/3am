@@ -257,7 +257,7 @@
     },
     "qa": {
       "label": "Question and answer",
-      "placeholder": "Ask what the evidence can actually support",
+      "placeholder": "Ask about this incident...",
       "inputLabel": "Ask a grounded question about this incident",
       "summaryLabel": "Evidence summary",
       "checking": "Checking\u2026",
@@ -267,6 +267,8 @@
       "preparedRead": "Prepared read",
       "currentRead": "Current read",
       "stillPreparing": "Still preparing",
+      "you": "You",
+      "assistant": "Assistant",
       "followupsLabel": "Follow-up questions",
       "answerSegmentsLabel": "Answer segments",
       "preparedSegmentsLabel": "Prepared answer segments",

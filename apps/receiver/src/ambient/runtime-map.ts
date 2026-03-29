@@ -361,7 +361,8 @@ function assembleRuntimeMap(input: {
   for (const incident of incidents) {
     incidentRows.push({
       incidentId: incident.incidentId,
-      label: incident.diagnosisResult?.summary.what_happened
+      label: incident.consoleNarrative?.headline
+        ?? incident.diagnosisResult?.summary.what_happened
         ?? incident.packet.scope.primaryService,
       severity: incident.packet.signalSeverity ?? 'medium',
       openedAgo: formatOpenedAgo(incident.openedAt),
@@ -420,7 +421,8 @@ async function findIncidentFallback(
 function emptyRuntimeMap(openIncidents: Incident[], windowMinutes: number): RuntimeMapResponse {
   const incidentRows = openIncidents.map((incident) => ({
     incidentId: incident.incidentId,
-    label: incident.diagnosisResult?.summary.what_happened
+    label: incident.consoleNarrative?.headline
+      ?? incident.diagnosisResult?.summary.what_happened
       ?? incident.packet.scope.primaryService,
     severity: incident.packet.signalSeverity ?? 'medium',
     openedAgo: formatOpenedAgo(incident.openedAt),

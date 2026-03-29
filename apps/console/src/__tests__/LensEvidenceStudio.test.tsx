@@ -119,7 +119,8 @@ function renderQAFrame(
 ) {
   const props = {
     qa,
-    inputValue: qa.question,
+    inputValue: "",
+    history: [],
     isSubmitting: false,
     onInputChange: vi.fn(),
     onSubmitQuestion: vi.fn(),
@@ -142,7 +143,7 @@ beforeEach(() => {
 describe("LensEvidenceStudio — context bar", () => {
   it("renders context bar with incident ID", () => {
     renderStudio("inc_0892", setupReady());
-    expect(screen.getByText("inc_0892")).toBeInTheDocument();
+    expect(screen.getByText("INC-0892")).toBeInTheDocument();
   });
 
   it("renders context bar with incident headline", () => {
@@ -152,11 +153,9 @@ describe("LensEvidenceStudio — context bar", () => {
     ).toBeInTheDocument();
   });
 
-  it("renders context bar with action text", () => {
+  it("does not repeat action text in the context bar", () => {
     renderStudio("inc_0892", setupReady());
-    expect(
-      screen.getByText(/Enable request batching on StripeClient/),
-    ).toBeInTheDocument();
+    expect(screen.queryByText(/Enable request batching on StripeClient/)).toBeNull();
   });
 });
 
@@ -184,26 +183,22 @@ describe("LensEvidenceStudio — proof cards", () => {
 });
 
 describe("LensEvidenceStudio — Q&A frame", () => {
-  it("renders Q&A frame with question in input", () => {
+  it("renders Q&A frame with placeholder input", () => {
     renderStudio("inc_0892", setupReady());
-    // The question is rendered as the input's value
-    expect(
-      screen.getByDisplayValue("Why are checkout payments failing?"),
-    ).toBeInTheDocument();
+    expect(screen.getByPlaceholderText("Ask about this incident...")).toBeInTheDocument();
   });
 
-  it("renders Q&A answer text", () => {
+  it("renders prepared read as an assistant bubble", () => {
     renderStudio("inc_0892", setupReady());
     expect(
       screen.getByText(/Stripe API is returning 429/),
     ).toBeInTheDocument();
+    expect(screen.getAllByText("Prepared read").length).toBeGreaterThan(0);
   });
 
-  it("renders follow-up chips", () => {
+  it("does not render suggested follow-up chips", () => {
     renderStudio("inc_0892", setupReady());
-    expect(screen.getByText("Is there retry logic?")).toBeInTheDocument();
-    expect(screen.getByText("When exactly did this start?")).toBeInTheDocument();
-    expect(screen.getByText("What's the full blast radius?")).toBeInTheDocument();
+    expect(document.querySelectorAll(".lens-ev-qa-chip")).toHaveLength(0);
   });
 });
 
@@ -342,9 +337,8 @@ describe("LensEvidenceStudio — empty state", () => {
       evidencePending,
     );
     renderStudio("inc_0892", qc);
-    expect(screen.getByDisplayValue(evidencePending.qa.question)).toBeInTheDocument();
+    expect(screen.getByPlaceholderText("Ask about this incident...")).toBeInTheDocument();
     expect(document.querySelector(".lens-ev-qa-answer-placeholder")).not.toBeNull();
-    expect(document.querySelector(".lens-ev-qa-no-answer")).not.toBeNull();
     expect(screen.getByText(evidencePending.qa.noAnswerReason!)).toBeInTheDocument();
   });
 });
@@ -354,7 +348,7 @@ describe("LensEvidenceStudio — empty state", () => {
 describe("ContextBar", () => {
   it("renders incident ID and headline", () => {
     render(<ContextBar incident={extendedIncidentReady} />);
-    expect(screen.getByText("inc_0892")).toBeInTheDocument();
+    expect(screen.getByText("INC-0892")).toBeInTheDocument();
     expect(screen.getByText(/Stripe API rate limit cascade/)).toBeInTheDocument();
   });
 });
@@ -395,24 +389,21 @@ describe("LensProofCards", () => {
 });
 
 describe("QAFrame", () => {
-  it("renders question in input field and answer text", () => {
+  it("renders placeholder input and prepared answer text", () => {
     renderQAFrame(evidenceReady.qa);
-    // The question is the input's value (not rendered as paragraph text)
-    expect(
-      screen.getByDisplayValue("Why are checkout payments failing?"),
-    ).toBeInTheDocument();
+    expect(screen.getByPlaceholderText("Ask about this incident...")).toBeInTheDocument();
     expect(screen.getByText(/Stripe API is returning 429/)).toBeInTheDocument();
   });
 
-  it("renders follow-up chips", () => {
+  it("does not render follow-up chips", () => {
     renderQAFrame(evidenceReady.qa);
     const chips = document.querySelectorAll(".lens-ev-qa-chip");
-    expect(chips.length).toBeGreaterThan(0);
+    expect(chips).toHaveLength(0);
   });
 
   it("renders fixed fallback QA object from receiver contract", () => {
     renderQAFrame(evidencePending.qa);
-    expect(screen.getByDisplayValue(evidencePending.qa.question)).toBeInTheDocument();
+    expect(screen.getByPlaceholderText("Ask about this incident...")).toBeInTheDocument();
     expect(document.querySelector(".lens-ev-qa-answer-placeholder")).not.toBeNull();
     expect(screen.getByText(evidencePending.qa.noAnswerReason!)).toBeInTheDocument();
   });
@@ -440,7 +431,7 @@ describe("QAFrame — interaction", () => {
     renderQAFrame(evidenceReady.qa, { inputValue: "  my question  ", onSubmitQuestion });
     const submitBtn = screen.getByRole("button", { name: /ask/i });
     await user.click(submitBtn);
-    expect(onSubmitQuestion).toHaveBeenCalledWith("my question", false);
+    expect(onSubmitQuestion).toHaveBeenCalledWith("my question");
   });
 
   it("submit button disabled when input is empty", () => {
@@ -457,7 +448,7 @@ describe("QAFrame — interaction", () => {
 
   it("submit button shows 'Checking…' when isSubmitting=true", () => {
     renderQAFrame(evidenceReady.qa, { isSubmitting: true });
-    expect(screen.getByRole("button", { name: /checking/i })).toHaveTextContent("Checking…");
+    expect(screen.getByRole("button", { name: /checking/i })).toBeInTheDocument();
   });
 
   it("input disabled when isSubmitting=true", () => {
@@ -467,35 +458,31 @@ describe("QAFrame — interaction", () => {
   });
 
   it("error message rendered when submitError provided (role=alert)", () => {
-    renderQAFrame(evidenceReady.qa, { submitError: "Network error" });
+    renderQAFrame(evidenceReady.qa, {
+      history: [{ id: "err-1", question: "Why?", status: "failed", error: "Network error" }],
+    });
     const alert = screen.getByRole("alert");
     expect(alert).toHaveTextContent("Network error");
   });
 
-  it("latest grounded response renders segment labels and text", () => {
-    renderQAFrame(evidenceReady.qa, { latestResponse: groundedAnswer });
-    const status = screen.getByRole("status");
-    expect(status).toHaveTextContent("Fact");
-    expect(status).toHaveTextContent("Inference");
-    expect(status).toHaveTextContent("Unknown");
-    expect(status).toHaveAttribute("aria-live", "polite");
-  });
-
-  it("follow-up chip click calls onSubmitQuestion with chip question", async () => {
-    const user = userEvent.setup();
-    const onSubmitQuestion = vi.fn();
-    renderQAFrame(evidenceReady.qa, { onSubmitQuestion });
-    const chip = screen.getByText("Is there retry logic?");
-    await user.click(chip);
-    expect(onSubmitQuestion).toHaveBeenCalledWith("Is there retry logic?", true);
-  });
-
-  it("follow-up chips disabled when isSubmitting=true", () => {
-    renderQAFrame(evidenceReady.qa, { isSubmitting: true });
-    const chips = document.querySelectorAll(".lens-ev-qa-chip");
-    chips.forEach((chip) => {
-      expect(chip).toBeDisabled();
+  it("history response renders segment labels and text", () => {
+    renderQAFrame(evidenceReady.qa, {
+      history: [{ id: "ans-1", question: groundedAnswer.question, status: "answered", response: groundedAnswer }],
     });
+    const answer = screen.getByText("Grounded answer").closest(".lens-ev-qa-answer");
+    expect(answer).not.toBeNull();
+    expect(answer).toHaveTextContent("Fact");
+    expect(answer).toHaveTextContent("Inference");
+    expect(answer).toHaveTextContent("Unknown");
+  });
+
+  it("pending history item renders checking state", () => {
+    renderQAFrame(evidenceReady.qa, {
+      history: [{ id: "pending-1", question: "What changed?", status: "pending" }],
+    });
+    const status = screen.getByRole("status");
+    expect(status).toHaveTextContent("Checking…");
+    expect(status).toHaveAttribute("aria-live", "polite");
   });
 
   it("evidence ref click calls navigate with correct tab/targetId (span → traces)", async () => {
@@ -535,7 +522,6 @@ describe("QAFrame — interaction", () => {
   it("no-answer state uses placeholder treatment", () => {
     renderQAFrame(evidencePending.qa);
     expect(document.querySelector(".lens-ev-qa-answer-placeholder")).not.toBeNull();
-    expect(document.querySelector(".lens-ev-qa-no-answer")).not.toBeNull();
     expect(
       screen.getByText(evidencePending.qa.noAnswerReason!),
     ).toBeInTheDocument();
@@ -579,24 +565,29 @@ describe("QAFrame — interaction", () => {
 
   it("evidence summary text renders correctly", () => {
     renderQAFrame(evidenceReady.qa);
-    expect(screen.getAllByText(/12 traces, 3 metrics, 28 logs/).length).toBeGreaterThan(0);
+    expect(screen.queryByText(/12 traces, 3 metrics, 28 logs/)).toBeNull();
   });
 
   it("evidence ref kind=log_cluster navigates to logs tab", async () => {
     const user = userEvent.setup();
     renderQAFrame(evidenceReady.qa, {
-      latestResponse: {
+      history: [{
+        id: "ans-log",
         question: evidenceReady.qa.question,
         status: "answered",
-        segments: [{
-          id: "log-cluster-seg",
-          kind: "fact",
+        response: {
+          question: evidenceReady.qa.question,
+          status: "answered",
+          segments: [{
+            id: "log-cluster-seg",
+            kind: "fact",
           text: "A log cluster captures the Stripe 429 burst.",
           evidenceRefs: [{ kind: "log_cluster", id: "claim-429" }],
-        }],
-        evidenceSummary: evidenceReady.qa.evidenceSummary,
-        followups: evidenceReady.qa.followups,
-      },
+          }],
+          evidenceSummary: evidenceReady.qa.evidenceSummary,
+          followups: evidenceReady.qa.followups,
+        },
+      }],
     });
     const refBtn = screen.getByRole("button", {
       name: /view evidence: log_cluster claim-429/i,
@@ -732,7 +723,9 @@ describe("LensProofCards — cross-surface navigation", () => {
 
   it("evidence query refs for absence navigate to logs", async () => {
     const user = userEvent.setup();
-    renderQAFrame(evidenceReady.qa, { latestResponse: groundedAnswer });
+    renderQAFrame(evidenceReady.qa, {
+      history: [{ id: "ans-absence", question: groundedAnswer.question, status: "answered", response: groundedAnswer }],
+    });
     const refBtn = screen.getByRole("button", {
       name: /view evidence: absence claim-no-retry/i,
     });
@@ -919,14 +912,14 @@ describe("LensEvidenceStudio — Q&A mutation integration", () => {
     );
   });
 
-  it("Q&A follow-up chip triggers evidence query mutation", async () => {
+  it("successful submit appends a visible user question and answer", async () => {
     const user = userEvent.setup();
     renderStudio("inc_0892", setupReady());
-    const chip = screen.getByText("Is there retry logic?");
-    await user.click(chip);
-    expect(fetchSpy).toHaveBeenCalledWith(
-      expect.stringContaining("/api/incidents/inc_0892/evidence/query"),
-      expect.objectContaining({ method: "POST" }),
-    );
+    const input = screen.getByLabelText("Ask a grounded question about this incident");
+    await user.type(input, "What changed first?");
+    await user.click(screen.getByRole("button", { name: "Ask" }));
+
+    expect(await screen.findByText("What changed first?")).toBeInTheDocument();
+    expect(await screen.findByText("Grounded answer")).toBeInTheDocument();
   });
 });

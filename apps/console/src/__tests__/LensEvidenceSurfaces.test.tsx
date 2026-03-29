@@ -572,7 +572,8 @@ describe("Degraded states — QA", () => {
     render(
       <QAFrame
         qa={evidenceSparse.qa}
-        inputValue={evidenceSparse.qa.question}
+        inputValue=""
+        history={[]}
         isSubmitting={false}
         onInputChange={vi.fn()}
         onSubmitQuestion={vi.fn()}
@@ -581,33 +582,32 @@ describe("Degraded states — QA", () => {
     expect(screen.getByText(evidenceSparse.qa.noAnswerReason!)).toBeInTheDocument();
   });
 
-  it("pending follow-up chips are still rendered", () => {
+  it("follow-up chips are removed from degraded states", () => {
     render(
       <QAFrame
         qa={evidenceSparse.qa}
-        inputValue={evidenceSparse.qa.question}
+        inputValue=""
+        history={[]}
         isSubmitting={false}
         onInputChange={vi.fn()}
         onSubmitQuestion={vi.fn()}
       />,
     );
     const chips = document.querySelectorAll(".lens-ev-qa-chip");
-    expect(chips.length).toBeGreaterThan(0);
+    expect(chips).toHaveLength(0);
   });
 
-  it("follow-up chips are disabled when isSubmitting=true", () => {
+  it("input stays disabled when isSubmitting=true", () => {
     render(
       <QAFrame
         qa={evidenceSparse.qa}
-        inputValue={evidenceSparse.qa.question}
+        inputValue=""
+        history={[]}
         isSubmitting={true}
         onInputChange={vi.fn()}
         onSubmitQuestion={vi.fn()}
       />,
     );
-    const chips = document.querySelectorAll(".lens-ev-qa-chip");
-    chips.forEach((chip) => {
-      expect(chip).toBeDisabled();
-    });
+    expect(screen.getByRole("textbox", { name: /ask a grounded question/i })).toBeDisabled();
   });
 });

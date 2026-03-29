@@ -224,6 +224,27 @@ describe('buildRuntimeMap', () => {
     expect(result.summary.degradedNodes).toBe(0)
   })
 
+  it('prefers console narrative headline for incident labels', async () => {
+    const store = makeMockTelemetryStore([])
+    const storage = makeMockStorage([
+      makeIncident({
+        diagnosisResult: {
+          summary: {
+            what_happened: 'Long diagnosis summary that should not be the strip title',
+            root_cause_hypothesis: 'rate limit',
+          },
+        } as Incident['diagnosisResult'],
+        consoleNarrative: {
+          headline: 'CDN 503 cascade on /products. Origin recovered after cache purge.',
+        } as Incident['consoleNarrative'],
+      }),
+    ])
+
+    const result = await buildRuntimeMap(store, storage)
+
+    expect(result.incidents[0]?.label).toBe('CDN 503 cascade on /products. Origin recovered after cache purge.')
+  })
+
   it('reconstructs incident-scoped fallback when live window is empty but incident spans were preserved', async () => {
     const preservedSpan = makeSpan({
       traceId: 'trace-fallback',

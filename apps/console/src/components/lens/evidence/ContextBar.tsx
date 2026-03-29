@@ -1,18 +1,19 @@
 import { useTranslation } from "react-i18next";
 import type { ExtendedIncident } from "../../../api/curated-types.js";
+import { formatShortIncidentId } from "../../../lib/incidentId.js";
+import { extractTitle } from "../../../lib/headline.js";
 
 interface Props {
   incident: ExtendedIncident;
 }
 
 /**
- * ContextBar — accent-soft strip keeping incident context visible at top of Evidence Studio.
- * Shows health dot + incident ID (mono) + em-dash + headline + action summary.
+ * ContextBar — compact incident anchor for Evidence Studio.
+ * Keeps only severity, incident ID, and the short title visible.
  */
 export function ContextBar({ incident }: Props) {
   const { t } = useTranslation();
-  const headline = incident.headline.trim() || t("evidence.contextBarFallback");
-  const actionText = incident.action.text.trim();
+  const headline = extractTitle(incident.headline) || t("evidence.contextBarFallback");
 
   return (
     <div className="lens-ev-context-bar" role="region" aria-label={t("evidence.contextBarLabel")}>
@@ -20,14 +21,9 @@ export function ContextBar({ incident }: Props) {
         className={`lens-ev-health-dot lens-ev-health-dot-${incident.severity}`}
         aria-hidden="true"
       />
-      <span className="lens-ev-ctx-id">{incident.incidentId}</span>
+      <span className="lens-ev-ctx-id">{formatShortIncidentId(incident.incidentId)}</span>
       <span className="lens-ev-ctx-sep" aria-hidden="true">&mdash;</span>
       <span className="lens-ev-ctx-headline">{headline}</span>
-      {actionText && (
-        <span className="lens-ev-ctx-action">
-          {t("evidence.contextBarAction", { text: actionText })}
-        </span>
-      )}
     </div>
   );
 }

@@ -44,4 +44,8 @@ describe("buildNarrativePrompt", () => {
     expect(prompt).toContain('"evidenceBindings"');
     expect(prompt).toContain('"noAnswerReason"');
   });
+
+  it("asks for a title-like first sentence in the headline", () => {
+    expect(prompt).toContain("The first sentence must be a short, title-like incident summary");
+  });
 });

@@ -651,6 +651,16 @@ describe('Integration: Curated API assembly (§6)', () => {
       expect(result.state.diagnosis).toBe('ready')
     })
 
+    it('prefers console narrative headline when available', async () => {
+      const diagnosisResult = makeDiagnosisResult()
+      const narrative = makeNarrative()
+      const incident = makeIncident({ diagnosisResult, consoleNarrative: narrative })
+
+      const result = await buildExtendedIncident(incident, telemetryStore)
+
+      expect(result.headline).toBe(narrative.headline)
+    })
+
     it('causal-chain-types: all types are valid enum values', async () => {
       const diagnosisResult = makeDiagnosisResult()
       const incident = makeIncident({ diagnosisResult })

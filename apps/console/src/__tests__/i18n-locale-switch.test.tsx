@@ -109,20 +109,20 @@ describe("Component locale switch via i18n.t()", () => {
     expect(i18n.t("board.immediateAction.title")).toBe("Immediate Action");
   });
 
-  it("board.immediateAction.title returns '今すぐやること' in Japanese", async () => {
+  it("board.immediateAction.title stays English in Japanese", async () => {
     await act(async () => {
       await i18n.changeLanguage("ja");
     });
-    expect(i18n.t("board.immediateAction.title")).toBe("今すぐやること");
+    expect(i18n.t("board.immediateAction.title")).toBe("Immediate Action");
   });
 
-  it("common.error.reload returns 'Reload' in English then '再読み込み' in Japanese, then back", async () => {
+  it("common.error.reload stays English across locales", async () => {
     expect(i18n.t("common.error.reload")).toBe("Reload");
 
     await act(async () => {
       await i18n.changeLanguage("ja");
     });
-    expect(i18n.t("common.error.reload")).toBe("再読み込み");
+    expect(i18n.t("common.error.reload")).toBe("Reload");
 
     await act(async () => {
       await i18n.changeLanguage("en");
@@ -158,7 +158,16 @@ describe("Component locale switch via i18n.t()", () => {
         <ThrowingComponent />
       </ErrorBoundary>,
     );
-    expect(screen.getByRole("button", { name: "再読み込み" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Reload" })).toBeInTheDocument();
+  });
+
+  it("evidence tab labels stay English in Japanese", async () => {
+    await act(async () => {
+      await i18n.changeLanguage("ja");
+    });
+    expect(i18n.t("evidence.tabs.traces")).toBe("Traces");
+    expect(i18n.t("evidence.qa.ask")).toBe("Ask");
+    expect(i18n.t("map.stats.activeIncidents")).toBe("Active Incidents");
   });
 });
 
