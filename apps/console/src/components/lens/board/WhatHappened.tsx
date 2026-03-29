@@ -1,5 +1,5 @@
 import { useTranslation } from "react-i18next";
-import type { CuratedState, ExtendedIncident } from "../../../api/curated-types.js";
+import type { ConfidenceSummary, CuratedState, ExtendedIncident } from "../../../api/curated-types.js";
 import { formatShortIncidentId } from "../../../lib/incidentId.js";
 import { describeBoardState, sectionFallback } from "./board-state.js";
 import { shortenForViewport } from "./viewport-text.js";
@@ -12,15 +12,27 @@ interface Props {
   headline: string;
   chips: ExtendedIncident["chips"];
   state: CuratedState;
+  confidence?: ConfidenceSummary;
 }
 
-export function WhatHappened({ incidentId, status, closedAt, severity, headline, chips, state }: Props) {
+function confidenceColorClass(value: number): string {
+  if (value >= 0.7) return "lens-board-conf-badge-high";
+  if (value >= 0.4) return "lens-board-conf-badge-mid";
+  return "lens-board-conf-badge-low";
+}
+
+export function WhatHappened({ incidentId, status, closedAt, severity, headline, chips, state, confidence }: Props) {
   const { t } = useTranslation();
   const displayHeadline = headline.trim() || sectionFallback(state, "headline");
   const viewportHeadline = shortenForViewport(displayHeadline, 72);
   const showStateNote =
     state.diagnosis !== "ready" || state.baseline !== "ready" || state.evidenceDensity !== "rich";
   const headlineShortened = viewportHeadline !== displayHeadline;
+
+  const hasConfidence = confidence && (
+    confidence.label.trim().length > 0 || confidence.basis.trim().length > 0 || confidence.value > 0
+  );
+  const confPct = confidence ? Math.round(confidence.value * 100) : 0;
 
   return (
     <div className="lens-board-identity">
@@ -30,6 +42,14 @@ export function WhatHappened({ incidentId, status, closedAt, severity, headline,
         {status === "closed" ? (
           <span className="lens-board-status-pill" title={closedAt ? `Closed at ${closedAt}` : "Closed"}>
             Closed
+          </span>
+        ) : null}
+        {hasConfidence ? (
+          <span
+            className={`lens-board-conf-badge ${confidenceColorClass(confidence.value)}`}
+            aria-label={t("board.confidence.scoreLabel", { pct: confPct })}
+          >
+            {confPct}% {confidence.label.trim() || ""}
           </span>
         ) : null}
       </div>

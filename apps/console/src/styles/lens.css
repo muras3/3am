@@ -261,22 +261,7 @@
   gap: 12px;
 }
 
-.lens-board-priority-grid,
-.lens-board-insight-grid,
-.lens-board-context-grid {
-  display: grid;
-  gap: 12px;
-}
-
-.lens-board-priority-grid {
-  grid-template-columns: minmax(0, 1.55fr) minmax(280px, 0.95fr);
-  align-items: start;
-}
-
-.lens-board-insight-grid {
-  grid-template-columns: minmax(0, 1.45fr) minmax(220px, 0.85fr);
-  align-items: start;
-}
+/* (grids removed — all sections full-width in #181) */
 
 /* ── Loading / error states ────────────────────────────────── */
 .lens-board-loading,
@@ -467,6 +452,24 @@
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
+
+/* ── Confidence badge (inline in header) ─────────────────────── */
+.lens-board-conf-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: var(--radius-xs);
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.lens-board-conf-badge-high { background: var(--good-soft);   color: var(--good); }
+.lens-board-conf-badge-mid  { background: var(--amber-soft);  color: var(--amber); }
+.lens-board-conf-badge-low  { background: var(--accent-soft); color: var(--accent-text); }
 
 .lens-board-headline {
   font-size: clamp(26px, 3vw, 30px);
@@ -687,16 +690,40 @@
   color: var(--amber);
 }
 
+/* ── DO NOT block (always visible) ────────────────────────────── */
+.lens-board-action-donot-block {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-top: 8px;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  background: rgba(255, 248, 240, 0.82);
+  border: 1px solid rgba(184, 134, 11, 0.18);
+  border-left: 3px solid var(--amber);
+  font-size: var(--fs-xs);
+  color: var(--ink-2);
+  line-height: 1.35;
+}
+
+.lens-board-action-donot-block strong {
+  font-size: var(--fs-xxs);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--amber);
+}
+
+.lens-board-action-donot-block.lens-board-action-donot-empty {
+  opacity: 0.6;
+}
+
 .lens-board-action-detail-copy {
   display: flex;
   flex-direction: column;
   gap: 6px;
 }
 
-/* ── Context grid (3 columns) ──────────────────────────────── */
-.lens-board-context-grid {
-  grid-template-columns: 1fr 1fr;
-}
+/* (context-grid removed — sections now full-width in #181) */
 
 /* ── Card base ─────────────────────────────────────────────── */
 .lens-board-card {
@@ -928,6 +955,15 @@
   color: var(--ink-2);
   line-height: 1.4;
   margin: 0;
+}
+
+.lens-board-root-cause-conf {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
 
 .lens-board-state-chip {
@@ -1206,13 +1242,9 @@
 }
 
 @media (max-width: 900px) {
-  .lens-board-priority-grid,
-  .lens-board-insight-grid,
-  .lens-board-context-grid,
   .lens-board-pending-columns,
   .lens-board-pending-operator,
-  .lens-board-action-steps,
-  .lens-board-action-support-grid {
+  .lens-board-action-steps {
     grid-template-columns: 1fr;
   }
 
@@ -2524,9 +2556,7 @@
     grid-template-columns: 1fr;
   }
 
-  .lens-board-action-steps,
-  .lens-board-action-support-grid,
-  .lens-board-context-grid {
+  .lens-board-action-steps {
     grid-template-columns: 1fr;
   }
 }
@@ -2792,12 +2822,7 @@
     grid-template-columns: 1fr;
   }
 
-  /* Incident board grids stack on mobile */
-  .lens-board-priority-grid,
-  .lens-board-insight-grid,
-  .lens-board-context-grid {
-    grid-template-columns: 1fr;
-  }
+  /* Action steps single column on mobile (already full-width) */
 
   /* N5: Causal chain cards stack vertically */
   .lens-board-chain-grid {
