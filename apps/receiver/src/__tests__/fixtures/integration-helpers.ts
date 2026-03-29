@@ -84,5 +84,7 @@ export async function postTraces(app: ReturnType<typeof createApp>) {
     body: JSON.stringify(errorSpanPayload),
   });
   expect(res.status).toBe(200);
-  return (await res.json()) as { status: string; incidentId: string; packetId: string };
+  const body = (await res.json()) as { status: string; incidentId: string; packetId: string };
+  expect(body.incidentId).toMatch(/^inc_\d{6}$/);
+  return body;
 }

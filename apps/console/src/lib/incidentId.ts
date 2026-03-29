@@ -12,5 +12,5 @@ export function formatShortIncidentId(incidentId: string): string {
   const normalized = incidentId.startsWith("inc_")
     ? incidentId.slice(4)
     : incidentId.replace(/^INC-/, "");
-  return `INC-${normalized.slice(0, 8).toUpperCase()}`;
+  return `INC-${normalized.toUpperCase()}`;
 }

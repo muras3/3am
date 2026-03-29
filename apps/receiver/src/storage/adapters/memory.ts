@@ -7,6 +7,13 @@ export class MemoryAdapter implements StorageDriver {
   private packetIndex: Map<string, string> = new Map(); // packetId → incidentId
   private thinEvents: ThinEvent[] = [];
   private settings: Map<string, string> = new Map();
+  private nextIncidentSequenceValue = 1;
+
+  async nextIncidentSequence(): Promise<number> {
+    const value = this.nextIncidentSequenceValue;
+    this.nextIncidentSequenceValue += 1;
+    return value;
+  }
 
   async createIncident(packet: IncidentPacket, membership: InitialMembership): Promise<void> {
     if (this.incidents.has(packet.incidentId)) return; // no-op if already exists
@@ -22,6 +29,10 @@ export class MemoryAdapter implements StorageDriver {
       platformEvents: [],
     });
     this.packetIndex.set(packet.packetId, packet.incidentId);
+    const sequence = parseIncidentSequence(packet.incidentId);
+    if (sequence !== null) {
+      this.nextIncidentSequenceValue = Math.max(this.nextIncidentSequenceValue, sequence + 1);
+    }
   }
 
   async updatePacket(incidentId: string, packet: IncidentPacket): Promise<void> {
@@ -200,4 +211,10 @@ export class MemoryAdapter implements StorageDriver {
   async setSettings(key: string, value: string): Promise<void> {
     this.settings.set(key, value);
   }
+}
+
+function parseIncidentSequence(incidentId: string): number | null {
+  const match = incidentId.match(/^inc_(\d{6})$/);
+  const digits = match?.[1];
+  return digits ? Number.parseInt(digits, 10) : null;
 }

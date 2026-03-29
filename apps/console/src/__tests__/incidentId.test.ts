@@ -28,8 +28,9 @@ describe("incidentId helpers", () => {
 
   it("formats short incident ids for console display", () => {
     expect(formatShortIncidentId("inc_0892")).toBe("INC-0892");
-    expect(formatShortIncidentId("inc_833133a8-5e8c-49c7-8177-2dc7cd900cf9")).toBe(
-      "INC-833133A8",
+    expect(formatShortIncidentId("inc_000001")).toBe("INC-000001");
+    expect(formatShortIncidentId("INC-000042")).toBe(
+      "INC-000042",
     );
   });
 });

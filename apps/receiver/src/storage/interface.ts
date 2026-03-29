@@ -85,6 +85,12 @@ export interface IncidentPage {
 
 export interface StorageDriver {
   /**
+   * Return the next monotonic incident sequence number.
+   * Used to generate human-friendly incident IDs such as inc_000001.
+   */
+  nextIncidentSequence(): Promise<number>;
+
+  /**
    * Create a new incident with packet and initial membership atomically.
    * If incident already exists (by incidentId), this is a no-op — use updatePacket instead.
    */

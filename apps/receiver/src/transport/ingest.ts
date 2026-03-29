@@ -303,7 +303,9 @@ export function createIngestRouter(storage: StorageDriver, spanBuffer: SpanBuffe
     }
 
     const isNew = !existing;
-    const incidentId = existing ? existing.incidentId : "inc_" + crypto.randomUUID();
+    const incidentId = existing
+      ? existing.incidentId
+      : `inc_${String(await storage.nextIncidentSequence()).padStart(6, "0")}`;
     // Use signal time (not server clock) so formation window is anchored to telemetry
     const openedAt = existing
       ? existing.openedAt

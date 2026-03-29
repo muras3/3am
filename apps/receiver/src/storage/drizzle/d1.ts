@@ -148,6 +148,27 @@ export class D1StorageAdapter implements StorageDriver {
     return incident;
   }
 
+  async nextIncidentSequence(): Promise<number> {
+    const [row] = await this.db.select().from(settings).where(eq(settings.key, "__next_incident_sequence"));
+    let current = row ? Number.parseInt(row.value, 10) : 0;
+    if (!row) {
+      const [latest] = await this.db.select({ incidentId: incidents.incidentId })
+        .from(incidents)
+        .orderBy(desc(incidents.incidentId))
+        .limit(1);
+      current = latest ? parseIncidentSequence(latest.incidentId) ?? 0 : 0;
+    }
+    const next = current + 1;
+    await this.db
+      .insert(settings)
+      .values({ key: "__next_incident_sequence", value: String(next), updatedAt: new Date().toISOString() })
+      .onConflictDoUpdate({
+        target: settings.key,
+        set: { value: String(next), updatedAt: new Date().toISOString() },
+      });
+    return next;
+  }
+
   async createIncident(packet: IncidentPacket, membership: InitialMembership): Promise<void> {
     const now = new Date().toISOString();
     await this.db
@@ -423,4 +444,10 @@ export class D1StorageAdapter implements StorageDriver {
       .values({ key, value, updatedAt: now })
       .onConflictDoUpdate({ target: settings.key, set: { value, updatedAt: now } });
   }
+}
+
+function parseIncidentSequence(incidentId: string): number | null {
+  const match = incidentId.match(/^inc_(\d{6})$/);
+  const digits = match?.[1];
+  return digits ? Number.parseInt(digits, 10) : null;
 }
