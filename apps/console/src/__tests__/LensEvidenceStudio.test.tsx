@@ -60,7 +60,8 @@ const groundedAnswer: EvidenceQueryResponse = {
   ],
 };
 
-vi.mock("@tanstack/react-router", () => ({
+vi.mock("@tanstack/react-router", async (importOriginal) => ({
+  ...((await importOriginal()) as Record<string, unknown>),
   useSearch: () => mockSearch,
   useNavigate: () => mockNavigate,
 }));

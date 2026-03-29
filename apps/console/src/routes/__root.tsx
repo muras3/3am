@@ -1,5 +1,5 @@
 import { Suspense } from "react";
-import { createRootRouteWithContext } from "@tanstack/react-router";
+import { createRootRouteWithContext, stripSearchParams, useSearch } from "@tanstack/react-router";
 import type { QueryClient } from "@tanstack/react-query";
 import { parseIncidentId } from "../lib/incidentId.js";
 import { LensShell } from "../components/lens/LensShell.js";
@@ -15,11 +15,24 @@ export type EvidenceTab = "traces" | "metrics" | "logs";
 
 export interface LensSearchParams {
   incidentId?: string | undefined;
-  level: LensLevel;
-  tab: EvidenceTab;
+  level?: LensLevel | undefined;
+  tab?: EvidenceTab | undefined;
   proof?: string | undefined;
   targetId?: string | undefined;
   query?: string | undefined;
+}
+
+/** Defaults that should NOT appear in the URL bar. */
+const SEARCH_DEFAULTS = { level: 0 as LensLevel, tab: "traces" as EvidenceTab };
+
+/** Hook that returns search params with defaults guaranteed. */
+export function useLensSearch() {
+  const s = useSearch({ from: "__root__" }) as LensSearchParams;
+  return {
+    ...s,
+    level: (s.level ?? SEARCH_DEFAULTS.level) as LensLevel,
+    tab: (s.tab ?? SEARCH_DEFAULTS.tab) as EvidenceTab,
+  };
 }
 
 function parseLensLevel(value: unknown): LensLevel {
@@ -39,6 +52,9 @@ function parseOptionalString(value: unknown): string | undefined {
 }
 
 export const rootRoute = createRootRouteWithContext<RouterContext>()({
+  search: {
+    middlewares: [stripSearchParams(SEARCH_DEFAULTS)],
+  },
   validateSearch: (search: Record<string, unknown>): LensSearchParams => {
     const incidentId = parseIncidentId(search["incidentId"]);
     const level = parseLensLevel(search["level"]);

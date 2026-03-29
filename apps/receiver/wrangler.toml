@@ -18,6 +18,7 @@ head_sampling_rate = 1.0
 ALLOW_INSECURE_DEV_MODE = "false"
 DIAGNOSIS_MAX_WAIT_MS = "0"
 DIAGNOSIS_GENERATION_THRESHOLD = "50"
+RETENTION_HOURS = "48"
 
 [assets]
 directory = "../console/dist"
@@ -27,4 +28,4 @@ run_worker_first = ["/api/*", "/v1/*", "/healthz"]
 [[d1_databases]]
 binding = "DB"
 database_name = "3amoncall-db"
-database_id = "9266ad6f-92ee-4a8e-8fde-27d8acff6eac"
+database_id = "7a20d92c-33ae-4ca4-ae83-05cefefb3183"

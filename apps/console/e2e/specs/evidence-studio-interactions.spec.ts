@@ -154,7 +154,9 @@ test.describe("L2 Evidence Studio — interactions", () => {
 
     const tracesTab = page.locator('[role="tab"][id="ev-tab-traces"]');
     await tracesTab.click();
-    await expect(page).toHaveURL(/[?&]tab=traces/);
+    // tab=traces is the default and gets stripped from URL by stripSearchParams
+    await expect(page).not.toHaveURL(/[?&]tab=logs/);
+    await expect(page).not.toHaveURL(/[?&]tab=metrics/);
   });
 
   test("Q&A input accepts text and submits", async ({ page }) => {

@@ -1,8 +1,7 @@
 import { useEffect } from "react";
-import { useSearch } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import type { MetricsSurface, HypothesisGroup } from "../../../api/curated-types.js";
-import type { LensSearchParams } from "../../../routes/__root.js";
+import { useLensSearch } from "../../../routes/__root.js";
 
 type ClaimType = HypothesisGroup["type"];
 
@@ -119,7 +118,7 @@ interface LensMetricsViewProps {
 
 export function LensMetricsView({ surface, evidenceDensity = "rich", isActive = false }: LensMetricsViewProps) {
   const { t } = useTranslation();
-  const search = useSearch({ from: "__root__" }) as LensSearchParams;
+  const search = useLensSearch();
   const activeProofId = search.proof;
   const activeTargetId = search.targetId;
 

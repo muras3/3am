@@ -1,8 +1,7 @@
 import { useEffect, useState, useCallback } from "react";
-import { useSearch } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import type { TraceSurface, TraceGroup, TraceSpan } from "../../../api/curated-types.js";
-import type { LensSearchParams } from "../../../routes/__root.js";
+import { useLensSearch } from "../../../routes/__root.js";
 
 const STATUS_ICON: Record<string, string> = {
   error: "!",
@@ -254,7 +253,7 @@ export function LensTracesView({
 }: LensTracesViewProps) {
   const { t } = useTranslation();
   const [baselineVisible, setBaselineVisible] = useState(false);
-  const search = useSearch({ from: "__root__" }) as LensSearchParams;
+  const search = useLensSearch();
   const selectedTargetId = search.targetId;
 
   const toggleBaseline = useCallback(() => setBaselineVisible((v) => !v), []);
