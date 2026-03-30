@@ -44,7 +44,8 @@
     "backToIncidentFallback": "\u2190 Incident",
     "evidenceStudio": "Evidence Studio",
     "duration": "Duration: {{minutes}}m {{seconds}}s",
-    "durationHours": "{{hours}}h {{minutes}}m"
+    "durationHours": "{{hours}}h {{minutes}}m",
+    "help": "Help & Documentation"
   },
   "preferences": {
     "button": "Preferences",
@@ -239,6 +240,10 @@
     "loading": "Loading evidence\u2026",
     "error": "Failed to load evidence data.",
     "studioLabel": "Evidence Studio",
+    "guide": {
+      "message": "This view shows the evidence behind the diagnosis. Start with the Prepared Read above, then explore Traces, Metrics, and Logs.",
+      "dismiss": "Dismiss guide"
+    },
     "contextBarLabel": "Incident context",
     "contextBarFallback": "Evidence Studio is waiting for a diagnosis narrative.",
     "contextBarAction": "Action: {{text}}",

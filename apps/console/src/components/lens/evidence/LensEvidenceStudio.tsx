@@ -1,5 +1,5 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ApiError } from "../../../api/client.js";
 import { curatedMutations, curatedQueries } from "../../../api/queries.js";
@@ -29,6 +29,14 @@ export function LensEvidenceStudio({ incidentId }: Props) {
   const incidentQuery = useQuery(curatedQueries.extendedIncident(incidentId));
   const evidenceQuery = useQuery(curatedQueries.evidence(incidentId));
   const groundedQueryMutation = useMutation(curatedMutations.evidenceQuery(incidentId));
+
+  const [showGuide, setShowGuide] = useState(() => {
+    try { return localStorage.getItem("3am:ev-guide-dismissed") !== "1"; } catch { return true; }
+  });
+  const dismissGuide = useCallback(() => {
+    setShowGuide(false);
+    try { localStorage.setItem("3am:ev-guide-dismissed", "1"); } catch { /* noop */ }
+  }, []);
 
   useEffect(() => {
     setQueryDraft(search.query ?? "");
@@ -144,6 +152,15 @@ export function LensEvidenceStudio({ incidentId }: Props) {
       data-diagnosis-state={evidence.state.diagnosis}
     >
       <ContextBar incident={incident} />
+
+      {showGuide && (
+        <div className="lens-ev-guide" role="note">
+          <p className="lens-ev-guide-text">{t("evidence.guide.message")}</p>
+          <button type="button" className="lens-ev-guide-dismiss" onClick={dismissGuide} aria-label={t("evidence.guide.dismiss")}>
+            ×
+          </button>
+        </div>
+      )}
 
       {showStatusBanner && (
         <div className="lens-ev-empty-banner" role="status">

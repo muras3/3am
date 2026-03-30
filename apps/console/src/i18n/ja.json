@@ -44,7 +44,8 @@
     "backToIncidentFallback": "\u2190 Incident",
     "evidenceStudio": "Evidence Studio",
     "duration": "経過: {{minutes}}分{{seconds}}秒",
-    "durationHours": "{{hours}}時間{{minutes}}分"
+    "durationHours": "{{hours}}時間{{minutes}}分",
+    "help": "ヘルプとドキュメント"
   },
   "preferences": {
     "button": "Preferences",
@@ -239,6 +240,10 @@
     "loading": "エビデンスを読み込み中\u2026",
     "error": "エビデンスデータの読み込みに失敗しました。",
     "studioLabel": "Evidence Studio",
+    "guide": {
+      "message": "この画面は診断の根拠を表示します。まず上部の Prepared Read を確認し、Traces・Metrics・Logs を探索してください。",
+      "dismiss": "ガイドを閉じる"
+    },
     "contextBarLabel": "Incident context",
     "contextBarFallback": "Evidence Studio is waiting for a diagnosis narrative.",
     "contextBarAction": "Action: {{text}}",

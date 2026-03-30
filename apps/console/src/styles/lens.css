@@ -157,6 +157,24 @@
   margin-left: auto;
 }
 
+.level-header-help {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 1px solid var(--line);
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  color: var(--ink-3);
+  text-decoration: none;
+  transition: border-color 0.15s, color 0.15s;
+}
+
+.level-header-help:hover { border-color: var(--line-strong); color: var(--ink); }
+.level-header-help:focus-visible { outline: 2px solid var(--teal); outline-offset: 2px; }
+
 .level-header-prefs {
   position: relative;
 }
@@ -1624,6 +1642,40 @@
   max-width: 1100px;
   margin: 0 auto;
 }
+
+/* ── Evidence guide (first-visit) ─────────────────────────────── */
+.lens-ev-guide {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--teal-soft);
+  border: 1px solid color-mix(in srgb, var(--teal) 20%, transparent);
+  font-size: var(--fs-sm);
+  color: var(--ink-2);
+}
+
+.lens-ev-guide-text {
+  margin: 0;
+  flex: 1;
+}
+
+.lens-ev-guide-dismiss {
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  border: none;
+  background: transparent;
+  color: var(--ink-3);
+  font-size: var(--fs-lg);
+  line-height: 1;
+  cursor: pointer;
+  border-radius: var(--radius-xs);
+}
+
+.lens-ev-guide-dismiss:hover { color: var(--ink); }
+.lens-ev-guide-dismiss:focus-visible { outline: 2px solid var(--teal); outline-offset: 2px; }
 
 /* ── Context bar ───────────────────────────────────────────────── */
 .lens-ev-context-bar {
