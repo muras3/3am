@@ -11,16 +11,13 @@ import type {
   EvidenceResponse,
   Followup,
 } from "@3amoncall/core";
-import { generateEvidenceQuery } from "@3amoncall/diagnosis";
 import type { Incident } from "../storage/interface.js";
 import { classifyDiagnosisState } from "./diagnosis-state.js";
 import type { TelemetryStoreDriver } from "../telemetry/interface.js";
 import { buildCuratedEvidence } from "./curated-evidence.js";
 
-const EVIDENCE_QUERY_MODEL =
-  process.env["EVIDENCE_QUERY_MODEL"] ?? "claude-haiku-4-5-20251001";
-
 type DiagnosisState = "ready" | "pending" | "unavailable";
+type QueryIntent = "greeting" | "root_cause" | "metrics" | "logs" | "action" | "timeline" | "general";
 
 type RetrievedEvidence = {
   ref: EvidenceQueryRef;
@@ -28,6 +25,8 @@ type RetrievedEvidence = {
   summary: string;
   score: number;
 };
+
+type EvidenceQuerySegment = EvidenceQueryResponse["segments"][number];
 
 function determineDiagnosisState(incident: Incident): DiagnosisState {
   return classifyDiagnosisState(incident);
@@ -39,6 +38,22 @@ function tokenize(input: string): string[] {
     .replace(/[^a-z0-9\s]/g, " ")
     .split(/\s+/)
     .filter((token) => token.length >= 3);
+}
+
+function includesAny(input: string, patterns: string[]): boolean {
+  return patterns.some((pattern) => input.includes(pattern));
+}
+
+function classifyIntent(question: string): QueryIntent {
+  const normalized = question.trim().toLowerCase();
+  if (!normalized) return "general";
+  if (includesAny(normalized, ["こんにちは", "こんばんは", "おはよう", "hello", "hi ", "hey"])) return "greeting";
+  if (includesAny(normalized, ["根本原因", "root cause", "原因", "why"])) return "root_cause";
+  if (includesAny(normalized, ["メトリクス", "metric", "metrics", "latency", "error rate", "queue", "worker_pool", "throughput"])) return "metrics";
+  if (includesAny(normalized, ["ログ", "log", "logs", "warn", "error", "missing", "absence"])) return "logs";
+  if (includesAny(normalized, ["何をすべき", "どうすれば", "mitigation", "next action", "action", "remediation"])) return "action";
+  if (includesAny(normalized, ["いつ", "timeline", "start", "started", "time"])) return "timeline";
+  return "general";
 }
 
 function summarizeEvidence(evidence: EvidenceResponse["surfaces"]) {
@@ -86,6 +101,7 @@ function buildEvidenceCatalog(evidence: EvidenceResponse): RetrievedEvidence[] {
 }
 
 function retrieveEvidence(question: string, catalog: RetrievedEvidence[]): RetrievedEvidence[] {
+  const intent = classifyIntent(question);
   const tokens = new Set(tokenize(question));
   const boosted = catalog.map((entry, index) => {
     const haystack = `${entry.summary} ${entry.ref.id} ${entry.ref.kind}`.toLowerCase();
@@ -96,6 +112,10 @@ function retrieveEvidence(question: string, catalog: RetrievedEvidence[]): Retri
     if (entry.ref.kind === "span" && /trace|span|path|route/.test(question.toLowerCase())) score += 2;
     if (entry.ref.kind === "metric_group" && /metric|rate|latency|error|throughput|spike/.test(question.toLowerCase())) score += 2;
     if ((entry.ref.kind === "log_cluster" || entry.ref.kind === "absence") && /log|missing|retry|backoff|error/.test(question.toLowerCase())) score += 2;
+    if (intent === "metrics" && entry.surface === "metrics") score += 6;
+    if (intent === "logs" && entry.surface === "logs") score += 6;
+    if (intent === "timeline" && entry.surface === "traces") score += 4;
+    if (intent === "root_cause" && (entry.surface === "traces" || entry.surface === "logs")) score += 3;
     return { ...entry, score: score + Math.max(0, 1 - index * 0.01) };
   });
 
@@ -115,6 +135,212 @@ function retrieveEvidence(question: string, catalog: RetrievedEvidence[]): Retri
   return diverse.length > 0 ? diverse : catalog.slice(0, 4);
 }
 
+function firstTraceRef(evidence: EvidenceResponse): EvidenceQueryRef | null {
+  const trace = evidence.surfaces.traces.observed[0];
+  const span = trace?.spans[0];
+  return trace && span ? { kind: "span", id: `${trace.traceId}:${span.spanId}` } : null;
+}
+
+function buildTraceFact(evidence: EvidenceResponse): EvidenceQuerySegment | null {
+  const trace = evidence.surfaces.traces.observed[0];
+  const span = trace?.spans[0];
+  if (!trace || !span) return null;
+  return {
+    id: "seg_fact_trace_1",
+    kind: "fact",
+    text: `${trace.route} returned httpStatus=${trace.status} with ${trace.durationMs}ms duration on the observed failure path.`,
+    evidenceRefs: [{ kind: "span", id: `${trace.traceId}:${span.spanId}` }],
+  };
+}
+
+function buildMetricFact(evidence: EvidenceResponse): EvidenceQuerySegment | null {
+  const group = evidence.surfaces.metrics.hypotheses[0];
+  const metric = group?.metrics[0];
+  if (!group || !metric) return null;
+  return {
+    id: "seg_fact_metric_1",
+    kind: "fact",
+    text: `${group.claim} was abnormal in metrics: ${metric.name} observed ${metric.value} versus expected ${metric.expected}.`,
+    evidenceRefs: [{ kind: "metric_group", id: group.id }],
+  };
+}
+
+function buildMetricFactFromRetrieved(retrieved: RetrievedEvidence[]): EvidenceQuerySegment | null {
+  const metric = retrieved.find((entry) => entry.ref.kind === "metric_group");
+  if (!metric) return null;
+  return {
+    id: "seg_fact_metric_1",
+    kind: "fact",
+    text: `${metric.summary}. This was abnormal in metrics.`,
+    evidenceRefs: [metric.ref],
+  };
+}
+
+function buildLogFact(evidence: EvidenceResponse): EvidenceQuerySegment | null {
+  const claim = evidence.surfaces.logs.claims[0];
+  if (!claim) return null;
+  if (claim.type === "absence") {
+    return {
+      id: "seg_fact_log_absence_1",
+      kind: "fact",
+      text: `${claim.label}. ${claim.explanation ?? "That expected signal was not observed during the incident."}`,
+      evidenceRefs: [{ kind: "absence", id: claim.id }],
+    };
+  }
+  const sample = claim.entries[0]?.body;
+  return {
+    id: "seg_fact_log_1",
+    kind: "fact",
+    text: `${claim.label} produced ${claim.count} entries${sample ? `, for example: ${sample}.` : "."}`,
+    evidenceRefs: [{ kind: "log_cluster", id: claim.id }],
+  };
+}
+
+function buildInference(
+  incident: Incident,
+  evidenceRefs: EvidenceQueryRef[],
+  id = "seg_inference_1",
+): EvidenceQuerySegment | null {
+  if (!incident.diagnosisResult || evidenceRefs.length === 0) return null;
+  return {
+    id,
+    kind: "inference",
+    text: incident.diagnosisResult.summary.root_cause_hypothesis,
+    evidenceRefs,
+  };
+}
+
+function buildGreetingNoAnswer(
+  question: string,
+  evidence: EvidenceResponse,
+  incident: Incident,
+): EvidenceQueryResponse {
+  const fallbackRef = firstTraceRef(evidence) ?? { kind: "log_cluster", id: `${incident.incidentId}:greeting` };
+  return {
+    question,
+    status: "no_answer",
+    segments: [{
+      id: "seg_unknown_greeting",
+      kind: "unknown",
+      text: "Please ask about the incident, its evidence, the likely cause, or the next action to take.",
+      evidenceRefs: [fallbackRef],
+    }],
+    evidenceSummary: summarizeEvidence(evidence.surfaces),
+    followups: buildFollowups([], evidence, "root cause"),
+    noAnswerReason: "Please ask an incident-related question.",
+  };
+}
+
+function buildActionAnswer(
+  question: string,
+  incident: Incident,
+  evidence: EvidenceResponse,
+): EvidenceQueryResponse {
+  const ref = firstTraceRef(evidence) ?? { kind: "log_cluster", id: `${incident.incidentId}:action` };
+  return {
+    question,
+    status: "answered",
+    segments: [
+      {
+        id: "seg_fact_action_1",
+        kind: "fact",
+        text: incident.diagnosisResult?.recommendation.immediate_action ?? "Use the evidence below to decide the next mitigation step.",
+        evidenceRefs: [ref],
+      },
+      {
+        id: "seg_inference_action_1",
+        kind: "inference",
+        text: incident.diagnosisResult?.recommendation.action_rationale_short ?? "This action reduces the current blast radius first.",
+        evidenceRefs: [ref],
+      },
+    ],
+    evidenceSummary: summarizeEvidence(evidence.surfaces),
+    followups: buildFollowups([], evidence, question),
+  };
+}
+
+function buildTimelineAnswer(
+  question: string,
+  incident: Incident,
+  evidence: EvidenceResponse,
+): EvidenceQueryResponse {
+  const ref = firstTraceRef(evidence) ?? { kind: "log_cluster", id: `${incident.incidentId}:timeline` };
+  return {
+    question,
+    status: "answered",
+    segments: [{
+      id: "seg_fact_timeline_1",
+      kind: "fact",
+      text: `The visible incident window runs from ${incident.packet.window.detect} to ${incident.packet.window.end}.`,
+      evidenceRefs: [ref],
+    }],
+    evidenceSummary: summarizeEvidence(evidence.surfaces),
+    followups: buildFollowups([], evidence, question),
+  };
+}
+
+function buildIntentAwareAnswer(
+  question: string,
+  incident: Incident,
+  evidence: EvidenceResponse,
+  retrieved: RetrievedEvidence[],
+): EvidenceQueryResponse {
+  const intent = classifyIntent(question);
+  if (intent === "greeting") return buildGreetingNoAnswer(question, evidence, incident);
+  if (intent === "action") return buildActionAnswer(question, incident, evidence);
+  if (intent === "timeline") return buildTimelineAnswer(question, incident, evidence);
+
+  const segments: EvidenceQuerySegment[] = [];
+  if (intent === "metrics") {
+    const metricFact = buildMetricFact(evidence) ?? buildMetricFactFromRetrieved(retrieved);
+    if (!metricFact) {
+      return buildDeterministicNoAnswer(
+        question,
+        evidence,
+        "The current curated metrics do not contain enough linked evidence to answer this metrics-specific question responsibly.",
+      );
+    }
+    segments.push(metricFact);
+  } else if (intent === "logs") {
+    const logFact = buildLogFact(evidence);
+    if (logFact) segments.push(logFact);
+    const absence = evidence.surfaces.logs.claims.find((claim) => claim.type === "absence");
+    if (absence) {
+      segments.push({
+        id: "seg_fact_log_2",
+        kind: "fact",
+        text: `${absence.label}. ${absence.explanation ?? "That missing signal narrows the likely failure mode."}`,
+        evidenceRefs: [{ kind: "absence", id: absence.id }],
+      });
+    }
+  } else {
+    const traceFact = buildTraceFact(evidence);
+    if (traceFact) segments.push(traceFact);
+    const metricFact = buildMetricFact(evidence);
+    if (metricFact) segments.push(metricFact);
+  }
+
+  const inferenceRefs = segments.flatMap((segment) => segment.evidenceRefs).slice(0, 2);
+  const inference = buildInference(incident, inferenceRefs, intent === "root_cause" ? "seg_inference_root_1" : "seg_inference_support_1");
+  if (inference) segments.push(inference);
+
+  if (segments.length === 0) {
+    return buildDeterministicNoAnswer(
+      question,
+      evidence,
+      "The current curated evidence does not contain enough linked material to answer this question responsibly.",
+    );
+  }
+
+  return {
+    question,
+    status: "answered",
+    segments,
+    evidenceSummary: summarizeEvidence(evidence.surfaces),
+    followups: buildFollowups(retrieved, evidence, question),
+  };
+}
+
 function buildDeterministicNoAnswer(
   question: string,
   evidence: EvidenceResponse,
@@ -127,60 +353,6 @@ function buildDeterministicNoAnswer(
     evidenceSummary: summarizeEvidence(evidence.surfaces),
     followups: buildFollowups([], evidence, question),
     noAnswerReason: reason,
-  };
-}
-
-function buildFallbackAnswer(
-  question: string,
-  incident: Incident,
-  evidence: EvidenceResponse,
-  retrieved: RetrievedEvidence[],
-): EvidenceQueryResponse {
-  const segments: EvidenceQueryResponse["segments"] = [];
-
-  const firstFact = retrieved[0];
-  if (firstFact) {
-    segments.push({
-      id: "seg_fact_1",
-      kind: "fact",
-      text: firstFact.summary.split(".")[0] ?? firstFact.summary,
-      evidenceRefs: [firstFact.ref],
-    });
-  }
-
-  const secondFact = retrieved.find((item) => item.ref.kind !== firstFact?.ref.kind);
-  if (secondFact) {
-    segments.push({
-      id: "seg_fact_2",
-      kind: "fact",
-      text: secondFact.summary.split(".")[0] ?? secondFact.summary,
-      evidenceRefs: [secondFact.ref],
-    });
-  }
-
-  if (incident.diagnosisResult && retrieved.length > 0) {
-    segments.push({
-      id: "seg_inference_1",
-      kind: "inference",
-      text: incident.diagnosisResult.summary.root_cause_hypothesis,
-      evidenceRefs: retrieved.slice(0, 2).map((item) => item.ref),
-    });
-  }
-
-  if (segments.length === 0) {
-    return buildDeterministicNoAnswer(
-      question,
-      evidence,
-      "The current curated evidence does not support a grounded answer yet.",
-    );
-  }
-
-  return {
-    question,
-    status: "answered",
-    segments,
-    evidenceSummary: summarizeEvidence(evidence.surfaces),
-    followups: buildFollowups(retrieved, evidence, question),
   };
 }
 
@@ -270,29 +442,5 @@ export async function buildEvidenceQueryAnswer(
     );
   }
 
-  try {
-    const generated = await generateEvidenceQuery(
-      {
-        question,
-        diagnosis: incident.diagnosisResult
-          ? {
-              whatHappened: incident.diagnosisResult.summary.what_happened,
-              rootCauseHypothesis: incident.diagnosisResult.summary.root_cause_hypothesis,
-              immediateAction: incident.diagnosisResult.recommendation.immediate_action,
-              causalChain: incident.diagnosisResult.reasoning.causal_chain.map((step) => step.title),
-            }
-          : null,
-        evidence: retrieved.map(({ ref, surface, summary }) => ({ ref, surface, summary })),
-      },
-      { model: EVIDENCE_QUERY_MODEL },
-    );
-
-    return {
-      ...generated,
-      evidenceSummary: summarizeEvidence(curatedEvidence.surfaces),
-      followups: buildFollowups(retrieved, curatedEvidence, question),
-    };
-  } catch {
-    return buildFallbackAnswer(question, incident, curatedEvidence, retrieved);
-  }
+  return buildIntentAwareAnswer(question, incident, curatedEvidence, retrieved);
 }
