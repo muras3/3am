@@ -11,7 +11,6 @@ export type NarrativeMeta = {
 };
 
 const MAX_STRING = 2000;
-const MAX_HEADLINE = 120;
 const MAX_BINDINGS = 10;
 const MAX_FOLLOWUPS = 8;
 const MAX_ABSENCE = 10;
@@ -59,8 +58,32 @@ function validateEvidenceRefIds(
   }
 }
 
+function normalizeEvidenceRefIds(narrative: ConsoleNarrative): ConsoleNarrative {
+  const normalizeId = (kind: string, id: string): string => {
+    const prefix = `${kind}:`;
+    return id.startsWith(prefix) ? id.slice(prefix.length) : id;
+  };
+
+  return {
+    ...narrative,
+    qa: {
+      ...narrative.qa,
+      answerEvidenceRefs: narrative.qa.answerEvidenceRefs.map((ref) => ({
+        ...ref,
+        id: normalizeId(ref.kind, ref.id),
+      })),
+      evidenceBindings: narrative.qa.evidenceBindings.map((binding) => ({
+        ...binding,
+        evidenceRefs: binding.evidenceRefs.map((ref) => ({
+          ...ref,
+          id: normalizeId(ref.kind, ref.id),
+        })),
+      })),
+    },
+  };
+}
+
 function validateOutputSize(narrative: ConsoleNarrative): void {
-  checkStr("headline", narrative.headline, MAX_HEADLINE);
   checkStr("whyThisAction", narrative.whyThisAction, MAX_STRING);
   checkStr("confidenceSummary.basis", narrative.confidenceSummary.basis, MAX_STRING);
   checkStr("confidenceSummary.risk", narrative.confidenceSummary.risk, MAX_STRING);
@@ -148,7 +171,7 @@ export function parseNarrative(
     },
   };
 
-  const result = ConsoleNarrativeSchema.parse(withMeta);
+  const result = normalizeEvidenceRefIds(ConsoleNarrativeSchema.parse(withMeta));
   validateOutputSize(result);
   validateEvidenceRefIds(result, context);
 

@@ -287,7 +287,7 @@ describe('buildCuratedEvidence', () => {
   it('builds deterministic qa and proof-card placeholders when narrative is missing', async () => {
     const result = await buildCuratedEvidence(
       makeIncident({
-        diagnosisDispatchedAt: '2024-01-01T00:02:00Z',
+        diagnosisDispatchedAt: new Date().toISOString(),
       }),
       makeMockStore(),
     )

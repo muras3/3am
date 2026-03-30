@@ -216,9 +216,14 @@ export class SQLiteAdapter implements StorageDriver {
   }
 
   async appendDiagnosis(id: string, result: DiagnosisResult): Promise<void> {
+    const now = new Date().toISOString();
     await this.db
       .update(incidents)
-      .set({ diagnosisResult: JSON.stringify(result), updatedAt: new Date().toISOString() })
+      .set({
+        diagnosisResult: JSON.stringify(result),
+        diagnosisDispatchedAt: null,
+        updatedAt: now,
+      })
       .where(eq(incidents.incidentId, id));
   }
 
@@ -338,15 +343,16 @@ export class SQLiteAdapter implements StorageDriver {
     });
   }
 
-  async claimDiagnosisDispatch(incidentId: string): Promise<boolean> {
+  async claimDiagnosisDispatch(incidentId: string, leaseMs = 15 * 60_000): Promise<boolean> {
     const now = new Date().toISOString();
+    const staleBefore = new Date(Date.now() - leaseMs).toISOString();
     const result = this.db
       .update(incidents)
       .set({ diagnosisDispatchedAt: now, updatedAt: now })
       .where(
         and(
           eq(incidents.incidentId, incidentId),
-          sql`${incidents.diagnosisDispatchedAt} IS NULL`,
+          sql`(${incidents.diagnosisDispatchedAt} IS NULL OR ${incidents.diagnosisDispatchedAt} < ${staleBefore})`,
         ),
       )
       .run();

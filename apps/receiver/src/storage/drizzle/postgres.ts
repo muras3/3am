@@ -263,7 +263,7 @@ export class PostgresAdapter implements StorageDriver {
   async appendDiagnosis(id: string, result: DiagnosisResult): Promise<void> {
     await this.db
       .update(pgIncidents)
-      .set({ diagnosisResult: result, updatedAt: new Date() })
+      .set({ diagnosisResult: result, diagnosisDispatchedAt: null, updatedAt: new Date() })
       .where(eq(pgIncidents.incidentId, id));
   }
 
@@ -371,14 +371,15 @@ export class PostgresAdapter implements StorageDriver {
     });
   }
 
-  async claimDiagnosisDispatch(incidentId: string): Promise<boolean> {
+  async claimDiagnosisDispatch(incidentId: string, leaseMs = 15 * 60_000): Promise<boolean> {
+    const staleBefore = new Date(Date.now() - leaseMs).toISOString();
     const rows = await this.db
       .update(pgIncidents)
       .set({ diagnosisDispatchedAt: new Date(), updatedAt: new Date() })
       .where(
         and(
           eq(pgIncidents.incidentId, incidentId),
-          drizzleSql`${pgIncidents.diagnosisDispatchedAt} IS NULL`,
+          drizzleSql`(${pgIncidents.diagnosisDispatchedAt} IS NULL OR ${pgIncidents.diagnosisDispatchedAt} < ${staleBefore})`,
         ),
       )
       .returning({ incidentId: pgIncidents.incidentId });

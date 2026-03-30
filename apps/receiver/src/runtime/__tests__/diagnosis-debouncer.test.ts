@@ -240,7 +240,7 @@ describe("DB-level dispatch guard (cross-instance idempotency)", () => {
     checkGenerationThreshold("inc_1", 50, storage, runner, { generationThreshold: 50 });
     await vi.advanceTimersByTimeAsync(0);
 
-    expect(storage.claimDiagnosisDispatch).toHaveBeenCalledWith("inc_1");
+    expect(storage.claimDiagnosisDispatch).toHaveBeenCalledWith("inc_1", expect.any(Number));
     expect(runner.run).not.toHaveBeenCalled();
   });
 
@@ -252,7 +252,7 @@ describe("DB-level dispatch guard (cross-instance idempotency)", () => {
     checkGenerationThreshold("inc_1", 50, storage, runner, { generationThreshold: 50 });
     await vi.advanceTimersByTimeAsync(0);
 
-    expect(storage.claimDiagnosisDispatch).toHaveBeenCalledWith("inc_1");
+    expect(storage.claimDiagnosisDispatch).toHaveBeenCalledWith("inc_1", expect.any(Number));
     expect(runner.run).toHaveBeenCalledWith("inc_1");
   });
 
@@ -278,7 +278,7 @@ describe("claim release on diagnosis failure", () => {
 
     await expect(runIfNeeded("inc_1", storage, runner)).rejects.toThrow("ANTHROPIC_API_KEY missing");
 
-    expect(storage.claimDiagnosisDispatch).toHaveBeenCalledWith("inc_1");
+    expect(storage.claimDiagnosisDispatch).toHaveBeenCalledWith("inc_1", expect.any(Number));
     expect(storage.releaseDiagnosisDispatch).toHaveBeenCalledWith("inc_1");
   });
 
@@ -313,7 +313,7 @@ describe("claim release on diagnosis failure", () => {
 
     await runIfNeeded("inc_1", storage, runner);
 
-    expect(storage.claimDiagnosisDispatch).toHaveBeenCalledWith("inc_1");
+    expect(storage.claimDiagnosisDispatch).toHaveBeenCalledWith("inc_1", expect.any(Number));
     expect(storage.releaseDiagnosisDispatch).toHaveBeenCalledWith("inc_1");
   });
 
@@ -342,7 +342,7 @@ describe("runIfNeeded (exported for immediate path)", () => {
     await runIfNeeded("inc_1", storage, runner);
 
     expect(storage.getIncident).toHaveBeenCalledWith("inc_1");
-    expect(storage.claimDiagnosisDispatch).toHaveBeenCalledWith("inc_1");
+    expect(storage.claimDiagnosisDispatch).toHaveBeenCalledWith("inc_1", expect.any(Number));
     expect(runner.run).toHaveBeenCalledWith("inc_1");
   });
 

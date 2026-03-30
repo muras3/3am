@@ -1269,7 +1269,7 @@ describe('L2 Evidence Contracts', () => {
 
     it('returns diagnosis=pending when dispatched but no result', async () => {
       const incident = makeIncident({
-        diagnosisDispatchedAt: '2024-01-01T00:02:00Z',
+        diagnosisDispatchedAt: new Date().toISOString(),
       })
 
       const result = await buildCuratedEvidence(incident, makeMockStore())
@@ -1345,7 +1345,7 @@ describe('L2 Evidence Contracts', () => {
 
     it('QA answer is not empty string when noAnswerReason is set', async () => {
       const incident = makeIncident({
-        diagnosisDispatchedAt: '2024-01-01T00:02:00Z',
+        diagnosisDispatchedAt: new Date().toISOString(),
       })
 
       const result = await buildCuratedEvidence(incident, makeMockStore())

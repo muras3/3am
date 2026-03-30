@@ -86,17 +86,12 @@ export function assertConsoleNarrative(
     }
   }
 
-  // 7. Headline length
-  if (n.headline.length > 120) {
-    failures.push(`headline exceeds 120 chars: ${n.headline.length}`);
-  }
-
-  // 8. Q&A answer non-empty when noAnswerReason is null
+  // 7. Q&A answer non-empty when noAnswerReason is null
   if (n.qa.noAnswerReason === null && !n.qa.answer.trim()) {
     failures.push("Q&A answer is empty but noAnswerReason is null");
   }
 
-  // 9. Unanswerable case: both answer-level and claim-level refs should be empty
+  // 8. Unanswerable case: both answer-level and claim-level refs should be empty
   if (n.qa.noAnswerReason !== null) {
     if (n.qa.answerEvidenceRefs.length > 0) {
       failures.push("noAnswerReason is set but answerEvidenceRefs is non-empty");

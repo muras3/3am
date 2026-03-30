@@ -13,6 +13,7 @@ import type {
 } from "@3amoncall/core";
 import { generateEvidenceQuery } from "@3amoncall/diagnosis";
 import type { Incident } from "../storage/interface.js";
+import { classifyDiagnosisState } from "./diagnosis-state.js";
 import type { TelemetryStoreDriver } from "../telemetry/interface.js";
 import { buildCuratedEvidence } from "./curated-evidence.js";
 
@@ -29,9 +30,7 @@ type RetrievedEvidence = {
 };
 
 function determineDiagnosisState(incident: Incident): DiagnosisState {
-  if (incident.diagnosisDispatchedAt) return "pending";
-  if (incident.diagnosisResult) return "ready";
-  return "unavailable";
+  return classifyDiagnosisState(incident);
 }
 
 function tokenize(input: string): string[] {

@@ -25,6 +25,7 @@ import type {
 import { buildTraceSurface } from './trace-surface.js'
 import { buildMetricsSurface } from './metrics-surface.js'
 import { buildLogsSurface } from './logs-surface.js'
+import { classifyDiagnosisState } from './diagnosis-state.js'
 import { buildReasoningStructure } from './reasoning-structure-builder.js'
 
 export async function buildCuratedEvidence(
@@ -70,12 +71,7 @@ export async function buildCuratedEvidence(
     }
   }
 
-  const diagnosis: EvidenceResponse['state']['diagnosis'] =
-    incident.diagnosisDispatchedAt
-      ? 'pending'
-      : incident.diagnosisResult
-        ? 'ready'
-        : 'unavailable'
+  const diagnosis: EvidenceResponse['state']['diagnosis'] = classifyDiagnosisState(incident)
 
   const baselineConfidence = traceResult.surface.baseline.confidence
   const baseline: EvidenceResponse['state']['baseline'] =

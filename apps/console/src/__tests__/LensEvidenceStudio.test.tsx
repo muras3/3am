@@ -1,4 +1,4 @@
-import { render, screen, fireEvent } from "@testing-library/react";
+import { act, render, screen, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -770,6 +770,37 @@ describe("LensEvidenceStudio — degraded states", () => {
     renderStudio("inc_0892", qc);
     expect(getStatusBanner()).not.toBeNull();
     expect(document.querySelectorAll(".lens-ev-empty-list li")).toHaveLength(6);
+  });
+
+  it("polls evidence while diagnosis is ready but narrative is not attached yet", async () => {
+    vi.useFakeTimers();
+    const qc = makeClient();
+    const invalidateSpy = vi.spyOn(qc, "invalidateQueries");
+    qc.setQueryData(
+      curatedQueries.extendedIncident("inc_0892").queryKey,
+      extendedIncidentReady,
+    );
+    qc.setQueryData(
+      curatedQueries.evidence("inc_0892").queryKey,
+      {
+        ...evidenceReady,
+        qa: {
+          ...evidenceReady.qa,
+          status: "no_answer" as const,
+          noAnswerReason: "Diagnosis narrative is not attached to this incident yet.",
+        },
+      },
+    );
+
+    renderStudio("inc_0892", qc);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1600);
+    });
+
+    expect(invalidateSpy).toHaveBeenCalledWith({
+      queryKey: curatedQueries.evidence("inc_0892").queryKey,
+    });
+    vi.useRealTimers();
   });
 
   it("pending fixture data attributes: data-evidence-density='empty', data-diagnosis-state='pending'", () => {

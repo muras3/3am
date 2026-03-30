@@ -193,7 +193,7 @@ describe('buildIncidentDetailExtension', () => {
 
     it('returns "pending" when dispatched but no result', async () => {
       const incident = makeIncident({
-        diagnosisDispatchedAt: new Date(BASE_TIME_MS + 30_000).toISOString(),
+        diagnosisDispatchedAt: new Date().toISOString(),
       })
 
       const result = await buildIncidentDetailExtension(incident, telemetryStore)

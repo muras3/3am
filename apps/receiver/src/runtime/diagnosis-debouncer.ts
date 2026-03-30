@@ -1,5 +1,6 @@
 import type { StorageDriver } from "../storage/interface.js";
 import type { DiagnosisRunner } from "./diagnosis-runner.js";
+import { DEFAULT_DIAGNOSIS_LEASE_MS } from "./diagnosis-dispatch.js";
 
 export interface DiagnosisConfig {
   /** Fire when packet generation >= this value. 0 = disabled. */
@@ -9,6 +10,7 @@ export interface DiagnosisConfig {
 }
 
 type WaitUntilFn = (promise: Promise<unknown>) => void;
+export type DiagnosisRunOutcome = "succeeded" | "failed" | "skipped";
 
 /**
  * In-flight guard: tracks incidentIds that currently have a diagnosis run
@@ -135,15 +137,16 @@ export async function runClaimedDiagnosis(
   incidentId: string,
   storage: StorageDriver,
   runner: DiagnosisRunner,
-): Promise<void> {
+): Promise<Exclude<DiagnosisRunOutcome, "skipped">> {
   if (inFlight.has(incidentId)) {
     await storage.releaseDiagnosisDispatch(incidentId);
-    return;
+    return "failed";
   }
 
   inFlight.add(incidentId);
   try {
-    await runner.run(incidentId);
+    const ok = await runner.run(incidentId);
+    return ok ? "succeeded" : "failed";
   } finally {
     await storage.releaseDiagnosisDispatch(incidentId);
     inFlight.delete(incidentId);
@@ -165,18 +168,18 @@ export async function runIfNeeded(
   incidentId: string,
   storage: StorageDriver,
   runner: DiagnosisRunner,
-): Promise<void> {
-  if (inFlight.has(incidentId)) return; // Another call is already running in this process.
+): Promise<DiagnosisRunOutcome> {
+  if (inFlight.has(incidentId)) return "skipped"; // Another call is already running in this process.
 
   const incident = await storage.getIncident(incidentId);
-  if (!incident) return;
-  if (incident.diagnosisResult) return; // Already diagnosed — skip.
+  if (!incident) return "skipped";
+  if (incident.diagnosisResult) return "skipped"; // Already diagnosed — skip.
 
   // DB-level atomic claim: prevents cross-instance duplicate dispatch.
-  const claimed = await storage.claimDiagnosisDispatch(incidentId);
-  if (!claimed) return; // Another instance already claimed — skip.
+  const claimed = await storage.claimDiagnosisDispatch(incidentId, DEFAULT_DIAGNOSIS_LEASE_MS);
+  if (!claimed) return "skipped"; // Another instance already claimed — skip.
 
-  await runClaimedDiagnosis(incidentId, storage, runner);
+  return runClaimedDiagnosis(incidentId, storage, runner);
 }
 
 function sleep(ms: number): Promise<void> {

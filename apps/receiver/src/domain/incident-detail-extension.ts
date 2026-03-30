@@ -15,6 +15,7 @@ import type { IncidentDetailExtension, ExtendedIncident } from '@3amoncall/core'
 import { computeBlastRadius } from './blast-radius.js'
 import { computeConfidencePrimitives } from './confidence-primitives.js'
 import { computeEvidenceCounts } from './evidence-counts.js'
+import { classifyDiagnosisState } from './diagnosis-state.js'
 import { BASELINE_MULTIPLIER } from '../telemetry/constants.js'
 
 // ── Constants ─────────────────────────────────────────────────────────────
@@ -237,14 +238,6 @@ function buildBaselineFilter(scope: TelemetryScope): TelemetryQueryFilter {
 }
 
 // ── State classifiers ────────────────────────────────────────────────────
-
-function classifyDiagnosisState(
-  incident: Incident,
-): 'ready' | 'pending' | 'unavailable' {
-  if (incident.diagnosisDispatchedAt) return 'pending'
-  if (incident.diagnosisResult) return 'ready'
-  return 'unavailable'
-}
 
 function classifyBaselineState(
   baselineSampleCount: number,

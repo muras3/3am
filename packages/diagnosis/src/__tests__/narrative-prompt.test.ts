@@ -45,8 +45,8 @@ describe("buildNarrativePrompt", () => {
     expect(prompt).toContain('"noAnswerReason"');
   });
 
-  it("asks for a structured headline with ≤60-char title phrase", () => {
-    expect(prompt).toContain("The title phrase (everything before the first period) MUST be ≤60 characters");
+  it("asks for a structured headline with a short title phrase", () => {
+    expect(prompt).toContain("The title phrase (everything before the first period) should usually be ≤60 characters");
     expect(prompt).toContain("scannable at a glance");
     expect(prompt).toContain("No timestamps, no UUIDs, no trace IDs in the title phrase");
     expect(prompt).toContain("GOOD:");

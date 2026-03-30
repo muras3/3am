@@ -62,9 +62,10 @@ describe("parseNarrative", () => {
     );
   });
 
-  it("rejects headline over 120 chars", () => {
-    const bad = { ...validOutput, headline: "x".repeat(121) };
-    expect(() => parseNarrative(JSON.stringify(bad), meta, rsFixture)).toThrow();
+  it("accepts headline over 120 chars", () => {
+    const longHeadline = { ...validOutput, headline: "x".repeat(180) };
+    const result = parseNarrative(JSON.stringify(longHeadline), meta, rsFixture);
+    expect(result.headline).toHaveLength(180);
   });
 
   it("rejects invented evidence ref IDs", () => {
@@ -80,6 +81,27 @@ describe("parseNarrative", () => {
     expect(() => parseNarrative(JSON.stringify(bad), meta, rsFixture)).toThrow(
       "NarrativeValidationError",
     );
+  });
+
+  it("normalizes kind-prefixed evidence ref IDs before validation", () => {
+    const prefixed = {
+      ...validOutput,
+      qa: {
+        ...validOutput.qa,
+        answerEvidenceRefs: [
+          { kind: "span", id: "span:tid:a3f8:sid:pay429" },
+          { kind: "metric", id: "metric:worker_pool_in_use::checkout-orchestrator" },
+        ],
+        evidenceBindings: [
+          { claim: "Payment API rate limit exceeded", evidenceRefs: [{ kind: "span", id: "span:tid:a3f8:sid:pay429" }] },
+          { claim: "Worker pool saturated from retries", evidenceRefs: [{ kind: "metric", id: "metric:worker_pool_in_use::checkout-orchestrator" }] },
+        ],
+      },
+    };
+
+    const result = parseNarrative(JSON.stringify(prefixed), meta, rsFixture);
+    expect(result.qa.answerEvidenceRefs[0]?.id).toBe("tid:a3f8:sid:pay429");
+    expect(result.qa.answerEvidenceRefs[1]?.id).toBe("worker_pool_in_use::checkout-orchestrator");
   });
 
   it("accepts empty evidenceBindings when noAnswerReason is set", () => {
