@@ -1,4 +1,4 @@
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ApiError } from "../../../api/client.js";
@@ -20,6 +20,7 @@ interface Props {
 
 export function LensEvidenceStudio({ incidentId }: Props) {
   const { t } = useTranslation();
+  const queryClient = useQueryClient();
   const search = useLensSearch();
   const tab = search.tab ?? "traces";
   const [queryDraft, setQueryDraft] = useState(search.query ?? "");
@@ -29,6 +30,10 @@ export function LensEvidenceStudio({ incidentId }: Props) {
   const incidentQuery = useQuery(curatedQueries.extendedIncident(incidentId));
   const evidenceQuery = useQuery(curatedQueries.evidence(incidentId));
   const groundedQueryMutation = useMutation(curatedMutations.evidenceQuery(incidentId));
+  const shouldPollForNarrativeAttachment =
+    !import.meta.env?.VITE_USE_FIXTURES
+    && incidentQuery.data?.state.diagnosis === "ready"
+    && evidenceQuery.data?.qa.noAnswerReason === "Diagnosis narrative is not attached to this incident yet.";
 
   const [showGuide, setShowGuide] = useState(() => {
     try { return localStorage.getItem("3am:ev-guide-dismissed") !== "1"; } catch { return true; }
@@ -42,6 +47,18 @@ export function LensEvidenceStudio({ incidentId }: Props) {
     setQueryDraft(search.query ?? "");
     setHistory([]);
   }, [incidentId, search.query]);
+
+  useEffect(() => {
+    if (!shouldPollForNarrativeAttachment) return;
+
+    const timer = window.setInterval(() => {
+      void queryClient.invalidateQueries({ queryKey: curatedQueries.evidence(incidentId).queryKey });
+    }, 1500);
+
+    return () => {
+      window.clearInterval(timer);
+    };
+  }, [incidentId, queryClient, shouldPollForNarrativeAttachment]);
 
   if (incidentQuery.isLoading || evidenceQuery.isLoading) {
     return (
