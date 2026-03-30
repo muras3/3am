@@ -87,17 +87,45 @@ export function LensShell() {
     return () => clearTimeout(timer);
   }, [level]);
 
-  // Escape key: go back one level
+  // Keyboard shortcuts
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
+      // Skip when focus is in an input/textarea
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+
       if (e.key === "Escape" && level > 0) {
         e.preventDefault();
         zoomTo((level - 1) as LensLevel);
+        return;
+      }
+
+      // Level 0: j/k to navigate incident rows, Enter to zoom
+      if (level === 0 && (e.key === "j" || e.key === "k")) {
+        e.preventDefault();
+        const rows = Array.from(document.querySelectorAll<HTMLElement>(".incident-row[role='button']"));
+        if (rows.length === 0) return;
+        const focused = document.activeElement as HTMLElement;
+        const idx = rows.indexOf(focused);
+        const next = e.key === "j" ? Math.min(idx + 1, rows.length - 1) : Math.max(idx - 1, 0);
+        rows[idx === -1 ? 0 : next]?.focus();
+        return;
+      }
+
+      // Level 2: 1/2/3 to switch evidence tabs
+      if (level === 2 && (e.key === "1" || e.key === "2" || e.key === "3")) {
+        e.preventDefault();
+        const tabs = ["traces", "metrics", "logs"] as const;
+        const targetTab = tabs[Number(e.key) - 1];
+        if (targetTab) {
+          void navigate({ to: "/", search: { ...search, tab: targetTab }, replace: true });
+        }
+        return;
       }
     }
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [level, zoomTo]);
+  }, [level, zoomTo, navigate, search]);
 
   return (
     <div className="lens-world">
