@@ -20,6 +20,26 @@ function parseJson(raw: string): unknown {
   }
 }
 
+function withSegmentIds(parsedSegments: unknown): unknown {
+  if (!Array.isArray(parsedSegments)) return parsedSegments;
+
+  return parsedSegments.map((segment, index) => {
+    if (!segment || typeof segment !== "object" || Array.isArray(segment)) {
+      return segment;
+    }
+
+    const record = segment as Record<string, unknown>;
+    if (typeof record["id"] === "string" && record["id"].length > 0) {
+      return record;
+    }
+
+    return {
+      ...record,
+      id: `seg_${index + 1}`,
+    };
+  });
+}
+
 export function parseEvidenceQuery(
   raw: string,
   meta: EvidenceQueryParseMeta,
@@ -29,7 +49,7 @@ export function parseEvidenceQuery(
   const withQuestion = {
     question: meta.question,
     status: parsed["status"],
-    segments: parsed["segments"] ?? [],
+    segments: withSegmentIds(parsed["segments"] ?? []),
     evidenceSummary: { traces: 0, metrics: 0, logs: 0 },
     followups: [],
     noAnswerReason: parsed["noAnswerReason"],

@@ -27,6 +27,22 @@ describe("parseEvidenceQuery", () => {
     expect(result.segments[0]?.kind).toBe("fact");
   });
 
+  it("fills missing segment ids from model output", () => {
+    const raw = JSON.stringify({
+      status: "answered",
+      segments: [
+        {
+          kind: "fact",
+          text: "Checkout spans are returning 504.",
+          evidenceRefs: [{ kind: "span", id: "trace-1:span-1" }],
+        },
+      ],
+    });
+
+    const result = parseEvidenceQuery(raw, { question: "What failed?" }, allowedRefs);
+    expect(result.segments[0]?.id).toBe("seg_1");
+  });
+
   it("rejects invented evidence refs", () => {
     const raw = JSON.stringify({
       status: "answered",
