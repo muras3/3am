@@ -28,9 +28,14 @@ export default defineWorkersConfig({
         main: "./src/__tests__/workers/fixtures/receiver-worker.ts",
         isolatedStorage: true,
         singleWorker: true,
+        wrangler: {
+          configPath: "./wrangler.toml",
+        },
         miniflare: {
           compatibilityDate: "2025-03-01",
           compatibilityFlags: ["nodejs_compat_v2"],
+          RECEIVER_AUTH_TOKEN: "workers-test-token",
+          ALLOW_INSECURE_DEV_MODE: "true",
         },
       },
     },

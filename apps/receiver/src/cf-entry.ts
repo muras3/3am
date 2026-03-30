@@ -69,6 +69,22 @@ interface RuntimeServices {
 
 let cachedRuntime: Promise<RuntimeServices> | null = null;
 let cachedDbId: string | null = null;
+let cachedEnvSignature: string | null = null;
+
+export function _resetRuntimeForTest(): void {
+  cachedRuntime = null;
+  cachedDbId = null;
+  cachedEnvSignature = null;
+}
+
+function getEnvSignature(env: Env): string {
+  return JSON.stringify({
+    authToken: env.RECEIVER_AUTH_TOKEN ?? "",
+    allowInsecure: env.ALLOW_INSECURE_DEV_MODE ?? "",
+    anthropicApiKey: env.ANTHROPIC_API_KEY ?? "",
+    diagnosisQueue: Boolean(env.DIAGNOSIS_QUEUE),
+  });
+}
 
 /**
  * Populate process.env from CF bindings so that createApp() and other modules
@@ -88,9 +104,11 @@ function populateProcessEnv(env: Env): void {
 async function getRuntime(env: Env): Promise<RuntimeServices> {
   // Re-init if D1 binding identity changes (e.g. wrangler dev restart)
   const dbId = (env.DB as unknown as { _id?: string })?._id ?? "default";
-  if (cachedRuntime && cachedDbId === dbId) return cachedRuntime;
+  const envSignature = getEnvSignature(env);
+  if (cachedRuntime && cachedDbId === dbId && cachedEnvSignature === envSignature) return cachedRuntime;
 
   cachedDbId = dbId;
+  cachedEnvSignature = envSignature;
   cachedRuntime = (async () => {
     populateProcessEnv(env);
 
