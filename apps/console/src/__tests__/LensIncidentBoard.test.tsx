@@ -1,4 +1,4 @@
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, it, expect, vi } from "vitest";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { LensIncidentBoard } from "../components/lens/board/LensIncidentBoard.js";
@@ -209,7 +209,11 @@ describe("LensIncidentBoard — diagnosis ready", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     renderBoard("inc_0892", vi.fn(), qc);
+    // First click opens the confirmation dialog
     fireEvent.click(screen.getByRole("button", { name: /Close incident/i }));
+    // Then click the confirm button inside the dialog
+    const confirmDialog = screen.getByRole("alertdialog");
+    fireEvent.click(within(confirmDialog).getByRole("button", { name: /Close incident/i }));
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith("/api/incidents/inc_0892/close", expect.objectContaining({
