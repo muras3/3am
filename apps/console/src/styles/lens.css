@@ -1,3 +1,69 @@
+/* ── UI Button (plain CSS replacement for shadcn/Tailwind) ── */
+.ui-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 10px;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  font: 500 var(--fs-sm) / var(--lh-ui) var(--font);
+  white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+  transition: background-color 0.15s, border-color 0.15s, opacity 0.15s;
+  background: var(--ink);
+  color: var(--panel);
+}
+.ui-btn:hover { opacity: 0.85; }
+.ui-btn:focus-visible { outline: 2px solid var(--teal); outline-offset: 2px; }
+.ui-btn:disabled { opacity: 0.5; pointer-events: none; }
+
+.ui-btn-outline {
+  background: var(--panel);
+  color: var(--ink);
+  border-color: var(--line-strong);
+}
+.ui-btn-outline:hover { background: var(--panel-2); }
+
+.ui-btn-secondary {
+  background: var(--panel-2);
+  color: var(--ink);
+}
+.ui-btn-secondary:hover { background: var(--panel-3); }
+
+.ui-btn-ghost {
+  background: transparent;
+  color: var(--ink);
+}
+.ui-btn-ghost:hover { background: var(--panel-2); }
+
+.ui-btn-destructive {
+  background: var(--accent-soft);
+  color: var(--accent-text);
+  border-color: transparent;
+}
+.ui-btn-destructive:hover { background: rgba(232,93,58,0.15); }
+
+.ui-btn-link {
+  background: transparent;
+  color: var(--ink);
+  text-decoration: underline;
+  text-underline-offset: 4px;
+  padding: 0;
+  height: auto;
+  border: none;
+}
+
+.ui-btn-sz-xs { height: 24px; padding: 0 8px; font-size: var(--fs-xs); border-radius: var(--radius-sm); }
+.ui-btn-sz-sm { height: 28px; padding: 0 10px; font-size: var(--fs-sm); border-radius: var(--radius-sm); }
+.ui-btn-sz-lg { height: 36px; padding: 0 10px; }
+.ui-btn-sz-icon { width: 32px; height: 32px; padding: 0; }
+.ui-btn-sz-icon-xs { width: 24px; height: 24px; padding: 0; border-radius: var(--radius-sm); }
+.ui-btn-sz-icon-sm { width: 28px; height: 28px; padding: 0; border-radius: var(--radius-sm); }
+.ui-btn-sz-icon-lg { width: 36px; height: 36px; padding: 0; }
+
 /* ── Lens zoom tokens ─────────────────────────────────────── */
 :root {
   --zoom-dur: 0.55s;
