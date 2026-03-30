@@ -79,7 +79,7 @@ export const NarrativeMetadataSchema = z.object({
  * DiagnosisResult (stage 1) or ReasoningStructure (receiver).
  */
 export const ConsoleNarrativeSchema = z.object({
-  headline: z.string().max(120),
+  headline: z.string(),
   whyThisAction: z.string(),
   confidenceSummary: NarrativeConfidenceSummarySchema,
   proofCards: z.array(ProofCardNarrativeSchema).length(3),

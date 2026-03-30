@@ -11,7 +11,6 @@ export type NarrativeMeta = {
 };
 
 const MAX_STRING = 2000;
-const MAX_HEADLINE = 120;
 const MAX_BINDINGS = 10;
 const MAX_FOLLOWUPS = 8;
 const MAX_ABSENCE = 10;
@@ -60,7 +59,6 @@ function validateEvidenceRefIds(
 }
 
 function validateOutputSize(narrative: ConsoleNarrative): void {
-  checkStr("headline", narrative.headline, MAX_HEADLINE);
   checkStr("whyThisAction", narrative.whyThisAction, MAX_STRING);
   checkStr("confidenceSummary.basis", narrative.confidenceSummary.basis, MAX_STRING);
   checkStr("confidenceSummary.risk", narrative.confidenceSummary.risk, MAX_STRING);

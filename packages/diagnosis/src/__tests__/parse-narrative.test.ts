@@ -62,9 +62,10 @@ describe("parseNarrative", () => {
     );
   });
 
-  it("rejects headline over 120 chars", () => {
-    const bad = { ...validOutput, headline: "x".repeat(121) };
-    expect(() => parseNarrative(JSON.stringify(bad), meta, rsFixture)).toThrow();
+  it("accepts headline over 120 chars", () => {
+    const longHeadline = { ...validOutput, headline: "x".repeat(180) };
+    const result = parseNarrative(JSON.stringify(longHeadline), meta, rsFixture);
+    expect(result.headline).toHaveLength(180);
   });
 
   it("rejects invented evidence ref IDs", () => {

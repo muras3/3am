@@ -84,9 +84,10 @@ describe("ConsoleNarrativeSchema", () => {
     expect(() => ConsoleNarrativeSchema.parse(bad)).toThrow(ZodError);
   });
 
-  it("rejects headline over 120 characters", () => {
-    const bad = { ...minimalValid, headline: "x".repeat(121) };
-    expect(() => ConsoleNarrativeSchema.parse(bad)).toThrow(ZodError);
+  it("accepts headline over 120 characters", () => {
+    const longHeadline = { ...minimalValid, headline: "x".repeat(180) };
+    const result = ConsoleNarrativeSchema.parse(longHeadline);
+    expect(result.headline).toHaveLength(180);
   });
 
   it("requires answerEvidenceRefs field", () => {
