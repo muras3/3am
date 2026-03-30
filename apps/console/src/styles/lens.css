@@ -1003,8 +1003,8 @@
   flex-shrink: 0;
 }
 
-.lens-board-health-dot-critical { background: var(--accent); }
-.lens-board-health-dot-degraded { background: var(--amber); }
+.lens-board-health-dot-critical { background: var(--accent); border-radius: 1px; transform: rotate(45deg); }
+.lens-board-health-dot-degraded { background: var(--amber); border-radius: 0; clip-path: polygon(50% 0%, 100% 100%, 0% 100%); }
 .lens-board-health-dot-healthy  { background: var(--good); }
 
 .lens-board-blast-target {
@@ -1800,9 +1800,9 @@
   flex-shrink: 0;
 }
 
-.lens-ev-health-dot-critical { background: var(--accent); }
-.lens-ev-health-dot-high     { background: var(--amber); }
-.lens-ev-health-dot-medium   { background: var(--amber); }
+.lens-ev-health-dot-critical { background: var(--accent); border-radius: 1px; transform: rotate(45deg); }
+.lens-ev-health-dot-high     { background: var(--amber); border-radius: 0; clip-path: polygon(50% 0%, 100% 100%, 0% 100%); }
+.lens-ev-health-dot-medium   { background: var(--amber); border-radius: 0; clip-path: polygon(50% 0%, 100% 100%, 0% 100%); }
 .lens-ev-health-dot-low      { background: var(--good); }
 
 .lens-ev-ctx-id {
@@ -1828,8 +1828,8 @@
 }
 
 .lens-traces-health-dot-ok    { background: var(--good); }
-.lens-traces-health-dot-error { background: var(--accent); }
-.lens-traces-health-dot-slow  { background: var(--amber); }
+.lens-traces-health-dot-error { background: var(--accent); border-radius: 1px; transform: rotate(45deg); }
+.lens-traces-health-dot-slow  { background: var(--amber); border-radius: 0; clip-path: polygon(50% 0%, 100% 100%, 0% 100%); }
 
 .lens-traces-trace-route {
   font-weight: 700;
