@@ -9,6 +9,10 @@ interface Props {
   confidence?: ConfidenceSummary;
 }
 
+function formatBasis(text: string): string {
+  return text.replace(/\br=([0-9.]+)/g, "correlation=$1");
+}
+
 export function RootCauseHypothesis({ hypothesis, state, confidence }: Props) {
   const { t } = useTranslation();
   const fullText = hypothesis.trim() || sectionFallback(state, "rootCause");
@@ -20,7 +24,7 @@ export function RootCauseHypothesis({ hypothesis, state, confidence }: Props) {
     ? t("board.rootCause.statusProvisional")
     : t("board.rootCause.statusConfirmed");
 
-  const basisText = confidence?.basis.trim() || "";
+  const basisText = formatBasis(confidence?.basis.trim() || "");
   const riskText = confidence?.risk.trim() || "";
   const hasConfidenceDetail = basisText.length > 0 || riskText.length > 0;
 

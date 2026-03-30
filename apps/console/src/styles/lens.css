@@ -1,3 +1,69 @@
+/* ── UI Button (plain CSS replacement for shadcn/Tailwind) ── */
+.ui-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 10px;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  font: 500 var(--fs-sm) / var(--lh-ui) var(--font);
+  white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+  transition: background-color 0.15s, border-color 0.15s, opacity 0.15s;
+  background: var(--ink);
+  color: var(--panel);
+}
+.ui-btn:hover { opacity: 0.85; }
+.ui-btn:focus-visible { outline: 2px solid var(--teal); outline-offset: 2px; }
+.ui-btn:disabled { opacity: 0.5; pointer-events: none; }
+
+.ui-btn-outline {
+  background: var(--panel);
+  color: var(--ink);
+  border-color: var(--line-strong);
+}
+.ui-btn-outline:hover { background: var(--panel-2); }
+
+.ui-btn-secondary {
+  background: var(--panel-2);
+  color: var(--ink);
+}
+.ui-btn-secondary:hover { background: var(--panel-3); }
+
+.ui-btn-ghost {
+  background: transparent;
+  color: var(--ink);
+}
+.ui-btn-ghost:hover { background: var(--panel-2); }
+
+.ui-btn-destructive {
+  background: var(--accent-soft);
+  color: var(--accent-text);
+  border-color: transparent;
+}
+.ui-btn-destructive:hover { background: rgba(232,93,58,0.15); }
+
+.ui-btn-link {
+  background: transparent;
+  color: var(--ink);
+  text-decoration: underline;
+  text-underline-offset: 4px;
+  padding: 0;
+  height: auto;
+  border: none;
+}
+
+.ui-btn-sz-xs { height: 24px; padding: 0 8px; font-size: var(--fs-xs); border-radius: var(--radius-sm); }
+.ui-btn-sz-sm { height: 28px; padding: 0 10px; font-size: var(--fs-sm); border-radius: var(--radius-sm); }
+.ui-btn-sz-lg { height: 36px; padding: 0 10px; }
+.ui-btn-sz-icon { width: 32px; height: 32px; padding: 0; }
+.ui-btn-sz-icon-xs { width: 24px; height: 24px; padding: 0; border-radius: var(--radius-sm); }
+.ui-btn-sz-icon-sm { width: 28px; height: 28px; padding: 0; border-radius: var(--radius-sm); }
+.ui-btn-sz-icon-lg { width: 36px; height: 36px; padding: 0; }
+
 /* ── Lens zoom tokens ─────────────────────────────────────── */
 :root {
   --zoom-dur: 0.55s;
@@ -90,6 +156,24 @@
   font-feature-settings: "tnum" 1, "ss01" 1;
   margin-left: auto;
 }
+
+.level-header-help {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 1px solid var(--line);
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  color: var(--ink-3);
+  text-decoration: none;
+  transition: border-color 0.15s, color 0.15s;
+}
+
+.level-header-help:hover { border-color: var(--line-strong); color: var(--ink); }
+.level-header-help:focus-visible { outline: 2px solid var(--teal); outline-offset: 2px; }
 
 .level-header-prefs {
   position: relative;
@@ -660,6 +744,29 @@
   color: var(--ink-2);
 }
 
+.lens-board-close-confirm {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--panel);
+}
+
+.lens-board-close-confirm-msg {
+  margin: 0;
+  font-size: var(--fs-sm);
+  color: var(--ink);
+  flex: 1;
+}
+
+.lens-board-close-confirm-btns {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
 .lens-board-chip {
   font-size: var(--fs-xs);
   font-weight: 600;
@@ -914,8 +1021,8 @@
   flex-shrink: 0;
 }
 
-.lens-board-health-dot-critical { background: var(--accent); }
-.lens-board-health-dot-degraded { background: var(--amber); }
+.lens-board-health-dot-critical { background: var(--accent); border-radius: 1px; transform: rotate(45deg); }
+.lens-board-health-dot-degraded { background: var(--amber); border-radius: 0; clip-path: polygon(50% 0%, 100% 100%, 0% 100%); }
 .lens-board-health-dot-healthy  { background: var(--good); }
 
 .lens-board-blast-target {
@@ -1536,6 +1643,40 @@
   margin: 0 auto;
 }
 
+/* ── Evidence guide (first-visit) ─────────────────────────────── */
+.lens-ev-guide {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--teal-soft);
+  border: 1px solid color-mix(in srgb, var(--teal) 20%, transparent);
+  font-size: var(--fs-sm);
+  color: var(--ink-2);
+}
+
+.lens-ev-guide-text {
+  margin: 0;
+  flex: 1;
+}
+
+.lens-ev-guide-dismiss {
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  border: none;
+  background: transparent;
+  color: var(--ink-3);
+  font-size: var(--fs-lg);
+  line-height: 1;
+  cursor: pointer;
+  border-radius: var(--radius-xs);
+}
+
+.lens-ev-guide-dismiss:hover { color: var(--ink); }
+.lens-ev-guide-dismiss:focus-visible { outline: 2px solid var(--teal); outline-offset: 2px; }
+
 /* ── Context bar ───────────────────────────────────────────────── */
 .lens-ev-context-bar {
   display: flex;
@@ -1711,9 +1852,9 @@
   flex-shrink: 0;
 }
 
-.lens-ev-health-dot-critical { background: var(--accent); }
-.lens-ev-health-dot-high     { background: var(--amber); }
-.lens-ev-health-dot-medium   { background: var(--amber); }
+.lens-ev-health-dot-critical { background: var(--accent); border-radius: 1px; transform: rotate(45deg); }
+.lens-ev-health-dot-high     { background: var(--amber); border-radius: 0; clip-path: polygon(50% 0%, 100% 100%, 0% 100%); }
+.lens-ev-health-dot-medium   { background: var(--amber); border-radius: 0; clip-path: polygon(50% 0%, 100% 100%, 0% 100%); }
 .lens-ev-health-dot-low      { background: var(--good); }
 
 .lens-ev-ctx-id {
@@ -1739,8 +1880,8 @@
 }
 
 .lens-traces-health-dot-ok    { background: var(--good); }
-.lens-traces-health-dot-error { background: var(--accent); }
-.lens-traces-health-dot-slow  { background: var(--amber); }
+.lens-traces-health-dot-error { background: var(--accent); border-radius: 1px; transform: rotate(45deg); }
+.lens-traces-health-dot-slow  { background: var(--amber); border-radius: 0; clip-path: polygon(50% 0%, 100% 100%, 0% 100%); }
 
 .lens-traces-trace-route {
   font-weight: 700;

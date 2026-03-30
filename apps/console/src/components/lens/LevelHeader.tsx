@@ -114,6 +114,7 @@ export function LevelHeader({
         </div>
         <span className="topbar-sep" />
         <span className="env-tag">{t("header.env")}</span>
+        <a className="level-header-help" href="https://github.com/muras3/3amoncall#readme" target="_blank" rel="noopener noreferrer" aria-label={t("header.help")}>?</a>
         <PreferencesMenu />
         <span className="level-header-clock">{clock}</span>
       </header>
@@ -140,6 +141,7 @@ export function LevelHeader({
           </span>
         )}
         {openedAt && <Duration openedAt={openedAt} />}
+        <a className="level-header-help" href="https://github.com/muras3/3amoncall#readme" target="_blank" rel="noopener noreferrer" aria-label={t("header.help")}>?</a>
         <PreferencesMenu />
         <span className="level-header-clock">{clock}</span>
       </header>

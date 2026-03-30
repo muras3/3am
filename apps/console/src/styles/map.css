@@ -189,10 +189,14 @@
 
 .dot.crit {
   background: var(--accent);
+  border-radius: 1px;
+  transform: rotate(45deg);
 }
 
 .dot.deg {
   background: var(--amber);
+  border-radius: 0;
+  clip-path: polygon(50% 0%, 100% 100%, 0% 100%);
 }
 
 /* ── Route rows ───────────────────────────────────────────────── */
@@ -411,6 +415,27 @@
 .incident-strip {
   max-width: 1100px;
   margin: 0 auto;
+}
+
+.health-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: var(--good);
+}
+
+.health-dot.critical {
+  background: var(--accent);
+  border-radius: 1px;
+  transform: rotate(45deg);
+}
+
+.health-dot.degraded {
+  background: var(--amber);
+  border-radius: 0;
+  clip-path: polygon(50% 0%, 100% 100%, 0% 100%);
 }
 
 .incident-row {
