@@ -21,6 +21,27 @@ function getCLIVersion(): string {
   }
 }
 
+function resolveLocalRepoRoot(): string | null {
+  const candidate = resolve(__dirname, "../../../../");
+  const rootPackageJson = join(candidate, "package.json");
+  const dockerfile = join(candidate, "Dockerfile");
+  const receiverPackageJson = join(candidate, "apps", "receiver", "package.json");
+
+  if (existsSync(rootPackageJson) && existsSync(dockerfile) && existsSync(receiverPackageJson)) {
+    return candidate;
+  }
+
+  return null;
+}
+
+function buildLocalImage(repoRoot: string, image: string): void {
+  process.stdout.write(`Building local receiver image from ${repoRoot}\n`);
+  execSync(`docker build -t ${image} .`, {
+    cwd: repoRoot,
+    stdio: "inherit",
+  });
+}
+
 function isDockerInstalled(): boolean {
   try {
     execSync("docker --version", { stdio: "ignore" });
@@ -64,7 +85,10 @@ export function runDev(options: DevOptions = {}): void {
 
   const port = options.port ?? 3333;
   const version = getCLIVersion();
-  const image = `ghcr.io/3amoncall/receiver:v${version}`;
+  const repoRoot = resolveLocalRepoRoot();
+  const image = repoRoot
+    ? "3amoncall-receiver:local"
+    : `ghcr.io/3amoncall/receiver:v${version}`;
 
   const apiKey = options.apiKey
     ?? process.env["ANTHROPIC_API_KEY"]
@@ -95,10 +119,21 @@ export function runDev(options: DevOptions = {}): void {
     args.push("-e", `ANTHROPIC_API_KEY=${apiKey}`);
   }
 
-  args.push(image);
-
   process.stdout.write(`Starting 3amoncall receiver on http://localhost:${port}\n`);
-  process.stdout.write(`Image: ${image}\n`);
+
+  if (repoRoot) {
+    try {
+      buildLocalImage(repoRoot, image);
+    } catch (error) {
+      process.stderr.write(`Error: failed to build local receiver image: ${String(error)}\n`);
+      process.exit(1);
+      return;
+    }
+  } else {
+    process.stdout.write(`Image: ${image}\n`);
+  }
+
+  args.push(image);
 
   const result = spawnSync("docker", args, { stdio: "inherit" });
 

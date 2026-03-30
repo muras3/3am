@@ -13,20 +13,20 @@ Diagnose serverless app incidents in under 5 minutes using OTel data + LLM.
 npx 3amoncall init
 
 # 2. Start local Receiver (requires Docker Desktop)
-npx 3amoncall dev
+npx 3amoncall local
 
 # 3. (In another terminal) Run a demo incident — see diagnosis in action
-npx 3amoncall demo
+npx 3amoncall local demo
 
 # 4. Open Console to see the diagnosis
 open http://localhost:3333
 ```
 
-`3amoncall demo` injects a synthetic downstream-timeout scenario into the local Receiver and runs a real LLM diagnosis (~¥10/run). No real incident needed — you see the full diagnosis and AI copilot experience immediately. Demo data uses `service.name=3amoncall-demo` and won't mix with your app's telemetry.
+`3amoncall local demo` injects a synthetic downstream-timeout scenario into the local Receiver and runs a real LLM diagnosis (~¥10/run). No real incident needed — you see the full diagnosis and AI copilot experience immediately. Demo data uses `service.name=3amoncall-demo` and won't mix with your app's telemetry.
 
 `3amoncall init` installs OTel dependencies, creates `instrumentation.ts/js`, and writes `OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:3333` to `.env`.
 
-`3amoncall dev` pulls and runs the Receiver image via Docker. Set `ANTHROPIC_API_KEY` during `init` or in your environment — LLM diagnosis requires it.
+`3amoncall local` pulls and runs the Receiver image via Docker. Set `ANTHROPIC_API_KEY` during `init` or in your environment — LLM diagnosis requires it.
 
 For your own app telemetry, start your app with instrumentation loaded:
 
@@ -53,10 +53,10 @@ Optional receiver tuning:
 6. Point your app at the production Receiver:
 
 ```bash
-npx 3amoncall deploy
+npx 3amoncall deploy vercel
 
 # Or non-interactively (for CI / Claude Code):
-npx 3amoncall deploy --platform vercel --yes --json
+npx 3amoncall deploy vercel --yes --no-interactive --json
 ```
 
 ---

@@ -22,6 +22,7 @@ import { getInstrumentationTemplate } from "../commands/init/templates.js";
 import { updateEnvFile, runInit, isTypeScriptProject, isEsmProject, ensureGitignore } from "../commands/init.js";
 import { patchScripts } from "../commands/init/patch-scripts.js";
 import { loadCredentials, saveCredentials } from "../commands/init/credentials.js";
+import { runDev } from "../commands/dev.js";
 
 // ---------------------------------------------------------------------------
 // detectFramework
@@ -755,6 +756,27 @@ describe("runInit()", () => {
 
     const combined = stdoutChunks.join("");
     expect(combined).toContain("no structured logger detected");
+  });
+
+  it("does not start the local receiver automatically and prints next steps", async () => {
+    writeFileSync(
+      join(tmpDir, "package.json"),
+      JSON.stringify({ name: "my-app", dependencies: { express: "4.18.0" } }),
+    );
+
+    const stdoutChunks: string[] = [];
+    const stdoutSpy = vi.spyOn(process.stdout, "write").mockImplementation((chunk) => {
+      stdoutChunks.push(String(chunk));
+      return true;
+    });
+
+    await runInit([], { noInteractive: true });
+    stdoutSpy.mockRestore();
+
+    expect(vi.mocked(runDev)).not.toHaveBeenCalled();
+    const combined = stdoutChunks.join("");
+    expect(combined).toContain("npx 3amoncall local");
+    expect(combined).toContain("npx 3amoncall local demo");
   });
 
   it("exits with error when no package.json", async () => {

@@ -97,15 +97,6 @@ export function ensureGitignore(cwd: string): void {
   process.stdout.write("Added .env to .gitignore\n");
 }
 
-function isDockerInstalled(): boolean {
-  try {
-    execSync("docker --version", { stdio: "ignore" });
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 export interface InitOptions {
   apiKey?: string;
   noInteractive?: boolean;
@@ -295,21 +286,9 @@ export async function runInit(_argv: string[], options: InitOptions = {}): Promi
       : `Add --require to your startup command:\n  node --require ./${instrumentationFile} app.js\n`);
   }
 
-  // --- 9. Start local Receiver ---
-  if (isDockerInstalled()) {
-    process.stdout.write(ja ? "\nローカル Receiver を起動中...\n" : "\nStarting local Receiver...\n");
-    try {
-      // Import dynamically to avoid circular dependency issues in tests
-      const { runDev } = await import("./dev.js");
-      runDev({ apiKey });
-    } catch {
-      process.stderr.write(ja
-        ? "警告: Receiver コンテナの起動に失敗しました。\n対処: 問題を解決してから `npx 3amoncall dev` を実行してください。\n"
-        : "Warning: failed to start Receiver container.\nFix: run `npx 3amoncall dev` manually after resolving the issue.\n");
-    }
-  } else {
-    process.stdout.write(ja
-      ? "\nDocker が見つかりません — Receiver の起動をスキップします。\nDocker (Docker Desktop, OrbStack, Podman, colima) をインストールし、`npx 3amoncall dev` を実行してください。\n"
-      : "\nDocker not found — skipping Receiver startup.\nInstall Docker (Docker Desktop, OrbStack, Podman, or colima) and run `npx 3amoncall dev`.\n");
-  }
+  process.stdout.write(
+    ja
+      ? "\n次のステップ:\n  1. `npx 3amoncall local`\n  2. 別ターミナルで `npx 3amoncall local demo`\n"
+      : "\nNext steps:\n  1. `npx 3amoncall local`\n  2. In another terminal, `npx 3amoncall local demo`\n",
+  );
 }
