@@ -29,3 +29,15 @@ run_worker_first = ["/api/*", "/v1/*", "/healthz"]
 binding = "DB"
 database_name = "3amoncall-db"
 database_id = "7a20d92c-33ae-4ca4-ae83-05cefefb3183"
+
+[[queues.producers]]
+binding = "DIAGNOSIS_QUEUE"
+queue = "3amoncall-diagnosis"
+
+[[queues.consumers]]
+queue = "3amoncall-diagnosis"
+max_batch_size = 1
+max_batch_timeout = 1
+max_retries = 6
+dead_letter_queue = "3amoncall-diagnosis-dlq"
+retry_delay = 30

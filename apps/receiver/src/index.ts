@@ -11,6 +11,7 @@ import { createApiRouter } from "./transport/api.js";
 import { SpanBuffer } from "./ambient/span-buffer.js";
 import type { DiagnosisConfig } from "./runtime/diagnosis-debouncer.js";
 import { DiagnosisRunner } from "./runtime/diagnosis-runner.js";
+import type { EnqueueDiagnosisFn } from "./runtime/diagnosis-dispatch.js";
 import { emitSelfTelemetryLog, isSelfTelemetryActive } from "./self-telemetry/log.js";
 import { recordSelfTelemetryMetrics } from "./self-telemetry/metrics.js";
 
@@ -63,6 +64,7 @@ export interface AppOptions {
    * When provided, createApp skips env-var lookup and uses this directly.
    */
   resolvedAuthToken?: string | null | undefined;
+  enqueueDiagnosis?: EnqueueDiagnosisFn | undefined;
 }
 
 export function createApp(storage?: StorageDriver, options?: AppOptions): Hono {
@@ -268,8 +270,8 @@ export function createApp(storage?: StorageDriver, options?: AppOptions): Hono {
     return c.json({ locale });
   });
 
-  app.route("/", createIngestRouter(store, spanBuffer, telemetryStore, diagnosisConfig, runner));
-  app.route("/", createApiRouter(store, spanBuffer, telemetryStore, runner));
+  app.route("/", createIngestRouter(store, spanBuffer, telemetryStore, diagnosisConfig, runner, options?.enqueueDiagnosis));
+  app.route("/", createApiRouter(store, spanBuffer, telemetryStore, runner, options?.enqueueDiagnosis));
 
   return app;
 }

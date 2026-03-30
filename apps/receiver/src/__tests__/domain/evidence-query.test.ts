@@ -193,7 +193,7 @@ describe('buildEvidenceQueryAnswer', () => {
 
   it('returns noAnswerReason when diagnosis is pending', async () => {
     const incident = makeIncident({
-      diagnosisDispatchedAt: '2024-01-01T00:02:00Z',
+      diagnosisDispatchedAt: new Date().toISOString(),
     })
     const store = makeMockStore()
 
@@ -273,7 +273,7 @@ describe('buildEvidenceQueryAnswer', () => {
     EvidenceQueryResponseSchema.strict().parse(result1)
 
     // Path 1: pending
-    const incident2 = makeIncident({ diagnosisDispatchedAt: '2024-01-01T00:02:00Z' })
+    const incident2 = makeIncident({ diagnosisDispatchedAt: new Date().toISOString() })
     const result2 = await buildEvidenceQueryAnswer(incident2, makeMockStore(), 'Q?', false)
     EvidenceQueryResponseSchema.strict().parse(result2)
 

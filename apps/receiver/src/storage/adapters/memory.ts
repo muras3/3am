@@ -136,10 +136,13 @@ export class MemoryAdapter implements StorageDriver {
     incident.platformEvents.push(...events);
   }
 
-  async claimDiagnosisDispatch(incidentId: string): Promise<boolean> {
+  async claimDiagnosisDispatch(incidentId: string, leaseMs = 15 * 60_000): Promise<boolean> {
     const incident = this.incidents.get(incidentId);
     if (!incident) return false;
-    if (incident.diagnosisDispatchedAt) return false; // Already claimed
+    if (incident.diagnosisDispatchedAt) {
+      const claimedAt = new Date(incident.diagnosisDispatchedAt).getTime();
+      if (Number.isFinite(claimedAt) && claimedAt + leaseMs > Date.now()) return false;
+    }
     incident.diagnosisDispatchedAt = new Date().toISOString();
     return true;
   }

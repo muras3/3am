@@ -535,6 +535,19 @@ export function runStorageSuite(
       expect(after?.diagnosisDispatchedAt).toBeDefined();
     });
 
+    it("claimDiagnosisDispatch can reclaim an expired lease", async () => {
+      const packet = makePacket();
+      await driver.createIncident(packet, makeMembership());
+
+      const first = await driver.claimDiagnosisDispatch(packet.incidentId, 1);
+      expect(first).toBe(true);
+
+      await new Promise((resolve) => setTimeout(resolve, 5));
+
+      const second = await driver.claimDiagnosisDispatch(packet.incidentId, 1);
+      expect(second).toBe(true);
+    });
+
     it("claimDiagnosisDispatch returns false for unknown incidentId", async () => {
       const result = await driver.claimDiagnosisDispatch("inc_unknown");
       expect(result).toBe(false);

@@ -13,10 +13,14 @@ import type { DrizzleD1Database } from "drizzle-orm/d1";
 // Local D1Database type to avoid polluting global scope with @cloudflare/workers-types
 // (which conflicts with @types/node globals like crypto.subtle)
 interface D1Database {
-  prepare(query: string): unknown;
+  prepare(query: string): D1PreparedStatement;
   batch<T = unknown>(statements: unknown[]): Promise<T[]>;
   exec(query: string): Promise<unknown>;
   dump(): Promise<ArrayBuffer>;
+}
+interface D1PreparedStatement {
+  bind(...values: unknown[]): D1PreparedStatement;
+  run(): Promise<{ meta?: { changes?: number } }>;
 }
 import { eq, desc, lt, and } from "drizzle-orm";
 import { sql } from "drizzle-orm";
@@ -45,8 +49,10 @@ type Schema = { incidents: typeof incidents; thinEvents: typeof thinEvents; sett
 
 export class D1StorageAdapter implements StorageDriver {
   private db: DrizzleD1Database<Schema>;
+  private rawDb: D1Database;
 
   constructor(d1: D1Database) {
+    this.rawDb = d1;
     this.db = drizzle(d1, { schema: { incidents, thinEvents, settings } });
   }
 
@@ -216,9 +222,14 @@ export class D1StorageAdapter implements StorageDriver {
   }
 
   async appendDiagnosis(id: string, result: DiagnosisResult): Promise<void> {
+    const now = new Date().toISOString();
     await this.db
       .update(incidents)
-      .set({ diagnosisResult: JSON.stringify(result), updatedAt: new Date().toISOString() })
+      .set({
+        diagnosisResult: JSON.stringify(result),
+        diagnosisDispatchedAt: null,
+        updatedAt: now,
+      })
       .where(eq(incidents.incidentId, id));
   }
 
@@ -330,29 +341,22 @@ export class D1StorageAdapter implements StorageDriver {
       .where(eq(incidents.incidentId, incidentId));
   }
 
-  async claimDiagnosisDispatch(incidentId: string): Promise<boolean> {
-    // D1: use SELECT + UPDATE pattern (no result.changes in Drizzle D1 driver)
-    const [row] = await this.db
-      .select({ id: incidents.incidentId })
-      .from(incidents)
-      .where(
-        and(
-          eq(incidents.incidentId, incidentId),
-          sql`${incidents.diagnosisDispatchedAt} IS NULL`,
-        ),
-      );
-    if (!row) return false;
+  async claimDiagnosisDispatch(incidentId: string, leaseMs = 15 * 60_000): Promise<boolean> {
     const now = new Date().toISOString();
-    await this.db
-      .update(incidents)
-      .set({ diagnosisDispatchedAt: now, updatedAt: now })
-      .where(
-        and(
-          eq(incidents.incidentId, incidentId),
-          sql`${incidents.diagnosisDispatchedAt} IS NULL`,
-        ),
-      );
-    return true;
+    const staleBefore = new Date(Date.now() - leaseMs).toISOString();
+    const result = await this.rawDb
+      .prepare(`
+        UPDATE incidents
+        SET diagnosis_dispatched_at = ?, updated_at = ?
+        WHERE incident_id = ?
+          AND (
+            diagnosis_dispatched_at IS NULL
+            OR diagnosis_dispatched_at < ?
+          )
+      `)
+      .bind(now, now, incidentId, staleBefore)
+      .run();
+    return (result.meta?.changes ?? 0) > 0;
   }
 
   async releaseDiagnosisDispatch(incidentId: string): Promise<void> {

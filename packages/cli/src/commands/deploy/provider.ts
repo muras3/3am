@@ -11,7 +11,7 @@
  *
  * Cloudflare flow:
  *   git clone → pnpm install → pnpm turbo build (Console assets) →
- *   wrangler d1 create → patch wrangler.toml → wrangler secret put →
+ *   wrangler d1 create → wrangler queues create → patch wrangler.toml → wrangler secret put →
  *   wrangler deploy
  */
 import { spawn, execFileSync } from "node:child_process";
@@ -33,6 +33,8 @@ export interface ProviderOptions {
 }
 
 const REPO_URL = "https://github.com/muras3/3amoncall.git";
+const CLOUDFLARE_DIAGNOSIS_QUEUE = "3amoncall-diagnosis";
+const CLOUDFLARE_DIAGNOSIS_DLQ = "3amoncall-diagnosis-dlq";
 
 // ---------------------------------------------------------------------------
 // Shared helpers
@@ -292,6 +294,26 @@ function patchWranglerToml(receiverDir: string, newDbId: string): void {
   writeFileSync(tomlPath, patched, "utf8");
 }
 
+function ensureQueue(name: string, cwd: string): void {
+  try {
+    execFileSync("wrangler", ["queues", "create", name], {
+      cwd,
+      stdio: "pipe",
+    });
+  } catch (error) {
+    const output = [
+      error instanceof Error ? error.message : String(error),
+      typeof error === "object" && error && "stderr" in error
+        ? String((error as { stderr?: Buffer }).stderr ?? "")
+        : "",
+    ].join("\n");
+    if (!output.toLowerCase().includes("already exists")) {
+      throw error;
+    }
+    process.stderr.write(`Reusing existing Queue: ${name}\n`);
+  }
+}
+
 export function createCloudflareProvider(): DeployProvider {
   let tempDir: string | undefined = cloneReceiver();
   const receiverDir = join(tempDir, "apps", "receiver");
@@ -316,6 +338,10 @@ export function createCloudflareProvider(): DeployProvider {
   const dbId = ensureD1Database("3amoncall-db", receiverDir);
   patchWranglerToml(receiverDir, dbId);
   process.stderr.write(`D1 database ready: ${dbId}\n`);
+
+  process.stderr.write("Provisioning Cloudflare Queues...\n");
+  ensureQueue(CLOUDFLARE_DIAGNOSIS_DLQ, receiverDir);
+  ensureQueue(CLOUDFLARE_DIAGNOSIS_QUEUE, receiverDir);
 
   return {
     async deploy() {

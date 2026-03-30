@@ -155,9 +155,9 @@ export interface StorageDriver {
    * Atomically claim diagnosis dispatch for an incident.
    * Returns true if this call won the claim (diagnosis should proceed).
    * Returns false if another instance already claimed (skip diagnosis).
-   * Uses optimistic locking: UPDATE ... WHERE diagnosis_dispatched_at IS NULL.
+   * Uses optimistic locking with a lease: UPDATE ... WHERE diagnosis_dispatched_at IS NULL OR expired.
    */
-  claimDiagnosisDispatch(incidentId: string): Promise<boolean>;
+  claimDiagnosisDispatch(incidentId: string, leaseMs?: number): Promise<boolean>;
 
   /**
    * Release a previously claimed diagnosis dispatch.

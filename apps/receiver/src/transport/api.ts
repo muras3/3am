@@ -20,6 +20,7 @@ import { buildCuratedEvidence } from "../domain/curated-evidence.js";
 import { buildEvidenceQueryAnswer } from "../domain/evidence-query.js";
 import type { DiagnosisRunner } from "../runtime/diagnosis-runner.js";
 import { resolveWaitUntil, runClaimedDiagnosis } from "../runtime/diagnosis-debouncer.js";
+import type { EnqueueDiagnosisFn } from "../runtime/diagnosis-dispatch.js";
 import { maybeCleanup } from "../retention/lazy-cleanup.js";
 
 const CHAT_MAX_HISTORY = 10;
@@ -104,7 +105,13 @@ function validateChatBody(body: unknown): { message: string; history: ChatTurn[]
 const apiBodyLimit = (maxSize: number) =>
   bodyLimit({ maxSize, onError: (c) => c.json({ error: "payload too large" }, 413) });
 
-export function createApiRouter(storage: StorageDriver, spanBuffer: SpanBuffer | undefined, telemetryStore: TelemetryStoreDriver, diagnosisRunner?: DiagnosisRunner): Hono {
+export function createApiRouter(
+  storage: StorageDriver,
+  spanBuffer: SpanBuffer | undefined,
+  telemetryStore: TelemetryStoreDriver,
+  diagnosisRunner?: DiagnosisRunner,
+  enqueueDiagnosis?: EnqueueDiagnosisFn,
+): Hono {
   const app = new Hono();
 
   // JWT session cookie for chat endpoint (B-11)
@@ -259,6 +266,11 @@ export function createApiRouter(storage: StorageDriver, spanBuffer: SpanBuffer |
       const incident = await storage.getIncident(id);
       if (incident === null) {
         return c.json({ error: "not found" }, 404);
+      }
+
+      if (enqueueDiagnosis) {
+        await enqueueDiagnosis(id);
+        return c.json({ status: "accepted" }, 202);
       }
 
       const claimed = await storage.claimDiagnosisDispatch(id);

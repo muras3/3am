@@ -213,6 +213,29 @@ describe("POST /api/incidents/:id/rerun-diagnosis", () => {
     expect(run).toHaveBeenCalledWith(incidentId);
   });
 
+  it("enqueues rerun when queue dispatch is configured", async () => {
+    const storage = new MemoryAdapter();
+    const enqueueDiagnosis = vi.fn().mockResolvedValue(undefined);
+    const app = createApiRouter(
+      storage,
+      undefined,
+      makeTelemetryStore(),
+      { run: vi.fn().mockResolvedValue(true) } as unknown as DiagnosisRunner,
+      enqueueDiagnosis,
+    );
+    const cookie = extractSessionCookie(await app.request("/api/incidents", { headers: authHeader() }));
+    const incidentId = await seedIncident(storage, true);
+
+    const res = await app.request(`/api/incidents/${incidentId}/rerun-diagnosis`, {
+      method: "POST",
+      headers: queryHeaders(cookie),
+    });
+
+    expect(res.status).toBe(202);
+    expect(await res.json()).toEqual({ status: "accepted" });
+    expect(enqueueDiagnosis).toHaveBeenCalledWith(incidentId);
+  });
+
   it("returns 404 when incident does not exist", async () => {
     const storage = new MemoryAdapter();
     const app = createApiRouter(

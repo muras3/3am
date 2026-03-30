@@ -28,6 +28,7 @@ import { rebuildSnapshots } from "../telemetry/snapshot-builder.js";
 import { maybeCleanup } from "../retention/lazy-cleanup.js";
 import type { DiagnosisRunner } from "../runtime/diagnosis-runner.js";
 import { type DiagnosisConfig, scheduleDelayedDiagnosis, checkGenerationThreshold, resolveWaitUntil, runIfNeeded } from "../runtime/diagnosis-debouncer.js";
+import type { EnqueueDiagnosisFn } from "../runtime/diagnosis-dispatch.js";
 import { decodeTraces, decodeMetrics, decodeLogs } from "./otlp-protobuf.js";
 
 const gunzipAsync = promisify(gunzip);
@@ -186,8 +187,10 @@ async function rebuildAndNotify(
   storage: StorageDriver,
   diagnosisConfig: DiagnosisConfig,
   runner?: DiagnosisRunner,
+  enqueueDiagnosis?: EnqueueDiagnosisFn,
 ): Promise<void> {
   await rebuildSnapshots(incidentId, telemetryStore, storage);
+  if (enqueueDiagnosis) return;
   if (runner && diagnosisConfig.generationThreshold > 0) {
     const updated = await storage.getIncident(incidentId);
     if (updated) {
@@ -202,7 +205,14 @@ async function rebuildAndNotify(
   }
 }
 
-export function createIngestRouter(storage: StorageDriver, spanBuffer: SpanBuffer | undefined, telemetryStore: TelemetryStoreDriver, diagnosisConfig: DiagnosisConfig, diagnosisRunner?: DiagnosisRunner): Hono {
+export function createIngestRouter(
+  storage: StorageDriver,
+  spanBuffer: SpanBuffer | undefined,
+  telemetryStore: TelemetryStoreDriver,
+  diagnosisConfig: DiagnosisConfig,
+  diagnosisRunner?: DiagnosisRunner,
+  enqueueDiagnosis?: EnqueueDiagnosisFn,
+): Hono {
   const app = new Hono();
 
   // Resolve waitUntil once (cached after first resolution).
@@ -297,7 +307,7 @@ export function createIngestRouter(storage: StorageDriver, spanBuffer: SpanBuffe
         await storage.expandTelemetryScope(existing.incidentId, expansion);
         await storage.appendSpanMembership(existing.incidentId, expansion.spanIds);
         await storage.appendAnomalousSignals(existing.incidentId, buildAnomalousSignals(signalSpans));
-        await rebuildAndNotify(existing.incidentId, telemetryStore, storage, diagnosisConfig, diagnosisRunner);
+        await rebuildAndNotify(existing.incidentId, telemetryStore, storage, diagnosisConfig, diagnosisRunner, enqueueDiagnosis);
       }
       return c.json({ status: "ok" });
     }
@@ -328,17 +338,19 @@ export function createIngestRouter(storage: StorageDriver, spanBuffer: SpanBuffe
         await storage.expandTelemetryScope(incidentId, expansion);
         await storage.appendSpanMembership(incidentId, expansion.spanIds);
         await storage.appendAnomalousSignals(incidentId, buildAnomalousSignals(signalSpans));
-        await rebuildAndNotify(incidentId, telemetryStore, storage, diagnosisConfig, diagnosisRunner);
+        await rebuildAndNotify(incidentId, telemetryStore, storage, diagnosisConfig, diagnosisRunner, enqueueDiagnosis);
         return c.json({ status: "ok", incidentId, packetId: created.packet.packetId });
       }
 
       // ADR 0032: Rebuild snapshots for new incident
-      await rebuildAndNotify(incidentId, telemetryStore, storage, diagnosisConfig, diagnosisRunner);
+      await rebuildAndNotify(incidentId, telemetryStore, storage, diagnosisConfig, diagnosisRunner, enqueueDiagnosis);
 
-      // Schedule delayed diagnosis via waitUntil (serverless-safe).
-      // Generation threshold is checked in rebuildAndNotify above.
-      // If maxWaitMs > 0, schedule a delayed fallback; otherwise immediate diagnosis.
-      if (diagnosisRunner) {
+      if (enqueueDiagnosis) {
+        await enqueueDiagnosis(incidentId);
+      } else if (diagnosisRunner) {
+        // Schedule delayed diagnosis via waitUntil (serverless-safe).
+        // Generation threshold is checked in rebuildAndNotify above.
+        // If maxWaitMs > 0, schedule a delayed fallback; otherwise immediate diagnosis.
         if (diagnosisConfig.maxWaitMs > 0) {
           const waitUntilFn = await waitUntilPromise;
           scheduleDelayedDiagnosis(incidentId, storage, diagnosisRunner, {
@@ -358,7 +370,7 @@ export function createIngestRouter(storage: StorageDriver, spanBuffer: SpanBuffe
     await storage.expandTelemetryScope(incidentId, expansion);
     await storage.appendSpanMembership(incidentId, expansion.spanIds);
     await storage.appendAnomalousSignals(incidentId, buildAnomalousSignals(signalSpans));
-    await rebuildAndNotify(incidentId, telemetryStore, storage, diagnosisConfig, diagnosisRunner);
+    await rebuildAndNotify(incidentId, telemetryStore, storage, diagnosisConfig, diagnosisRunner, enqueueDiagnosis);
     return c.json({ status: "ok", incidentId, packetId: existing.packet.packetId });
   });
 
@@ -386,7 +398,7 @@ export function createIngestRouter(storage: StorageDriver, spanBuffer: SpanBuffe
           if (!telemetryMetrics.some((m) => shouldAttachEvidence(m, incident))) return [];
           return [(async () => {
             await storage.touchIncidentActivity(incident.incidentId);
-            await rebuildAndNotify(incident.incidentId, telemetryStore, storage, diagnosisConfig, diagnosisRunner);
+            await rebuildAndNotify(incident.incidentId, telemetryStore, storage, diagnosisConfig, diagnosisRunner, enqueueDiagnosis);
           })()];
         }),
       );
@@ -419,7 +431,7 @@ export function createIngestRouter(storage: StorageDriver, spanBuffer: SpanBuffe
           if (!telemetryLogs.some((l) => shouldAttachEvidence(l, incident))) return [];
           return [(async () => {
             await storage.touchIncidentActivity(incident.incidentId);
-            await rebuildAndNotify(incident.incidentId, telemetryStore, storage, diagnosisConfig, diagnosisRunner);
+            await rebuildAndNotify(incident.incidentId, telemetryStore, storage, diagnosisConfig, diagnosisRunner, enqueueDiagnosis);
           })()];
         }),
       );
@@ -471,7 +483,7 @@ export function createIngestRouter(storage: StorageDriver, spanBuffer: SpanBuffe
     for (const [incidentId, events] of eventsByIncidentId) {
       await storage.touchIncidentActivity(incidentId);
       await storage.appendPlatformEvents(incidentId, events);
-      await rebuildAndNotify(incidentId, telemetryStore, storage, diagnosisConfig, diagnosisRunner);
+      await rebuildAndNotify(incidentId, telemetryStore, storage, diagnosisConfig, diagnosisRunner, enqueueDiagnosis);
     }
 
     return c.json({ status: "ok" });
