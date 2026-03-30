@@ -199,7 +199,7 @@
     "diagnosisPending": "深刻度・タイミング・エビデンスレーンは表示済みです。診断結果はまだ組み立て中です。",
     "diagnosisUnavailable": "診断結果を生成できませんでした。確認済みテレメトリは手動レビュー用に利用可能です。",
     "evidenceEmpty": "エビデンスレーンは準備済みですが、最初のトレース・メトリクス・ログクラスタはまだ到着中です。",
-    "evidenceSparse": "初回の診断が利用可能です。エビデンスが揃うまで方向性の参考として扱ってください。",
+    "evidenceSparse": "暫定的な診断が利用可能です。エビデンスが揃うまで予備的な参考として扱ってください。",
     "baselineInsufficient": "観測された挙動は表示済みです。期待値のベースラインカバレッジはまだ限定的です。",
     "baselineUnavailable": "観測された挙動は表示済みです。信頼できるベースラインはまだ紐付いていません。",
     "default": "インシデントの主要コンテキストは表示済みです。補足エビデンスはまだ蓄積中です。",
@@ -257,7 +257,7 @@
     "designGapFallback": "Dependency failure observed but no retry/backoff pattern detected in logs.",
     "banner": {
       "diagnosisPending": "診断の組み立て中も Evidence Studio は利用可能です",
-      "evidenceSparse": "方向性の参考になる情報が利用可能です",
+      "evidenceSparse": "初期分析が完了しました",
       "diagnosisUnavailable": "診断結果なしでも Evidence Studio は利用可能です",
       "coverageMaturing": "エビデンスのカバレッジはまだ蓄積中です",
       "diagnosisPendingBody": "確認済みのトレースとログをまず使ってください。メトリクス・確信度・最終的な分析は相関完了後に確定します。",

@@ -199,7 +199,7 @@
     "diagnosisPending": "Severity, timing, and evidence lanes are visible now. The diagnosis narrative is still being assembled.",
     "diagnosisUnavailable": "A narrative diagnosis could not be produced. Confirmed telemetry remains available for manual review.",
     "evidenceEmpty": "Evidence lanes are prepared, but the first traces, metrics, and log clusters are still arriving.",
-    "evidenceSparse": "A first-pass diagnosis is available. Treat it as directional until more evidence fills in the gaps.",
+    "evidenceSparse": "A preliminary diagnosis is available. Treat it as provisional until more evidence fills in the gaps.",
     "baselineInsufficient": "Observed behavior is visible now; expected baseline coverage is still limited.",
     "baselineUnavailable": "Observed behavior is visible now; no reliable baseline is attached yet.",
     "default": "Core incident context is visible. Supporting evidence is still maturing.",
@@ -217,7 +217,7 @@
       "sparse": {
         "headline": "A partial diagnosis is available. Some impact is confirmed, but the full story is still forming.",
         "action": "Use the confirmed signals first, then validate any gaps before applying irreversible remediation.",
-        "rootCause": "This hypothesis is directional. Keep validating adjacent dependencies and baseline drift.",
+        "rootCause": "This hypothesis is preliminary. Keep validating adjacent dependencies and baseline drift.",
         "blastRadius": "Confirmed impact is shown here first. Additional affected paths will appear as telemetry fills in.",
         "confidence": "Confidence remains intentionally conservative until more than one evidence surface agrees.",
         "checks": "Prioritize checks that validate the currently confirmed trigger and rule out nearby false positives.",
@@ -257,7 +257,7 @@
     "designGapFallback": "Dependency failure observed but no retry/backoff pattern detected in logs.",
     "banner": {
       "diagnosisPending": "Evidence Studio is live while diagnosis assembles",
-      "evidenceSparse": "A directional read is available now",
+      "evidenceSparse": "Initial analysis is ready",
       "diagnosisUnavailable": "Evidence Studio remains available without a narrative diagnosis",
       "coverageMaturing": "Evidence coverage is still maturing",
       "diagnosisPendingBody": "Use the confirmed traces and logs first. Metrics, confidence wording, and the final narrative will tighten as correlation completes.",
@@ -319,7 +319,7 @@
       "dependencies": "Dependencies in Scope",
       "confidenceReady": "Narrative confidence is still being refined from the current evidence mix.",
       "confidencePending": "Confidence will appear here once multiple evidence surfaces agree on the same explanation.",
-      "uncertaintyUnavailable": "No expected baseline is attached yet, so treat observed slowdowns and failures as directional rather than fully comparative.",
+      "uncertaintyUnavailable": "No expected baseline is attached yet, so treat observed slowdowns and failures as preliminary rather than fully comparative.",
       "uncertaintyDefault": "Open questions will stay pinned here while the system separates confirmed facts from still-unresolved possibilities.",
       "dependenciesDefault": "Dependency notes stay pinned here as trace and log correlation confirms what is truly involved."
     },
