@@ -342,4 +342,38 @@ describe('buildEvidenceQueryAnswer', () => {
     )
     expect(spanSegment).toBeDefined()
   })
+
+  it('does not collapse metrics questions into the generic trace answer', async () => {
+    const incident = makeIncident({ diagnosisResult: makeDiagnosisResult() })
+    const result = await buildEvidenceQueryAnswer(incident, makeMockStore(), 'メトリクスに問題はある？', false)
+
+    expect(result.status).toBe('no_answer')
+    expect(result.noAnswerReason).toContain('metrics-specific question')
+  })
+
+  it('routes log questions to log evidence and missing-signal evidence', async () => {
+    const incident = makeIncident({ diagnosisResult: makeDiagnosisResult() })
+    const result = await buildEvidenceQueryAnswer(incident, makeMockStore(), 'logに異常はありましたか。', false)
+
+    expect(result.status).toBe('answered')
+    expect(result.segments.some((segment) => segment.evidenceRefs.some((ref) => ref.kind === 'log_cluster' || ref.kind === 'absence'))).toBe(true)
+  })
+
+  it('answers root-cause questions with the diagnosis hypothesis instead of a generic fragment', async () => {
+    const incident = makeIncident({ diagnosisResult: makeDiagnosisResult() })
+    const result = await buildEvidenceQueryAnswer(incident, makeMockStore(), '根本原因は？', false)
+
+    expect(result.status).toBe('answered')
+    expect(result.segments.some((segment) => segment.kind === 'inference' && segment.text.includes('Flash sale traffic exceeded Stripe API quota'))).toBe(true)
+  })
+
+  it('returns a single concise no-answer for greetings', async () => {
+    const incident = makeIncident({ diagnosisResult: makeDiagnosisResult() })
+    const result = await buildEvidenceQueryAnswer(incident, makeMockStore(), 'こんにちは？', false)
+
+    expect(result.status).toBe('no_answer')
+    expect(result.noAnswerReason).toContain('incident-related question')
+    expect(result.segments).toHaveLength(1)
+    expect(result.segments[0]?.text).toContain('Please ask about the incident')
+  })
 })
