@@ -726,6 +726,29 @@
   color: var(--ink-2);
 }
 
+.lens-board-close-confirm {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--panel);
+}
+
+.lens-board-close-confirm-msg {
+  margin: 0;
+  font-size: var(--fs-sm);
+  color: var(--ink);
+  flex: 1;
+}
+
+.lens-board-close-confirm-btns {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
 .lens-board-chip {
   font-size: var(--fs-xs);
   font-weight: 600;

@@ -23,6 +23,7 @@ export function LensIncidentBoard({ incidentId, zoomTo }: Props) {
   const queryClient = useQueryClient();
   const [rerunFeedback, setRerunFeedback] = useState<string | null>(null);
   const [closeFeedback, setCloseFeedback] = useState<string | null>(null);
+  const [closeConfirm, setCloseConfirm] = useState(false);
   const { data, isLoading, isError } = useQuery(
     curatedQueries.extendedIncident(incidentId),
   );
@@ -164,19 +165,33 @@ export function LensIncidentBoard({ incidentId, zoomTo }: Props) {
       />
 
       <div className="lens-board-operator-actions">
-        <button
-          type="button"
-          className="lens-board-btn-close"
-          onClick={handleCloseIncident}
-          disabled={closeIncident.isPending || data.status === "closed"}
-          aria-label={data.status === "closed" ? t("board.close.closedLabel") : t("board.close.button")}
-        >
-          {closeIncident.isPending
-            ? t("board.close.closing")
-            : data.status === "closed"
-              ? t("board.close.closedLabel")
-              : t("board.close.button")}
-        </button>
+        {closeConfirm ? (
+          <div className="lens-board-close-confirm" role="alertdialog" aria-label={t("board.close.confirmTitle")}>
+            <p className="lens-board-close-confirm-msg">{t("board.close.confirmMessage", { id: data.incidentId })}</p>
+            <div className="lens-board-close-confirm-btns">
+              <button type="button" className="ui-btn ui-btn-outline ui-btn-sz-sm" onClick={() => setCloseConfirm(false)}>
+                {t("board.close.cancel")}
+              </button>
+              <button type="button" className="ui-btn ui-btn-destructive ui-btn-sz-sm" onClick={() => { setCloseConfirm(false); handleCloseIncident(); }}>
+                {t("board.close.confirm")}
+              </button>
+            </div>
+          </div>
+        ) : (
+          <button
+            type="button"
+            className="lens-board-btn-close"
+            onClick={() => setCloseConfirm(true)}
+            disabled={closeIncident.isPending || data.status === "closed"}
+            aria-label={data.status === "closed" ? t("board.close.closedLabel") : t("board.close.button")}
+          >
+            {closeIncident.isPending
+              ? t("board.close.closing")
+              : data.status === "closed"
+                ? t("board.close.closedLabel")
+                : t("board.close.button")}
+          </button>
+        )}
         {closeFeedback ? <p className="lens-board-close-note">{closeFeedback}</p> : null}
       </div>
 

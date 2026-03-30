@@ -169,7 +169,11 @@
       "closing": "Closing…",
       "closedLabel": "Closed",
       "requested": "Incident closed. It will be permanently deleted after the retention window.",
-      "failed": "Could not close the incident. Try again in a moment."
+      "failed": "Could not close the incident. Try again in a moment.",
+      "confirmTitle": "Close incident confirmation",
+      "confirmMessage": "Close {{id}}? This marks the incident as resolved.",
+      "confirm": "Close incident",
+      "cancel": "Cancel"
     },
     "confirmedNow": {
       "severity": "{{severity}} severity and incident timing are confirmed.",
