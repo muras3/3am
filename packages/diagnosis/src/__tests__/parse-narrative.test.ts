@@ -83,6 +83,27 @@ describe("parseNarrative", () => {
     );
   });
 
+  it("normalizes kind-prefixed evidence ref IDs before validation", () => {
+    const prefixed = {
+      ...validOutput,
+      qa: {
+        ...validOutput.qa,
+        answerEvidenceRefs: [
+          { kind: "span", id: "span:tid:a3f8:sid:pay429" },
+          { kind: "metric", id: "metric:worker_pool_in_use::checkout-orchestrator" },
+        ],
+        evidenceBindings: [
+          { claim: "Payment API rate limit exceeded", evidenceRefs: [{ kind: "span", id: "span:tid:a3f8:sid:pay429" }] },
+          { claim: "Worker pool saturated from retries", evidenceRefs: [{ kind: "metric", id: "metric:worker_pool_in_use::checkout-orchestrator" }] },
+        ],
+      },
+    };
+
+    const result = parseNarrative(JSON.stringify(prefixed), meta, rsFixture);
+    expect(result.qa.answerEvidenceRefs[0]?.id).toBe("tid:a3f8:sid:pay429");
+    expect(result.qa.answerEvidenceRefs[1]?.id).toBe("worker_pool_in_use::checkout-orchestrator");
+  });
+
   it("accepts empty evidenceBindings when noAnswerReason is set", () => {
     const unanswerable = {
       ...validOutput,

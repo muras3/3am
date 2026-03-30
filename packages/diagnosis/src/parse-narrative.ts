@@ -58,6 +58,31 @@ function validateEvidenceRefIds(
   }
 }
 
+function normalizeEvidenceRefIds(narrative: ConsoleNarrative): ConsoleNarrative {
+  const normalizeId = (kind: string, id: string): string => {
+    const prefix = `${kind}:`;
+    return id.startsWith(prefix) ? id.slice(prefix.length) : id;
+  };
+
+  return {
+    ...narrative,
+    qa: {
+      ...narrative.qa,
+      answerEvidenceRefs: narrative.qa.answerEvidenceRefs.map((ref) => ({
+        ...ref,
+        id: normalizeId(ref.kind, ref.id),
+      })),
+      evidenceBindings: narrative.qa.evidenceBindings.map((binding) => ({
+        ...binding,
+        evidenceRefs: binding.evidenceRefs.map((ref) => ({
+          ...ref,
+          id: normalizeId(ref.kind, ref.id),
+        })),
+      })),
+    },
+  };
+}
+
 function validateOutputSize(narrative: ConsoleNarrative): void {
   checkStr("whyThisAction", narrative.whyThisAction, MAX_STRING);
   checkStr("confidenceSummary.basis", narrative.confidenceSummary.basis, MAX_STRING);
@@ -146,7 +171,7 @@ export function parseNarrative(
     },
   };
 
-  const result = ConsoleNarrativeSchema.parse(withMeta);
+  const result = normalizeEvidenceRefIds(ConsoleNarrativeSchema.parse(withMeta));
   validateOutputSize(result);
   validateEvidenceRefIds(result, context);
 
