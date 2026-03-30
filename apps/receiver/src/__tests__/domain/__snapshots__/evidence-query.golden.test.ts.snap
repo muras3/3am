@@ -10,25 +10,25 @@ exports[`evidence query golden responses > keeps the inc_000006 follow-up answer
     },
     "followups": [
       {
-        "question": "Do the metrics show the same failure window?",
+        "question": "同じ時間帯の異常はメトリクスでも出ている？",
         "targetEvidenceKinds": [
           "metrics",
         ],
       },
       {
-        "question": "Which log cluster lines up with that drift?",
+        "question": "そのドリフトに対応するログクラスタはどれ？",
         "targetEvidenceKinds": [
           "logs",
         ],
       },
       {
-        "question": "Which trace path first shows this failure?",
+        "question": "この失敗が最初に出たトレース経路はどれ？",
         "targetEvidenceKinds": [
           "traces",
         ],
       },
       {
-        "question": "What expected resilience signal is still missing?",
+        "question": "欠けているはずの回復シグナルは何？",
         "targetEvidenceKinds": [
           "logs",
         ],
@@ -95,25 +95,25 @@ exports[`evidence query golden responses > keeps the inc_000006 follow-up answer
     },
     "followups": [
       {
-        "question": "Do the metrics show the same failure window?",
+        "question": "同じ時間帯の異常はメトリクスでも出ている？",
         "targetEvidenceKinds": [
           "metrics",
         ],
       },
       {
-        "question": "Which log cluster lines up with that drift?",
+        "question": "そのドリフトに対応するログクラスタはどれ？",
         "targetEvidenceKinds": [
           "logs",
         ],
       },
       {
-        "question": "Which trace path first shows this failure?",
+        "question": "この失敗が最初に出たトレース経路はどれ？",
         "targetEvidenceKinds": [
           "traces",
         ],
       },
       {
-        "question": "What expected resilience signal is still missing?",
+        "question": "欠けているはずの回復シグナルは何？",
         "targetEvidenceKinds": [
           "logs",
         ],
@@ -173,25 +173,25 @@ exports[`evidence query golden responses > keeps the inc_000006 follow-up answer
     },
     "followups": [
       {
-        "question": "Do the metrics show the same failure window?",
+        "question": "同じ時間帯の異常はメトリクスでも出ている？",
         "targetEvidenceKinds": [
           "metrics",
         ],
       },
       {
-        "question": "Which log cluster lines up with that drift?",
+        "question": "そのドリフトに対応するログクラスタはどれ？",
         "targetEvidenceKinds": [
           "logs",
         ],
       },
       {
-        "question": "Which trace path first shows this failure?",
+        "question": "この失敗が最初に出たトレース経路はどれ？",
         "targetEvidenceKinds": [
           "traces",
         ],
       },
       {
-        "question": "What expected resilience signal is still missing?",
+        "question": "欠けているはずの回復シグナルは何？",
         "targetEvidenceKinds": [
           "logs",
         ],
