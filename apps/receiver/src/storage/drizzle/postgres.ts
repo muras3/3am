@@ -372,7 +372,7 @@ export class PostgresAdapter implements StorageDriver {
   }
 
   async claimDiagnosisDispatch(incidentId: string, leaseMs = 15 * 60_000): Promise<boolean> {
-    const staleBefore = new Date(Date.now() - leaseMs);
+    const staleBefore = new Date(Date.now() - leaseMs).toISOString();
     const rows = await this.db
       .update(pgIncidents)
       .set({ diagnosisDispatchedAt: new Date(), updatedAt: new Date() })
