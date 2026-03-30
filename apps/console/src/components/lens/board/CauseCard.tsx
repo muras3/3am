@@ -3,6 +3,28 @@ import { useTranslation } from "react-i18next";
 import type { CausalStep, CuratedState } from "../../../api/curated-types.js";
 import { sectionFallback } from "./board-state.js";
 
+/* ── Detail tooltip (CSS-only, appears on hover/focus) ──── */
+
+function StepDetail({ text }: { text: string }) {
+  const detailRef = useRef<HTMLDivElement | null>(null);
+  const [truncated, setTruncated] = useState(false);
+
+  useEffect(() => {
+    const el = detailRef.current;
+    if (!el) return;
+    setTruncated(el.scrollHeight > el.clientHeight);
+  }, [text]);
+
+  return (
+    <div className="lens-board-step-detail-wrap">
+      <div className="lens-board-step-detail" ref={detailRef}>{text}</div>
+      {truncated && (
+        <div className="lens-board-step-tooltip" role="tooltip">{text}</div>
+      )}
+    </div>
+  );
+}
+
 interface Props {
   steps: CausalStep[];
   state: CuratedState;
@@ -133,7 +155,7 @@ export function CauseCard({ steps, state }: Props) {
                     >
                       <div className="lens-board-step-tag">{step.tag}</div>
                       <div className="lens-board-step-title">{step.title}</div>
-                      <div className="lens-board-step-detail" title={step.detail}>{step.detail}</div>
+                      <StepDetail text={step.detail} />
                     </div>
                     {i < rowSteps.length - 1 && <ChainArrow />}
                   </Fragment>
