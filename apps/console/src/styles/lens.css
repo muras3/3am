@@ -1352,7 +1352,7 @@
   color: var(--ink-2);
   line-height: 1.5;
   white-space: pre-wrap;
-  word-break: break-word;
+  overflow-wrap: break-word;
   pointer-events: none;
   opacity: 0;
   transition: opacity 0.15s ease-out;
