@@ -307,7 +307,8 @@ function ensureQueue(name: string, cwd: string): void {
         ? String((error as { stderr?: Buffer }).stderr ?? "")
         : "",
     ].join("\n");
-    if (!output.toLowerCase().includes("already exists")) {
+    const lower = output.toLowerCase();
+    if (!lower.includes("already exists") && !lower.includes("already taken")) {
       throw error;
     }
     process.stderr.write(`Reusing existing Queue: ${name}\n`);
