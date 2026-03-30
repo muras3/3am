@@ -527,6 +527,27 @@ describe("QAFrame — interaction", () => {
     ).toBeInTheDocument();
   });
 
+  it("follow-up no-answer reason is rendered once", () => {
+    const reason = "The current evidence does not support a grounded answer yet.";
+    renderQAFrame(evidenceReady.qa, {
+      history: [{
+        id: "ans-no-answer",
+        question: "こんにちは？",
+        status: "answered",
+        response: {
+          question: "こんにちは？",
+          status: "no_answer",
+          segments: [],
+          noAnswerReason: reason,
+          evidenceSummary: evidenceReady.qa.evidenceSummary,
+          followups: evidenceReady.qa.followups,
+        },
+      }],
+    });
+
+    expect(screen.getAllByText(reason)).toHaveLength(1);
+  });
+
   it("evidence ref keyboard Enter calls navigate", async () => {
     const user = userEvent.setup();
     renderQAFrame(evidenceReady.qa);

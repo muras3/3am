@@ -313,11 +313,15 @@ export function createApiRouter(
       return c.json({ error: "not found" }, 404);
     }
 
+    const storedLocale = await storage.getSettings("locale");
+    const locale: "en" | "ja" = storedLocale === "ja" ? "ja" : "en";
+
     const result = await buildEvidenceQueryAnswer(
       incident,
       telemetryStore,
       parsed.data.question,
       parsed.data.isFollowup ?? false,
+      locale,
     );
     return c.json(result);
   });

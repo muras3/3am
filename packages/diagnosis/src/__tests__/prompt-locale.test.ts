@@ -4,6 +4,7 @@
 import { describe, it, expect } from "vitest";
 import { buildPrompt } from "../prompt.js";
 import { buildNarrativePrompt } from "../narrative-prompt.js";
+import { buildEvidenceQueryPrompt } from "../evidence-query-prompt.js";
 import type { IncidentPacket, DiagnosisResult, ReasoningStructure } from "@3amoncall/core";
 
 const packet: IncidentPacket = {
@@ -132,5 +133,31 @@ describe("buildNarrativePrompt locale support", () => {
     expect(prompt).toContain("Output Instructions");
     expect(prompt).toContain("WORDING ONLY");
     expect(prompt).toContain("proofCards");
+  });
+});
+
+describe("buildEvidenceQueryPrompt routing support", () => {
+  it("includes Japanese instruction and question routing metadata", () => {
+    const prompt = buildEvidenceQueryPrompt({
+      question: "メトリクスに問題はあるか？",
+      intent: "metrics",
+      preferredSurfaces: ["metrics", "traces", "logs"],
+      diagnosis: {
+        whatHappened: diagnosisResult.summary.what_happened,
+        rootCauseHypothesis: diagnosisResult.summary.root_cause_hypothesis,
+        immediateAction: diagnosisResult.recommendation.immediate_action,
+        causalChain: diagnosisResult.reasoning.causal_chain.map((step) => step.title),
+      },
+      evidence: [{
+        ref: { kind: "metric_group", id: "mgroup:0" },
+        surface: "metrics",
+        summary: "Metric group mgroup:0 indicates checkout error rate spiked.",
+      }],
+    }, { locale: "ja" });
+
+    expect(prompt).toContain("Respond entirely in Japanese");
+    expect(prompt).toContain("question_intent: metrics");
+    expect(prompt).toContain("preferred_surfaces: metrics, traces, logs");
+    expect(prompt).toContain("If the question is about metrics, answer primarily from metric evidence");
   });
 });

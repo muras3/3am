@@ -1,0 +1,273 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`evidence query golden responses > keeps the inc_000006 follow-up answers stable 1`] = `
+[
+  {
+    "evidenceSummary": {
+      "logs": 5,
+      "metrics": 2,
+      "traces": 1,
+    },
+    "followups": [
+      {
+        "question": "Do the metrics show the same failure window?",
+        "targetEvidenceKinds": [
+          "metrics",
+        ],
+      },
+      {
+        "question": "Which log cluster lines up with that drift?",
+        "targetEvidenceKinds": [
+          "logs",
+        ],
+      },
+      {
+        "question": "Which trace path first shows this failure?",
+        "targetEvidenceKinds": [
+          "traces",
+        ],
+      },
+      {
+        "question": "What expected resilience signal is still missing?",
+        "targetEvidenceKinds": [
+          "logs",
+        ],
+      },
+    ],
+    "question": "原因は？",
+    "segments": [
+      {
+        "evidenceRefs": [
+          {
+            "id": "mgroup:0",
+            "kind": "metric_group",
+          },
+          {
+            "id": "lcluster:0",
+            "kind": "log_cluster",
+          },
+        ],
+        "id": "seg_answer_1",
+        "kind": "inference",
+        "text": "現時点では、Stripe rate limiting and retry amplification caused the checkout failures.",
+      },
+      {
+        "evidenceRefs": [
+          {
+            "id": "mgroup:0",
+            "kind": "metric_group",
+          },
+        ],
+        "id": "seg_fact_1",
+        "kind": "fact",
+        "text": "Metric group mgroup:0 indicates web error_rate Verdict=Inferred.",
+      },
+      {
+        "evidenceRefs": [
+          {
+            "id": "lcluster:0",
+            "kind": "log_cluster",
+          },
+        ],
+        "id": "seg_fact_2",
+        "kind": "fact",
+        "text": "Log evidence web error logs of type recovery appeared 1 times.",
+      },
+      {
+        "evidenceRefs": [
+          {
+            "id": "mgroup:0",
+            "kind": "metric_group",
+          },
+        ],
+        "id": "seg_inference_1",
+        "kind": "inference",
+        "text": "この説明は既存の diagnosis と、いま取得できている traces / metrics / logs の並びに一致しています。",
+      },
+    ],
+    "status": "answered",
+  },
+  {
+    "evidenceSummary": {
+      "logs": 5,
+      "metrics": 2,
+      "traces": 1,
+    },
+    "followups": [
+      {
+        "question": "Do the metrics show the same failure window?",
+        "targetEvidenceKinds": [
+          "metrics",
+        ],
+      },
+      {
+        "question": "Which log cluster lines up with that drift?",
+        "targetEvidenceKinds": [
+          "logs",
+        ],
+      },
+      {
+        "question": "Which trace path first shows this failure?",
+        "targetEvidenceKinds": [
+          "traces",
+        ],
+      },
+      {
+        "question": "What expected resilience signal is still missing?",
+        "targetEvidenceKinds": [
+          "logs",
+        ],
+      },
+    ],
+    "question": "メトリクスに問題はあるか？",
+    "segments": [
+      {
+        "evidenceRefs": [
+          {
+            "id": "mgroup:0",
+            "kind": "metric_group",
+          },
+          {
+            "id": "trace-1:checkout-001",
+            "kind": "span",
+          },
+        ],
+        "id": "seg_answer_1",
+        "kind": "fact",
+        "text": "はい。メトリクスでは明確な異常があります。",
+      },
+      {
+        "evidenceRefs": [
+          {
+            "id": "mgroup:0",
+            "kind": "metric_group",
+          },
+        ],
+        "id": "seg_fact_1",
+        "kind": "fact",
+        "text": "Metric group mgroup:0 indicates web error_rate Verdict=Inferred.",
+      },
+      {
+        "evidenceRefs": [
+          {
+            "id": "mgroup:0",
+            "kind": "metric_group",
+          },
+          {
+            "id": "trace-1:checkout-001",
+            "kind": "span",
+          },
+        ],
+        "id": "seg_inference_1",
+        "kind": "inference",
+        "text": "この並びは、Stripe rate limiting and retry amplification caused the checkout failures. という既存 diagnosis と整合しています。",
+      },
+    ],
+    "status": "answered",
+  },
+  {
+    "evidenceSummary": {
+      "logs": 5,
+      "metrics": 2,
+      "traces": 1,
+    },
+    "followups": [
+      {
+        "question": "Do the metrics show the same failure window?",
+        "targetEvidenceKinds": [
+          "metrics",
+        ],
+      },
+      {
+        "question": "Which log cluster lines up with that drift?",
+        "targetEvidenceKinds": [
+          "logs",
+        ],
+      },
+      {
+        "question": "Which trace path first shows this failure?",
+        "targetEvidenceKinds": [
+          "traces",
+        ],
+      },
+      {
+        "question": "What expected resilience signal is still missing?",
+        "targetEvidenceKinds": [
+          "logs",
+        ],
+      },
+    ],
+    "question": "根本原因は？",
+    "segments": [
+      {
+        "evidenceRefs": [
+          {
+            "id": "mgroup:0",
+            "kind": "metric_group",
+          },
+          {
+            "id": "lcluster:0",
+            "kind": "log_cluster",
+          },
+        ],
+        "id": "seg_answer_1",
+        "kind": "inference",
+        "text": "現時点では、Stripe rate limiting and retry amplification caused the checkout failures.",
+      },
+      {
+        "evidenceRefs": [
+          {
+            "id": "mgroup:0",
+            "kind": "metric_group",
+          },
+        ],
+        "id": "seg_fact_1",
+        "kind": "fact",
+        "text": "Metric group mgroup:0 indicates web error_rate Verdict=Inferred.",
+      },
+      {
+        "evidenceRefs": [
+          {
+            "id": "lcluster:0",
+            "kind": "log_cluster",
+          },
+        ],
+        "id": "seg_fact_2",
+        "kind": "fact",
+        "text": "Log evidence web error logs of type recovery appeared 1 times.",
+      },
+      {
+        "evidenceRefs": [
+          {
+            "id": "mgroup:0",
+            "kind": "metric_group",
+          },
+        ],
+        "id": "seg_inference_1",
+        "kind": "inference",
+        "text": "この説明は既存の diagnosis と、いま取得できている traces / metrics / logs の並びに一致しています。",
+      },
+    ],
+    "status": "answered",
+  },
+  {
+    "evidenceSummary": {
+      "logs": 5,
+      "metrics": 2,
+      "traces": 1,
+    },
+    "followups": [
+      {
+        "question": "What expected resilience signal is still missing?",
+        "targetEvidenceKinds": [
+          "logs",
+        ],
+      },
+    ],
+    "noAnswerReason": "このインシデントについて、トレース・メトリクス・ログ・原因を聞いて。",
+    "question": "こんにちは？",
+    "segments": [],
+    "status": "no_answer",
+  },
+]
+`;

@@ -8,6 +8,8 @@ export type EvidenceQueryPromptEvidence = {
 
 export type EvidenceQueryPromptInput = {
   question: string;
+  intent: string;
+  preferredSurfaces: Array<"traces" | "metrics" | "logs">;
   diagnosis: {
     whatHappened: string;
     rootCauseHypothesis: string;
@@ -17,7 +19,10 @@ export type EvidenceQueryPromptInput = {
   evidence: EvidenceQueryPromptEvidence[];
 };
 
-export function buildEvidenceQueryPrompt(input: EvidenceQueryPromptInput): string {
+export function buildEvidenceQueryPrompt(
+  input: EvidenceQueryPromptInput,
+  options?: { locale?: "en" | "ja" },
+): string {
   const diagnosisSection = input.diagnosis
     ? [
         `what_happened: ${input.diagnosis.whatHappened}`,
@@ -35,6 +40,18 @@ export function buildEvidenceQueryPrompt(input: EvidenceQueryPromptInput): strin
         )
         .join("\n")
     : "  (none)";
+
+  const prioritySection = [
+    `question_intent: ${input.intent}`,
+    `preferred_surfaces: ${input.preferredSurfaces.join(", ") || "(none)"}`,
+  ].join("\n");
+
+  const localeInstruction = options?.locale === "ja"
+    ? `
+Respond entirely in Japanese. Keep all JSON keys in English.
+Use direct, concise Japanese. Do not use polite or formal phrasing.
+`
+    : "";
 
   return `You are generating a grounded Q&A answer for an incident evidence console.
 
@@ -54,6 +71,9 @@ Product contract:
 
 Curated diagnosis:
 ${diagnosisSection}
+
+Question routing:
+${prioritySection}
 
 Curated evidence refs you may cite:
 ${evidenceSection}
@@ -80,9 +100,18 @@ Hard rules:
 - Keep segments sentence-level and concise.
 - Prefer 2-4 segments when status="answered".
 - If more than half of the answer would be unknown, use status="no_answer" instead.
+- Match the answer structure to the user question.
+- If the question is about metrics, answer primarily from metric evidence before using any diagnosis inference.
+- If the question is about logs, answer primarily from log evidence before using any diagnosis inference.
+- If the question is about traces or a failing path, answer primarily from trace evidence.
+- If the question asks for the cause or root cause, summarize the existing diagnosis but anchor it in retrieved evidence.
+- Do not repeat the same inference sentence across different question types unless the evidence genuinely leaves no better answer.
+- Make every fact segment readable as a standalone sentence; never emit fragments such as a single noun phrase.
 - A fact must be something the cited evidence directly supports.
 - An inference must remain narrower than the existing diagnosis; do not extend it.
 - Unknown should explicitly say what cannot be concluded yet.
 - For status="no_answer", segments should be empty unless one short unknown segment materially helps the operator.
+- For greetings, chit-chat, or off-topic questions, return status="no_answer" with one short noAnswerReason and no duplicated wording.
+${localeInstruction}
 `;
 }
