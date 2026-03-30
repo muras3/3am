@@ -56,7 +56,7 @@ const groundedAnswer: EvidenceQueryResponse = {
   ],
   evidenceSummary: { traces: 1, metrics: 1, logs: 1 },
   followups: [
-    { question: "Do the metrics show the same failure window?", targetEvidenceKinds: ["metrics"] },
+    { question: "同じ時間帯の異常はメトリクスでも出ている？", targetEvidenceKinds: ["metrics"] },
   ],
 };
 
@@ -525,6 +525,27 @@ describe("QAFrame — interaction", () => {
     expect(
       screen.getByText(evidencePending.qa.noAnswerReason!),
     ).toBeInTheDocument();
+  });
+
+  it("follow-up no-answer reason is rendered once", () => {
+    const reason = "The current evidence does not support a grounded answer yet.";
+    renderQAFrame(evidenceReady.qa, {
+      history: [{
+        id: "ans-no-answer",
+        question: "こんにちは？",
+        status: "answered",
+        response: {
+          question: "こんにちは？",
+          status: "no_answer",
+          segments: [],
+          noAnswerReason: reason,
+          evidenceSummary: evidenceReady.qa.evidenceSummary,
+          followups: evidenceReady.qa.followups,
+        },
+      }],
+    });
+
+    expect(screen.getAllByText(reason)).toHaveLength(1);
   });
 
   it("evidence ref keyboard Enter calls navigate", async () => {

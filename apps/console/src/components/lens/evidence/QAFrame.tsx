@@ -152,7 +152,7 @@ function PreparedRead({ qa }: { qa: QABlock }) {
         <span className="lens-ev-qa-state-label">
           {qa.status === "no_answer" ? t("evidence.qa.noAnswer") : t("evidence.qa.preparedRead")}
         </span>
-        {qa.noAnswerReason && (
+        {qa.noAnswerReason && initialSegments.length > 0 && (
           <span className="lens-ev-qa-answer-note">{qa.noAnswerReason}</span>
         )}
       </div>
@@ -266,7 +266,7 @@ export function QAFrame({
                         ? t("evidence.qa.noAnswer")
                         : t("evidence.qa.groundedAnswer")}
                     </span>
-                    {entry.response?.noAnswerReason && (
+                    {entry.response?.noAnswerReason && (entry.response?.segments?.length ?? 0) > 0 && (
                       <span className="lens-ev-qa-answer-note">{entry.response.noAnswerReason}</span>
                     )}
                   </div>

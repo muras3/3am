@@ -8,6 +8,7 @@ import { parseEvidenceQuery } from "./parse-evidence-query.js";
 
 export type GenerateEvidenceQueryOptions = {
   model?: string;
+  locale?: "en" | "ja";
 };
 
 const DEFAULT_MODEL = "claude-haiku-4-5-20251001";
@@ -18,7 +19,7 @@ export async function generateEvidenceQuery(
   options?: GenerateEvidenceQueryOptions,
 ): Promise<EvidenceQueryResponse> {
   const model = options?.model ?? DEFAULT_MODEL;
-  const prompt = buildEvidenceQueryPrompt(input);
+  const prompt = buildEvidenceQueryPrompt(input, { locale: options?.locale });
   const raw = await callModel(prompt, { model, maxTokens: MAX_TOKENS });
 
   return parseEvidenceQuery(
