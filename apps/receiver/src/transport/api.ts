@@ -269,7 +269,10 @@ export function createApiRouter(
       }
 
       if (enqueueDiagnosis) {
-        await enqueueDiagnosis(id);
+        const mode = incident.diagnosisResult && !incident.consoleNarrative
+          ? "narrative"
+          : "diagnosis";
+        await enqueueDiagnosis(id, mode);
         return c.json({ status: "accepted" }, 202);
       }
 

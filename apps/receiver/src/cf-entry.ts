@@ -121,8 +121,8 @@ async function getRuntime(env: Env): Promise<RuntimeServices> {
     const resolvedAuthToken = await resolveAuthToken(storage);
     const diagnosisRunner = new DiagnosisRunner(storage, telemetryStore);
     const enqueueDiagnosis = env.DIAGNOSIS_QUEUE
-      ? async (incidentId: string) => {
-          await env.DIAGNOSIS_QUEUE!.send({ incidentId });
+      ? async (incidentId: string, mode: DiagnosisQueueMessage["mode"] = "diagnosis") => {
+          await env.DIAGNOSIS_QUEUE!.send({ incidentId, mode });
         }
       : undefined;
 
@@ -160,11 +160,18 @@ export default {
       }
 
       try {
-        const outcome = await runIfNeeded(
-          incidentId,
-          runtime.storage,
-          runtime.diagnosisRunner,
-        );
+        const mode = message.body?.mode ?? "diagnosis";
+        if (mode === "narrative") {
+          const ok = await runtime.diagnosisRunner.rerunNarrative(incidentId);
+          if (!ok) {
+            message.retry({ delaySeconds: 30 });
+            continue;
+          }
+          message.ack();
+          continue;
+        }
+
+        const outcome = await runIfNeeded(incidentId, runtime.storage, runtime.diagnosisRunner);
         if (outcome === "failed") {
           message.retry({ delaySeconds: 30 });
           continue;

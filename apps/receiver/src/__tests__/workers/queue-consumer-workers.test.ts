@@ -164,4 +164,22 @@ describe("Cloudflare Queue consumer", () => {
     expect(result.explicitAcks).toEqual(["msg-skip"]);
     expect(result.retryMessages).toEqual([]);
   });
+
+  it("reruns stage 2 narrative when requested explicitly", async () => {
+    const incidentId = await seedIncident({ withDiagnosis: true });
+    const batch = createMessageBatch("3amoncall-diagnosis", [
+      { id: "msg-narrative", timestamp: new Date(), attempts: 1, body: { incidentId, mode: "narrative" } },
+    ]);
+    const ctx = createExecutionContext();
+
+    await worker.queue(batch, { DB: env.DB }, ctx);
+
+    const result = await getQueueResult(batch, ctx);
+    expect(result.explicitAcks).toEqual(["msg-narrative"]);
+    expect(result.retryMessages).toEqual([]);
+
+    const storage = new D1StorageAdapter(env.DB);
+    const incident = await storage.getIncident(incidentId);
+    expect(incident?.consoleNarrative?.headline).toContain("Stripe retry amplification");
+  });
 });
