@@ -396,14 +396,63 @@ function buildFallbackAnswer(
     status: "answered",
     segments,
     evidenceSummary: summarizeEvidence(evidence.surfaces),
-    followups: buildFollowups(retrieved, evidence, question),
+    followups: buildFollowups(retrieved, evidence, question, locale),
   };
+}
+
+function followupText(
+  key:
+    | "metrics_window"
+    | "log_cluster"
+    | "trace_path"
+    | "missing_signal"
+    | "inspect_span"
+    | "abnormal_metric"
+    | "symptom_log",
+  locale: "en" | "ja",
+): string {
+  if (locale === "ja") {
+    switch (key) {
+      case "metrics_window":
+        return "同じ時間帯の異常はメトリクスでも出ている？";
+      case "log_cluster":
+        return "そのドリフトに対応するログクラスタはどれ？";
+      case "trace_path":
+        return "この失敗が最初に出たトレース経路はどれ？";
+      case "missing_signal":
+        return "欠けているはずの回復シグナルは何？";
+      case "inspect_span":
+        return "最初に見るべき span はどれ？";
+      case "abnormal_metric":
+        return "いちばん異常な metric group はどれ？";
+      case "symptom_log":
+        return "症状を最もよく説明するログクラスタはどれ？";
+    }
+  }
+
+  switch (key) {
+    case "metrics_window":
+      return "Do the metrics show the same failure window?";
+    case "log_cluster":
+      return "Which log cluster lines up with that drift?";
+    case "trace_path":
+      return "Which trace path first shows this failure?";
+    case "missing_signal":
+      return "What expected resilience signal is still missing?";
+    case "inspect_span":
+      return "Which span should I inspect first?";
+    case "abnormal_metric":
+      return "Which metric group is most abnormal?";
+    case "symptom_log":
+      return "Which log cluster best explains the symptom?";
+  }
 }
 
 function buildFollowups(
   retrieved: RetrievedEvidence[],
   evidence: EvidenceResponse,
   question: string,
+  locale: "en" | "ja" = "en",
 ): Followup[] {
   const lowerQuestion = question.toLowerCase();
   const surfaceSeen = new Set(retrieved.map((entry) => entry.surface));
@@ -411,19 +460,19 @@ function buildFollowups(
 
   if (surfaceSeen.has("traces") && !lowerQuestion.includes("metric")) {
     followups.push({
-      question: "Do the metrics show the same failure window?",
+      question: followupText("metrics_window", locale),
       targetEvidenceKinds: ["metrics"],
     });
   }
   if (surfaceSeen.has("metrics") && !lowerQuestion.includes("log")) {
     followups.push({
-      question: "Which log cluster lines up with that drift?",
+      question: followupText("log_cluster", locale),
       targetEvidenceKinds: ["logs"],
     });
   }
   if (surfaceSeen.has("logs") && !lowerQuestion.includes("trace")) {
     followups.push({
-      question: "Which trace path first shows this failure?",
+      question: followupText("trace_path", locale),
       targetEvidenceKinds: ["traces"],
     });
   }
@@ -431,20 +480,20 @@ function buildFollowups(
   const hasAbsence = evidence.surfaces.logs.claims.some((claim) => claim.type === "absence");
   if (hasAbsence && !lowerQuestion.includes("missing")) {
     followups.push({
-      question: "What expected resilience signal is still missing?",
+      question: followupText("missing_signal", locale),
       targetEvidenceKinds: ["logs"],
     });
   }
 
   if (followups.length === 0) {
     if (evidence.surfaces.traces.observed.length > 0) {
-      followups.push({ question: "Which span should I inspect first?", targetEvidenceKinds: ["traces"] });
+      followups.push({ question: followupText("inspect_span", locale), targetEvidenceKinds: ["traces"] });
     }
     if (evidence.surfaces.metrics.hypotheses.length > 0) {
-      followups.push({ question: "Which metric group is most abnormal?", targetEvidenceKinds: ["metrics"] });
+      followups.push({ question: followupText("abnormal_metric", locale), targetEvidenceKinds: ["metrics"] });
     }
     if (evidence.surfaces.logs.claims.length > 0) {
-      followups.push({ question: "Which log cluster best explains the symptom?", targetEvidenceKinds: ["logs"] });
+      followups.push({ question: followupText("symptom_log", locale), targetEvidenceKinds: ["logs"] });
     }
   }
 
@@ -510,7 +559,7 @@ export async function buildEvidenceQueryAnswer(
     return {
       ...generated,
       evidenceSummary: summarizeEvidence(curatedEvidence.surfaces),
-      followups: buildFollowups(retrieved, curatedEvidence, question),
+      followups: buildFollowups(retrieved, curatedEvidence, question, locale),
     };
   } catch {
     return buildFallbackAnswer(question, incident, curatedEvidence, retrieved, intent, locale);

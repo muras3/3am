@@ -56,7 +56,7 @@ const groundedAnswer: EvidenceQueryResponse = {
   ],
   evidenceSummary: { traces: 1, metrics: 1, logs: 1 },
   followups: [
-    { question: "Do the metrics show the same failure window?", targetEvidenceKinds: ["metrics"] },
+    { question: "同じ時間帯の異常はメトリクスでも出ている？", targetEvidenceKinds: ["metrics"] },
   ],
 };
 

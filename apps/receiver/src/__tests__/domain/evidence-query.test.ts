@@ -351,4 +351,12 @@ describe('buildEvidenceQueryAnswer', () => {
     expect(result.segments).toEqual([])
     expect(result.noAnswerReason).toContain('Ask about traces, metrics, logs')
   })
+
+  it('localizes followups when locale is ja', async () => {
+    const incident = makeIncident({ diagnosisResult: makeDiagnosisResult() })
+    const result = await buildEvidenceQueryAnswer(incident, makeMockStore(), '原因は？', false, 'ja')
+
+    expect(result.followups.length).toBeGreaterThan(0)
+    expect(result.followups[0]?.question).toContain('メトリクス')
+  })
 })
