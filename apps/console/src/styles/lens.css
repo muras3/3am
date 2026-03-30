@@ -1345,12 +1345,13 @@
   padding: 8px 10px;
   background: var(--panel);
   border: 1px solid var(--line);
+  border-left-width: 2px;
   border-radius: var(--radius-sm);
   box-shadow: 0 4px 12px rgba(26, 26, 26, 0.10);
-  font-size: var(--fs-sm);
-  font-family: var(--font);
+  font-size: var(--fs-xs);
+  font-family: var(--mono);
   color: var(--ink-2);
-  line-height: 1.5;
+  line-height: 1.6;
   white-space: pre-wrap;
   overflow-wrap: break-word;
   pointer-events: none;
@@ -1358,6 +1359,11 @@
   transition: opacity 0.15s ease-out;
   transition-delay: 0s;
 }
+
+.lens-board-chain-step-external .lens-board-step-tooltip { border-left-color: var(--amber); }
+.lens-board-chain-step-system   .lens-board-step-tooltip { border-left-color: var(--teal); }
+.lens-board-chain-step-incident .lens-board-step-tooltip { border-left-color: var(--ink-3); }
+.lens-board-chain-step-impact   .lens-board-step-tooltip { border-left-color: var(--accent); }
 
 .lens-board-step-detail-wrap:hover .lens-board-step-tooltip,
 .lens-board-chain-step:focus-within .lens-board-step-tooltip {
