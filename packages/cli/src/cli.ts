@@ -1,8 +1,8 @@
 #!/usr/bin/env node
-import { Command } from "commander";
+import { Argument, Command } from "commander";
 import { runDiagnose } from "./commands/diagnose.js";
 import { runInit } from "./commands/init.js";
-import { runDev } from "./commands/dev.js";
+import { runLocal } from "./commands/local.js";
 
 const program = new Command();
 
@@ -21,7 +21,7 @@ program
 
 program
   .command("init")
-  .description("Set up OpenTelemetry SDK in your project and start local Receiver")
+  .description("Set up OpenTelemetry SDK in your project")
   .option("--api-key <key>", "Anthropic API key (saved to ~/.config/3amoncall/credentials)")
   .option("--no-interactive", "Skip interactive prompts (for CI/Claude Code)")
   .action(async (options: { apiKey?: string; interactive?: boolean }) => {
@@ -32,22 +32,22 @@ program
   });
 
 program
-  .command("dev")
-  .description("Start local 3amoncall Receiver via Docker")
+  .command("local")
+  .description("Use 3amoncall locally (default action: start)")
   .option("--port <number>", "Port to expose (default: 3333)", parseInt)
-  .action((options: { port?: number }) => {
-    runDev(options.port != null ? { port: options.port } : {});
-  });
-
-program
-  .command("demo")
-  .description("Run a demo incident with real LLM diagnosis (local/dev only)")
-  .option("--yes", "Skip cost consent prompt")
+  .option("--yes", "Skip cost consent prompt when running the demo")
   .option("--no-interactive", "Skip interactive prompts")
-  .option("--receiver-url <url>", "Receiver URL (default: http://localhost:3333)")
-  .action(async (options: { yes?: boolean; interactive?: boolean; receiverUrl?: string }) => {
-    const { runDemo } = await import("./commands/demo.js");
-    await runDemo(process.argv.slice(3), {
+  .option("--receiver-url <url>", "Receiver URL for local demo (default: http://localhost:3333)")
+  .addArgument(new Argument("[action]").choices(["start", "demo"]))
+  .action(async (action: "start" | "demo" | undefined, options: {
+    port?: number;
+    yes?: boolean;
+    interactive?: boolean;
+    receiverUrl?: string;
+  }) => {
+    await runLocal({
+      action,
+      port: options.port,
       yes: options.yes,
       noInteractive: options.interactive === false,
       receiverUrl: options.receiverUrl,
@@ -56,18 +56,17 @@ program
 
 program
   .command("deploy")
-  .description("Deploy Receiver to Vercel or Cloudflare and configure credentials")
-  .option("--platform <platform>", "Target platform (vercel or cloudflare)")
+  .description("Deploy Receiver to a hosted target")
+  .addArgument(new Argument("<platform>").choices(["vercel", "cloudflare"]))
   .option("--project-name <name>", "Project name override for platform provisioning")
   .option("--setup", "Force first-time setup flow")
   .option("--no-setup", "Force re-deploy flow (requires --auth-token)")
   .option("--auth-token <token>", "Auth token for re-deploy")
   .option("--yes", "Skip all confirmation prompts")
-  .option("--no-interactive", "CI mode (requires --yes and --platform)")
+  .option("--no-interactive", "CI mode (requires --yes and an explicit target)")
   .option("--json", "Output results as JSON")
   .action(
-    async (options: {
-      platform?: string;
+    async (platform: "vercel" | "cloudflare" | undefined, options: {
       projectName?: string;
       setup?: boolean;
       authToken?: string;
@@ -77,7 +76,7 @@ program
     }) => {
       const { runDeploy } = await import("./commands/deploy.js");
       await runDeploy(process.argv.slice(3), {
-        platform: options.platform as "vercel" | "cloudflare" | undefined,
+        platform,
         projectName: options.projectName,
         setup: options.setup,
         noSetup: options.setup === false,

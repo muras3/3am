@@ -97,9 +97,9 @@ export async function runDeploy(
 
   if (options.noInteractive && (!options.yes || !options.platform)) {
     process.stderr.write(
-      "Error: --no-interactive requires --yes and --platform.\n\n" +
+      "Error: --no-interactive requires --yes and an explicit deploy target.\n\n" +
         "Fix:\n" +
-        "  npx 3amoncall deploy --no-interactive --yes --platform vercel\n",
+        "  npx 3amoncall deploy vercel --no-interactive --yes\n",
     );
     process.exit(1);
     return;
@@ -128,9 +128,9 @@ export async function runDeploy(
     platform = options.platform;
   } else if (options.noInteractive) {
     process.stderr.write(
-      "Error: --no-interactive requires --platform to be specified.\n\n" +
+      "Error: --no-interactive requires an explicit deploy target.\n\n" +
         "Fix:\n" +
-        "  npx 3amoncall deploy --no-interactive --yes --platform vercel\n",
+        "  npx 3amoncall deploy vercel --no-interactive --yes\n",
     );
     process.exit(1);
     return;

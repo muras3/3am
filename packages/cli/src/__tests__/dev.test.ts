@@ -25,6 +25,14 @@ function makeReadFileMock(version: string | null, envContent?: string) {
   };
 }
 
+function mockNoLocalRepo(envExists = false) {
+  mockExistsSync.mockImplementation((path) => {
+    const value = String(path);
+    if (value.endsWith(".env")) return envExists;
+    return false;
+  });
+}
+
 describe("runDev", () => {
   let originalExit: typeof process.exit;
   let originalEnv: NodeJS.ProcessEnv;
@@ -80,7 +88,7 @@ describe("runDev", () => {
 
   it("uses default port 3333 when no port option given", async () => {
     mockExecSync.mockReturnValue(Buffer.from("Docker version 24.0.0"));
-    mockExistsSync.mockReturnValue(false);
+    mockNoLocalRepo();
     mockReadFileSync.mockImplementation(makeReadFileMock("0.1.0"));
     mockSpawnSync.mockReturnValue({ status: 0 } as ReturnType<typeof childProcess.spawnSync>);
 
@@ -98,7 +106,7 @@ describe("runDev", () => {
 
   it("uses custom port when --port option given", async () => {
     mockExecSync.mockReturnValue(Buffer.from("Docker version 24.0.0"));
-    mockExistsSync.mockReturnValue(false);
+    mockNoLocalRepo();
     mockReadFileSync.mockImplementation(makeReadFileMock("0.1.0"));
     mockSpawnSync.mockReturnValue({ status: 0 } as ReturnType<typeof childProcess.spawnSync>);
 
@@ -116,7 +124,7 @@ describe("runDev", () => {
 
   it("passes ANTHROPIC_API_KEY from env to docker run", async () => {
     mockExecSync.mockReturnValue(Buffer.from("Docker version 24.0.0"));
-    mockExistsSync.mockReturnValue(false);
+    mockNoLocalRepo();
     mockReadFileSync.mockImplementation(makeReadFileMock("0.1.0"));
     mockSpawnSync.mockReturnValue({ status: 0 } as ReturnType<typeof childProcess.spawnSync>);
 
@@ -134,7 +142,7 @@ describe("runDev", () => {
 
   it("reads ANTHROPIC_API_KEY from .env file when not in env", async () => {
     mockExecSync.mockReturnValue(Buffer.from("Docker version 24.0.0"));
-    mockExistsSync.mockReturnValue(true);
+    mockNoLocalRepo(true);
     mockReadFileSync.mockImplementation(makeReadFileMock("0.1.0", "ANTHROPIC_API_KEY=dotenv-key-456\n"));
     mockSpawnSync.mockReturnValue({ status: 0 } as ReturnType<typeof childProcess.spawnSync>);
 
@@ -152,7 +160,7 @@ describe("runDev", () => {
 
   it("passes dev mode env vars to docker run", async () => {
     mockExecSync.mockReturnValue(Buffer.from("Docker version 24.0.0"));
-    mockExistsSync.mockReturnValue(false);
+    mockNoLocalRepo();
     mockReadFileSync.mockImplementation(makeReadFileMock("0.1.0"));
     mockSpawnSync.mockReturnValue({ status: 0 } as ReturnType<typeof childProcess.spawnSync>);
 
@@ -169,7 +177,7 @@ describe("runDev", () => {
 
   it("uses correct image tag with version from package.json", async () => {
     mockExecSync.mockReturnValue(Buffer.from("Docker version 24.0.0"));
-    mockExistsSync.mockReturnValue(false);
+    mockNoLocalRepo();
     mockReadFileSync.mockImplementation(makeReadFileMock("1.2.3"));
     mockSpawnSync.mockReturnValue({ status: 0 } as ReturnType<typeof childProcess.spawnSync>);
 
@@ -187,7 +195,7 @@ describe("runDev", () => {
 
   it("falls back to 0.0.0-unknown tag when package.json cannot be read", async () => {
     mockExecSync.mockReturnValue(Buffer.from("Docker version 24.0.0"));
-    mockExistsSync.mockReturnValue(false);
+    mockNoLocalRepo();
     // Simulate unreadable package.json (e.g. wrong path after publish)
     mockReadFileSync.mockImplementation(makeReadFileMock(null));
     mockSpawnSync.mockReturnValue({ status: 0 } as ReturnType<typeof childProcess.spawnSync>);
@@ -206,5 +214,28 @@ describe("runDev", () => {
     const allArgs = (mockSpawnSync.mock.calls[0]![1] as string[]).join(" ");
     expect(allArgs).not.toContain(":vlatest");
     expect(allArgs).not.toContain(":latest");
+  });
+
+  it("builds a local receiver image when running inside the repo", async () => {
+    mockExecSync.mockImplementation((cmd) => {
+      if (String(cmd) === "docker --version") return Buffer.from("Docker version 24.0.0");
+      return Buffer.from("");
+    });
+    mockExistsSync.mockReturnValue(true);
+    mockReadFileSync.mockImplementation(makeReadFileMock("0.1.0"));
+    mockSpawnSync.mockReturnValue({ status: 0 } as ReturnType<typeof childProcess.spawnSync>);
+
+    const { runDev } = await import("../commands/dev.js");
+    runDev();
+
+    expect(mockExecSync).toHaveBeenCalledWith(
+      "docker build -t 3amoncall-receiver:local .",
+      expect.objectContaining({ stdio: "inherit" }),
+    );
+    expect(mockSpawnSync).toHaveBeenCalledWith(
+      "docker",
+      expect.arrayContaining(["3amoncall-receiver:local"]),
+      expect.any(Object),
+    );
   });
 });
