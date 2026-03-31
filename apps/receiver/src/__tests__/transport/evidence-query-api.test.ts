@@ -11,6 +11,7 @@ import { createApp } from '../../index.js'
 import { COOKIE_NAME } from '../../middleware/session-cookie.js'
 import { EvidenceQueryResponseSchema } from '@3amoncall/core/schemas/curated-evidence'
 import type { DiagnosisResult } from '@3amoncall/core'
+import type * as DiagnosisModule from '@3amoncall/diagnosis'
 
 const { generateEvidenceQueryMock } = vi.hoisted(() => ({
   generateEvidenceQueryMock: vi.fn(async (input: { question: string; locale?: 'en' | 'ja' }) => ({
@@ -28,7 +29,7 @@ const { generateEvidenceQueryMock } = vi.hoisted(() => ({
 }))
 
 vi.mock('@3amoncall/diagnosis', async () => {
-  const actual = await vi.importActual<typeof import('@3amoncall/diagnosis')>('@3amoncall/diagnosis')
+  const actual = await vi.importActual<typeof DiagnosisModule>('@3amoncall/diagnosis')
   return {
     ...actual,
     generateEvidenceQuery: generateEvidenceQueryMock,
