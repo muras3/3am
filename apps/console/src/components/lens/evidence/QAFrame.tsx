@@ -1,6 +1,6 @@
 import { ArrowUp } from "lucide-react";
 import type { FormEvent } from "react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import type {
@@ -194,10 +194,17 @@ export function QAFrame({
 }: Props) {
   const { t } = useTranslation();
   const [draft, setDraft] = useState(inputValue);
+  const threadRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     setDraft(inputValue);
   }, [inputValue]);
+
+  useEffect(() => {
+    const node = threadRef.current;
+    if (!node) return;
+    node.scrollTop = node.scrollHeight;
+  }, [history, isSubmitting]);
 
   function submit(question: string) {
     const trimmed = question.trim();
@@ -214,6 +221,60 @@ export function QAFrame({
 
   return (
     <div className="lens-ev-qa-frame" role="region" aria-label={t("evidence.qa.label")}>
+      <PreparedRead qa={qa} />
+
+      <div className="lens-ev-qa-transcript">
+        <div className="lens-ev-qa-transcript-head">
+          <span className="lens-ev-qa-state-label">{t("evidence.qa.currentRead")}</span>
+        </div>
+        <div className="lens-ev-qa-thread" ref={threadRef}>
+          {history.length === 0 && (
+            <div className="lens-ev-qa-empty">{t("evidence.qa.emptyTranscript")}</div>
+          )}
+          {history.map((entry) => (
+            <div key={entry.id} className="lens-ev-qa-exchange">
+              <div className="lens-ev-qa-bubble lens-ev-qa-bubble-user">
+                <div className="lens-ev-qa-bubble-role">{t("evidence.qa.you")}</div>
+                <div className="lens-ev-qa-bubble-text">{entry.question}</div>
+              </div>
+
+              <div
+                className={`lens-ev-qa-answer lens-ev-qa-bubble lens-ev-qa-bubble-assistant${entry.status === "failed" ? " lens-ev-qa-answer-placeholder" : ""}`}
+                role={entry.status === "pending" ? "status" : entry.status === "failed" ? "alert" : "article"}
+                aria-live={entry.status === "pending" ? "polite" : undefined}
+              >
+                <div className="lens-ev-qa-bubble-role">{t("evidence.qa.assistant")}</div>
+                {entry.status === "pending" ? (
+                  <div className="lens-ev-qa-pending">{t("evidence.qa.checking")}</div>
+                ) : entry.status === "failed" ? (
+                  <div className="lens-ev-qa-no-answer">{entry.error ?? t("evidence.qa.submitFailed")}</div>
+                ) : (
+                  <>
+                    <div className="lens-ev-qa-answer-head">
+                      <span className="lens-ev-qa-state-label">
+                        {entry.response?.status === "no_answer"
+                          ? t("evidence.qa.noAnswer")
+                          : t("evidence.qa.groundedAnswer")}
+                      </span>
+                      {entry.response?.noAnswerReason && (entry.response?.segments?.length ?? 0) > 0 && (
+                        <span className="lens-ev-qa-answer-note">{entry.response.noAnswerReason}</span>
+                      )}
+                    </div>
+                    <SegmentedAnswer
+                      segments={entry.response?.segments ?? []}
+                      noAnswerReason={entry.response?.noAnswerReason}
+                      emptyLabel={t("evidence.qa.noAnswer")}
+                      answerSegmentsLabel={t("evidence.qa.answerSegmentsLabel")}
+                      evidenceRefsLabel={t("evidence.qa.evidenceRefsLabel")}
+                    />
+                  </>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
       <form className="lens-ev-qa-form" onSubmit={handleSubmit}>
         <div className="lens-ev-qa-input-shell">
           <input
@@ -239,52 +300,6 @@ export function QAFrame({
           </button>
         </div>
       </form>
-
-      <div className="lens-ev-qa-thread">
-        <PreparedRead qa={qa} />
-
-        {history.map((entry) => (
-          <div key={entry.id} className="lens-ev-qa-exchange">
-            <div className="lens-ev-qa-bubble lens-ev-qa-bubble-user">
-              <div className="lens-ev-qa-bubble-role">{t("evidence.qa.you")}</div>
-              <div className="lens-ev-qa-bubble-text">{entry.question}</div>
-            </div>
-
-            <div
-              className={`lens-ev-qa-answer lens-ev-qa-bubble lens-ev-qa-bubble-assistant${entry.status === "failed" ? " lens-ev-qa-answer-placeholder" : ""}`}
-              role={entry.status === "pending" ? "status" : entry.status === "failed" ? "alert" : "article"}
-              aria-live={entry.status === "pending" ? "polite" : undefined}
-            >
-              <div className="lens-ev-qa-bubble-role">{t("evidence.qa.assistant")}</div>
-              {entry.status === "pending" ? (
-                <div className="lens-ev-qa-pending">{t("evidence.qa.checking")}</div>
-              ) : entry.status === "failed" ? (
-                <div className="lens-ev-qa-no-answer">{entry.error ?? t("evidence.qa.submitFailed")}</div>
-              ) : (
-                <>
-                  <div className="lens-ev-qa-answer-head">
-                    <span className="lens-ev-qa-state-label">
-                      {entry.response?.status === "no_answer"
-                        ? t("evidence.qa.noAnswer")
-                        : t("evidence.qa.groundedAnswer")}
-                    </span>
-                    {entry.response?.noAnswerReason && (entry.response?.segments?.length ?? 0) > 0 && (
-                      <span className="lens-ev-qa-answer-note">{entry.response.noAnswerReason}</span>
-                    )}
-                  </div>
-                  <SegmentedAnswer
-                    segments={entry.response?.segments ?? []}
-                    noAnswerReason={entry.response?.noAnswerReason}
-                    emptyLabel={t("evidence.qa.noAnswer")}
-                    answerSegmentsLabel={t("evidence.qa.answerSegmentsLabel")}
-                    evidenceRefsLabel={t("evidence.qa.evidenceRefsLabel")}
-                  />
-                </>
-              )}
-            </div>
-          </div>
-        ))}
-      </div>
     </div>
   );
 }

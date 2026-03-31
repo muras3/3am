@@ -199,16 +199,16 @@ describe("LensEvidenceStudio — Q&A frame", () => {
 
   it("shows the prepared answer before supporting evidence segments", () => {
     renderStudio("inc_0892", setupReady());
-    const thread = document.querySelector(".lens-ev-qa-thread");
-    expect(thread?.textContent).toContain(
+    const frame = document.querySelector(".lens-ev-qa-frame");
+    expect(frame?.textContent).toContain(
       "Stripe API is returning 429 (rate limit exceeded) for all payment requests since 14:23:15 UTC.",
     );
-    expect(thread?.textContent?.indexOf("The StripeClient makes one API call per checkout transaction with no batching")).toBeGreaterThan(-1);
-    expect(thread?.textContent?.indexOf("Stripe API is returning 429 responses on the checkout path since 14:23:15 UTC.")).toBeGreaterThan(-1);
+    expect(frame?.textContent?.indexOf("The StripeClient makes one API call per checkout transaction with no batching")).toBeGreaterThan(-1);
+    expect(frame?.textContent?.indexOf("Stripe API is returning 429 responses on the checkout path since 14:23:15 UTC.")).toBeGreaterThan(-1);
     expect(
-      (thread?.textContent?.indexOf("The StripeClient makes one API call per checkout transaction with no batching") ?? -1),
+      (frame?.textContent?.indexOf("The StripeClient makes one API call per checkout transaction with no batching") ?? -1),
     ).toBeLessThan(
-      thread?.textContent?.indexOf("Stripe API is returning 429 responses on the checkout path since 14:23:15 UTC.") ?? -1,
+      frame?.textContent?.indexOf("Stripe API is returning 429 responses on the checkout path since 14:23:15 UTC.") ?? -1,
     );
   });
 
@@ -430,6 +430,27 @@ describe("QAFrame", () => {
     const qa = { ...evidenceReady.qa, noAnswerReason: "Insufficient data to answer" };
     renderQAFrame(qa);
     expect(screen.getByText("Insufficient data to answer")).toBeInTheDocument();
+  });
+
+  it("renders transcript before the composer", () => {
+    const { container } = renderQAFrame(evidenceReady.qa);
+    const transcript = container.querySelector(".lens-ev-qa-transcript");
+    const form = container.querySelector(".lens-ev-qa-form");
+    expect(transcript).not.toBeNull();
+    expect(form).not.toBeNull();
+    if (!transcript || !form) {
+      throw new Error("expected transcript and composer to be rendered");
+    }
+    expect(
+      transcript.compareDocumentPosition(form) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  it("renders empty transcript guidance before follow-up questions exist", () => {
+    renderQAFrame(evidenceReady.qa);
+    expect(
+      screen.getByText(/Ask a follow-up to pressure-test the diagnosis/),
+    ).toBeInTheDocument();
   });
 });
 
@@ -982,6 +1003,21 @@ describe("LensEvidenceStudio — Q&A mutation integration", () => {
     );
   });
 
+  it("first question is sent as a non-follow-up", async () => {
+    const user = userEvent.setup();
+    renderStudio("inc_0892", setupReady());
+    const input = screen.getByLabelText("Ask a grounded question about this incident");
+    await user.type(input, "First question");
+    await user.click(screen.getByRole("button", { name: "Ask" }));
+
+    expect(fetchSpy).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        body: JSON.stringify({ question: "First question", isFollowup: false }),
+      }),
+    );
+  });
+
   it("successful submit appends a visible user question and answer", async () => {
     const user = userEvent.setup();
     renderStudio("inc_0892", setupReady());
@@ -991,5 +1027,25 @@ describe("LensEvidenceStudio — Q&A mutation integration", () => {
 
     expect(await screen.findByText("What changed first?")).toBeInTheDocument();
     expect((await screen.findAllByText("Grounded answer")).length).toBeGreaterThan(1);
+  });
+
+  it("second question is sent as a follow-up", async () => {
+    const user = userEvent.setup();
+    renderStudio("inc_0892", setupReady());
+    const input = screen.getByLabelText("Ask a grounded question about this incident");
+
+    await user.type(input, "First question");
+    await user.click(screen.getByRole("button", { name: "Ask" }));
+    await screen.findByText("First question");
+
+    await user.type(screen.getByLabelText("Ask a grounded question about this incident"), "Second question");
+    await user.click(screen.getByRole("button", { name: "Ask" }));
+
+    expect(fetchSpy).toHaveBeenLastCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        body: JSON.stringify({ question: "Second question", isFollowup: true }),
+      }),
+    );
   });
 });

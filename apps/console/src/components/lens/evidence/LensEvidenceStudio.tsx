@@ -126,9 +126,10 @@ export function LensEvidenceStudio({ incidentId }: Props) {
 
   function handleSubmitQuestion(question: string) {
     const entryId = `qa-${nextHistoryId.current++}`;
+    const isFollowup = history.length > 0;
     setHistory((current) => [...current, { id: entryId, question, status: "pending" }]);
     groundedQueryMutation.mutate(
-      { question, isFollowup: false },
+      { question, isFollowup },
       {
         onSuccess: (response) => {
           setHistory((current) =>

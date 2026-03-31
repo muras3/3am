@@ -293,6 +293,7 @@
       "groundedAnswer": "Grounded answer",
       "preparedRead": "Prepared read",
       "currentRead": "Current read",
+      "emptyTranscript": "診断の仮説を確かめる、未確定点を絞る、次に見るべきエビデンスへ飛ぶための追質問を入力してください。",
       "stillPreparing": "Still preparing",
       "you": "You",
       "assistant": "Assistant",
