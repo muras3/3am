@@ -33,6 +33,7 @@ function getPendingBanner() {
 }
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
@@ -84,6 +85,27 @@ describe("LensIncidentBoard — diagnosis pending", () => {
     expect(zoomTo).toHaveBeenCalledWith(2, expect.anything());
 
     expect(screen.getByRole("button", { name: /Re-run diagnosis/i })).toBeDisabled();
+  });
+
+  it("polls the incident query on a slower cadence while diagnosis is pending", async () => {
+    vi.useFakeTimers();
+    const qc = makeClient();
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve(extendedIncidentPending),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    qc.setQueryData(
+      curatedQueries.extendedIncident("inc_0892").queryKey,
+      extendedIncidentPending,
+    );
+
+    renderBoard("inc_0892", vi.fn(), qc);
+
+    await vi.advanceTimersByTimeAsync(5_100);
+
+    expect(fetchMock).toHaveBeenCalledWith("/api/incidents/inc_0892", expect.anything());
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });
 
