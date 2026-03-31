@@ -527,6 +527,14 @@ export async function buildEvidenceQueryAnswer(
     );
   }
 
+  if (intent.kind === "greeting") {
+    return buildDeterministicNoAnswer(
+      question,
+      curatedEvidence,
+      localizeNoAnswerForGreeting(locale),
+    );
+  }
+
   const catalog = buildEvidenceCatalog(curatedEvidence);
   const retrieved = retrieveEvidence(question, catalog, intent);
   if (retrieved.length === 0) {

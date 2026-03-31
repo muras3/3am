@@ -10,6 +10,7 @@ import type { TelemetryLog, TelemetryMetric, TelemetrySpan, TelemetryStoreDriver
 import type { Incident } from '../../storage/interface.js'
 import type { IncidentPacket, DiagnosisResult } from '@3amoncall/core'
 import { EvidenceQueryResponseSchema } from '@3amoncall/core/schemas/curated-evidence'
+import * as diagnosis from '@3amoncall/diagnosis'
 
 // Mock the Anthropic SDK so Path 3 never calls a real API
 vi.mock('@anthropic-ai/sdk', () => ({
@@ -345,11 +346,14 @@ describe('buildEvidenceQueryAnswer', () => {
 
   it('returns concise no_answer for greetings and off-topic prompts', async () => {
     const incident = makeIncident({ diagnosisResult: makeDiagnosisResult() })
-    const result = await buildEvidenceQueryAnswer(incident, makeMockStore(), 'こんにちは？', false)
+    const generateEvidenceQuerySpy = vi.spyOn(diagnosis, 'generateEvidenceQuery')
+
+    const result = await buildEvidenceQueryAnswer(incident, makeMockStore(), 'こんにちは？', false, 'ja')
 
     expect(result.status).toBe('no_answer')
     expect(result.segments).toEqual([])
-    expect(result.noAnswerReason).toContain('Ask about traces, metrics, logs')
+    expect(result.noAnswerReason).toContain('このインシデントについて')
+    expect(generateEvidenceQuerySpy).not.toHaveBeenCalled()
   })
 
   it('localizes followups when locale is ja', async () => {
