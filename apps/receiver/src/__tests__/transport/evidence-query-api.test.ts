@@ -12,14 +12,28 @@ import { COOKIE_NAME } from '../../middleware/session-cookie.js'
 import { EvidenceQueryResponseSchema } from '@3amoncall/core/schemas/curated-evidence'
 import type { DiagnosisResult } from '@3amoncall/core'
 
-// ── Mock Anthropic SDK ─────────────────────────────────────────────────
-vi.mock('@anthropic-ai/sdk', () => ({
-  default: class MockAnthropic {
-    messages = {
-      create: vi.fn().mockRejectedValue(new Error('LLM not available in test')),
-    }
-  },
+const { generateEvidenceQueryMock } = vi.hoisted(() => ({
+  generateEvidenceQueryMock: vi.fn(async (input: { question: string; locale?: 'en' | 'ja' }) => ({
+    question: input.question,
+    status: 'answered' as const,
+    segments: [
+      {
+        id: 'seg-1',
+        kind: 'fact' as const,
+        text: input.locale === 'ja' ? '日本語の回答。' : 'English answer.',
+        evidenceRefs: [{ kind: 'span' as const, id: 'abc_001:span_001' }],
+      },
+    ],
+  })),
 }))
+
+vi.mock('@3amoncall/diagnosis', async () => {
+  const actual = await vi.importActual<typeof import('@3amoncall/diagnosis')>('@3amoncall/diagnosis')
+  return {
+    ...actual,
+    generateEvidenceQuery: generateEvidenceQueryMock,
+  }
+})
 
 // ── Helpers ────────────────────────────────────────────────────────────
 
@@ -143,6 +157,7 @@ describe('POST /api/incidents/:id/evidence/query', () => {
 
   beforeEach(() => {
     seedCounter = 0
+    generateEvidenceQueryMock.mockClear()
     app = makeApp()
   })
 
@@ -221,5 +236,32 @@ describe('POST /api/incidents/:id/evidence/query', () => {
     expect(Array.isArray(parsed.segments)).toBe(true)
     expect(parsed.evidenceSummary).toBeDefined()
     expect(parsed.followups).toBeDefined()
+  })
+
+  it('passes locale preference through to evidence query generation', async () => {
+    const cookie = await getSessionCookie(app)
+    const incidentId = await seedIncident(app, true)
+
+    const settingsRes = await app.request('/api/settings/locale', {
+      method: 'PUT',
+      headers: queryHeaders(cookie),
+      body: JSON.stringify({ locale: 'ja' }),
+    })
+    expect(settingsRes.status).toBe(200)
+
+    const res = await app.request(`/api/incidents/${incidentId}/evidence/query`, {
+      method: 'POST',
+      headers: queryHeaders(cookie),
+      body: JSON.stringify({ question: 'Why are payments failing?' }),
+    })
+
+    expect(res.status).toBe(200)
+    expect(generateEvidenceQueryMock).toHaveBeenCalled()
+    expect(generateEvidenceQueryMock.mock.calls[0]?.[0]).toMatchObject({
+      question: 'Why are payments failing?',
+    })
+    expect(generateEvidenceQueryMock.mock.calls[0]?.[1]).toMatchObject({
+      locale: 'ja',
+    })
   })
 })
