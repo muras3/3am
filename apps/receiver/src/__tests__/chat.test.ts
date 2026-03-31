@@ -355,6 +355,37 @@ describe("POST /api/chat/:incidentId", () => {
     expect(callArgs.system).toContain("Respond in Japanese");
   });
 
+  it("includes bounded inference guidance in the system prompt", async () => {
+    const cookie = await getSessionCookie(app);
+    const incidentId = await seedIncidentWithDiagnosis(app);
+
+    await app.request(`/api/chat/${incidentId}`, {
+      method: "POST",
+      headers: chatHeaders(cookie),
+      body: JSON.stringify({ message: "How do we stop this from happening again?", history: [] }),
+    });
+
+    const callArgs = mockCreate.mock.calls[0]?.[0] as { system: string };
+    expect(callArgs.system).toContain("You may make limited, reasonable inferences");
+    expect(callArgs.system).toContain("explicitly label it as a hypothesis or inference");
+    expect(callArgs.system).toContain("If the question needs evidence beyond the diagnosis, say what should be checked next.");
+  });
+
+  it("includes confidence and uncertainty in the system prompt", async () => {
+    const cookie = await getSessionCookie(app);
+    const incidentId = await seedIncidentWithDiagnosis(app);
+
+    await app.request(`/api/chat/${incidentId}`, {
+      method: "POST",
+      headers: chatHeaders(cookie),
+      body: JSON.stringify({ message: "How certain are we?", history: [] }),
+    });
+
+    const callArgs = mockCreate.mock.calls[0]?.[0] as { system: string };
+    expect(callArgs.system).toContain("Confidence: High");
+    expect(callArgs.system).toContain("Known uncertainty: Unknown Stripe quota reset time.");
+  });
+
   it("does not include Japanese instruction when locale is default 'en'", async () => {
     const cookie = await getSessionCookie(app);
     const incidentId = await seedIncidentWithDiagnosis(app);
