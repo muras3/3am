@@ -42,6 +42,12 @@ type IntentProfile = {
   preferredSurfaces: Array<"traces" | "metrics" | "logs">;
 };
 
+type ExplanatoryTerm = {
+  definition: string;
+  canonical: string;
+  preferredSurfaces: Array<"traces" | "metrics" | "logs">;
+};
+
 function determineDiagnosisState(incident: Incident): DiagnosisState {
   return classifyDiagnosisState(incident);
 }
@@ -163,6 +169,144 @@ function buildInferenceTail(
   return locale === "ja"
     ? `この並びは、${incident.diagnosisResult.summary.root_cause_hypothesis} という既存 diagnosis と整合しています。`
     : `That pattern is consistent with the existing diagnosis: ${incident.diagnosisResult.summary.root_cause_hypothesis}`;
+}
+
+function detectExplanatoryTerm(question: string, locale: "en" | "ja"): ExplanatoryTerm | null {
+  const lower = question.toLowerCase();
+  const asksDefinition = /what is|what's|define|meaning|とは|って何|ってなんですか|何ですか|なんですか|どういう意味/.test(lower);
+  if (!asksDefinition) return null;
+
+  const terms: Array<{ aliases: string[]; canonical: string; definitionJa: string; definitionEn: string; preferredSurfaces: Array<"traces" | "metrics" | "logs"> }> = [
+    {
+      aliases: ["trace", "traces", "トレース"],
+      canonical: locale === "ja" ? "トレース" : "trace",
+      definitionJa: "トレースは、1つのリクエストや処理がシステム内をどう通ったかを、サービス間の流れとして追える記録です。",
+      definitionEn: "A trace is a record of how a single request or operation moved through the system across services.",
+      preferredSurfaces: ["traces", "logs", "metrics"],
+    },
+    {
+      aliases: ["span", "spans", "スパン"],
+      canonical: locale === "ja" ? "span" : "span",
+      definitionJa: "span は、トレースの中の1区間で、特定の処理や依存先呼び出しの実行時間と結果を表します。",
+      definitionEn: "A span is one timed unit within a trace, representing a specific operation or dependency call.",
+      preferredSurfaces: ["traces", "logs", "metrics"],
+    },
+    {
+      aliases: ["metric", "metrics", "メトリクス", "指標"],
+      canonical: locale === "ja" ? "メトリクス" : "metric",
+      definitionJa: "メトリクスは、エラー率や遅延のような挙動を数値で継続的に観測する指標です。",
+      definitionEn: "Metrics are continuous numeric measurements such as error rate or latency that describe system behavior over time.",
+      preferredSurfaces: ["metrics", "traces", "logs"],
+    },
+    {
+      aliases: ["log", "logs", "ログ"],
+      canonical: locale === "ja" ? "ログ" : "log",
+      definitionJa: "ログは、実行中に起きた出来事やエラーをテキストとして残した記録です。",
+      definitionEn: "Logs are text records of events, warnings, and errors emitted while the system runs.",
+      preferredSurfaces: ["logs", "traces", "metrics"],
+    },
+    {
+      aliases: ["backoff", "バックオフ"],
+      canonical: locale === "ja" ? "バックオフ" : "backoff",
+      definitionJa: "バックオフは、失敗した依存先への再試行のたびに待ち時間を伸ばして、相手を連続で叩き続けないようにする制御です。",
+      definitionEn: "Backoff is a retry strategy that waits progressively longer between attempts so a failing dependency is not hammered continuously.",
+      preferredSurfaces: ["logs", "metrics", "traces"],
+    },
+    {
+      aliases: ["queue", "キュー", "待ち行列"],
+      canonical: locale === "ja" ? "キュー" : "queue",
+      definitionJa: "キューは、すぐ処理できない仕事やリクエストが、処理待ちとして溜まっている状態です。",
+      definitionEn: "A queue is work or requests waiting to be processed because the system cannot handle them immediately.",
+      preferredSurfaces: ["metrics", "traces", "logs"],
+    },
+    {
+      aliases: ["worker pool", "workerpool", "ワーカープール"],
+      canonical: locale === "ja" ? "ワーカープール" : "worker pool",
+      definitionJa: "ワーカープールは、同時に処理を実行できる worker の枠です。枠を使い切ると新しい処理は待たされます。",
+      definitionEn: "A worker pool is the fixed set of workers that can process requests concurrently. Once all workers are busy, new work has to wait.",
+      preferredSurfaces: ["metrics", "traces", "logs"],
+    },
+    {
+      aliases: ["rate limit", "rate-limit", "レート制限", "レートリミット"],
+      canonical: locale === "ja" ? "レート制限" : "rate limit",
+      definitionJa: "レート制限は、依存先が一定時間あたりのリクエスト数を超えないように上限をかける仕組みです。",
+      definitionEn: "A rate limit is a cap that prevents clients from sending more than an allowed number of requests over a period of time.",
+      preferredSurfaces: ["logs", "metrics", "traces"],
+    },
+    {
+      aliases: ["retry", "retries", "再試行", "リトライ"],
+      canonical: locale === "ja" ? "再試行" : "retry",
+      definitionJa: "再試行は、失敗した処理をすぐ諦めず、もう一度実行する動きです。",
+      definitionEn: "A retry is another attempt to perform a failed operation instead of giving up immediately.",
+      preferredSurfaces: ["logs", "traces", "metrics"],
+    },
+    {
+      aliases: ["circuit breaker", "circuit-breaker", "サーキットブレーカー"],
+      canonical: locale === "ja" ? "サーキットブレーカー" : "circuit breaker",
+      definitionJa: "サーキットブレーカーは、依存先の失敗が続くと呼び出しを一時的に止めて、障害の連鎖を防ぐ制御です。",
+      definitionEn: "A circuit breaker temporarily stops calls to a failing dependency so repeated failures do not cascade through the system.",
+      preferredSurfaces: ["logs", "metrics", "traces"],
+    },
+  ];
+
+  const term = terms.find((entry) =>
+    entry.aliases.some((alias) => lower.includes(alias.toLowerCase())),
+  );
+  if (!term) return null;
+
+  return {
+    canonical: term.canonical,
+    definition: locale === "ja" ? term.definitionJa : term.definitionEn,
+    preferredSurfaces: term.preferredSurfaces,
+  };
+}
+
+function buildExplanatoryAnswer(
+  question: string,
+  term: ExplanatoryTerm,
+  incident: Incident,
+  evidence: EvidenceResponse,
+  retrieved: RetrievedEvidence[],
+  locale: "en" | "ja",
+): EvidenceQueryResponse {
+  const refs = retrieved.slice(0, 2).map((entry) => entry.ref);
+  const primary = retrieved[0];
+  const rootCause = incident.diagnosisResult?.summary.root_cause_hypothesis;
+  const context = locale === "ja"
+    ? `このインシデントでは、${term.canonical} は ${rootCause ?? "現在の障害の説明"} を理解するための文脈として使われています。`
+    : `In this incident, ${term.canonical} is relevant because it helps explain ${rootCause ?? "the current failure pattern"}.`;
+
+  const segments: EvidenceQueryResponse["segments"] = [
+    {
+      id: "seg_explanation_1",
+      kind: "inference",
+      text: ensureSentence(term.definition),
+      evidenceRefs: refs.length > 0 ? refs : [{ kind: "metric_group", id: "mgroup:0" }],
+    },
+    {
+      id: "seg_explanation_2",
+      kind: "inference",
+      text: ensureSentence(context),
+      evidenceRefs: refs.length > 0 ? refs : [{ kind: "metric_group", id: "mgroup:0" }],
+    },
+  ];
+
+  if (primary) {
+    segments.push({
+      id: "seg_explanation_3",
+      kind: "fact",
+      text: firstSentence(primary.summary),
+      evidenceRefs: [primary.ref],
+    });
+  }
+
+  return {
+    question,
+    status: "answered",
+    segments,
+    evidenceSummary: summarizeEvidence(evidence.surfaces),
+    followups: buildFollowups(retrieved, evidence, question, locale),
+  };
 }
 
 function classifyQuestionIntent(question: string): IntentProfile {
@@ -542,6 +686,18 @@ export async function buildEvidenceQueryAnswer(
       question,
       curatedEvidence,
       "The current curated evidence does not contain enough linked material to answer this question responsibly.",
+    );
+  }
+
+  const explanatoryTerm = detectExplanatoryTerm(question, locale);
+  if (explanatoryTerm) {
+    return buildExplanatoryAnswer(
+      question,
+      explanatoryTerm,
+      incident,
+      curatedEvidence,
+      retrieved,
+      locale,
     );
   }
 
