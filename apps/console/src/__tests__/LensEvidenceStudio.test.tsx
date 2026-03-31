@@ -814,7 +814,11 @@ describe("LensEvidenceStudio — degraded states", () => {
   it("polls evidence while diagnosis is ready but narrative is not attached yet", async () => {
     vi.useFakeTimers();
     const qc = makeClient();
-    const invalidateSpy = vi.spyOn(qc, "invalidateQueries");
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve(evidenceReady),
+    });
+    vi.stubGlobal("fetch", fetchMock);
     qc.setQueryData(
       curatedQueries.extendedIncident("inc_0892").queryKey,
       extendedIncidentReady,
@@ -833,12 +837,11 @@ describe("LensEvidenceStudio — degraded states", () => {
 
     renderStudio("inc_0892", qc);
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(1600);
+      await vi.advanceTimersByTimeAsync(5_100);
     });
 
-    expect(invalidateSpy).toHaveBeenCalledWith({
-      queryKey: curatedQueries.evidence("inc_0892").queryKey,
-    });
+    expect(fetchMock).toHaveBeenCalledWith("/api/incidents/inc_0892/evidence", expect.anything());
+    expect(fetchMock).toHaveBeenCalledTimes(1);
     vi.useRealTimers();
   });
 

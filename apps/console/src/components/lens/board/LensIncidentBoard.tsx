@@ -18,17 +18,27 @@ interface Props {
   zoomTo: (level: LensLevel, trigger?: HTMLElement, incidentId?: string) => void;
 }
 
+const DIAGNOSIS_POLL_INTERVAL_MS = 5_000;
+
 export function LensIncidentBoard({ incidentId, zoomTo }: Props) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const [rerunFeedback, setRerunFeedback] = useState<string | null>(null);
   const [closeFeedback, setCloseFeedback] = useState<string | null>(null);
   const [closeConfirm, setCloseConfirm] = useState(false);
-  const { data, isLoading, isError } = useQuery(
-    curatedQueries.extendedIncident(incidentId),
-  );
   const rerunDiagnosis = useMutation(curatedMutations.rerunDiagnosis(incidentId));
   const closeIncident = useMutation(curatedMutations.closeIncident(incidentId));
+  const incidentQuery = useQuery({
+    ...curatedQueries.extendedIncident(incidentId),
+    refetchInterval: (query) => {
+      const incident = query.state.data;
+      return !import.meta.env?.VITE_USE_FIXTURES
+        && (rerunDiagnosis.isPending || incident?.state.diagnosis === "pending")
+        ? DIAGNOSIS_POLL_INTERVAL_MS
+        : false;
+    },
+  });
+  const { data, isLoading, isError } = incidentQuery;
 
   function openEvidence(trigger?: HTMLElement) {
     zoomTo(2, trigger);
@@ -40,13 +50,11 @@ export function LensIncidentBoard({ incidentId, zoomTo }: Props) {
       onSuccess: () => {
         setRerunFeedback(t("board.rerun.requested"));
         void queryClient.invalidateQueries({ queryKey: curatedQueries.extendedIncident(incidentId).queryKey });
-        void queryClient.invalidateQueries({ queryKey: curatedQueries.evidence(incidentId).queryKey });
       },
       onError: (error) => {
         if (error instanceof ApiError && error.status === 409) {
           setRerunFeedback(t("board.rerun.alreadyRunning"));
           void queryClient.invalidateQueries({ queryKey: curatedQueries.extendedIncident(incidentId).queryKey });
-          void queryClient.invalidateQueries({ queryKey: curatedQueries.evidence(incidentId).queryKey });
           return;
         }
         setRerunFeedback(t("board.rerun.failed"));
@@ -67,23 +75,6 @@ export function LensIncidentBoard({ incidentId, zoomTo }: Props) {
       },
     });
   }
-
-  const shouldPollForRerun =
-    !import.meta.env?.VITE_USE_FIXTURES &&
-    (rerunDiagnosis.isPending || data?.state.diagnosis === "pending");
-
-  useEffect(() => {
-    if (!shouldPollForRerun) return;
-
-    const timer = window.setInterval(() => {
-      void queryClient.invalidateQueries({ queryKey: curatedQueries.extendedIncident(incidentId).queryKey });
-      void queryClient.invalidateQueries({ queryKey: curatedQueries.evidence(incidentId).queryKey });
-    }, 1500);
-
-    return () => {
-      window.clearInterval(timer);
-    };
-  }, [shouldPollForRerun, incidentId, queryClient]);
 
   useEffect(() => {
     if (data?.state.diagnosis === "ready" && rerunFeedback) {
