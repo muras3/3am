@@ -242,11 +242,19 @@ test.describe("L2 Evidence Studio — interactions", () => {
     const hitElement = await page.evaluate(
       // eslint-disable-next-line no-shadow -- runs in browser context
       ([cx, cy]: [number, number]) => {
-        const el = (globalThis as unknown as { document: { elementFromPoint(x: number, y: number): { tagName: string; id: string; className: string } | null } }).document.elementFromPoint(cx, cy);
+        const doc = (globalThis as unknown as {
+          document: {
+            elementFromPoint(x: number, y: number): Element | null;
+          };
+        }).document;
+        const el = doc.elementFromPoint(cx, cy);
+        const tab = el?.closest?.('[role="tab"]');
         return {
           tagName: el?.tagName ?? "",
-          id: el?.id ?? "",
-          className: el?.className ?? "",
+          id: (el as { id?: string } | null)?.id ?? "",
+          className: String((el as { className?: string } | null)?.className ?? ""),
+          closestTabId: (tab as { id?: string } | null)?.id ?? "",
+          closestTabClassName: String((tab as { className?: string } | null)?.className ?? ""),
         };
       },
       [centerX, centerY] as [number, number],
@@ -254,10 +262,12 @@ test.describe("L2 Evidence Studio — interactions", () => {
 
     // Must NOT hit L1 content (the original bug returned <strong>Why:</strong> from lens-board)
     expect(hitElement.className).not.toMatch(/lens-board/);
-    // Must hit the tab or its child
-    expect(hitElement.id === "ev-tab-metrics" || hitElement.className.includes("lens-ev-tab")).toBe(
-      true,
-    );
+    // Must hit the tab itself or a descendant within the same tab.
+    expect(
+      hitElement.id === "ev-tab-metrics"
+      || hitElement.className.includes("lens-ev-tab")
+      || hitElement.closestTabId === "ev-tab-metrics",
+    ).toBe(true);
 
     // Actually click the tab — the real user action
     await metricsTab.click();
