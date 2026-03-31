@@ -232,44 +232,8 @@ test.describe("L2 Evidence Studio — interactions", () => {
     const metricsTab = page.locator('[role="tab"][id="ev-tab-metrics"]');
     await metricsTab.waitFor({ state: "visible", timeout: 5_000 });
 
-    const box = await metricsTab.boundingBox();
-    expect(box).toBeTruthy();
-    if (!box) return;
-
-    const centerX = box.x + box.width / 2;
-    const centerY = box.y + box.height / 2;
-
-    const hitElement = await page.evaluate(
-      // eslint-disable-next-line no-shadow -- runs in browser context
-      ([cx, cy]: [number, number]) => {
-        const doc = (globalThis as unknown as {
-          document: {
-            elementFromPoint(x: number, y: number): Element | null;
-          };
-        }).document;
-        const el = doc.elementFromPoint(cx, cy);
-        const tab = el?.closest?.('[role="tab"]');
-        return {
-          tagName: el?.tagName ?? "",
-          id: (el as { id?: string } | null)?.id ?? "",
-          className: String((el as { className?: string } | null)?.className ?? ""),
-          closestTabId: (tab as { id?: string } | null)?.id ?? "",
-          closestTabClassName: String((tab as { className?: string } | null)?.className ?? ""),
-        };
-      },
-      [centerX, centerY] as [number, number],
-    );
-
-    // Must NOT hit L1 content (the original bug returned <strong>Why:</strong> from lens-board)
-    expect(hitElement.className).not.toMatch(/lens-board/);
-    // Must hit the tab itself or a descendant within the same tab.
-    expect(
-      hitElement.id === "ev-tab-metrics"
-      || hitElement.className.includes("lens-ev-tab")
-      || hitElement.closestTabId === "ev-tab-metrics",
-    ).toBe(true);
-
-    // Actually click the tab — the real user action
+    // Actually click the tab after the transition — if L1 is still occluding L2,
+    // this click will not activate the tab or update the URL.
     await metricsTab.click();
     await expect(metricsTab).toHaveAttribute("aria-selected", "true");
     await expect(page).toHaveURL(/[?&]tab=metrics/);
