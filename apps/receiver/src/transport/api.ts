@@ -63,8 +63,14 @@ function buildChatSystemPrompt(dr: DiagnosisResult, locale?: "en" | "ja"): strin
     `Incident summary: ${dr.summary.what_happened}\n` +
     `Root cause: ${dr.summary.root_cause_hypothesis}\n` +
     `Recommended action: ${dr.recommendation.immediate_action}\n` +
-    `Causal chain: ${chain}\n\n` +
-    "Answer concisely in 1-3 sentences. Do not speculate beyond the provided context." +
+    `Causal chain: ${chain}\n` +
+    `Confidence: ${dr.confidence.confidence_assessment}\n` +
+    `Known uncertainty: ${dr.confidence.uncertainty}\n\n` +
+    "Answer concisely in 1-3 sentences. Prioritize facts from the provided diagnosis. " +
+    "You may make limited, reasonable inferences only when they are directly supported by the diagnosis summary, " +
+    "root-cause hypothesis, recommendation, or causal chain. If you infer anything, explicitly label it as a " +
+    "hypothesis or inference instead of a confirmed fact. Do not invent new evidence, timelines, or remediation " +
+    "steps. If the question needs evidence beyond the diagnosis, say what should be checked next." +
     jaInstruction
   );
 }

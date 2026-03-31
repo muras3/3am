@@ -293,6 +293,7 @@
       "groundedAnswer": "Grounded answer",
       "preparedRead": "Prepared read",
       "currentRead": "Current read",
+      "emptyTranscript": "Ask a follow-up to pressure-test the diagnosis, clarify an uncertainty, or jump to the evidence you need next.",
       "stillPreparing": "Still preparing",
       "you": "You",
       "assistant": "Assistant",

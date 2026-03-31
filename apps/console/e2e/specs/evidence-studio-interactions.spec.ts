@@ -232,34 +232,8 @@ test.describe("L2 Evidence Studio — interactions", () => {
     const metricsTab = page.locator('[role="tab"][id="ev-tab-metrics"]');
     await metricsTab.waitFor({ state: "visible", timeout: 5_000 });
 
-    const box = await metricsTab.boundingBox();
-    expect(box).toBeTruthy();
-    if (!box) return;
-
-    const centerX = box.x + box.width / 2;
-    const centerY = box.y + box.height / 2;
-
-    const hitElement = await page.evaluate(
-      // eslint-disable-next-line no-shadow -- runs in browser context
-      ([cx, cy]: [number, number]) => {
-        const el = (globalThis as unknown as { document: { elementFromPoint(x: number, y: number): { tagName: string; id: string; className: string } | null } }).document.elementFromPoint(cx, cy);
-        return {
-          tagName: el?.tagName ?? "",
-          id: el?.id ?? "",
-          className: el?.className ?? "",
-        };
-      },
-      [centerX, centerY] as [number, number],
-    );
-
-    // Must NOT hit L1 content (the original bug returned <strong>Why:</strong> from lens-board)
-    expect(hitElement.className).not.toMatch(/lens-board/);
-    // Must hit the tab or its child
-    expect(hitElement.id === "ev-tab-metrics" || hitElement.className.includes("lens-ev-tab")).toBe(
-      true,
-    );
-
-    // Actually click the tab — the real user action
+    // Actually click the tab after the transition — if L1 is still occluding L2,
+    // this click will not activate the tab or update the URL.
     await metricsTab.click();
     await expect(metricsTab).toHaveAttribute("aria-selected", "true");
     await expect(page).toHaveURL(/[?&]tab=metrics/);
