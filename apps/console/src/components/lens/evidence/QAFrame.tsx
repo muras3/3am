@@ -140,8 +140,9 @@ function SegmentedAnswer({
 function PreparedRead({ qa }: { qa: QABlock }) {
   const { t } = useTranslation();
   const initialSegments = qa.segments ?? [];
+  const hasAnswer = qa.answer.trim().length > 0;
 
-  if (initialSegments.length === 0 && !qa.answer.trim() && !qa.noAnswerReason) {
+  if (initialSegments.length === 0 && !hasAnswer && !qa.noAnswerReason) {
     return null;
   }
 
@@ -150,31 +151,32 @@ function PreparedRead({ qa }: { qa: QABlock }) {
       <div className="lens-ev-qa-bubble-role">{t("evidence.qa.preparedRead")}</div>
       <div className="lens-ev-qa-answer-head">
         <span className="lens-ev-qa-state-label">
-          {qa.status === "no_answer" ? t("evidence.qa.noAnswer") : t("evidence.qa.preparedRead")}
+          {qa.status === "no_answer" ? t("evidence.qa.noAnswer") : t("evidence.qa.groundedAnswer")}
         </span>
         {qa.noAnswerReason && initialSegments.length > 0 && (
           <span className="lens-ev-qa-answer-note">{qa.noAnswerReason}</span>
         )}
       </div>
-      {initialSegments.length > 0 ? (
-        <SegmentedAnswer
-          segments={initialSegments}
-          noAnswerReason={qa.noAnswerReason ?? undefined}
-          emptyLabel={t("evidence.qa.noAnswer")}
-          answerSegmentsLabel={t("evidence.qa.preparedSegmentsLabel")}
-          evidenceRefsLabel={t("evidence.qa.evidenceRefsLabel")}
-        />
-      ) : qa.noAnswerReason ? (
+      {qa.noAnswerReason && !hasAnswer ? (
         <div className="lens-ev-qa-no-answer">{qa.noAnswerReason}</div>
       ) : (
         <>
-          <div>{qa.answer}</div>
+          {hasAnswer && <div className="lens-ev-qa-bubble-text">{qa.answer}</div>}
           {qa.evidenceRefs.length > 0 && (
             <div className="lens-ev-qa-refs" aria-label={t("evidence.qa.evidenceRefsLabel")}>
               {qa.evidenceRefs.map((ref, i) => (
                 <EvidenceRefLink key={`${ref.kind}-${ref.id}-${i}`} ref={ref} />
               ))}
             </div>
+          )}
+          {initialSegments.length > 0 && (
+            <SegmentedAnswer
+              segments={initialSegments}
+              noAnswerReason={qa.noAnswerReason ?? undefined}
+              emptyLabel={t("evidence.qa.noAnswer")}
+              answerSegmentsLabel={t("evidence.qa.preparedSegmentsLabel")}
+              evidenceRefsLabel={t("evidence.qa.evidenceRefsLabel")}
+            />
           )}
         </>
       )}

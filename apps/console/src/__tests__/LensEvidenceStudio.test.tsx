@@ -191,9 +191,25 @@ describe("LensEvidenceStudio — Q&A frame", () => {
   it("renders prepared read as an assistant bubble", () => {
     renderStudio("inc_0892", setupReady());
     expect(
-      screen.getByText(/Stripe API is returning 429/),
+      screen.getByText(/Stripe API is returning 429 \(rate limit exceeded\) for all payment requests/),
     ).toBeInTheDocument();
-    expect(screen.getAllByText("Prepared read").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Prepared read")).toHaveLength(1);
+    expect(screen.getByText("Grounded answer")).toBeInTheDocument();
+  });
+
+  it("shows the prepared answer before supporting evidence segments", () => {
+    renderStudio("inc_0892", setupReady());
+    const thread = document.querySelector(".lens-ev-qa-thread");
+    expect(thread?.textContent).toContain(
+      "Stripe API is returning 429 (rate limit exceeded) for all payment requests since 14:23:15 UTC.",
+    );
+    expect(thread?.textContent?.indexOf("The StripeClient makes one API call per checkout transaction with no batching")).toBeGreaterThan(-1);
+    expect(thread?.textContent?.indexOf("Stripe API is returning 429 responses on the checkout path since 14:23:15 UTC.")).toBeGreaterThan(-1);
+    expect(
+      (thread?.textContent?.indexOf("The StripeClient makes one API call per checkout transaction with no batching") ?? -1),
+    ).toBeLessThan(
+      thread?.textContent?.indexOf("Stripe API is returning 429 responses on the checkout path since 14:23:15 UTC.") ?? -1,
+    );
   });
 
   it("does not render suggested follow-up chips", () => {
@@ -392,7 +408,9 @@ describe("QAFrame", () => {
   it("renders placeholder input and prepared answer text", () => {
     renderQAFrame(evidenceReady.qa);
     expect(screen.getByPlaceholderText("Ask about this incident...")).toBeInTheDocument();
-    expect(screen.getByText(/Stripe API is returning 429/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/Stripe API is returning 429 \(rate limit exceeded\) for all payment requests/),
+    ).toBeInTheDocument();
   });
 
   it("does not render follow-up chips", () => {
@@ -469,7 +487,7 @@ describe("QAFrame — interaction", () => {
     renderQAFrame(evidenceReady.qa, {
       history: [{ id: "ans-1", question: groundedAnswer.question, status: "answered", response: groundedAnswer }],
     });
-    const answer = screen.getByText("Grounded answer").closest(".lens-ev-qa-answer");
+    const answer = screen.getAllByText("Grounded answer")[1]?.closest(".lens-ev-qa-answer");
     expect(answer).not.toBeNull();
     expect(answer).toHaveTextContent("Fact");
     expect(answer).toHaveTextContent("Inference");
@@ -972,6 +990,6 @@ describe("LensEvidenceStudio — Q&A mutation integration", () => {
     await user.click(screen.getByRole("button", { name: "Ask" }));
 
     expect(await screen.findByText("What changed first?")).toBeInTheDocument();
-    expect(await screen.findByText("Grounded answer")).toBeInTheDocument();
+    expect((await screen.findAllByText("Grounded answer")).length).toBeGreaterThan(1);
   });
 });
