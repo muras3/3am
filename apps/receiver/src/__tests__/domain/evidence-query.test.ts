@@ -356,6 +356,46 @@ describe('buildEvidenceQueryAnswer', () => {
     expect(generateEvidenceQuerySpy).not.toHaveBeenCalled()
   })
 
+  it('answers incident-context glossary questions for backoff', async () => {
+    const incident = makeIncident({ diagnosisResult: makeDiagnosisResult() })
+    const generateEvidenceQuerySpy = vi.spyOn(diagnosis, 'generateEvidenceQuery')
+
+    const result = await buildEvidenceQueryAnswer(incident, makeMockStore(), 'バックオフって何？', false, 'ja')
+
+    expect(result.status).toBe('answered')
+    expect(result.segments[0]?.text).toContain('バックオフは')
+    expect(result.segments.some((segment) => segment.text.includes('このインシデントでは'))).toBe(true)
+    expect(result.segments.every((segment) => segment.evidenceRefs.length > 0)).toBe(true)
+    expect(generateEvidenceQuerySpy).not.toHaveBeenCalled()
+  })
+
+  it('answers incident-context glossary questions for queue', async () => {
+    const incident = makeIncident({ diagnosisResult: makeDiagnosisResult() })
+    const result = await buildEvidenceQueryAnswer(incident, makeMockStore(), 'キューって何？', false, 'ja')
+
+    expect(result.status).toBe('answered')
+    expect(result.segments[0]?.text).toContain('キューは')
+    expect(result.segments.some((segment) => segment.text.includes('このインシデントでは'))).toBe(true)
+  })
+
+  it('answers incident-context glossary questions for worker pool via registry', async () => {
+    const incident = makeIncident({ diagnosisResult: makeDiagnosisResult() })
+    const result = await buildEvidenceQueryAnswer(incident, makeMockStore(), 'ワーカープールってなんですか？', false, 'ja')
+
+    expect(result.status).toBe('answered')
+    expect(result.segments[0]?.text).toContain('ワーカープールは')
+    expect(result.segments.some((segment) => segment.text.includes('このインシデントでは'))).toBe(true)
+  })
+
+  it('answers general explanations for trace without no-answer fallback', async () => {
+    const incident = makeIncident({ diagnosisResult: makeDiagnosisResult() })
+    const result = await buildEvidenceQueryAnswer(incident, makeMockStore(), 'トレースって何？', false, 'ja')
+
+    expect(result.status).toBe('answered')
+    expect(result.segments[0]?.text).toContain('トレースは')
+    expect(result.segments.some((segment) => segment.text.includes('このインシデントでは'))).toBe(true)
+  })
+
   it('localizes followups when locale is ja', async () => {
     const incident = makeIncident({ diagnosisResult: makeDiagnosisResult() })
     const result = await buildEvidenceQueryAnswer(incident, makeMockStore(), '原因は？', false, 'ja')
