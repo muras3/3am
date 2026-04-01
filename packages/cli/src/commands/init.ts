@@ -247,6 +247,61 @@ export async function runInit(_argv: string[], options: InitOptions = {}): Promi
 
   const ja = locale === "ja";
 
+  // --- 6c. Notification webhook URL ---
+  if (!options.noInteractive && process.stdin.isTTY) {
+    const rl2 = createInterface({ input: process.stdin, output: process.stdout });
+    const webhookAnswer = await new Promise<string>((resolve) => {
+      rl2.question(
+        ja
+          ? "Slack/Discord webhook URL (後で設定する場合は空Enter): "
+          : "Slack/Discord webhook URL (press Enter to skip): ",
+        (answer) => {
+          rl2.close();
+          resolve(answer.trim());
+        },
+      );
+    });
+
+    if (webhookAnswer) {
+      // Validate: only accept known Slack/Discord webhook hostnames
+      try {
+        const parsed = new URL(webhookAnswer);
+        const hostname = parsed.hostname;
+        if (
+          hostname === "hooks.slack.com" ||
+          hostname === "discord.com" ||
+          hostname === "discordapp.com"
+        ) {
+          const envPath2 = join(cwd, ".env");
+          const envContent2 = existsSync(envPath2) ? readFileSync(envPath2, "utf-8") : "";
+          const updatedEnv2 = updateEnvFile(envContent2, {
+            NOTIFICATION_WEBHOOK_URL: webhookAnswer,
+          });
+          writeFileSync(envPath2, updatedEnv2, "utf-8");
+          process.stdout.write(
+            ja
+              ? `通知先: ${hostname} に設定しました\n`
+              : `Notifications: configured for ${hostname}\n`,
+          );
+        } else {
+          process.stdout.write(
+            ja
+              ? "無効なwebhook URL。Slack または Discord のwebhook URLを使用してください。\n"
+              : "Invalid webhook URL. Use a Slack or Discord webhook URL.\n",
+          );
+        }
+      } catch {
+        if (webhookAnswer.length > 0) {
+          process.stdout.write(
+            ja
+              ? "無効なURL形式です。スキップします。\n"
+              : "Invalid URL format. Skipping.\n",
+          );
+        }
+      }
+    }
+  }
+
   // --- 7. Signal check ---
   process.stdout.write(ja ? "\n3amoncall init 完了!\n\n" : "\n3amoncall init complete!\n\n");
   process.stdout.write(ja ? "シグナル確認:\n" : "Signal check:\n");

@@ -219,6 +219,22 @@ describe("updateEnvFile()", () => {
     expect(result).toContain("OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:3333");
     expect(result).not.toContain("prod.example.com");
   });
+
+  it("adds NOTIFICATION_WEBHOOK_URL when not present", () => {
+    const result = updateEnvFile("EXISTING_KEY=value\n", {
+      NOTIFICATION_WEBHOOK_URL: "https://hooks.slack.com/services/T/B/x",
+    });
+    expect(result).toContain("NOTIFICATION_WEBHOOK_URL=https://hooks.slack.com/services/T/B/x");
+  });
+
+  it("preserves existing non-empty NOTIFICATION_WEBHOOK_URL", () => {
+    const existing = "NOTIFICATION_WEBHOOK_URL=https://hooks.slack.com/services/old\n";
+    const result = updateEnvFile(existing, {
+      NOTIFICATION_WEBHOOK_URL: "https://hooks.slack.com/services/new",
+    });
+    expect(result).toContain("https://hooks.slack.com/services/old");
+    expect(result).not.toContain("https://hooks.slack.com/services/new");
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -786,5 +802,30 @@ describe("runInit()", () => {
 
     expect(exitSpy).toHaveBeenCalledWith(1);
     exitSpy.mockRestore();
+  });
+
+  it("does not ask for webhook URL when --no-interactive is set", async () => {
+    writeFileSync(
+      join(tmpDir, "package.json"),
+      JSON.stringify({ name: "my-app", dependencies: { express: "4.18.0" } }),
+    );
+
+    const stdoutChunks: string[] = [];
+    const stdoutSpy = vi.spyOn(process.stdout, "write").mockImplementation((chunk) => {
+      stdoutChunks.push(String(chunk));
+      return true;
+    });
+
+    await runInit([], { noInteractive: true });
+    stdoutSpy.mockRestore();
+
+    const combined = stdoutChunks.join("");
+    expect(combined).not.toContain("webhook URL");
+    expect(combined).not.toContain("Slack/Discord");
+    // NOTIFICATION_WEBHOOK_URL should NOT be written to .env
+    const envContent = existsSync(join(tmpDir, ".env"))
+      ? readFileSync(join(tmpDir, ".env"), "utf-8")
+      : "";
+    expect(envContent).not.toContain("NOTIFICATION_WEBHOOK_URL");
   });
 });
