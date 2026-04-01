@@ -6,7 +6,10 @@ Diagnose serverless app incidents in under 5 minutes using OTel data + LLM.
 
 ## Quick Start (Local)
 
-**Prerequisites:** Docker Desktop, Node.js 18+, [Anthropic API key](https://console.anthropic.com/settings/keys)
+**Prerequisites:** Docker Desktop, Node.js 18+, plus one LLM path:
+
+- `automatic` mode: `ANTHROPIC_API_KEY` or `OPENAI_API_KEY`
+- `manual` mode: local `claude`, local `codex`, local Ollama, or an API key-backed provider
 
 ```bash
 # 1. Set up OTel SDK in your app
@@ -14,6 +17,9 @@ npx 3amoncall init
 
 # 2. Start local Receiver (requires Docker Desktop)
 npx 3amoncall local
+
+# 2b. If you selected manual mode, start the local bridge
+npx 3amoncall bridge
 
 # 3. (In another terminal) Run a demo incident — see diagnosis in action
 npx 3amoncall local demo
@@ -26,7 +32,21 @@ open http://localhost:3333
 
 `3amoncall init` installs OTel dependencies, creates `instrumentation.ts/js`, and writes `OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:3333` to `.env`.
 
-`3amoncall local` pulls and runs the Receiver image via Docker. Set `ANTHROPIC_API_KEY` during `init` or in your environment — LLM diagnosis requires it.
+`3amoncall init` now captures a diagnosis mode and provider choice.
+
+- `automatic`: Receiver runs diagnosis server-side
+- `manual`: Console and CLI route diagnosis through the local bridge, so you can use Claude Code, Codex, Ollama, or another local/provider-backed setup without issuing an Anthropic API key
+
+`3amoncall local` pulls and runs the Receiver image via Docker. In manual mode, also start `npx 3amoncall bridge` so Console-triggered local diagnosis can reach your local provider.
+
+You can also run manual diagnosis directly from the CLI:
+
+```bash
+npx 3amoncall diagnose \
+  --incident-id inc_000001 \
+  --receiver-url http://localhost:3333 \
+  --provider claude-code
+```
 
 For your own app telemetry, start your app with instrumentation loaded:
 
@@ -46,11 +66,12 @@ Optional receiver tuning:
 [![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/3amoncall/3amoncall&env=ANTHROPIC_API_KEY&envDescription=Anthropic%20API%20key%20for%20LLM%20diagnosis&envLink=https://console.anthropic.com/settings/keys&products=%5B%7B%22type%22%3A%22integration%22%2C%22group%22%3A%22postgres%22%7D%5D&project-name=3amoncall&repository-name=3amoncall)
 
 1. Click the button above
-2. Enter your `ANTHROPIC_API_KEY` — this is the only value you need to provide
-3. Neon Postgres is auto-provisioned via the Vercel integration
-4. Set `RETENTION_HOURS` in your deployment environment if you need a window other than 48 hours
-5. After deploy, open your Console URL — the first-access screen displays your `AUTH_TOKEN`
-6. Point your app at the production Receiver:
+2. Choose `automatic` or `manual` diagnosis mode for the deployment
+3. If you want server-side automatic diagnosis, set `ANTHROPIC_API_KEY` or another supported server-side provider credential
+4. Neon Postgres is auto-provisioned via the Vercel integration
+5. Set `RETENTION_HOURS` in your deployment environment if you need a window other than 48 hours
+6. After deploy, open your Console URL — the first-access screen displays your `AUTH_TOKEN`
+7. Point your app at the production Receiver:
 
 ```bash
 npx 3amoncall deploy vercel
@@ -127,11 +148,13 @@ Use separate destinations, projects, or tenants so dogfooding data does not poll
 ```
 Your App (OTel SDK)
   → Receiver (OTLP ingest, anomaly detection, incident packet formation)
-  → LLM diagnosis (Anthropic Claude, inline in Receiver)
+  → LLM diagnosis
+    → automatic mode: inline in Receiver
+    → manual mode: local bridge / CLI, then persisted back to Receiver
   → Console (incident board, evidence explorer, AI copilot)
 ```
 
-The Receiver collects spans, metrics, and logs via OTLP/HTTP. When anomaly thresholds are crossed, it forms an incident packet and runs LLM diagnosis inline. Results are surfaced in the Console.
+The Receiver collects spans, metrics, and logs via OTLP/HTTP. When anomaly thresholds are crossed, it forms an incident packet. In `automatic` mode, it resolves a server-side provider and runs diagnosis inline. In `manual` mode, Console and CLI actions trigger local execution through the bridge and post the results back. Results are surfaced in the Console in both modes.
 
 ---
 

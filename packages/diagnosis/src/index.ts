@@ -19,3 +19,16 @@ export type {
 } from "./evidence-query-prompt.js";
 export { parseEvidenceQuery } from "./parse-evidence-query.js";
 export type { EvidenceQueryParseMeta } from "./parse-evidence-query.js";
+export {
+  resolveProvider,
+  ProviderResolutionError,
+} from "./provider.js";
+export type {
+  LLMProvider,
+  ModelCallOptions,
+  ModelMessage,
+  ProviderName,
+  ProviderPolicy,
+  ResolvedProvider,
+} from "./provider.js";
+export { callModelMessages } from "./model-client.js";

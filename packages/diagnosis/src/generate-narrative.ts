@@ -6,6 +6,7 @@ import type {
 import { buildNarrativePrompt } from "./narrative-prompt.js";
 import { parseNarrative } from "./parse-narrative.js";
 import { callModel } from "./model-client.js";
+import type { ProviderName } from "./provider.js";
 
 export type GenerateNarrativeOptions = {
   /** Model to use for narrative generation. Defaults to claude-haiku-4-5-20251001. */
@@ -14,6 +15,10 @@ export type GenerateNarrativeOptions = {
   promptVersion?: string;
   /** Output locale. "ja" appends Japanese language instruction. Defaults to "en". */
   locale?: "en" | "ja";
+  provider?: ProviderName;
+  baseUrl?: string;
+  allowSubprocessProviders?: boolean;
+  allowLocalHttpProviders?: boolean;
 };
 
 const DEFAULT_MODEL = "claude-haiku-4-5-20251001";
@@ -38,7 +43,14 @@ export async function generateConsoleNarrative(
   const promptVersion = options?.promptVersion ?? DEFAULT_PROMPT_VERSION;
 
   const prompt = buildNarrativePrompt(diagnosisResult, context, { locale: options?.locale });
-  const raw = await callModel(prompt, { model, maxTokens: MAX_TOKENS });
+  const raw = await callModel(prompt, {
+    provider: options?.provider,
+    model,
+    maxTokens: MAX_TOKENS,
+    baseUrl: options?.baseUrl,
+    allowSubprocessProviders: options?.allowSubprocessProviders,
+    allowLocalHttpProviders: options?.allowLocalHttpProviders,
+  });
 
   return parseNarrative(raw, {
     model,

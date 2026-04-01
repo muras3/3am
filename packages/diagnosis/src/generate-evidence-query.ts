@@ -5,10 +5,15 @@ import {
   type EvidenceQueryPromptInput,
 } from "./evidence-query-prompt.js";
 import { parseEvidenceQuery } from "./parse-evidence-query.js";
+import type { ProviderName } from "./provider.js";
 
 export type GenerateEvidenceQueryOptions = {
   model?: string;
   locale?: "en" | "ja";
+  provider?: ProviderName;
+  baseUrl?: string;
+  allowSubprocessProviders?: boolean;
+  allowLocalHttpProviders?: boolean;
 };
 
 const DEFAULT_MODEL = "claude-haiku-4-5-20251001";
@@ -20,7 +25,14 @@ export async function generateEvidenceQuery(
 ): Promise<EvidenceQueryResponse> {
   const model = options?.model ?? DEFAULT_MODEL;
   const prompt = buildEvidenceQueryPrompt(input, { locale: options?.locale });
-  const raw = await callModel(prompt, { model, maxTokens: MAX_TOKENS });
+  const raw = await callModel(prompt, {
+    provider: options?.provider,
+    model,
+    maxTokens: MAX_TOKENS,
+    baseUrl: options?.baseUrl,
+    allowSubprocessProviders: options?.allowSubprocessProviders,
+    allowLocalHttpProviders: options?.allowLocalHttpProviders,
+  });
 
   return parseEvidenceQuery(
     raw,

@@ -28,6 +28,12 @@ function renderBoard(
   );
 }
 
+const automaticSettings = {
+  mode: "automatic" as const,
+  provider: "anthropic" as const,
+  bridgeUrl: "http://127.0.0.1:4269",
+};
+
 function getPendingBanner() {
   return document.querySelector(".lens-board-pending");
 }
@@ -99,13 +105,14 @@ describe("LensIncidentBoard — diagnosis pending", () => {
       curatedQueries.extendedIncident("inc_0892").queryKey,
       extendedIncidentPending,
     );
+    qc.setQueryData(curatedQueries.diagnosisSettings().queryKey, automaticSettings);
 
     renderBoard("inc_0892", vi.fn(), qc);
 
     await vi.advanceTimersByTimeAsync(5_100);
 
-    expect(fetchMock).toHaveBeenCalledWith("/api/incidents/inc_0892", expect.anything());
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const incidentCalls = fetchMock.mock.calls.filter(([input]) => String(input).includes("/api/incidents/inc_0892"));
+    expect(incidentCalls).toHaveLength(1);
   });
 });
 
@@ -123,6 +130,7 @@ describe("LensIncidentBoard — rerun diagnosis", () => {
       curatedQueries.extendedIncident("inc_0892").queryKey,
       unavailableIncident,
     );
+    qc.setQueryData(curatedQueries.diagnosisSettings().queryKey, automaticSettings);
 
     let resolveFetch!: (value: unknown) => void;
     const fetchMock = vi.fn().mockImplementation((input: RequestInfo | URL, _init?: RequestInit) => {

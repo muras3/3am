@@ -35,7 +35,7 @@ describe("callModel", () => {
     mockCreate.mockResolvedValue({ content: [] });
 
     await expect(callModel("test prompt", defaultOptions)).rejects.toThrow(
-      "No text content in model response",
+      "anthropic returned an empty response",
     );
   });
 });
