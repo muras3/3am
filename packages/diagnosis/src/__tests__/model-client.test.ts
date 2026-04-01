@@ -13,7 +13,7 @@ import Anthropic from "@anthropic-ai/sdk";
 
 const AnthropicMock = vi.mocked(Anthropic);
 
-const defaultOptions = { model: "claude-sonnet-4-6", maxTokens: 4096 };
+const defaultOptions = { provider: "anthropic" as const, model: "claude-sonnet-4-6", maxTokens: 4096 };
 
 beforeEach(() => {
   vi.clearAllMocks();
