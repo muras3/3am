@@ -26,7 +26,12 @@ export function LensIncidentBoard({ incidentId, zoomTo }: Props) {
   const [rerunFeedback, setRerunFeedback] = useState<string | null>(null);
   const [closeFeedback, setCloseFeedback] = useState<string | null>(null);
   const [closeConfirm, setCloseConfirm] = useState(false);
-  const rerunDiagnosis = useMutation(curatedMutations.rerunDiagnosis(incidentId));
+  const diagnosisSettings = useQuery(curatedQueries.diagnosisSettings());
+  const rerunDiagnosis = useMutation(
+    diagnosisSettings.data?.mode === "manual"
+      ? curatedMutations.manualRerunDiagnosis(incidentId, diagnosisSettings.data)
+      : curatedMutations.rerunDiagnosis(incidentId),
+  );
   const closeIncident = useMutation(curatedMutations.closeIncident(incidentId));
   const incidentQuery = useQuery({
     ...curatedQueries.extendedIncident(incidentId),
@@ -50,11 +55,13 @@ export function LensIncidentBoard({ incidentId, zoomTo }: Props) {
       onSuccess: () => {
         setRerunFeedback(t("board.rerun.requested"));
         void queryClient.invalidateQueries({ queryKey: curatedQueries.extendedIncident(incidentId).queryKey });
+        void queryClient.invalidateQueries({ queryKey: curatedQueries.evidence(incidentId).queryKey });
       },
       onError: (error) => {
         if (error instanceof ApiError && error.status === 409) {
           setRerunFeedback(t("board.rerun.alreadyRunning"));
           void queryClient.invalidateQueries({ queryKey: curatedQueries.extendedIncident(incidentId).queryKey });
+          void queryClient.invalidateQueries({ queryKey: curatedQueries.evidence(incidentId).queryKey });
           return;
         }
         setRerunFeedback(t("board.rerun.failed"));
@@ -129,7 +136,7 @@ export function LensIncidentBoard({ incidentId, zoomTo }: Props) {
     rerunFeedback === t("board.rerun.requested")
     || rerunFeedback === t("board.rerun.alreadyRunning");
   const rerunDisabled =
-    rerunDiagnosis.isPending || rerunAcknowledged || data.state.diagnosis === "pending";
+    diagnosisSettings.isLoading || rerunDiagnosis.isPending || rerunAcknowledged || data.state.diagnosis === "pending";
   const rerunLabel = rerunDiagnosis.isPending ? t("board.rerun.startingLabel") : t("board.rerun.label");
   const pendingMessage =
     rerunDiagnosis.isPending || rerunFeedback === t("board.rerun.requested")

@@ -90,9 +90,10 @@ export function runDev(options: DevOptions = {}): void {
     ? "3amoncall-receiver:local"
     : `ghcr.io/3amoncall/receiver:v${version}`;
 
+  const creds = loadCredentials();
   const apiKey = options.apiKey
     ?? process.env["ANTHROPIC_API_KEY"]
-    ?? loadCredentials().anthropicApiKey
+    ?? creds.anthropicApiKey
     ?? loadEnvApiKey(process.cwd());
 
   if (!apiKey) {
@@ -114,6 +115,16 @@ export function runDev(options: DevOptions = {}): void {
     "-e",
     `DIAGNOSIS_MAX_WAIT_MS=0`,
   ];
+
+  if (creds.llmMode) {
+    args.push("-e", `LLM_MODE=${creds.llmMode}`);
+  }
+  if (creds.llmProvider) {
+    args.push("-e", `LLM_PROVIDER=${creds.llmProvider}`);
+  }
+  if (creds.llmBridgeUrl) {
+    args.push("-e", `LLM_BRIDGE_URL=${creds.llmBridgeUrl}`);
+  }
 
   if (apiKey) {
     args.push("-e", `ANTHROPIC_API_KEY=${apiKey}`);

@@ -88,6 +88,7 @@ function makeTelemetryStore(): TelemetryStoreDriver {
 
 describe("DiagnosisRunner", () => {
   const originalApiKey = process.env["ANTHROPIC_API_KEY"];
+  const originalMode = process.env["LLM_MODE"];
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -99,10 +100,15 @@ describe("DiagnosisRunner", () => {
     } else {
       delete process.env["ANTHROPIC_API_KEY"];
     }
+    if (originalMode !== undefined) {
+      process.env["LLM_MODE"] = originalMode;
+    } else {
+      delete process.env["LLM_MODE"];
+    }
   });
 
-  it("skips diagnosis when ANTHROPIC_API_KEY is not set and returns false", async () => {
-    delete process.env["ANTHROPIC_API_KEY"];
+  it("skips diagnosis when manual mode is enabled and returns false", async () => {
+    process.env["LLM_MODE"] = "manual";
     const storage = makeStorage();
     const runner = new DiagnosisRunner(storage, makeTelemetryStore());
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
@@ -112,7 +118,7 @@ describe("DiagnosisRunner", () => {
     expect(result).toBe(false);
     expect(diagnose).not.toHaveBeenCalled();
     expect(storage.appendDiagnosis).not.toHaveBeenCalled();
-    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("ANTHROPIC_API_KEY"));
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("manual mode"));
     warnSpy.mockRestore();
   });
 

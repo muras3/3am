@@ -1,11 +1,13 @@
-import Anthropic from "@anthropic-ai/sdk";
 import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import {
+  ConsoleNarrativeSchema,
   DiagnosisResultSchema,
   EvidenceQueryRequestSchema,
+  ReasoningStructureSchema,
   type DiagnosisResult,
 } from "@3amoncall/core";
+import { callModelMessages } from "@3amoncall/diagnosis";
 import { jwtCookieSetter, jwtCookieValidator } from "../middleware/session-cookie.js";
 import { rateLimiter } from "../middleware/rate-limit.js";
 import type { Incident, IncidentPage, StorageDriver } from "../storage/interface.js";
@@ -18,17 +20,17 @@ import { buildRuntimeMap } from "../ambient/runtime-map.js";
 import { buildExtendedIncident } from "../domain/incident-detail-extension.js";
 import { buildCuratedEvidence } from "../domain/curated-evidence.js";
 import { buildEvidenceQueryAnswer } from "../domain/evidence-query.js";
+import { buildReasoningStructure } from "../domain/reasoning-structure-builder.js";
 import type { DiagnosisRunner } from "../runtime/diagnosis-runner.js";
 import { resolveWaitUntil, runClaimedDiagnosis } from "../runtime/diagnosis-debouncer.js";
 import type { EnqueueDiagnosisFn } from "../runtime/diagnosis-dispatch.js";
+import { getReceiverLlmSettings } from "../runtime/llm-settings.js";
 import { maybeCleanup } from "../retention/lazy-cleanup.js";
 
 const CHAT_MAX_HISTORY = 10;
 const CHAT_MAX_MESSAGE_CHARS = 500;
 const CHAT_MAX_TOKENS = 512;
 const CHAT_MODEL = process.env["CHAT_MODEL"] ?? "claude-haiku-4-5-20251001";
-const CHAT_TIMEOUT_MS = 120_000;
-const CHAT_MAX_RETRIES = 2;
 
 interface ChatTurn {
   role: "user" | "assistant";
@@ -157,6 +159,24 @@ export function createApiRouter(
       return c.json({ error: "not found" }, 404);
     }
     return c.json(await buildExtendedIncident(incident, telemetryStore));
+  });
+
+  app.get("/api/incidents/:id/packet", async (c) => {
+    const id = c.req.param("id");
+    const incident = await storage.getIncident(id);
+    if (incident === null) {
+      return c.json({ error: "not found" }, 404);
+    }
+    return c.json(incident.packet);
+  });
+
+  app.get("/api/incidents/:id/reasoning-structure", async (c) => {
+    const id = c.req.param("id");
+    const incident = await storage.getIncident(id);
+    if (incident === null) {
+      return c.json({ error: "not found" }, 404);
+    }
+    return c.json(ReasoningStructureSchema.parse(await buildReasoningStructure(incident, telemetryStore)));
   });
 
   app.get("/api/incidents/:id/evidence", async (c) => {
@@ -368,6 +388,25 @@ export function createApiRouter(
     return c.json({ status: "ok" });
   });
 
+  app.post("/api/incidents/:id/console-narrative", apiBodyLimit(512 * 1024), async (c) => {
+    const id = c.req.param("id");
+
+    let result;
+    try {
+      result = ConsoleNarrativeSchema.parse(await c.req.json());
+    } catch {
+      return c.json({ error: "invalid body" }, 400);
+    }
+
+    const incident = await storage.getIncident(id);
+    if (incident === null) {
+      return c.json({ error: "not found" }, 404);
+    }
+
+    await storage.appendConsoleNarrative(id, result);
+    return c.json({ status: "ok" });
+  });
+
   app.post("/api/chat/:id", apiBodyLimit(1 * 1024), async (c) => {
     const id = c.req.param("id");
 
@@ -396,31 +435,22 @@ export function createApiRouter(
     const systemPrompt = buildChatSystemPrompt(incident.diagnosisResult, locale);
     const sandboxedMessage = `<user_message>${message}</user_message>`;
 
-    const messages: Anthropic.MessageParam[] = [
-      ...history.map((t) => ({ role: t.role, content: t.content })),
-      { role: "user", content: sandboxedMessage },
-    ];
-
-    // Explicit config so tests can override via ANTHROPIC_BASE_URL / ANTHROPIC_API_KEY env vars
-    // without relying on implicit SDK env scanning.
-    const client = new Anthropic({
-      baseURL: process.env["ANTHROPIC_BASE_URL"],
-      apiKey: process.env["ANTHROPIC_API_KEY"] ?? "no-key",
-      timeout: CHAT_TIMEOUT_MS,
-      maxRetries: CHAT_MAX_RETRIES,
-    });
-    const response = await client.messages.create({
-      model: CHAT_MODEL,
-      max_tokens: CHAT_MAX_TOKENS,
-      temperature: 0.3,
-      system: systemPrompt,
-      messages,
-    });
-
-    const reply = response.content
-      .filter((b): b is Anthropic.TextBlock => b.type === "text")
-      .map((b) => b.text)
-      .join("");
+    const llmSettings = await getReceiverLlmSettings(storage);
+    const reply = await callModelMessages(
+      [
+        { role: "system", content: systemPrompt },
+        ...history.map((turn) => ({ role: turn.role, content: turn.content })),
+        { role: "user", content: sandboxedMessage },
+      ],
+      {
+        provider: llmSettings.provider,
+        model: CHAT_MODEL,
+        maxTokens: CHAT_MAX_TOKENS,
+        temperature: 0.3,
+        allowSubprocessProviders: false,
+        allowLocalHttpProviders: false,
+      },
+    );
 
     return c.json({ reply });
   });

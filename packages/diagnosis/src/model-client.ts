@@ -1,27 +1,22 @@
-import Anthropic from "@anthropic-ai/sdk";
+import {
+  resolveProvider,
+  type ModelCallOptions,
+  type ModelMessage,
+} from "./provider.js";
 
-export type ModelOptions = {
-  model: string;
-  maxTokens: number;
-};
+export type ModelOptions = ModelCallOptions;
 
 export async function callModel(
   prompt: string,
   options: ModelOptions,
 ): Promise<string> {
-  const client = new Anthropic({ timeout: 120_000, maxRetries: 2 });
-  const response = await client.messages.create({
-    model: options.model,
-    max_tokens: options.maxTokens,
-    temperature: 0,
-    messages: [{ role: "user", content: prompt }],
-  });
+  return callModelMessages([{ role: "user", content: prompt }], options);
+}
 
-  const texts = response.content
-    .filter((block): block is Anthropic.TextBlock => block.type === "text")
-    .map((block) => block.text);
-  if (texts.length === 0) {
-    throw new Error("No text content in model response");
-  }
-  return texts.join("");
+export async function callModelMessages(
+  messages: ModelMessage[],
+  options: ModelOptions,
+): Promise<string> {
+  const { provider } = await resolveProvider(options);
+  return provider.generate(messages, options);
 }

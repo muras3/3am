@@ -14,6 +14,11 @@ program
 program
   .command("diagnose")
   .description("Run LLM diagnosis on an incident packet")
+  .option("--provider <provider>", "LLM provider (anthropic, openai, ollama, claude-code, codex)")
+  .option("--model <model>", "Override provider model")
+  .option("--incident-id <id>", "Run manual diagnosis for an incident stored in Receiver")
+  .option("--receiver-url <url>", "Receiver base URL for manual diagnosis")
+  .option("--auth-token <token>", "Receiver auth token for manual diagnosis")
   .allowUnknownOption(true)
   .action(async () => {
     await runDiagnose(process.argv.slice(3));
@@ -23,10 +28,18 @@ program
   .command("init")
   .description("Set up OpenTelemetry SDK in your project")
   .option("--api-key <key>", "Anthropic API key (saved to ~/.config/3amoncall/credentials)")
+  .option("--mode <mode>", "Diagnosis mode (automatic or manual)")
+  .option("--provider <provider>", "LLM provider (anthropic, openai, ollama, claude-code, codex)")
+  .option("--model <model>", "Default provider model override")
+  .option("--bridge-url <url>", "Local bridge URL for console-triggered manual runs")
   .option("--no-interactive", "Skip interactive prompts (for CI/Claude Code)")
-  .action(async (options: { apiKey?: string; interactive?: boolean }) => {
+  .action(async (options: { apiKey?: string; mode?: string; provider?: string; model?: string; bridgeUrl?: string; interactive?: boolean }) => {
     await runInit(process.argv.slice(3), {
       apiKey: options.apiKey,
+      mode: options.mode,
+      provider: options.provider,
+      model: options.model,
+      bridgeUrl: options.bridgeUrl,
       noInteractive: options.interactive === false,
     });
   });
@@ -52,6 +65,15 @@ program
       noInteractive: options.interactive === false,
       receiverUrl: options.receiverUrl,
     });
+  });
+
+program
+  .command("bridge")
+  .description("Start the local LLM bridge for manual console actions")
+  .option("--port <number>", "Port to expose (default: 4269)", parseInt)
+  .action(async (options: { port?: number }) => {
+    const { runBridge } = await import("./commands/bridge.js");
+    runBridge(options.port != null ? { port: options.port } : {});
   });
 
 program
