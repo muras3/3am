@@ -19,7 +19,11 @@ export default defineConfig({
     ],
   },
   test: {
-    include: ["src/__tests__/**/*.test.ts", "src/runtime/__tests__/**/*.test.ts", "src/notification/__tests__/**/*.test.ts"],
+    include: [
+      "src/__tests__/**/*.test.ts",
+      "src/runtime/__tests__/**/*.test.ts",
+      "src/notification/__tests__/**/*.test.ts",
+    ],
     exclude: ["src/__tests__/workers/**/*.test.ts"],
     // Postgres test files share a single database and use TRUNCATE for isolation.
     // File-level parallelism causes cross-file TRUNCATE races (one file wipes
