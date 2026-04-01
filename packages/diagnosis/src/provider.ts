@@ -7,6 +7,14 @@ export type ProviderName =
   | "claude-code"
   | "codex";
 
+export const PROVIDER_NAMES = [
+  "anthropic",
+  "openai",
+  "ollama",
+  "claude-code",
+  "codex",
+] as const satisfies readonly ProviderName[];
+
 export type ModelMessage = {
   role: "system" | "user" | "assistant";
   content: string;
@@ -55,6 +63,10 @@ export type ResolvedProvider = {
 };
 
 const DEFAULT_TIMEOUT_MS = 120_000;
+
+function buildApiBaseUrl(baseUrl: string): URL {
+  return new URL(baseUrl.endsWith("/") ? baseUrl : `${baseUrl}/`);
+}
 
 function renderMessagesAsPrompt(messages: ModelMessage[]): string {
   return messages
@@ -151,7 +163,7 @@ class OpenAIProvider implements LLMProvider {
     }
 
     const response = await fetch(
-      new URL("/chat/completions", options.baseUrl ?? env["OPENAI_BASE_URL"] ?? "https://api.openai.com/v1"),
+      new URL("chat/completions", buildApiBaseUrl(options.baseUrl ?? env["OPENAI_BASE_URL"] ?? "https://api.openai.com/v1/")),
       {
         method: "POST",
         headers: {
@@ -308,29 +320,33 @@ function assertAllowedProvider(name: ProviderName, options: ModelCallOptions): v
   }
 }
 
+function resolved(name: ProviderName, source: ResolvedProvider["source"], options: ModelCallOptions): ResolvedProvider {
+  assertAllowedProvider(name, options);
+  return { provider: PROVIDERS[name], source };
+}
+
 export async function resolveProvider(options: ModelCallOptions): Promise<ResolvedProvider> {
   const env = resolveEnv(options);
   if (options.provider) {
-    assertAllowedProvider(options.provider, options);
-    return { provider: PROVIDERS[options.provider], source: "explicit" };
+    return resolved(options.provider, "explicit", options);
   }
 
   if (env["ANTHROPIC_API_KEY"]) {
-    return { provider: PROVIDERS.anthropic, source: "autodetect" };
+    return resolved("anthropic", "autodetect", options);
   }
   if ((options.allowSubprocessProviders ?? true) && await checkBinary("claude")) {
-    return { provider: PROVIDERS["claude-code"], source: "autodetect" };
+    return resolved("claude-code", "autodetect", options);
   }
   if ((options.allowSubprocessProviders ?? true) && await checkBinary("codex")) {
-    return { provider: PROVIDERS.codex, source: "autodetect" };
+    return resolved("codex", "autodetect", options);
   }
   if (env["OPENAI_API_KEY"]) {
-    return { provider: PROVIDERS.openai, source: "autodetect" };
+    return resolved("openai", "autodetect", options);
   }
   if ((options.allowLocalHttpProviders ?? true)) {
     const baseUrl = options.baseUrl ?? env["OLLAMA_HOST"] ?? "http://127.0.0.1:11434";
     if (await checkOllamaHealth(baseUrl)) {
-      return { provider: PROVIDERS.ollama, source: "autodetect" };
+      return resolved("ollama", "autodetect", options);
     }
   }
 

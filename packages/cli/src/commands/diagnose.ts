@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { IncidentPacketSchema } from "@3amoncall/core";
-import { diagnose, type ProviderName } from "@3amoncall/diagnosis";
+import { PROVIDER_NAMES, diagnose, type ProviderName } from "@3amoncall/diagnosis";
 import { loadCredentials } from "./init/credentials.js";
 import { runManualDiagnosis } from "./manual-execution.js";
 
@@ -69,9 +69,10 @@ function parseArgs(argv: string[]): {
 }
 
 function parseProvider(value: string | undefined, fallback?: ProviderName): ProviderName | undefined {
-  return value === "anthropic" || value === "openai" || value === "ollama" || value === "claude-code" || value === "codex"
-    ? value
-    : fallback;
+  if ((PROVIDER_NAMES as readonly string[]).includes(value ?? "")) {
+    return value as ProviderName;
+  }
+  return fallback;
 }
 
 export async function runDiagnose(argv: string[]): Promise<void> {

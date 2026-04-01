@@ -12,6 +12,7 @@ import { SpanBuffer } from "./ambient/span-buffer.js";
 import type { DiagnosisConfig } from "./runtime/diagnosis-debouncer.js";
 import { DiagnosisRunner } from "./runtime/diagnosis-runner.js";
 import type { EnqueueDiagnosisFn } from "./runtime/diagnosis-dispatch.js";
+import { PROVIDER_NAMES } from "@3amoncall/diagnosis";
 import {
   getReceiverLlmSettings,
   SETTINGS_KEY_DIAGNOSIS_MODE,
@@ -30,7 +31,6 @@ const SETTINGS_KEY_AUTH_TOKEN = "receiver_auth_token";
 const SETTINGS_KEY_SETUP_COMPLETE = "setup_complete";
 const SETTINGS_KEY_LOCALE = "locale";
 const SUPPORTED_LOCALES = ["en", "ja"] as const;
-const SUPPORTED_PROVIDER_NAMES = ["anthropic", "openai", "ollama", "claude-code", "codex"] as const;
 
 const APP_VERSION: string = process.env["npm_package_version"] ?? "0.1.0";
 
@@ -302,8 +302,8 @@ export function createApp(storage?: StorageDriver, options?: AppOptions): Hono {
     await store.setSettings(SETTINGS_KEY_DIAGNOSIS_MODE, mode);
 
     if (provider !== undefined && provider !== null) {
-      if (typeof provider !== "string" || !(SUPPORTED_PROVIDER_NAMES as readonly string[]).includes(provider)) {
-        return c.json({ error: `provider must be one of: ${SUPPORTED_PROVIDER_NAMES.join(", ")}` }, 400);
+      if (typeof provider !== "string" || !(PROVIDER_NAMES as readonly string[]).includes(provider)) {
+        return c.json({ error: `provider must be one of: ${PROVIDER_NAMES.join(", ")}` }, 400);
       }
       await store.setSettings(SETTINGS_KEY_DIAGNOSIS_PROVIDER, provider);
     }

@@ -20,6 +20,7 @@ export type {
 export { parseEvidenceQuery } from "./parse-evidence-query.js";
 export type { EvidenceQueryParseMeta } from "./parse-evidence-query.js";
 export {
+  PROVIDER_NAMES,
   resolveProvider,
   ProviderResolutionError,
 } from "./provider.js";

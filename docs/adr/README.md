@@ -34,3 +34,6 @@
 - [0030-incident-state-and-packet-rebuild.md](/Users/murase/project/3amoncall/docs/adr/0030-incident-state-and-packet-rebuild.md)
 - [0031-platform-event-contract.md](/Users/murase/project/3amoncall/docs/adr/0031-platform-event-contract.md)
 - [0032-telemetry-store-and-evidence-selection.md](/Users/murase/project/3amoncall/docs/adr/0032-telemetry-store-and-evidence-selection.md) — supersedes ADR 0030
+- [0033-cross-service-incident-formation-via-trace-propagation.md](/Users/murase/project/3amoncall/docs/adr/0033-cross-service-incident-formation-via-trace-propagation.md)
+- [0034-receiver-internal-diagnosis-and-credential-unification.md](/Users/murase/project/3amoncall/docs/adr/0034-receiver-internal-diagnosis-and-credential-unification.md)
+- [0035-pluggable-llm-execution-paths.md](/Users/murase/project/3amoncall/docs/adr/0035-pluggable-llm-execution-paths.md)

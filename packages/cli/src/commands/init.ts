@@ -8,7 +8,7 @@ import { getInstrumentationTemplate } from "./init/templates.js";
 import { patchScripts } from "./init/patch-scripts.js";
 import { resolveApiKey, loadCredentials, saveCredentials } from "./init/credentials.js";
 import { createInterface } from "node:readline";
-import type { ProviderName } from "@3amoncall/diagnosis";
+import { PROVIDER_NAMES, type ProviderName } from "@3amoncall/diagnosis";
 
 const OTEL_DEPS = [
   "@opentelemetry/sdk-node",
@@ -108,11 +108,7 @@ export interface InitOptions {
 }
 
 function isProviderName(value: string | undefined): value is ProviderName {
-  return value === "anthropic"
-    || value === "openai"
-    || value === "ollama"
-    || value === "claude-code"
-    || value === "codex";
+  return (PROVIDER_NAMES as readonly string[]).includes(value ?? "");
 }
 
 type PackageJson = {
@@ -277,7 +273,7 @@ export async function runInit(_argv: string[], options: InitOptions = {}): Promi
 
     const rlProvider = createInterface({ input: process.stdin, output: process.stdout });
     const providerAnswer = await new Promise<string>((resolve) => {
-      rlProvider.question("LLM provider (anthropic/openai/ollama/claude-code/codex) [anthropic]: ", (answer) => {
+      rlProvider.question(`LLM provider (${PROVIDER_NAMES.join("/")}) [anthropic]: `, (answer) => {
         rlProvider.close();
         resolve(answer.trim().toLowerCase() || "anthropic");
       });
