@@ -130,6 +130,16 @@ export function runDev(options: DevOptions = {}): void {
     args.push("-e", `ANTHROPIC_API_KEY=${apiKey}`);
   }
 
+  const webhookUrl = process.env["NOTIFICATION_WEBHOOK_URL"];
+  if (webhookUrl) {
+    args.push("-e", `NOTIFICATION_WEBHOOK_URL=${webhookUrl}`);
+  }
+
+  const consoleBaseUrl = process.env["CONSOLE_BASE_URL"];
+  if (consoleBaseUrl) {
+    args.push("-e", `CONSOLE_BASE_URL=${consoleBaseUrl}`);
+  }
+
   process.stdout.write(`Starting 3amoncall receiver on http://localhost:${port}\n`);
 
   if (repoRoot) {
