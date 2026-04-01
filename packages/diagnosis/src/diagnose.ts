@@ -2,7 +2,7 @@ import type { IncidentPacket, DiagnosisResult } from "@3amoncall/core";
 import { buildPrompt } from "./prompt.js";
 import { callModel } from "./model-client.js";
 import { parseResult } from "./parse-result.js";
-import type { ProviderName } from "./provider.js";
+import { defaultModelForProvider, type ProviderName } from "./provider.js";
 
 export type DiagnoseOptions = {
   model?: string;
@@ -18,7 +18,8 @@ export async function diagnose(
   packet: IncidentPacket,
   options?: DiagnoseOptions,
 ): Promise<DiagnosisResult> {
-  const model = options?.model ?? "claude-sonnet-4-6";
+  const model = options?.model ?? defaultModelForProvider(options?.provider, "claude-sonnet-4-6");
+  const modelLabel = model ?? `${options?.provider ?? "default"}-default`;
   const promptVersion = options?.promptVersion ?? "v5";
   const prompt = buildPrompt(packet, { locale: options?.locale });
   const raw = await callModel(prompt, {
@@ -32,7 +33,7 @@ export async function diagnose(
   return parseResult(raw, {
     incidentId: packet.incidentId,
     packetId: packet.packetId,
-    model,
+    model: modelLabel,
     promptVersion,
   });
 }

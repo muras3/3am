@@ -27,7 +27,7 @@ export type ProviderPolicy = {
 
 export type ModelCallOptions = ProviderPolicy & {
   provider?: ProviderName;
-  model: string;
+  model?: string;
   maxTokens: number;
   temperature?: number;
   baseUrl?: string;
@@ -63,6 +63,16 @@ export type ResolvedProvider = {
 };
 
 const DEFAULT_TIMEOUT_MS = 120_000;
+
+export function defaultModelForProvider(
+  provider: ProviderName | undefined,
+  fallback: string,
+): string | undefined {
+  if (provider === "claude-code" || provider === "codex") {
+    return undefined;
+  }
+  return fallback;
+}
 
 function buildApiBaseUrl(baseUrl: string): URL {
   return new URL(baseUrl.endsWith("/") ? baseUrl : `${baseUrl}/`);
@@ -111,6 +121,12 @@ class AnthropicProvider implements LLMProvider {
   async generate(messages: ModelMessage[], options: ModelCallOptions): Promise<string> {
     const env = resolveEnv(options);
     const apiKey = env["ANTHROPIC_API_KEY"];
+    if (!options.model) {
+      throw new ProviderResolutionError(
+        "PROVIDER_INVOCATION_FAILED",
+        "anthropic provider requires a model",
+      );
+    }
     if (!apiKey) {
       throw new ProviderResolutionError(
         "PROVIDER_AUTH_MISSING",
@@ -155,6 +171,12 @@ class OpenAIProvider implements LLMProvider {
   async generate(messages: ModelMessage[], options: ModelCallOptions): Promise<string> {
     const env = resolveEnv(options);
     const apiKey = env["OPENAI_API_KEY"];
+    if (!options.model) {
+      throw new ProviderResolutionError(
+        "PROVIDER_INVOCATION_FAILED",
+        "openai provider requires a model",
+      );
+    }
     if (!apiKey) {
       throw new ProviderResolutionError(
         "PROVIDER_AUTH_MISSING",
@@ -211,6 +233,12 @@ class OllamaProvider implements LLMProvider {
   readonly name = "ollama" as const;
 
   async generate(messages: ModelMessage[], options: ModelCallOptions): Promise<string> {
+    if (!options.model) {
+      throw new ProviderResolutionError(
+        "PROVIDER_INVOCATION_FAILED",
+        "ollama provider requires a model",
+      );
+    }
     const host = options.baseUrl ?? resolveEnv(options)["OLLAMA_HOST"] ?? "http://127.0.0.1:11434";
     const response = await fetch(new URL("/api/chat", host), {
       method: "POST",
@@ -239,7 +267,7 @@ class OllamaProvider implements LLMProvider {
 abstract class CliProvider implements LLMProvider {
   abstract readonly name: ProviderName;
   abstract readonly binary: string;
-  protected abstract buildArgs(prompt: string, options: ModelCallOptions): string[];
+  protected abstract buildArgs(options: ModelCallOptions): string[];
 
   async generate(messages: ModelMessage[], options: ModelCallOptions): Promise<string> {
     if (!await checkBinary(this.binary)) {
@@ -250,14 +278,39 @@ abstract class CliProvider implements LLMProvider {
     }
     const prompt = renderMessagesAsPrompt(messages);
     try {
-      const { execFile: execFileCallback } = await import("node:child_process");
-      const { promisify } = await import("node:util");
-      const execFile = promisify(execFileCallback);
-      const { stdout } = await execFile(this.binary, this.buildArgs(prompt, options), {
-        timeout: options.timeoutMs ?? DEFAULT_TIMEOUT_MS,
-        maxBuffer: 10 * 1024 * 1024,
+      const { spawn } = await import("node:child_process");
+      const child = spawn(this.binary, this.buildArgs(options), {
+        stdio: ["pipe", "pipe", "pipe"],
       });
-      return extractText(stdout, this.name);
+      const stdoutChunks: Buffer[] = [];
+      const stderrChunks: Buffer[] = [];
+
+      child.stdout.on("data", (chunk) => stdoutChunks.push(Buffer.from(chunk)));
+      child.stderr.on("data", (chunk) => stderrChunks.push(Buffer.from(chunk)));
+      child.stdin.write(prompt);
+      child.stdin.end();
+
+      const code = await new Promise<number | null>((resolve, reject) => {
+        const timer = setTimeout(() => {
+          child.kill();
+          reject(new Error(`${this.name} provider timed out`));
+        }, options.timeoutMs ?? DEFAULT_TIMEOUT_MS);
+        child.on("error", (error) => {
+          clearTimeout(timer);
+          reject(error);
+        });
+        child.on("close", (exitCode) => {
+          clearTimeout(timer);
+          resolve(exitCode);
+        });
+      });
+
+      if (code !== 0) {
+        const stderr = Buffer.concat(stderrChunks).toString("utf8").trim();
+        throw new Error(stderr || `${this.binary} exited with code ${code}`);
+      }
+
+      return extractText(Buffer.concat(stdoutChunks).toString("utf8"), this.name);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       throw new ProviderResolutionError(
@@ -272,8 +325,8 @@ class ClaudeCodeProvider extends CliProvider {
   readonly name = "claude-code" as const;
   readonly binary = "claude";
 
-  protected buildArgs(prompt: string, options: ModelCallOptions): string[] {
-    const args = ["-p", prompt];
+  protected buildArgs(options: ModelCallOptions): string[] {
+    const args = ["-p"];
     if (options.model) {
       args.push("--model", options.model);
     }
@@ -285,12 +338,12 @@ class CodexProvider extends CliProvider {
   readonly name = "codex" as const;
   readonly binary = "codex";
 
-  protected buildArgs(prompt: string, options: ModelCallOptions): string[] {
+  protected buildArgs(options: ModelCallOptions): string[] {
     const args = ["exec"];
     if (options.model) {
       args.push("--model", options.model);
     }
-    args.push(prompt);
+    args.push("-");
     return args;
   }
 }

@@ -10,6 +10,7 @@ import {
   generateConsoleNarrative,
   type ProviderName,
 } from "@3amoncall/diagnosis";
+import { resolveProviderModel } from "./provider-model.js";
 
 export type ManualExecutionOptions = {
   receiverUrl: string;
@@ -75,14 +76,16 @@ export async function runManualDiagnosis(options: ManualExecutionOptions): Promi
     { headers },
   ).catch(() => ({ locale: "en" as const }));
   const locale = options.locale ?? localeResponse.locale ?? "en";
+  const model = resolveProviderModel(options.provider, options.model);
 
   const diagnosis = await diagnose(packet, {
     provider: options.provider,
-    model: options.model,
+    model,
     locale,
   });
   const narrative = await generateConsoleNarrative(diagnosis, reasoning, {
     provider: options.provider,
+    model,
     locale,
   });
 
@@ -123,6 +126,7 @@ export async function runManualChat(options: ManualExecutionOptions & {
     { headers },
   ).catch(() => ({ locale: "en" as const }));
   const locale = options.locale ?? localeResponse.locale ?? "en";
+  const model = resolveProviderModel(options.provider, options.model, "claude-haiku-4-5-20251001");
 
   const reply = await callModelMessages(
     [
@@ -132,7 +136,7 @@ export async function runManualChat(options: ManualExecutionOptions & {
     ],
     {
       provider: options.provider,
-      model: options.model ?? "claude-haiku-4-5-20251001",
+      model,
       maxTokens: 512,
       temperature: 0.3,
     },

@@ -5,7 +5,7 @@ import {
   type EvidenceQueryPromptInput,
 } from "./evidence-query-prompt.js";
 import { parseEvidenceQuery } from "./parse-evidence-query.js";
-import type { ProviderName } from "./provider.js";
+import { defaultModelForProvider, type ProviderName } from "./provider.js";
 
 export type GenerateEvidenceQueryOptions = {
   model?: string;
@@ -23,7 +23,7 @@ export async function generateEvidenceQuery(
   input: EvidenceQueryPromptInput,
   options?: GenerateEvidenceQueryOptions,
 ): Promise<EvidenceQueryResponse> {
-  const model = options?.model ?? DEFAULT_MODEL;
+  const model = options?.model ?? defaultModelForProvider(options?.provider, DEFAULT_MODEL);
   const prompt = buildEvidenceQueryPrompt(input, { locale: options?.locale });
   const raw = await callModel(prompt, {
     provider: options?.provider,

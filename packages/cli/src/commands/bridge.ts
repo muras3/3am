@@ -1,6 +1,7 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { loadCredentials } from "./init/credentials.js";
 import { runManualChat, runManualDiagnosis } from "./manual-execution.js";
+import { resolveProviderModel } from "./provider-model.js";
 
 export interface BridgeOptions {
   port?: number;
@@ -53,12 +54,13 @@ export function runBridge(options: BridgeOptions = {}): void {
           model?: string;
         };
         const creds = loadCredentials();
+        const provider = payload.provider ?? creds.llmProvider;
         const result = await runManualDiagnosis({
           receiverUrl: payload.receiverUrl,
           incidentId: payload.incidentId,
           authToken: payload.authToken,
-          provider: payload.provider ?? creds.llmProvider,
-          model: payload.model ?? creds.llmModel,
+          provider,
+          model: resolveProviderModel(provider, payload.model, creds.llmModel),
           locale: creds.locale === "ja" ? "ja" : "en",
         });
         sendJson(res, 200, result);
@@ -77,14 +79,15 @@ export function runBridge(options: BridgeOptions = {}): void {
           model?: string;
         };
         const creds = loadCredentials();
+        const provider = payload.provider ?? creds.llmProvider;
         const result = await runManualChat({
           receiverUrl: payload.receiverUrl,
           incidentId: payload.incidentId,
           authToken: payload.authToken,
           message: payload.message,
           history: payload.history ?? [],
-          provider: payload.provider ?? creds.llmProvider,
-          model: payload.model ?? creds.llmModel,
+          provider,
+          model: resolveProviderModel(provider, payload.model, creds.llmModel),
           locale: creds.locale === "ja" ? "ja" : "en",
         });
         sendJson(res, 200, result);

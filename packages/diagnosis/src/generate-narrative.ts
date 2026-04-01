@@ -6,7 +6,7 @@ import type {
 import { buildNarrativePrompt } from "./narrative-prompt.js";
 import { parseNarrative } from "./parse-narrative.js";
 import { callModel } from "./model-client.js";
-import type { ProviderName } from "./provider.js";
+import { defaultModelForProvider, type ProviderName } from "./provider.js";
 
 export type GenerateNarrativeOptions = {
   /** Model to use for narrative generation. Defaults to claude-haiku-4-5-20251001. */
@@ -39,7 +39,8 @@ export async function generateConsoleNarrative(
   context: ReasoningStructure,
   options?: GenerateNarrativeOptions,
 ): Promise<ConsoleNarrative> {
-  const model = options?.model ?? DEFAULT_MODEL;
+  const model = options?.model ?? defaultModelForProvider(options?.provider, DEFAULT_MODEL);
+  const modelLabel = model ?? `${options?.provider ?? "default"}-default`;
   const promptVersion = options?.promptVersion ?? DEFAULT_PROMPT_VERSION;
 
   const prompt = buildNarrativePrompt(diagnosisResult, context, { locale: options?.locale });
@@ -53,7 +54,7 @@ export async function generateConsoleNarrative(
   });
 
   return parseNarrative(raw, {
-    model,
+    model: modelLabel,
     promptVersion,
     stage1PacketId: diagnosisResult.metadata.packet_id,
   }, context);

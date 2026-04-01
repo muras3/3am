@@ -3,6 +3,7 @@ import { IncidentPacketSchema } from "@3amoncall/core";
 import { PROVIDER_NAMES, diagnose, type ProviderName } from "@3amoncall/diagnosis";
 import { loadCredentials } from "./init/credentials.js";
 import { runManualDiagnosis } from "./manual-execution.js";
+import { resolveProviderModel } from "./provider-model.js";
 
 const RETRYABLE_STATUSES = new Set([429, 502, 503, 529]);
 const MAX_RETRIES = 2;
@@ -78,6 +79,8 @@ function parseProvider(value: string | undefined, fallback?: ProviderName): Prov
 export async function runDiagnose(argv: string[]): Promise<void> {
   const { packetPath, callbackUrl, callbackToken, provider, model, incidentId, receiverUrl, authToken } = parseArgs(argv);
   const creds = loadCredentials();
+  const resolvedProvider = parseProvider(provider, creds.llmProvider);
+  const resolvedModel = resolveProviderModel(resolvedProvider, model, creds.llmModel);
 
   if (incidentId && receiverUrl) {
     try {
@@ -85,8 +88,8 @@ export async function runDiagnose(argv: string[]): Promise<void> {
         incidentId,
         receiverUrl,
         authToken,
-        provider: parseProvider(provider, creds.llmProvider),
-        model: model ?? creds.llmModel,
+        provider: resolvedProvider,
+        model: resolvedModel,
         locale: creds.locale === "ja" ? "ja" : "en",
       });
       process.stdout.write(JSON.stringify(result, null, 2) + "\n");
@@ -134,8 +137,8 @@ export async function runDiagnose(argv: string[]): Promise<void> {
   let result;
   try {
     result = await diagnose(packet, {
-      provider: parseProvider(provider, creds.llmProvider),
-      model: model ?? creds.llmModel,
+      provider: resolvedProvider,
+      model: resolvedModel,
       locale: creds.locale === "ja" ? "ja" : "en",
     });
   } catch (err) {
