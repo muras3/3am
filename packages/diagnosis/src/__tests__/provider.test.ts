@@ -1,5 +1,6 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
-import { ProviderResolutionError, resolveProvider } from "../provider.js";
+import { resolveProvider } from "../provider.js";
+import type { ProviderResolutionError } from "../provider.js";
 
 const spawnSyncMock = vi.fn();
 
