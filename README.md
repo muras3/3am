@@ -151,6 +151,42 @@ Invalid values (non-integer, zero, negative) fall back to the default (1 hour). 
 
 ---
 
+## Notification Setup
+
+3amoncall can post a message to a Slack or Discord channel when an incident is detected.
+
+### Slack Incoming Webhook
+
+1. Go to https://api.slack.com/apps → "Create New App" → "From Scratch"
+2. Name the app (e.g. "3amoncall") and select your workspace
+3. Under "Incoming Webhooks" → toggle ON → "Add New Webhook to Workspace" → select channel
+4. Copy the webhook URL (starts with `https://hooks.slack.com/services/...`)
+
+### Discord Webhook
+
+1. In Discord, go to Server Settings → Integrations → Webhooks → "New Webhook"
+2. Name it (e.g. "3amoncall") and select the target channel
+3. Copy the webhook URL (starts with `https://discord.com/api/webhooks/...`)
+
+### Configuration
+
+```bash
+# Set via environment variable
+export NOTIFICATION_WEBHOOK_URL="https://hooks.slack.com/services/..."
+
+# Or configure during init
+npx 3amoncall init
+```
+
+### How It Works
+
+- When an incident is detected, 3amoncall sends a notification to the configured webhook
+- The notification includes: incident ID, severity, affected service, trigger signals, and a link to the console
+- Notifications are fire-and-forget — they never block incident processing
+- Only Slack and Discord webhook URLs are supported (validated by hostname)
+
+---
+
 ## Security
 
 - **Anthropic spending limit:** Set a monthly spend cap at [console.anthropic.com](https://console.anthropic.com/settings/billing) before deploying. Diagnosis runs on every incident.
