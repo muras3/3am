@@ -216,6 +216,60 @@ describe("runDev", () => {
     expect(allArgs).not.toContain(":latest");
   });
 
+  it("passes NOTIFICATION_WEBHOOK_URL from env to docker run when set", async () => {
+    mockExecSync.mockReturnValue(Buffer.from("Docker version 24.0.0"));
+    mockNoLocalRepo();
+    mockReadFileSync.mockImplementation(makeReadFileMock("0.1.0"));
+    mockSpawnSync.mockReturnValue({ status: 0 } as ReturnType<typeof childProcess.spawnSync>);
+
+    process.env["NOTIFICATION_WEBHOOK_URL"] = "https://hooks.slack.com/services/T/B/x";
+    delete process.env["ANTHROPIC_API_KEY"];
+
+    const { runDev } = await import("../commands/dev.js");
+    runDev();
+
+    expect(mockSpawnSync).toHaveBeenCalledWith(
+      "docker",
+      expect.arrayContaining(["-e", "NOTIFICATION_WEBHOOK_URL=https://hooks.slack.com/services/T/B/x"]),
+      expect.any(Object),
+    );
+  });
+
+  it("does not pass NOTIFICATION_WEBHOOK_URL to docker run when not set", async () => {
+    mockExecSync.mockReturnValue(Buffer.from("Docker version 24.0.0"));
+    mockNoLocalRepo();
+    mockReadFileSync.mockImplementation(makeReadFileMock("0.1.0"));
+    mockSpawnSync.mockReturnValue({ status: 0 } as ReturnType<typeof childProcess.spawnSync>);
+
+    delete process.env["NOTIFICATION_WEBHOOK_URL"];
+    delete process.env["ANTHROPIC_API_KEY"];
+
+    const { runDev } = await import("../commands/dev.js");
+    runDev();
+
+    const callArgs = mockSpawnSync.mock.calls[0]![1] as string[];
+    expect(callArgs.join(" ")).not.toContain("NOTIFICATION_WEBHOOK_URL");
+  });
+
+  it("passes CONSOLE_BASE_URL from env to docker run when set", async () => {
+    mockExecSync.mockReturnValue(Buffer.from("Docker version 24.0.0"));
+    mockNoLocalRepo();
+    mockReadFileSync.mockImplementation(makeReadFileMock("0.1.0"));
+    mockSpawnSync.mockReturnValue({ status: 0 } as ReturnType<typeof childProcess.spawnSync>);
+
+    process.env["CONSOLE_BASE_URL"] = "https://console.example.com";
+    delete process.env["ANTHROPIC_API_KEY"];
+
+    const { runDev } = await import("../commands/dev.js");
+    runDev();
+
+    expect(mockSpawnSync).toHaveBeenCalledWith(
+      "docker",
+      expect.arrayContaining(["-e", "CONSOLE_BASE_URL=https://console.example.com"]),
+      expect.any(Object),
+    );
+  });
+
   it("builds a local receiver image when running inside the repo", async () => {
     mockExecSync.mockImplementation((cmd) => {
       if (String(cmd) === "docker --version") return Buffer.from("Docker version 24.0.0");
