@@ -12,6 +12,13 @@ import { SpanBuffer } from "./ambient/span-buffer.js";
 import type { DiagnosisConfig } from "./runtime/diagnosis-debouncer.js";
 import { DiagnosisRunner } from "./runtime/diagnosis-runner.js";
 import type { EnqueueDiagnosisFn } from "./runtime/diagnosis-dispatch.js";
+import { PROVIDER_NAMES } from "@3amoncall/diagnosis";
+import {
+  getReceiverLlmSettings,
+  SETTINGS_KEY_DIAGNOSIS_MODE,
+  SETTINGS_KEY_DIAGNOSIS_PROVIDER,
+  SETTINGS_KEY_LLM_BRIDGE_URL,
+} from "./runtime/llm-settings.js";
 import { emitSelfTelemetryLog, isSelfTelemetryActive } from "./self-telemetry/log.js";
 import { recordSelfTelemetryMetrics } from "./self-telemetry/metrics.js";
 
@@ -268,6 +275,47 @@ export function createApp(storage?: StorageDriver, options?: AppOptions): Hono {
     }
     await store.setSettings(SETTINGS_KEY_LOCALE, locale);
     return c.json({ locale });
+  });
+
+  app.get("/api/settings/diagnosis", async (c) => {
+    return c.json(await getReceiverLlmSettings(store));
+  });
+
+  app.put("/api/settings/diagnosis", async (c) => {
+    let body: unknown;
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ error: "invalid body" }, 400);
+    }
+    if (typeof body !== "object" || body === null) {
+      return c.json({ error: "invalid body" }, 400);
+    }
+
+    const mode = (body as Record<string, unknown>)["mode"];
+    const provider = (body as Record<string, unknown>)["provider"];
+    const bridgeUrl = (body as Record<string, unknown>)["bridgeUrl"];
+
+    if (mode !== "automatic" && mode !== "manual") {
+      return c.json({ error: "mode must be 'automatic' or 'manual'" }, 400);
+    }
+    await store.setSettings(SETTINGS_KEY_DIAGNOSIS_MODE, mode);
+
+    if (provider !== undefined && provider !== null) {
+      if (typeof provider !== "string" || !(PROVIDER_NAMES as readonly string[]).includes(provider)) {
+        return c.json({ error: `provider must be one of: ${PROVIDER_NAMES.join(", ")}` }, 400);
+      }
+      await store.setSettings(SETTINGS_KEY_DIAGNOSIS_PROVIDER, provider);
+    }
+
+    if (bridgeUrl !== undefined && bridgeUrl !== null) {
+      if (typeof bridgeUrl !== "string" || bridgeUrl.trim().length === 0) {
+        return c.json({ error: "bridgeUrl must be a non-empty string" }, 400);
+      }
+      await store.setSettings(SETTINGS_KEY_LLM_BRIDGE_URL, bridgeUrl);
+    }
+
+    return c.json(await getReceiverLlmSettings(store));
   });
 
   app.route("/", createIngestRouter(store, spanBuffer, telemetryStore, diagnosisConfig, runner, options?.enqueueDiagnosis));

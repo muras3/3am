@@ -8,6 +8,7 @@ import { getInstrumentationTemplate } from "./init/templates.js";
 import { patchScripts } from "./init/patch-scripts.js";
 import { resolveApiKey, loadCredentials, saveCredentials } from "./init/credentials.js";
 import { createInterface } from "node:readline";
+import { PROVIDER_NAMES, type ProviderName } from "@3amoncall/diagnosis";
 
 const OTEL_DEPS = [
   "@opentelemetry/sdk-node",
@@ -99,7 +100,15 @@ export function ensureGitignore(cwd: string): void {
 
 export interface InitOptions {
   apiKey?: string;
+  mode?: string;
+  provider?: string;
+  model?: string;
+  bridgeUrl?: string;
   noInteractive?: boolean;
+}
+
+function isProviderName(value: string | undefined): value is ProviderName {
+  return (PROVIDER_NAMES as readonly string[]).includes(value ?? "");
 }
 
 type PackageJson = {
@@ -224,13 +233,24 @@ export async function runInit(_argv: string[], options: InitOptions = {}): Promi
   } else {
     process.stderr.write(
       "Warning: ANTHROPIC_API_KEY not configured.\n" +
-      "LLM diagnosis will not run until you set it.\n" +
+      "Anthropic automatic diagnosis will not run until you set it.\n" +
       "Fix: npx 3amoncall init --api-key <your-key>\n",
     );
   }
 
-  // --- 6b. Language selection ---
-  let locale: "en" | "ja" = "en";
+  // --- 6b. Language + diagnosis settings ---
+  const storedCreds = loadCredentials();
+  let locale: "en" | "ja" = storedCreds.locale === "ja" ? "ja" : "en";
+  let mode: "automatic" | "manual" = options.mode === "manual"
+    ? "manual"
+    : storedCreds.llmMode === "manual"
+      ? "manual"
+      : "automatic";
+  let provider: ProviderName = isProviderName(options.provider)
+    ? options.provider
+    : isProviderName(storedCreds.llmProvider)
+      ? storedCreds.llmProvider
+      : "anthropic";
   if (!options.noInteractive && process.stdin.isTTY) {
     const rl = createInterface({ input: process.stdin, output: process.stdout });
     const localeAnswer = await new Promise<string>((resolve) => {
@@ -240,10 +260,35 @@ export async function runInit(_argv: string[], options: InitOptions = {}): Promi
       });
     });
     locale = localeAnswer === "ja" ? "ja" : "en";
-    const creds = loadCredentials();
-    saveCredentials({ ...creds, locale });
     process.stdout.write(locale === "ja" ? `言語: 日本語\n` : `Language: English\n`);
+
+    const rlMode = createInterface({ input: process.stdin, output: process.stdout });
+    const modeAnswer = await new Promise<string>((resolve) => {
+      rlMode.question("Diagnosis mode (automatic/manual) [automatic]: ", (answer) => {
+        rlMode.close();
+        resolve(answer.trim().toLowerCase() || "automatic");
+      });
+    });
+    mode = modeAnswer === "manual" ? "manual" : "automatic";
+
+    const rlProvider = createInterface({ input: process.stdin, output: process.stdout });
+    const providerAnswer = await new Promise<string>((resolve) => {
+      rlProvider.question(`LLM provider (${PROVIDER_NAMES.join("/")}) [anthropic]: `, (answer) => {
+        rlProvider.close();
+        resolve(answer.trim().toLowerCase() || "anthropic");
+      });
+    });
+    provider = isProviderName(providerAnswer) ? providerAnswer : "anthropic";
   }
+
+  saveCredentials({
+    ...storedCreds,
+    locale,
+    llmMode: mode,
+    llmProvider: provider,
+    llmBridgeUrl: options.bridgeUrl ?? storedCreds.llmBridgeUrl ?? "http://127.0.0.1:4269",
+    llmModel: options.model ?? storedCreds.llmModel,
+  });
 
   const ja = locale === "ja";
 
@@ -288,7 +333,11 @@ export async function runInit(_argv: string[], options: InitOptions = {}): Promi
 
   process.stdout.write(
     ja
-      ? "\n次のステップ:\n  1. `npx 3amoncall local`\n  2. 別ターミナルで `npx 3amoncall local demo`\n"
-      : "\nNext steps:\n  1. `npx 3amoncall local`\n  2. In another terminal, `npx 3amoncall local demo`\n",
+      ? mode === "manual"
+        ? "\n次のステップ:\n  1. `npx 3amoncall local`\n  2. 別ターミナルで `npx 3amoncall bridge`\n  3. `npx 3amoncall local demo`\n"
+        : "\n次のステップ:\n  1. `npx 3amoncall local`\n  2. 別ターミナルで `npx 3amoncall local demo`\n"
+      : mode === "manual"
+        ? "\nNext steps:\n  1. `npx 3amoncall local`\n  2. In another terminal, `npx 3amoncall bridge`\n  3. `npx 3amoncall local demo`\n"
+        : "\nNext steps:\n  1. `npx 3amoncall local`\n  2. In another terminal, `npx 3amoncall local demo`\n",
   );
 }

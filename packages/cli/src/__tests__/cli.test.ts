@@ -7,6 +7,7 @@ import type { DiagnosisResult, IncidentPacket } from "@3amoncall/core";
 // Mock @3amoncall/diagnosis BEFORE importing run
 vi.mock("@3amoncall/diagnosis", () => ({
   diagnose: vi.fn(),
+  PROVIDER_NAMES: ["anthropic", "openai", "ollama", "claude-code", "codex"],
 }));
 
 import { run } from "../index.js";

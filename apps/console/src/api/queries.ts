@@ -1,5 +1,5 @@
 import { mutationOptions, queryOptions } from "@tanstack/react-query";
-import { apiFetch, apiFetchPost } from "./client.js";
+import { ApiError, apiFetch, apiFetchPost, getStoredAuthToken } from "./client.js";
 import { encodeIncidentId } from "../lib/incidentId.js";
 import type {
   RuntimeMapResponse,
@@ -66,6 +66,14 @@ export const curatedQueries = {
       ...(useFixtures && { refetchInterval: false as const }),
       enabled: !!id,
     }),
+
+  diagnosisSettings: () =>
+    queryOptions({
+      queryKey: ["curated", "settings", "diagnosis"],
+      queryFn: () => apiFetch<DiagnosisSettingsResponse>("/api/settings/diagnosis"),
+      staleTime: 15_000,
+      refetchInterval: useFixtures ? false : 15_000,
+    }),
 };
 
 export interface EvidenceQueryRequest {
@@ -75,6 +83,12 @@ export interface EvidenceQueryRequest {
 
 export interface RerunDiagnosisResponse {
   status: "accepted";
+}
+
+export interface DiagnosisSettingsResponse {
+  mode: "automatic" | "manual";
+  provider?: "anthropic" | "openai" | "ollama" | "claude-code" | "codex";
+  bridgeUrl: string;
 }
 
 export interface CloseIncidentResponse {
@@ -95,6 +109,28 @@ export const curatedMutations = {
       mutationKey: ["curated", "incidents", id, "rerun-diagnosis"],
       mutationFn: () =>
         apiFetchPost<RerunDiagnosisResponse>(`/api/incidents/${encodeIncidentId(id)}/rerun-diagnosis`, {}),
+    }),
+
+  manualRerunDiagnosis: (id: string, settings: DiagnosisSettingsResponse) =>
+    mutationOptions({
+      mutationKey: ["curated", "incidents", id, "manual-rerun-diagnosis", settings.bridgeUrl],
+      mutationFn: async () => {
+        const response = await fetch(`${settings.bridgeUrl}/api/manual/diagnose`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            incidentId: id,
+            receiverUrl: window.location.origin,
+            authToken: getStoredAuthToken() ?? undefined,
+            provider: settings.provider,
+          }),
+        });
+        if (!response.ok) {
+          throw new ApiError(response.status, await response.text());
+        }
+        await response.json();
+        return { status: "accepted" as const };
+      },
     }),
 
   closeIncident: (id: string) =>

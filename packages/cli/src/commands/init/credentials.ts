@@ -9,10 +9,17 @@ import { existsSync, readFileSync, writeFileSync, mkdirSync, chmodSync } from "n
 import { join } from "node:path";
 import { homedir } from "node:os";
 import { createInterface } from "node:readline";
+import type { ProviderName } from "@3amoncall/diagnosis";
+
+export type DiagnosisMode = "automatic" | "manual";
 
 export interface Credentials {
   anthropicApiKey?: string;
   locale?: string;
+  llmMode?: DiagnosisMode;
+  llmProvider?: ProviderName;
+  llmBridgeUrl?: string;
+  llmModel?: string;
 }
 
 function getCredentialsDir(): string {

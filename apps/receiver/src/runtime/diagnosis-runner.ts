@@ -2,6 +2,7 @@ import { diagnose, generateConsoleNarrative } from "@3amoncall/diagnosis";
 import type { StorageDriver, Incident } from "../storage/interface.js";
 import type { TelemetryStoreDriver } from "../telemetry/interface.js";
 import { buildReasoningStructure } from "../domain/reasoning-structure-builder.js";
+import { getReceiverLlmSettings } from "./llm-settings.js";
 
 export class DiagnosisRunner {
   constructor(
@@ -15,8 +16,9 @@ export class DiagnosisRunner {
   }
 
   async run(incidentId: string): Promise<boolean> {
-    if (!process.env["ANTHROPIC_API_KEY"]) {
-      console.warn("[diagnosis-runner] ANTHROPIC_API_KEY not set — skipping diagnosis");
+    const llmSettings = await getReceiverLlmSettings(this.storage);
+    if (llmSettings.mode === "manual") {
+      console.warn("[diagnosis-runner] manual mode enabled — skipping automatic diagnosis");
       return false;
     }
 
@@ -32,8 +34,19 @@ export class DiagnosisRunner {
       // Stage 1: incident diagnosis (DIAGNOSIS_MODEL env var overrides default model)
       const diagnosisModel = process.env["DIAGNOSIS_MODEL"];
       const result = diagnosisModel
-        ? await diagnose(incident.packet, { model: diagnosisModel, locale })
-        : await diagnose(incident.packet, { locale });
+        ? await diagnose(incident.packet, {
+            model: diagnosisModel,
+            locale,
+            provider: llmSettings.provider,
+            allowSubprocessProviders: false,
+            allowLocalHttpProviders: false,
+          })
+        : await diagnose(incident.packet, {
+            locale,
+            provider: llmSettings.provider,
+            allowSubprocessProviders: false,
+            allowLocalHttpProviders: false,
+          });
       await this.storage.appendDiagnosis(incidentId, result);
 
       // Stage 2: console narrative generation (graceful degradation — failure does not affect stage 1)
@@ -77,6 +90,7 @@ export class DiagnosisRunner {
     locale?: "en" | "ja",
   ): Promise<boolean> {
     const incidentId = incident.incidentId;
+    const llmSettings = await getReceiverLlmSettings(this.storage);
     try {
       const reasoningStructure = await buildReasoningStructure(
         incident,
@@ -86,7 +100,13 @@ export class DiagnosisRunner {
       const tryGenerate = async (): Promise<void> => {
         // NARRATIVE_MODEL env var overrides default model (e.g. claude-haiku-4-5-20251001 for faster execution)
         const narrativeModel = process.env["NARRATIVE_MODEL"];
-        const narrativeOpts = { ...(narrativeModel ? { model: narrativeModel } : {}), ...(locale ? { locale } : {}) };
+        const narrativeOpts = {
+          ...(narrativeModel ? { model: narrativeModel } : {}),
+          ...(locale ? { locale } : {}),
+          provider: llmSettings.provider,
+          allowSubprocessProviders: false,
+          allowLocalHttpProviders: false,
+        };
         const narrative = Object.keys(narrativeOpts).length > 0
           ? await generateConsoleNarrative(diagnosisResult, reasoningStructure, narrativeOpts)
           : await generateConsoleNarrative(diagnosisResult, reasoningStructure);

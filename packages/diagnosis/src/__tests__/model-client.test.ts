@@ -13,10 +13,11 @@ import Anthropic from "@anthropic-ai/sdk";
 
 const AnthropicMock = vi.mocked(Anthropic);
 
-const defaultOptions = { model: "claude-sonnet-4-6", maxTokens: 4096 };
+const defaultOptions = { provider: "anthropic" as const, model: "claude-sonnet-4-6", maxTokens: 4096 };
 
 beforeEach(() => {
   vi.clearAllMocks();
+  process.env["ANTHROPIC_API_KEY"] = "test-key";
   mockCreate.mockResolvedValue({
     content: [{ type: "text", text: "response" }],
   });
@@ -35,7 +36,7 @@ describe("callModel", () => {
     mockCreate.mockResolvedValue({ content: [] });
 
     await expect(callModel("test prompt", defaultOptions)).rejects.toThrow(
-      "No text content in model response",
+      "anthropic returned an empty response",
     );
   });
 });
