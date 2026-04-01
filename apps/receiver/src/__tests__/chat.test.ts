@@ -1,7 +1,7 @@
 /**
  * Unit tests for POST /api/chat/:incidentId
  *
- * Anthropic SDK is mocked via vi.mock so no real API key is required.
+ * Diagnosis model calls are mocked so no real provider or API key is required.
  * Each test exercises one contract condition from ADR 0027.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -10,23 +10,25 @@ import { createApp } from "../index.js";
 import { COOKIE_NAME } from "../middleware/session-cookie.js";
 import type { DiagnosisResult } from "@3amoncall/core";
 
-// ── Mock Anthropic SDK ─────────────────────────────────────────────────────
-const { mockCreate, mockAnthropic } = vi.hoisted(() => {
-  const create = vi.fn();
-  const anthropic = vi.fn().mockImplementation(() => ({
-    messages: { create },
-  }));
-  return { mockCreate: create, mockAnthropic: anthropic };
+// ── Mock diagnosis model layer ─────────────────────────────────────────────
+const { mockCallModelMessages } = vi.hoisted(() => {
+  const callModelMessages = vi.fn();
+  return { mockCallModelMessages: callModelMessages };
 });
-vi.mock("@anthropic-ai/sdk", () => ({
-  default: mockAnthropic,
-}));
+vi.mock("@3amoncall/diagnosis", async () => {
+  const actual = await vi.importActual<typeof import("@3amoncall/diagnosis")>("@3amoncall/diagnosis");
+  return {
+    ...actual,
+    callModelMessages: mockCallModelMessages,
+  };
+});
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 const TOKEN = "test-token";
 
 function makeApp() {
   process.env["RECEIVER_AUTH_TOKEN"] = TOKEN;
+  process.env["ANTHROPIC_API_KEY"] = "test-key";
   return createApp(new MemoryAdapter());
 }
 
@@ -151,11 +153,8 @@ describe("POST /api/chat/:incidentId", () => {
   beforeEach(() => {
     seedCounter = 0;
     app = makeApp();
-    mockCreate.mockClear();
-    mockAnthropic.mockClear();
-    mockCreate.mockResolvedValue({
-      content: [{ type: "text", text: "This is the assistant reply." }],
-    });
+    mockCallModelMessages.mockReset();
+    mockCallModelMessages.mockResolvedValue("This is the assistant reply.");
   });
 
   // ── Session cookie auth (B-11) ────────────────────────────────────────────
@@ -291,10 +290,10 @@ describe("POST /api/chat/:incidentId", () => {
     expect(res.status).toBe(200);
     const body = (await res.json()) as { reply: string };
     expect(body.reply).toBe("This is the assistant reply.");
-    expect(mockCreate).toHaveBeenCalledOnce();
+    expect(mockCallModelMessages).toHaveBeenCalledOnce();
   });
 
-  it("instantiates Anthropic with timeout and maxRetries", async () => {
+  it("passes chat model settings through the provider layer", async () => {
     const cookie = await getSessionCookie(app);
     const incidentId = await seedIncidentWithDiagnosis(app);
 
@@ -304,10 +303,12 @@ describe("POST /api/chat/:incidentId", () => {
       body: JSON.stringify({ message: "What should I do first?", history: [] }),
     });
 
-    expect(mockAnthropic).toHaveBeenCalledWith(
+    expect(mockCallModelMessages).toHaveBeenCalledWith(
+      expect.any(Array),
       expect.objectContaining({
-        timeout: 120_000,
-        maxRetries: 2,
+        model: "claude-haiku-4-5-20251001",
+        maxTokens: 512,
+        temperature: 0.3,
       }),
     );
   });
@@ -325,12 +326,12 @@ describe("POST /api/chat/:incidentId", () => {
       body: JSON.stringify({ message: "Follow up", history }),
     });
 
-    const callArgs = mockCreate.mock.calls[0]?.[0] as { messages: Array<{ role: string }> };
+    const callArgs = mockCallModelMessages.mock.calls[0]?.[0] as Array<{ role: string }>;
     // history (2) + sandboxed new message (1) = 3
-    expect(callArgs.messages).toHaveLength(3);
-    expect(callArgs.messages[0]?.role).toBe("user");
-    expect(callArgs.messages[1]?.role).toBe("assistant");
-    expect(callArgs.messages[2]?.role).toBe("user");
+    expect(callArgs).toHaveLength(4);
+    expect(callArgs[1]?.role).toBe("user");
+    expect(callArgs[2]?.role).toBe("assistant");
+    expect(callArgs[3]?.role).toBe("user");
   });
 
   // ── Locale-aware system prompt ────────────────────────────────────────────
@@ -351,8 +352,8 @@ describe("POST /api/chat/:incidentId", () => {
       body: JSON.stringify({ message: "What happened?", history: [] }),
     });
 
-    const callArgs = mockCreate.mock.calls[0]?.[0] as { system: string };
-    expect(callArgs.system).toContain("Respond in Japanese");
+    const callArgs = mockCallModelMessages.mock.calls[0]?.[0] as Array<{ role: string; content: string }>;
+    expect(callArgs[0]?.content).toContain("Respond in Japanese");
   });
 
   it("includes bounded inference guidance in the system prompt", async () => {
@@ -365,10 +366,10 @@ describe("POST /api/chat/:incidentId", () => {
       body: JSON.stringify({ message: "How do we stop this from happening again?", history: [] }),
     });
 
-    const callArgs = mockCreate.mock.calls[0]?.[0] as { system: string };
-    expect(callArgs.system).toContain("You may make limited, reasonable inferences");
-    expect(callArgs.system).toContain("explicitly label it as a hypothesis or inference");
-    expect(callArgs.system).toContain("If the question needs evidence beyond the diagnosis, say what should be checked next.");
+    const callArgs = mockCallModelMessages.mock.calls[0]?.[0] as Array<{ role: string; content: string }>;
+    expect(callArgs[0]?.content).toContain("You may make limited, reasonable inferences");
+    expect(callArgs[0]?.content).toContain("explicitly label it as a hypothesis or inference");
+    expect(callArgs[0]?.content).toContain("If the question needs evidence beyond the diagnosis, say what should be checked next.");
   });
 
   it("includes confidence and uncertainty in the system prompt", async () => {
@@ -381,9 +382,9 @@ describe("POST /api/chat/:incidentId", () => {
       body: JSON.stringify({ message: "How certain are we?", history: [] }),
     });
 
-    const callArgs = mockCreate.mock.calls[0]?.[0] as { system: string };
-    expect(callArgs.system).toContain("Confidence: High");
-    expect(callArgs.system).toContain("Known uncertainty: Unknown Stripe quota reset time.");
+    const callArgs = mockCallModelMessages.mock.calls[0]?.[0] as Array<{ role: string; content: string }>;
+    expect(callArgs[0]?.content).toContain("Confidence: High");
+    expect(callArgs[0]?.content).toContain("Known uncertainty: Unknown Stripe quota reset time.");
   });
 
   it("does not include Japanese instruction when locale is default 'en'", async () => {
@@ -395,8 +396,8 @@ describe("POST /api/chat/:incidentId", () => {
       body: JSON.stringify({ message: "What happened?", history: [] }),
     });
 
-    const callArgs = mockCreate.mock.calls[0]?.[0] as { system: string };
-    expect(callArgs.system).not.toContain("Respond in Japanese");
+    const callArgs = mockCallModelMessages.mock.calls[0]?.[0] as Array<{ role: string; content: string }>;
+    expect(callArgs[0]?.content).not.toContain("Respond in Japanese");
   });
 
   // ── Rate limiting (B-11) ──────────────────────────────────────────────────
