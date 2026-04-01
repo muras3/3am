@@ -30,6 +30,7 @@ import type { DiagnosisRunner } from "../runtime/diagnosis-runner.js";
 import { type DiagnosisConfig, scheduleDelayedDiagnosis, checkGenerationThreshold, resolveWaitUntil, runIfNeeded } from "../runtime/diagnosis-debouncer.js";
 import type { EnqueueDiagnosisFn } from "../runtime/diagnosis-dispatch.js";
 import { decodeTraces, decodeMetrics, decodeLogs } from "./otlp-protobuf.js";
+import { notifyIncidentCreated } from "../notification/index.js";
 
 const gunzipAsync = promisify(gunzip);
 
@@ -344,6 +345,9 @@ export function createIngestRouter(
 
       // ADR 0032: Rebuild snapshots for new incident
       await rebuildAndNotify(incidentId, telemetryStore, storage, diagnosisConfig, diagnosisRunner, enqueueDiagnosis);
+
+      // Fire-and-forget notification to Slack/Discord (if configured)
+      void notifyIncidentCreated(packet, incidentId);
 
       if (enqueueDiagnosis) {
         await enqueueDiagnosis(incidentId);
