@@ -73,10 +73,7 @@ describe("formatSlack", () => {
     expect(elements.length).toBeGreaterThan(0);
     const button = elements[0] as Record<string, unknown>;
     expect(button["type"]).toBe("button");
-    const url = (button["url"] as string) ?? (button["action_id"] as string);
-    // URL may be in button.url or nested in value
-    const allText = JSON.stringify(button);
-    expect(allText).toContain("console.example.com");
+    expect(button["url"]).toBe("https://console.example.com/incidents/inc_000001");
   });
 
   it("includes a context block (footer with timestamp)", () => {
