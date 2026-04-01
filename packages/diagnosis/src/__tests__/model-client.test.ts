@@ -17,6 +17,7 @@ const defaultOptions = { provider: "anthropic" as const, model: "claude-sonnet-4
 
 beforeEach(() => {
   vi.clearAllMocks();
+  process.env["ANTHROPIC_API_KEY"] = "test-key";
   mockCreate.mockResolvedValue({
     content: [{ type: "text", text: "response" }],
   });
