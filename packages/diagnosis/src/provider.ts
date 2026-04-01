@@ -1,8 +1,4 @@
-import { execFile as execFileCallback, spawnSync } from "node:child_process";
-import { promisify } from "node:util";
 import Anthropic from "@anthropic-ai/sdk";
-
-const execFile = promisify(execFileCallback);
 
 export type ProviderName =
   | "anthropic"
@@ -81,7 +77,8 @@ function resolveEnv(options: ModelCallOptions): NodeJS.ProcessEnv {
   return options.env ?? process.env;
 }
 
-function checkBinary(binary: string): boolean {
+async function checkBinary(binary: string): Promise<boolean> {
+  const { spawnSync } = await import("node:child_process");
   const command = process.platform === "win32" ? "where" : "which";
   const result = spawnSync(command, [binary], { stdio: "ignore" });
   return result.status === 0;
@@ -233,7 +230,7 @@ abstract class CliProvider implements LLMProvider {
   protected abstract buildArgs(prompt: string, options: ModelCallOptions): string[];
 
   async generate(messages: ModelMessage[], options: ModelCallOptions): Promise<string> {
-    if (!checkBinary(this.binary)) {
+    if (!await checkBinary(this.binary)) {
       throw new ProviderResolutionError(
         "PROVIDER_BINARY_NOT_FOUND",
         `${this.binary} is not available in PATH`,
@@ -241,6 +238,9 @@ abstract class CliProvider implements LLMProvider {
     }
     const prompt = renderMessagesAsPrompt(messages);
     try {
+      const { execFile: execFileCallback } = await import("node:child_process");
+      const { promisify } = await import("node:util");
+      const execFile = promisify(execFileCallback);
       const { stdout } = await execFile(this.binary, this.buildArgs(prompt, options), {
         timeout: options.timeoutMs ?? DEFAULT_TIMEOUT_MS,
         maxBuffer: 10 * 1024 * 1024,
@@ -318,10 +318,10 @@ export async function resolveProvider(options: ModelCallOptions): Promise<Resolv
   if (env["ANTHROPIC_API_KEY"]) {
     return { provider: PROVIDERS.anthropic, source: "autodetect" };
   }
-  if ((options.allowSubprocessProviders ?? true) && checkBinary("claude")) {
+  if ((options.allowSubprocessProviders ?? true) && await checkBinary("claude")) {
     return { provider: PROVIDERS["claude-code"], source: "autodetect" };
   }
-  if ((options.allowSubprocessProviders ?? true) && checkBinary("codex")) {
+  if ((options.allowSubprocessProviders ?? true) && await checkBinary("codex")) {
     return { provider: PROVIDERS.codex, source: "autodetect" };
   }
   if (env["OPENAI_API_KEY"]) {

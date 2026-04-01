@@ -16,7 +16,7 @@ const { mockCallModelMessages } = vi.hoisted(() => {
   return { mockCallModelMessages: callModelMessages };
 });
 vi.mock("@3amoncall/diagnosis", async () => {
-  const actual = await vi.importActual<typeof import("@3amoncall/diagnosis")>("@3amoncall/diagnosis");
+  const actual = await vi.importActual("@3amoncall/diagnosis");
   return {
     ...actual,
     callModelMessages: mockCallModelMessages,
