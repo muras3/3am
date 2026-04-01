@@ -12,7 +12,7 @@ import type { IncidentPacket, DiagnosisResult } from '@3amoncall/core'
 import { EvidenceQueryResponseSchema } from '@3amoncall/core/schemas/curated-evidence'
 import * as diagnosis from '@3amoncall/diagnosis'
 vi.mock('@3amoncall/diagnosis', async () => {
-  const actual = await vi.importActual<typeof import('@3amoncall/diagnosis')>('@3amoncall/diagnosis')
+  const actual = await vi.importActual('@3amoncall/diagnosis')
   return {
     ...actual,
     generateEvidenceQuery: vi.fn().mockRejectedValue(new Error('LLM not available in test')),
