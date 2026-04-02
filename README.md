@@ -82,6 +82,40 @@ npx 3amoncall deploy vercel --yes --no-interactive --json
 
 ---
 
+## Deploy to Cloudflare Workers (Production)
+
+Cloudflare Workers deployment has one extra prerequisite beyond `wrangler login`: the CLI needs a Cloudflare API Token to create or update Workers Observability OTLP destinations on your account.
+
+Create a Cloudflare API Token with these account-level permissions:
+
+- `Workers Scripts:Edit`
+- `Logs:Edit`
+
+Then export it before running deploy:
+
+```bash
+export CLOUDFLARE_API_TOKEN=your-cloudflare-api-token
+npx 3amoncall deploy cloudflare --yes
+```
+
+What `deploy cloudflare` does:
+
+1. Deploys the 3amoncall receiver to Cloudflare
+2. Creates or updates OTLP destinations for traces and logs
+3. Updates the current directory's `wrangler.toml` or `wrangler.jsonc`
+4. Deploys the current Cloudflare Worker so telemetry starts flowing to the receiver
+
+For Claude Code or CI, the same environment variable applies:
+
+```bash
+export CLOUDFLARE_API_TOKEN=your-cloudflare-api-token
+npx 3amoncall deploy cloudflare --yes --no-interactive --json
+```
+
+If `CLOUDFLARE_API_TOKEN` is missing, the CLI falls back to prompting for a Global API Key in interactive mode only.
+
+---
+
 ## Self-Instrumentation
 
 3amoncall can emit OpenTelemetry about the receiver itself in addition to ingesting telemetry from your application.

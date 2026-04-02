@@ -299,7 +299,22 @@ export async function runDeploy(
   // -------------------------------------------------------------------------
   if (platform === "cloudflare") {
     info("\nConfiguring Cloudflare Worker telemetry export...\n", json);
-    const state = await connectCloudflareWorkerToReceiver(process.cwd(), deployedUrl, authToken);
+    let state;
+    try {
+      state = await connectCloudflareWorkerToReceiver(process.cwd(), deployedUrl, authToken, {
+        noInteractive: options.noInteractive,
+      });
+    } catch (err) {
+      process.stderr.write(
+        `Error: failed to configure Cloudflare telemetry export: ${String(err)}\n\n` +
+          "Fix:\n" +
+          "  1. Create a Cloudflare API Token with account-level Workers Scripts:Edit and Logs:Edit.\n" +
+          "  2. Export it as CLOUDFLARE_API_TOKEN.\n" +
+          "  3. Re-run: npx 3amoncall deploy cloudflare --yes\n",
+      );
+      process.exit(1);
+      return;
+    }
 
     if (json) {
       const output = JSON.stringify(
