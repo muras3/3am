@@ -102,9 +102,28 @@ describe("detectPackageManager()", () => {
     expect(detectPackageManager(tmpDir)).toBe("pnpm");
   });
 
+  it("returns pnpm when pnpm-workspace.yaml exists", () => {
+    writeFileSync(join(tmpDir, "pnpm-workspace.yaml"), "packages:\n  - apps/*\n");
+    expect(detectPackageManager(tmpDir)).toBe("pnpm");
+  });
+
+  it("returns pnpm when workspace marker exists in an ancestor directory", () => {
+    writeFileSync(join(tmpDir, "pnpm-workspace.yaml"), "packages:\n  - apps/*\n");
+    const nestedDir = join(tmpDir, "apps", "order-api");
+    mkdirSync(nestedDir, { recursive: true });
+    expect(detectPackageManager(nestedDir)).toBe("pnpm");
+  });
+
   it("returns yarn when yarn.lock exists", () => {
     writeFileSync(join(tmpDir, "yarn.lock"), "");
     expect(detectPackageManager(tmpDir)).toBe("yarn");
+  });
+
+  it("returns yarn when yarn.lock exists in an ancestor directory", () => {
+    writeFileSync(join(tmpDir, "yarn.lock"), "");
+    const nestedDir = join(tmpDir, "packages", "api");
+    mkdirSync(nestedDir, { recursive: true });
+    expect(detectPackageManager(nestedDir)).toBe("yarn");
   });
 
   it("returns bun when bun.lockb exists", () => {
