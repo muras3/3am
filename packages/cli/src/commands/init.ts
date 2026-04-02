@@ -7,7 +7,7 @@ import { detectPackageManager } from "./init/detect-package-manager.js";
 import { getInstrumentationTemplate } from "./init/templates.js";
 import { patchScripts } from "./init/patch-scripts.js";
 import { detectRuntimeTarget, findWranglerConfigPath } from "./init/detect-runtime.js";
-import { updateCloudflareObservabilityConfig } from "./init/cloudflare-workers.js";
+import { updateCloudflareObservabilityConfig } from "./cloudflare-workers.js";
 import { resolveApiKey, loadCredentials, saveCredentials } from "./init/credentials.js";
 import { createInterface } from "node:readline";
 import { PROVIDER_NAMES, type ProviderName } from "@3amoncall/diagnosis";

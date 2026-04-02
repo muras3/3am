@@ -54,6 +54,11 @@ vi.mock("../commands/shared/health.js", () => ({
   fetchSetupToken: vi.fn(),
 }));
 
+vi.mock("../commands/cloudflare-workers.js", () => ({
+  connectCloudflareWorkerToReceiver: vi.fn(),
+  updateCloudflareObservabilityConfig: vi.fn(),
+}));
+
 vi.mock("../commands/init/credentials.js", () => ({
   resolveApiKey: vi.fn(),
 }));
@@ -69,6 +74,7 @@ import {
 import { updateAppEnv } from "../commands/deploy/env-writer.js";
 import { waitForReceiver, fetchSetupToken } from "../commands/shared/health.js";
 import { resolveApiKey } from "../commands/init/credentials.js";
+import { connectCloudflareWorkerToReceiver } from "../commands/cloudflare-workers.js";
 import { runDeploy } from "../commands/deploy.js";
 
 // ---------------------------------------------------------------------------
@@ -388,6 +394,31 @@ describe("runDeploy()", () => {
     const calls = vi.mocked(updateAppEnv).mock.calls;
     const writeCall = calls.find((c) => !c[0].dryRun);
     expect(writeCall![0].authToken).toBe("provided-token");
+  });
+
+  it("connects the current Cloudflare Worker instead of writing .env", async () => {
+    setupHappyPathMocks();
+    mockProvider.deploy.mockResolvedValue({ url: "https://test.workers.dev" });
+    vi.mocked(connectCloudflareWorkerToReceiver).mockResolvedValue({
+      changed: true,
+      workerName: "edge-app",
+      configPath: "/repo/wrangler.jsonc",
+    });
+
+    await runDeploy([], {
+      yes: true,
+      noInteractive: true,
+      platform: "cloudflare",
+    });
+
+    expect(vi.mocked(connectCloudflareWorkerToReceiver)).toHaveBeenCalledWith(
+      process.cwd(),
+      "https://test.workers.dev",
+      "test-token",
+    );
+    expect(updateAppEnv).not.toHaveBeenCalled();
+    expect(stdoutChunks.join("")).toContain("Worker:");
+    expect(stdoutChunks.join("")).toContain("edge-app");
   });
 
   // -------------------------------------------------------------------------
