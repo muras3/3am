@@ -415,6 +415,7 @@ describe("runDeploy()", () => {
       process.cwd(),
       "https://test.workers.dev",
       "test-token",
+      { noInteractive: true },
     );
     expect(updateAppEnv).not.toHaveBeenCalled();
     expect(stdoutChunks.join("")).toContain("Worker:");

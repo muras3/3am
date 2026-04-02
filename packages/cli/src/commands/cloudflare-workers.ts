@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
+import { createInterface } from "node:readline";
 
 type JsonMap = Record<string, unknown>;
 
@@ -16,10 +17,14 @@ export interface CloudflareObservabilityState {
   configPath: string;
 }
 
-interface WranglerAuthConfig {
-  oauthToken?: string;
-  refreshToken?: string;
-  expirationTime?: string;
+export interface CloudflareAccountInfo {
+  accountId: string;
+  email?: string;
+}
+
+export interface CloudflareApiAuth {
+  headers: Record<string, string>;
+  source: "api-token" | "global-key";
 }
 
 interface CloudflareDestination {
@@ -40,9 +45,6 @@ interface CloudflareApiResponse<T> {
   messages: Array<{ message: string }>;
   result: T;
 }
-
-const WRANGLER_CLIENT_ID = "54d11594-84e4-41aa-b438-e81b8fa78ee7";
-const WRANGLER_TOKEN_URL = "https://dash.cloudflare.com/oauth2/token";
 
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -228,126 +230,36 @@ export function resolveCloudflareWorker(path: string): { workerName: string } {
   return { workerName };
 }
 
-function getWranglerAuthConfigPath(): string {
+function getCloudflareLegacyConfigPath(): string | null {
   const candidates = [
-    join(homedir(), "Library", "Preferences", ".wrangler", "config", "default.toml"),
-    join(homedir(), ".config", ".wrangler", "config", "default.toml"),
-    join(homedir(), ".wrangler", "config", "default.toml"),
+    join(homedir(), ".cloudflare", "config"),
+    join(homedir(), ".cloudflare", "config.json"),
   ];
-
-  const path = candidates.find((candidate) => existsSync(candidate));
-  if (!path) {
-    throw new Error("Wrangler auth config not found. Run `wrangler login` first.");
-  }
-  return path;
+  return candidates.find((candidate) => existsSync(candidate)) ?? null;
 }
 
-function parseWranglerAuthConfig(path: string): WranglerAuthConfig {
-  const content = readFileSync(path, "utf-8");
-  const getValue = (key: string): string | undefined =>
-    content.match(new RegExp(`^${escapeRegExp(key)}\\s*=\\s*"(.*)"$`, "m"))?.[1];
-
-  return {
-    oauthToken: getValue("oauth_token"),
-    refreshToken: getValue("refresh_token"),
-    expirationTime: getValue("expiration_time"),
-  };
+function getCloudflareApiKeyFromEnv(env: NodeJS.ProcessEnv): string | undefined {
+  return env["CLOUDFLARE_API_KEY"] ?? env["CF_API_KEY"];
 }
 
-function writeWranglerAuthConfig(path: string, auth: WranglerAuthConfig): void {
-  let content = readFileSync(path, "utf-8");
-  const replace = (key: string, value: string | undefined) => {
-    if (!value) return;
-    const regex = new RegExp(`^${escapeRegExp(key)}\\s*=\\s*".*"$`, "m");
-    const line = `${key} = "${value}"`;
-    content = regex.test(content)
-      ? content.replace(regex, line)
-      : `${content.trimEnd()}\n${line}\n`;
-  };
-
-  replace("oauth_token", auth.oauthToken);
-  replace("refresh_token", auth.refreshToken);
-  replace("expiration_time", auth.expirationTime);
-  writeFileSync(path, content, "utf-8");
-}
-
-async function refreshCloudflareOAuthToken(refreshToken: string): Promise<WranglerAuthConfig> {
-  const params = new URLSearchParams({
-    grant_type: "refresh_token",
-    refresh_token: refreshToken,
-    client_id: WRANGLER_CLIENT_ID,
-  });
-
-  const response = await fetch(WRANGLER_TOKEN_URL, {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: params.toString(),
-  });
-
-  if (!response.ok) {
-    throw new Error(`Cloudflare OAuth refresh failed with HTTP ${response.status}`);
-  }
-
-  const body = await response.json() as {
-    access_token?: string;
-    expires_in?: number;
-    refresh_token?: string;
-  };
-
-  if (!body.access_token || !body.expires_in) {
-    throw new Error("Cloudflare OAuth refresh returned an invalid response");
-  }
-
-  return {
-    oauthToken: body.access_token,
-    refreshToken: body.refresh_token ?? refreshToken,
-    expirationTime: new Date(Date.now() + body.expires_in * 1000).toISOString(),
-  };
-}
-
-async function getCloudflareApiToken(forceRefresh = false): Promise<string> {
-  const configPath = getWranglerAuthConfigPath();
-  const auth = parseWranglerAuthConfig(configPath);
-  const expired = !auth.expirationTime || Date.parse(auth.expirationTime) <= Date.now() + 60_000;
-
-  if (!forceRefresh && auth.oauthToken && !expired) {
-    return auth.oauthToken;
-  }
-
-  if (!auth.refreshToken) {
-    throw new Error("Wrangler OAuth refresh token not found. Re-run `wrangler login`.");
-  }
-
-  const refreshed = await refreshCloudflareOAuthToken(auth.refreshToken);
-  writeWranglerAuthConfig(configPath, refreshed);
-
-  if (!refreshed.oauthToken) {
-    throw new Error("Cloudflare OAuth refresh did not return an access token");
-  }
-
-  return refreshed.oauthToken;
+function getCloudflareEmailFromEnv(env: NodeJS.ProcessEnv): string | undefined {
+  return env["CLOUDFLARE_EMAIL"] ?? env["CF_EMAIL"];
 }
 
 async function cloudflareApiFetch<T>(
+  auth: CloudflareApiAuth,
   accountId: string,
   path: string,
   init: RequestInit = {},
-  retry = true,
 ): Promise<T> {
-  const token = await getCloudflareApiToken(false);
   const response = await fetch(`https://api.cloudflare.com/client/v4/accounts/${accountId}${path}`, {
     ...init,
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
+      ...auth.headers,
       ...(init.headers ?? {}),
     },
   });
-
-  if (response.status === 401 && retry) {
-    await getCloudflareApiToken(true);
-    return cloudflareApiFetch<T>(accountId, path, init, false);
-  }
 
   const body = await response.json() as CloudflareApiResponse<T>;
   if (!response.ok || !body.success) {
@@ -359,27 +271,147 @@ async function cloudflareApiFetch<T>(
   return body.result;
 }
 
-export function getCloudflareAccountId(): string {
+export function getCloudflareAccountInfo(): CloudflareAccountInfo {
   const output = execFileSync("wrangler", ["whoami", "--json"], {
     stdio: "pipe",
   }).toString();
 
   const parsed = JSON.parse(output) as {
+    email?: string;
     accounts?: Array<{ id?: string }>;
   };
   const accountId = parsed.accounts?.[0]?.id;
   if (!accountId) {
     throw new Error("Could not determine Cloudflare account ID from `wrangler whoami --json`");
   }
-  return accountId;
+  return { accountId, email: parsed.email };
+}
+
+async function promptSecret(prompt: string): Promise<string> {
+  process.stdout.write(prompt);
+
+  if (!process.stdin.isTTY || typeof (process.stdin as NodeJS.ReadStream).setRawMode !== "function") {
+    const rl = createInterface({ input: process.stdin, output: process.stdout });
+    return new Promise((resolve) => {
+      rl.question("", (answer) => {
+        rl.close();
+        resolve(answer.trim());
+      });
+    });
+  }
+
+  const stdin = process.stdin as NodeJS.ReadStream;
+  return new Promise((resolve) => {
+    stdin.setRawMode(true);
+    stdin.resume();
+    stdin.setEncoding("utf8");
+
+    let value = "";
+    const onData = (ch: string) => {
+      const code = ch.charCodeAt(0);
+      if (code === 0x03) {
+        process.stdout.write("\n");
+        stdin.setRawMode(false);
+        stdin.pause();
+        stdin.removeListener("data", onData);
+        process.exit(1);
+      } else if (code === 0x0d || code === 0x0a) {
+        process.stdout.write("\n");
+        stdin.setRawMode(false);
+        stdin.pause();
+        stdin.removeListener("data", onData);
+        resolve(value.trim());
+      } else if ((code === 0x7f || code === 0x08) && value.length > 0) {
+        value = value.slice(0, -1);
+      } else if (code >= 0x20) {
+        value += ch;
+      }
+    };
+
+    stdin.on("data", onData);
+  });
+}
+
+function readLegacyGlobalApiKey(): string | undefined {
+  const path = getCloudflareLegacyConfigPath();
+  if (!path) return undefined;
+  const content = readFileSync(path, "utf-8");
+  const tomlMatch = content.match(/^api_key\s*=\s*"(.*)"$/m)?.[1];
+  if (tomlMatch) return tomlMatch;
+
+  try {
+    const parsed = JSON.parse(content) as { api_key?: string };
+    return parsed.api_key;
+  } catch {
+    return undefined;
+  }
+}
+
+export async function resolveCloudflareApiAuth(options: {
+  env?: NodeJS.ProcessEnv;
+  account?: { email?: string };
+  noInteractive?: boolean;
+}): Promise<CloudflareApiAuth> {
+  const env = options.env ?? process.env;
+  const apiToken = env["CLOUDFLARE_API_TOKEN"] ?? env["CF_API_TOKEN"];
+  if (apiToken) {
+    return {
+      source: "api-token",
+      headers: { Authorization: `Bearer ${apiToken}` },
+    };
+  }
+
+  const email = getCloudflareEmailFromEnv(env) ?? options.account?.email;
+  const apiKey = getCloudflareApiKeyFromEnv(env) ?? readLegacyGlobalApiKey();
+
+  if (email && apiKey) {
+    return {
+      source: "global-key",
+      headers: {
+        "X-Auth-Email": email,
+        "X-Auth-Key": apiKey,
+      },
+    };
+  }
+
+  if (options.noInteractive) {
+    throw new Error(
+      "Cloudflare Observability destination setup requires CLOUDFLARE_API_TOKEN. " +
+      "For initial OSS setup, create a Cloudflare API Token with Workers Scripts:Edit and Logs:Edit, then export CLOUDFLARE_API_TOKEN before running `3amoncall deploy cloudflare`.",
+    );
+  }
+
+  if (!email) {
+    throw new Error(
+      "Could not determine Cloudflare email. Set CLOUDFLARE_EMAIL or re-run `wrangler whoami` successfully.",
+    );
+  }
+
+  process.stdout.write(
+    "Cloudflare OTLP destination setup works best with CLOUDFLARE_API_TOKEN. " +
+    "Falling back to Global API Key for this interactive run.\n",
+  );
+  const promptedApiKey = await promptSecret("Enter your Cloudflare Global API Key: ");
+  if (!promptedApiKey) {
+    throw new Error("Cloudflare Global API Key is required to configure Observability destinations.");
+  }
+
+  return {
+    source: "global-key",
+    headers: {
+      "X-Auth-Email": email,
+      "X-Auth-Key": promptedApiKey,
+    },
+  };
 }
 
 function buildDestinationName(workerName: string, kind: "traces" | "logs"): string {
   return `${workerName}-3amoncall-${kind}`;
 }
 
-async function listDestinations(accountId: string): Promise<CloudflareDestination[]> {
+async function listDestinations(auth: CloudflareApiAuth, accountId: string): Promise<CloudflareDestination[]> {
   return cloudflareApiFetch<CloudflareDestination[]>(
+    auth,
     accountId,
     "/workers/observability/destinations",
     { method: "GET" },
@@ -387,6 +419,7 @@ async function listDestinations(accountId: string): Promise<CloudflareDestinatio
 }
 
 async function createDestination(
+  auth: CloudflareApiAuth,
   accountId: string,
   name: string,
   dataset: "opentelemetry-traces" | "opentelemetry-logs",
@@ -394,6 +427,7 @@ async function createDestination(
   headers: Record<string, string>,
 ): Promise<void> {
   await cloudflareApiFetch<CloudflareDestination>(
+    auth,
     accountId,
     "/workers/observability/destinations",
     {
@@ -413,12 +447,14 @@ async function createDestination(
 }
 
 async function updateDestination(
+  auth: CloudflareApiAuth,
   accountId: string,
   slug: string,
   url: string,
   headers: Record<string, string>,
 ): Promise<void> {
   await cloudflareApiFetch<CloudflareDestination>(
+    auth,
     accountId,
     `/workers/observability/destinations/${slug}`,
     {
@@ -436,6 +472,7 @@ async function updateDestination(
 }
 
 async function ensureDestination(
+  auth: CloudflareApiAuth,
   accountId: string,
   workerName: string,
   kind: "traces" | "logs",
@@ -445,11 +482,11 @@ async function ensureDestination(
   const dataset = kind === "traces" ? "opentelemetry-traces" : "opentelemetry-logs";
   const name = buildDestinationName(workerName, kind);
   const headers = { Authorization: `Bearer ${authToken}` };
-  const destinations = await listDestinations(accountId);
+  const destinations = await listDestinations(auth, accountId);
   const existing = destinations.find((destination) => destination.name === name);
 
   if (!existing) {
-    await createDestination(accountId, name, dataset, url, headers);
+    await createDestination(auth, accountId, name, dataset, url, headers);
     return name;
   }
 
@@ -458,7 +495,7 @@ async function ensureDestination(
   const sameEnabled = existing.enabled === true;
 
   if (!sameUrl || !sameHeader || !sameEnabled) {
-    await updateDestination(accountId, existing.slug, url, headers);
+    await updateDestination(auth, accountId, existing.slug, url, headers);
   }
 
   return name;
@@ -468,6 +505,7 @@ export async function connectCloudflareWorkerToReceiver(
   cwd: string,
   receiverUrl: string,
   authToken: string,
+  options: { noInteractive?: boolean } = {},
 ): Promise<CloudflareObservabilityState> {
   const configPath = join(cwd, existsSync(join(cwd, "wrangler.jsonc")) ? "wrangler.jsonc" : "wrangler.toml");
   if (!existsSync(configPath)) {
@@ -475,16 +513,22 @@ export async function connectCloudflareWorkerToReceiver(
   }
 
   const { workerName } = resolveCloudflareWorker(configPath);
-  const accountId = getCloudflareAccountId();
+  const account = getCloudflareAccountInfo();
+  const cloudflareAuth = await resolveCloudflareApiAuth({
+    account,
+    noInteractive: options.noInteractive,
+  });
   const traceDestination = await ensureDestination(
-    accountId,
+    cloudflareAuth,
+    account.accountId,
     workerName,
     "traces",
     `${receiverUrl}/v1/traces`,
     authToken,
   );
   const logDestination = await ensureDestination(
-    accountId,
+    cloudflareAuth,
+    account.accountId,
     workerName,
     "logs",
     `${receiverUrl}/v1/logs`,
