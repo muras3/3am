@@ -16,6 +16,8 @@ vi.mock("../commands/dev.js", () => ({
 
 import { execSync } from "node:child_process";
 import { detectFramework } from "../commands/init/detect-framework.js";
+import { detectRuntimeTarget, findWranglerConfigPath } from "../commands/init/detect-runtime.js";
+import { updateCloudflareObservabilityConfig } from "../commands/init/cloudflare-workers.js";
 import { detectLogger } from "../commands/init/detect-logger.js";
 import { detectPackageManager } from "../commands/init/detect-package-manager.js";
 import { getInstrumentationTemplate } from "../commands/init/templates.js";
@@ -43,6 +45,34 @@ describe("detectFramework()", () => {
 
   it("prefers nextjs over express", () => {
     expect(detectFramework({ next: "14.0.0", express: "4.18.0" })).toBe("nextjs");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// detectRuntimeTarget
+// ---------------------------------------------------------------------------
+
+describe("detectRuntimeTarget()", () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = join(tmpdir(), `runtime-test-${Date.now()}`);
+    mkdirSync(tmpDir, { recursive: true });
+  });
+
+  afterEach(() => {
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it("detects cloudflare-workers when wrangler.jsonc exists", () => {
+    writeFileSync(join(tmpDir, "wrangler.jsonc"), "{}\n");
+    expect(detectRuntimeTarget(tmpDir)).toBe("cloudflare-workers");
+    expect(findWranglerConfigPath(tmpDir)).toBe(join(tmpDir, "wrangler.jsonc"));
+  });
+
+  it("detects node-like when no wrangler config exists", () => {
+    expect(detectRuntimeTarget(tmpDir)).toBe("node-like");
+    expect(findWranglerConfigPath(tmpDir)).toBeNull();
   });
 });
 
@@ -253,6 +283,58 @@ describe("updateEnvFile()", () => {
     });
     expect(result).toContain("https://hooks.slack.com/services/old");
     expect(result).not.toContain("https://hooks.slack.com/services/new");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Cloudflare Workers config patching
+// ---------------------------------------------------------------------------
+
+describe("updateCloudflareObservabilityConfig()", () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = join(tmpdir(), `wrangler-test-${Date.now()}`);
+    mkdirSync(tmpDir, { recursive: true });
+  });
+
+  afterEach(() => {
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it("patches wrangler.toml with observability settings", () => {
+    const path = join(tmpDir, "wrangler.toml");
+    writeFileSync(path, 'name = "worker"\nmain = "src/index.ts"\n');
+
+    expect(updateCloudflareObservabilityConfig(path)).toBe(true);
+
+    const content = readFileSync(path, "utf-8");
+    expect(content).toContain("[observability]");
+    expect(content).toContain("enabled = true");
+    expect(content).toContain("[observability.logs]");
+    expect(content).toContain("invocation_logs = true");
+    expect(content).toContain("[observability.traces]");
+    expect(content).toContain("head_sampling_rate = 1.0");
+  });
+
+  it("patches wrangler.jsonc with observability settings", () => {
+    const path = join(tmpDir, "wrangler.jsonc");
+    writeFileSync(path, '{\n  "name": "worker"\n}\n');
+
+    expect(updateCloudflareObservabilityConfig(path)).toBe(true);
+
+    const parsed = JSON.parse(readFileSync(path, "utf-8")) as {
+      observability: {
+        enabled: boolean;
+        logs: { enabled: boolean; invocation_logs: boolean };
+        traces: { enabled: boolean; head_sampling_rate: number };
+      };
+    };
+
+    expect(parsed.observability.enabled).toBe(true);
+    expect(parsed.observability.logs.invocation_logs).toBe(true);
+    expect(parsed.observability.traces.enabled).toBe(true);
+    expect(parsed.observability.traces.head_sampling_rate).toBe(1);
   });
 });
 
@@ -846,5 +928,51 @@ describe("runInit()", () => {
       ? readFileSync(join(tmpDir, ".env"), "utf-8")
       : "";
     expect(envContent).not.toContain("NOTIFICATION_WEBHOOK_URL");
+  });
+
+  it("configures Cloudflare Workers projects without Node SDK injection", async () => {
+    writeFileSync(
+      join(tmpDir, "package.json"),
+      JSON.stringify({
+        name: "my-worker",
+        scripts: { dev: "wrangler dev" },
+        dependencies: { hono: "4.0.0" },
+      }),
+    );
+    writeFileSync(join(tmpDir, "wrangler.jsonc"), '{\n  "name": "my-worker"\n}\n');
+
+    const stdoutChunks: string[] = [];
+    const stdoutSpy = vi.spyOn(process.stdout, "write").mockImplementation((chunk) => {
+      stdoutChunks.push(String(chunk));
+      return true;
+    });
+
+    await runInit([], { noInteractive: true });
+    stdoutSpy.mockRestore();
+
+    expect(vi.mocked(execSync)).not.toHaveBeenCalled();
+    expect(existsSync(join(tmpDir, "instrumentation.js"))).toBe(false);
+    expect(existsSync(join(tmpDir, "instrumentation.ts"))).toBe(false);
+    expect(existsSync(join(tmpDir, ".env"))).toBe(false);
+
+    const wrangler = JSON.parse(readFileSync(join(tmpDir, "wrangler.jsonc"), "utf-8")) as {
+      observability: {
+        enabled: boolean;
+        logs: { enabled: boolean; invocation_logs: boolean };
+        traces: { enabled: boolean; head_sampling_rate: number };
+      };
+    };
+    expect(wrangler.observability.enabled).toBe(true);
+    expect(wrangler.observability.logs.enabled).toBe(true);
+    expect(wrangler.observability.logs.invocation_logs).toBe(true);
+    expect(wrangler.observability.traces.enabled).toBe(true);
+    expect(wrangler.observability.traces.head_sampling_rate).toBe(1);
+
+    const combined = stdoutChunks.join("");
+    expect(combined).toContain("Cloudflare Workers");
+    expect(combined).toContain("Workers Observability");
+    expect(combined).toContain("Cloudflare OTLP destination");
+    expect(combined).toContain("Metrics");
+    expect(combined).toContain("not supported");
   });
 });
