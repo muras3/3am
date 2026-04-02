@@ -17,7 +17,7 @@ vi.mock("../commands/dev.js", () => ({
 import { execSync } from "node:child_process";
 import { detectFramework } from "../commands/init/detect-framework.js";
 import { detectRuntimeTarget, findWranglerConfigPath } from "../commands/init/detect-runtime.js";
-import { updateCloudflareObservabilityConfig } from "../commands/init/cloudflare-workers.js";
+import { updateCloudflareObservabilityConfig } from "../commands/cloudflare-workers.js";
 import { detectLogger } from "../commands/init/detect-logger.js";
 import { detectPackageManager } from "../commands/init/detect-package-manager.js";
 import { getInstrumentationTemplate } from "../commands/init/templates.js";

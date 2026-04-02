@@ -31,6 +31,7 @@ import { createProvider } from "./deploy/provider.js";
 import { updateAppEnv, promptAuthToken } from "./deploy/env-writer.js";
 import { waitForReceiver, fetchSetupToken } from "./shared/health.js";
 import { resolveApiKey } from "./init/credentials.js";
+import { connectCloudflareWorkerToReceiver } from "./cloudflare-workers.js";
 
 export interface DeployOptions {
   platform?: "vercel" | "cloudflare";
@@ -294,7 +295,43 @@ export async function runDeploy(
   }
 
   // -------------------------------------------------------------------------
-  // Step 10: Update .env
+  // Step 10: Connect the app runtime
+  // -------------------------------------------------------------------------
+  if (platform === "cloudflare") {
+    info("\nConfiguring Cloudflare Worker telemetry export...\n", json);
+    const state = await connectCloudflareWorkerToReceiver(process.cwd(), deployedUrl, authToken);
+
+    if (json) {
+      const output = JSON.stringify(
+        {
+          status: "deployed",
+          receiverUrl: deployedUrl,
+          consoleUrl: deployedUrl,
+          authToken,
+          workerName: state.workerName,
+          wranglerConfigPath: state.configPath,
+          wranglerUpdated: state.changed,
+        },
+        null,
+        2,
+      );
+      process.stdout.write(output + "\n");
+      return;
+    }
+
+    process.stdout.write("\nDeploy complete!\n\n");
+    process.stdout.write(`  Receiver URL: ${deployedUrl}\n`);
+    process.stdout.write(`  Console URL:  ${deployedUrl}\n`);
+    process.stdout.write(`  Worker:       ${state.workerName}\n`);
+    process.stdout.write(`  Wrangler:     ${state.configPath}\n\n`);
+    process.stdout.write("Next steps:\n");
+    process.stdout.write("  1. Trigger requests against your Cloudflare Worker\n");
+    process.stdout.write(`  2. Open ${deployedUrl} to view incidents\n\n`);
+    return;
+  }
+
+  // -------------------------------------------------------------------------
+  // Step 11: Update .env
   // -------------------------------------------------------------------------
 
   // Preview changes
@@ -344,7 +381,7 @@ export async function runDeploy(
   }
 
   // -------------------------------------------------------------------------
-  // Step 11: Completion output
+  // Step 12: Completion output
   // -------------------------------------------------------------------------
   const consoleUrl = deployedUrl;
 
