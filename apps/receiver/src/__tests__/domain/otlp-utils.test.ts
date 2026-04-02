@@ -1,5 +1,12 @@
 import { describe, it, expect } from 'vitest'
-import { isRecord, isArray, nanoToMs, getStringAttr } from '../../domain/otlp-utils.js'
+import {
+  isRecord,
+  isArray,
+  nanoToMs,
+  getStringAttr,
+  resolveResourceServiceName,
+  resolveResourceEnvironment,
+} from '../../domain/otlp-utils.js'
 
 describe('isRecord', () => {
   it('returns true for plain objects', () => {
@@ -86,5 +93,37 @@ describe('getStringAttr', () => {
   it('returns empty string for non-array input', () => {
     expect(getStringAttr(null, 'service.name')).toBe('')
     expect(getStringAttr({}, 'service.name')).toBe('')
+  })
+})
+
+describe('resolveResourceServiceName', () => {
+  it('prefers service.name when present', () => {
+    const attrs = [{ key: 'service.name', value: { stringValue: 'svc-a' } }]
+    expect(resolveResourceServiceName(attrs)).toBe('svc-a')
+  })
+
+  it('falls back to CF Workers faas.name and cloudflare.script_name', () => {
+    expect(resolveResourceServiceName([{ key: 'faas.name', value: { stringValue: 'worker-a' } }])).toBe('worker-a')
+    expect(resolveResourceServiceName([{ key: 'cloudflare.script_name', value: { stringValue: 'worker-b' } }])).toBe('worker-b')
+  })
+
+  it('defaults to unknown when no resource service attribute is present', () => {
+    expect(resolveResourceServiceName([])).toBe('unknown')
+  })
+})
+
+describe('resolveResourceEnvironment', () => {
+  it('prefers deployment.environment.name when present', () => {
+    const attrs = [{ key: 'deployment.environment.name', value: { stringValue: 'staging' } }]
+    expect(resolveResourceEnvironment(attrs)).toBe('staging')
+  })
+
+  it('falls back to cloudflare.environment', () => {
+    const attrs = [{ key: 'cloudflare.environment', value: { stringValue: 'preview' } }]
+    expect(resolveResourceEnvironment(attrs)).toBe('preview')
+  })
+
+  it('defaults to production when no resource environment attribute is present', () => {
+    expect(resolveResourceEnvironment([])).toBe('production')
   })
 })

@@ -11,7 +11,14 @@
 
 import type { TelemetryMetric, TelemetryLog } from './interface.js'
 import { computeBodyHash } from './body-hash.js'
-import { isRecord, isArray, nanoToMs, getStringAttr, normalizeIdToHex } from '../domain/otlp-utils.js'
+import {
+  isRecord,
+  isArray,
+  nanoToMs,
+  normalizeIdToHex,
+  resolveResourceServiceName,
+  resolveResourceEnvironment,
+} from '../domain/otlp-utils.js'
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -73,9 +80,8 @@ export function extractTelemetryMetrics(body: unknown): TelemetryMetric[] {
   for (const rm of resourceMetrics) {
     if (!isRecord(rm)) continue
     const attrs = getResourceAttrs(rm)
-    const service = getStringAttr(attrs, 'service.name')
-    const environment = getStringAttr(attrs, 'deployment.environment.name')
-    if (!service) continue
+    const service = resolveResourceServiceName(attrs)
+    const environment = resolveResourceEnvironment(attrs)
 
     const scopeMetrics = rm['scopeMetrics']
     if (!isArray(scopeMetrics)) continue
@@ -164,9 +170,8 @@ export async function extractTelemetryLogs(body: unknown): Promise<TelemetryLog[
   for (const rl of resourceLogs) {
     if (!isRecord(rl)) continue
     const attrs = getResourceAttrs(rl)
-    const service = getStringAttr(attrs, 'service.name')
-    const environment = getStringAttr(attrs, 'deployment.environment.name')
-    if (!service) continue
+    const service = resolveResourceServiceName(attrs)
+    const environment = resolveResourceEnvironment(attrs)
 
     const scopeLogs = rl['scopeLogs']
     if (!isArray(scopeLogs)) continue
