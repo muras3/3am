@@ -30,7 +30,7 @@ open http://localhost:3333
 
 `3amoncall local demo` injects a synthetic downstream-timeout scenario into the local Receiver and runs a real LLM diagnosis (~¥10/run). No real incident needed — you see the full diagnosis and AI copilot experience immediately. Demo data uses `service.name=3amoncall-demo` and won't mix with your app's telemetry.
 
-`3amoncall init` installs OTel dependencies, creates `instrumentation.ts/js`, and writes `OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:3333` to `.env`.
+`3amoncall init` is runtime-aware. For Node.js and Vercel it installs OTel dependencies, creates `instrumentation.ts/js`, and writes `OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:3333` to `.env`. For Cloudflare Workers it updates `wrangler.toml` or `wrangler.jsonc` to enable Workers Observability for traces and logs.
 
 `3amoncall init` now captures a diagnosis mode and provider choice.
 

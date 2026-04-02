@@ -6,6 +6,8 @@ import { detectLogger } from "./init/detect-logger.js";
 import { detectPackageManager } from "./init/detect-package-manager.js";
 import { getInstrumentationTemplate } from "./init/templates.js";
 import { patchScripts } from "./init/patch-scripts.js";
+import { detectRuntimeTarget, findWranglerConfigPath } from "./init/detect-runtime.js";
+import { updateCloudflareObservabilityConfig } from "./init/cloudflare-workers.js";
 import { resolveApiKey, loadCredentials, saveCredentials } from "./init/credentials.js";
 import { createInterface } from "node:readline";
 import { PROVIDER_NAMES, type ProviderName } from "@3amoncall/diagnosis";
@@ -142,85 +144,104 @@ export async function runInit(_argv: string[], options: InitOptions = {}): Promi
   const framework = detectFramework(allDeps);
   const logger = detectLogger(allDeps);
   const pm = detectPackageManager(cwd);
+  const runtimeTarget = detectRuntimeTarget(cwd);
+  const wranglerConfigPath = findWranglerConfigPath(cwd);
   const serviceName = pkg.name ?? "my-service";
   const isTs = isTypeScriptProject(cwd, allDeps);
   const isEsm = isEsmProject(pkg);
   const isNextjs = framework === "nextjs";
-
-  // --- 1. Install deps (backup package.json for rollback on failure) ---
-  const pkgBackupPath = pkgPath + ".bak";
-  copyFileSync(pkgPath, pkgBackupPath);
-
-  const depsToInstall = [...OTEL_DEPS];
-  if (logger.detected) {
-    depsToInstall.push(logger.instrumentationPackage);
-  }
-  const installCmd = getInstallCommand(pm, depsToInstall);
-  process.stdout.write(`Installing OTel dependencies: ${installCmd}\n`);
-
-  try {
-    execSync(installCmd, { cwd, stdio: "inherit" });
-  } catch (err) {
-    process.stderr.write(`Error: dependency install failed: ${String(err)}\n`);
-    copyFileSync(pkgBackupPath, pkgPath);
-    process.stderr.write("package.json restored.\n");
-    process.stderr.write(`Run manually: ${installCmd}\n`);
-    process.exit(1);
-    return;
-  }
-
-  try {
-    unlinkSync(pkgBackupPath);
-  } catch {
-    // backup cleanup failure is non-fatal
-  }
-
-  // --- 2. Generate instrumentation file ---
   const instrumentationExt = isTs ? ".ts" : ".js";
   const instrumentationFile = `instrumentation${instrumentationExt}`;
-  const instrumentationPath = join(cwd, instrumentationFile);
+  const patchResult = { patched: {}, skipped: [] } as ReturnType<typeof patchScripts>;
 
-  if (existsSync(instrumentationPath)) {
-    process.stdout.write(`${instrumentationFile} already exists — skipping.\n`);
-  } else {
-    const template = getInstrumentationTemplate(framework);
-    writeFileSync(instrumentationPath, template, "utf-8");
-    process.stdout.write(`Created ${instrumentationFile}\n`);
-  }
-
-  // --- 3. Patch package.json scripts ---
-  // Re-read package.json after dep install (lockfile changes, deps added)
-  const updatedPkg = JSON.parse(readFileSync(pkgPath, "utf-8")) as PackageJson;
-  const patchResult = patchScripts(updatedPkg.scripts, instrumentationFile, isNextjs, isEsm);
-
-  if (Object.keys(patchResult.patched).length > 0) {
-    process.stdout.write("\nPatching package.json scripts:\n");
-    for (const [name, newScript] of Object.entries(patchResult.patched)) {
-      process.stdout.write(`  ${name}: "${updatedPkg.scripts![name]}" → "${newScript}"\n`);
-      updatedPkg.scripts![name] = newScript;
+  if (runtimeTarget === "cloudflare-workers") {
+    if (!wranglerConfigPath) {
+      process.stderr.write("Error: Cloudflare Workers project detected, but no wrangler config was found.\n");
+      process.exit(1);
+      return;
     }
-    writeFileSync(pkgPath, JSON.stringify(updatedPkg, null, 2) + "\n", "utf-8");
-    process.stdout.write("package.json scripts updated.\n");
+    const changed = updateCloudflareObservabilityConfig(wranglerConfigPath);
+    process.stdout.write(
+      changed
+        ? `Updated ${wranglerConfigPath.split("/").pop()} with Workers Observability settings\n`
+        : `${wranglerConfigPath.split("/").pop()} already contains Workers Observability settings\n`,
+    );
+  } else {
+    // --- 1. Install deps (backup package.json for rollback on failure) ---
+    const pkgBackupPath = pkgPath + ".bak";
+    copyFileSync(pkgPath, pkgBackupPath);
+
+    const depsToInstall = [...OTEL_DEPS];
+    if (logger.detected) {
+      depsToInstall.push(logger.instrumentationPackage);
+    }
+    const installCmd = getInstallCommand(pm, depsToInstall);
+    process.stdout.write(`Installing OTel dependencies: ${installCmd}\n`);
+
+    try {
+      execSync(installCmd, { cwd, stdio: "inherit" });
+    } catch (err) {
+      process.stderr.write(`Error: dependency install failed: ${String(err)}\n`);
+      copyFileSync(pkgBackupPath, pkgPath);
+      process.stderr.write("package.json restored.\n");
+      process.stderr.write(`Run manually: ${installCmd}\n`);
+      process.exit(1);
+      return;
+    }
+
+    try {
+      unlinkSync(pkgBackupPath);
+    } catch {
+      // backup cleanup failure is non-fatal
+    }
+
+    // --- 2. Generate instrumentation file ---
+    const instrumentationPath = join(cwd, instrumentationFile);
+
+    if (existsSync(instrumentationPath)) {
+      process.stdout.write(`${instrumentationFile} already exists — skipping.\n`);
+    } else {
+      const template = getInstrumentationTemplate(framework);
+      writeFileSync(instrumentationPath, template, "utf-8");
+      process.stdout.write(`Created ${instrumentationFile}\n`);
+    }
+
+    // --- 3. Patch package.json scripts ---
+    // Re-read package.json after dep install (lockfile changes, deps added)
+    const updatedPkg = JSON.parse(readFileSync(pkgPath, "utf-8")) as PackageJson;
+    const nodePatchResult = patchScripts(updatedPkg.scripts, instrumentationFile, isNextjs, isEsm);
+    patchResult.patched = nodePatchResult.patched;
+    patchResult.skipped = nodePatchResult.skipped;
+
+    if (Object.keys(patchResult.patched).length > 0) {
+      process.stdout.write("\nPatching package.json scripts:\n");
+      for (const [name, newScript] of Object.entries(patchResult.patched)) {
+        process.stdout.write(`  ${name}: "${updatedPkg.scripts![name]}" → "${newScript}"\n`);
+        updatedPkg.scripts![name] = newScript;
+      }
+      writeFileSync(pkgPath, JSON.stringify(updatedPkg, null, 2) + "\n", "utf-8");
+      process.stdout.write("package.json scripts updated.\n");
+    }
+
+    for (const { name, reason } of patchResult.skipped) {
+      process.stdout.write(`  ${name}: skipped (${reason})\n`);
+    }
+
+    // --- 4. Update .env (idempotent — preserves existing values) ---
+    const envPath = join(cwd, ".env");
+    const envContent = existsSync(envPath) ? readFileSync(envPath, "utf-8") : "";
+    const updatedEnv = updateEnvFile(envContent, {
+      OTEL_SERVICE_NAME: serviceName,
+      OTEL_RESOURCE_ATTRIBUTES: "deployment.environment.name=development",
+      OTEL_EXPORTER_OTLP_ENDPOINT: "http://localhost:3333",
+      OTEL_EXPORTER_OTLP_HEADERS: "",
+    });
+    writeFileSync(envPath, updatedEnv, "utf-8");
+    process.stdout.write("Updated .env\n");
+
+    // --- 5. Ensure .gitignore includes .env ---
+    ensureGitignore(cwd);
   }
-
-  for (const { name, reason } of patchResult.skipped) {
-    process.stdout.write(`  ${name}: skipped (${reason})\n`);
-  }
-
-  // --- 4. Update .env (idempotent — preserves existing values) ---
-  const envPath = join(cwd, ".env");
-  const envContent = existsSync(envPath) ? readFileSync(envPath, "utf-8") : "";
-  const updatedEnv = updateEnvFile(envContent, {
-    OTEL_SERVICE_NAME: serviceName,
-    OTEL_RESOURCE_ATTRIBUTES: "deployment.environment.name=development",
-    OTEL_EXPORTER_OTLP_ENDPOINT: "http://localhost:3333",
-    OTEL_EXPORTER_OTLP_HEADERS: "",
-  });
-  writeFileSync(envPath, updatedEnv, "utf-8");
-  process.stdout.write("Updated .env\n");
-
-  // --- 5. Ensure .gitignore includes .env ---
-  ensureGitignore(cwd);
 
   // --- 6. ANTHROPIC_API_KEY ---
   const apiKey = await resolveApiKey({
@@ -349,26 +370,45 @@ export async function runInit(_argv: string[], options: InitOptions = {}): Promi
 
   // --- 7. Signal check ---
   process.stdout.write(ja ? "\n3amoncall init 完了!\n\n" : "\n3amoncall init complete!\n\n");
+  if (runtimeTarget === "cloudflare-workers") {
+    process.stdout.write(ja ? "実行基盤: Cloudflare Workers\n" : "Runtime target: Cloudflare Workers\n");
+  }
   process.stdout.write(ja ? "シグナル確認:\n" : "Signal check:\n");
-  process.stdout.write(ja
-    ? "  ✓ トレース — 自動計装 (HTTP, DB 等)\n"
-    : "  ✓ Traces — auto-instrumented (HTTP, DB, etc.)\n");
-  process.stdout.write(ja
-    ? "  ✓ メトリクス — 自動計装 (リクエスト所要時間等)\n"
-    : "  ✓ Metrics — auto-instrumented (request duration, etc.)\n");
-  if (logger.detected) {
+  if (runtimeTarget === "cloudflare-workers") {
     process.stdout.write(ja
-      ? `  ✓ ログ — ${logger.name} 検出済み、ブリッジをインストール\n`
-      : `  ✓ Logs — ${logger.name} detected, bridge installed\n`);
+      ? "  ✓ トレース — Workers Observability 経由で export\n"
+      : "  ✓ Traces — exported via Workers Observability\n");
+    process.stdout.write(ja
+      ? "  ✓ ログ — Workers Observability 経由で export (console.log を含む)\n"
+      : "  ✓ Logs — exported via Workers Observability (including console.log)\n");
+    process.stdout.write(ja
+      ? "  ✗ メトリクス — Cloudflare OTLP export は現時点で未対応\n"
+      : "  ✗ Metrics — Cloudflare OTLP export is not supported today\n");
   } else {
     process.stdout.write(ja
-      ? "  ✗ ログ — 構造化ロガー未検出。ログ診断には pino か winston をインストールしてください。\n"
-      : "  ✗ Logs — no structured logger detected. Install pino or winston for log-based diagnosis.\n");
+      ? "  ✓ トレース — 自動計装 (HTTP, DB 等)\n"
+      : "  ✓ Traces — auto-instrumented (HTTP, DB, etc.)\n");
+    process.stdout.write(ja
+      ? "  ✓ メトリクス — 自動計装 (リクエスト所要時間等)\n"
+      : "  ✓ Metrics — auto-instrumented (request duration, etc.)\n");
+    if (logger.detected) {
+      process.stdout.write(ja
+        ? `  ✓ ログ — ${logger.name} 検出済み、ブリッジをインストール\n`
+        : `  ✓ Logs — ${logger.name} detected, bridge installed\n`);
+    } else {
+      process.stdout.write(ja
+        ? "  ✗ ログ — 構造化ロガー未検出。ログ診断には pino か winston をインストールしてください。\n"
+        : "  ✗ Logs — no structured logger detected. Install pino or winston for log-based diagnosis.\n");
+    }
   }
   process.stdout.write("\n");
 
   // --- 8. Startup guidance ---
-  if (isNextjs) {
+  if (runtimeTarget === "cloudflare-workers") {
+    process.stdout.write(ja
+      ? `Cloudflare Workers を検出: ${wranglerConfigPath?.split("/").pop()} に Workers Observability を設定しました。\n`
+      : `Cloudflare Workers detected: configured Workers Observability in ${wranglerConfigPath?.split("/").pop()}.\n`);
+  } else if (isNextjs) {
     process.stdout.write(ja
       ? "Next.js を検出: instrumentation.ts の register() を使用 — Next.js が自動的に読み込みます。\n"
       : "Next.js detected: instrumentation.ts uses register() export — Next.js loads it automatically.\n");
@@ -388,11 +428,15 @@ export async function runInit(_argv: string[], options: InitOptions = {}): Promi
 
   process.stdout.write(
     ja
-      ? mode === "manual"
-        ? "\n次のステップ:\n  1. `npx 3amoncall local`\n  2. 別ターミナルで `npx 3amoncall bridge`\n  3. `npx 3amoncall local demo`\n"
-        : "\n次のステップ:\n  1. `npx 3amoncall local`\n  2. 別ターミナルで `npx 3amoncall local demo`\n"
-      : mode === "manual"
-        ? "\nNext steps:\n  1. `npx 3amoncall local`\n  2. In another terminal, `npx 3amoncall bridge`\n  3. `npx 3amoncall local demo`\n"
-        : "\nNext steps:\n  1. `npx 3amoncall local`\n  2. In another terminal, `npx 3amoncall local demo`\n",
+      ? runtimeTarget === "cloudflare-workers"
+        ? "\n次のステップ:\n  1. Cloudflare の OTLP destination を 3amoncall receiver に向ける\n  2. `wrangler deploy`\n  3. リクエストを発生させて traces/logs の到達を確認する\n"
+        : mode === "manual"
+          ? "\n次のステップ:\n  1. `npx 3amoncall local`\n  2. 別ターミナルで `npx 3amoncall bridge`\n  3. `npx 3amoncall local demo`\n"
+          : "\n次のステップ:\n  1. `npx 3amoncall local`\n  2. 別ターミナルで `npx 3amoncall local demo`\n"
+      : runtimeTarget === "cloudflare-workers"
+        ? "\nNext steps:\n  1. Point your Cloudflare OTLP destination at the 3amoncall receiver\n  2. `wrangler deploy`\n  3. Trigger a request and confirm traces/logs arrive\n"
+        : mode === "manual"
+          ? "\nNext steps:\n  1. `npx 3amoncall local`\n  2. In another terminal, `npx 3amoncall bridge`\n  3. `npx 3amoncall local demo`\n"
+          : "\nNext steps:\n  1. `npx 3amoncall local`\n  2. In another terminal, `npx 3amoncall local demo`\n",
   );
 }
