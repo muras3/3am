@@ -14,14 +14,14 @@ import type { DiagnosisResult } from '@3amoncall/core'
 import type * as DiagnosisModule from '@3amoncall/diagnosis'
 
 const { generateEvidenceQueryMock } = vi.hoisted(() => ({
-  generateEvidenceQueryMock: vi.fn(async (input: { question: string; locale?: 'en' | 'ja' }) => ({
+  generateEvidenceQueryMock: vi.fn(async (input: { question: string }, options?: { locale?: 'en' | 'ja' }) => ({
     question: input.question,
     status: 'answered' as const,
     segments: [
       {
         id: 'seg-1',
         kind: 'fact' as const,
-        text: input.locale === 'ja' ? '日本語の回答。' : 'English answer.',
+        text: options?.locale === 'ja' ? '日本語の回答。' : 'English answer.',
         evidenceRefs: [{ kind: 'span' as const, id: 'abc_001:span_001' }],
       },
     ],
@@ -264,5 +264,35 @@ describe('POST /api/incidents/:id/evidence/query', () => {
     expect(generateEvidenceQueryMock.mock.calls[0]?.[1]).toMatchObject({
       locale: 'ja',
     })
+  })
+
+  it('passes conversation history through to evidence query generation', async () => {
+    const cookie = await getSessionCookie(app)
+    const incidentId = await seedIncident(app, true)
+
+    const res = await app.request(`/api/incidents/${incidentId}/evidence/query`, {
+      method: 'POST',
+      headers: queryHeaders(cookie),
+      body: JSON.stringify({
+        question: 'What next?',
+        isFollowup: true,
+        history: [
+          { role: 'user', content: 'What is failing?' },
+          { role: 'assistant', content: 'The checkout path is timing out.' },
+        ],
+      }),
+    })
+
+    expect(res.status).toBe(200)
+    expect(generateEvidenceQueryMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        question: 'What next?',
+        history: [
+          { role: 'user', content: 'What is failing?' },
+          { role: 'assistant', content: 'The checkout path is timing out.' },
+        ],
+      }),
+      expect.any(Object),
+    )
   })
 })

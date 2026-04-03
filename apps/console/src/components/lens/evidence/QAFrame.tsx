@@ -9,6 +9,7 @@ import type {
   EvidenceQueryRef,
   EvidenceQueryResponse,
   EvidenceQuerySegment,
+  Followup,
 } from "../../../api/curated-types.js";
 import { useLensSearch } from "../../../routes/__root.js";
 
@@ -27,6 +28,35 @@ interface Props {
   isSubmitting: boolean;
   onInputChange: (value: string) => void;
   onSubmitQuestion: (question: string) => void;
+}
+
+function FollowupChips({
+  followups,
+  onSubmitQuestion,
+  isSubmitting,
+}: {
+  followups: Followup[];
+  onSubmitQuestion: (question: string) => void;
+  isSubmitting: boolean;
+}) {
+  const { t } = useTranslation();
+  if (followups.length === 0) return null;
+
+  return (
+    <div className="lens-ev-qa-followups" aria-label={t("evidence.qa.followupsLabel")}>
+      {followups.map((followup) => (
+        <button
+          key={`${followup.question}-${followup.targetEvidenceKinds.join(",")}`}
+          type="button"
+          className="lens-ev-qa-chip"
+          onClick={() => onSubmitQuestion(followup.question)}
+          disabled={isSubmitting}
+        >
+          {followup.question}
+        </button>
+      ))}
+    </div>
+  );
 }
 
 function evidenceRefTarget(
@@ -195,6 +225,8 @@ export function QAFrame({
   const { t } = useTranslation();
   const [draft, setDraft] = useState(inputValue);
   const threadRef = useRef<HTMLDivElement | null>(null);
+  const latestAnswered = [...history].reverse().find((entry) => entry.status === "answered" && entry.response);
+  const activeFollowups = latestAnswered?.response?.followups ?? qa.followups ?? [];
 
   useEffect(() => {
     setDraft(inputValue);
@@ -274,6 +306,12 @@ export function QAFrame({
           ))}
         </div>
       </div>
+
+      <FollowupChips
+        followups={activeFollowups}
+        onSubmitQuestion={submit}
+        isSubmitting={isSubmitting}
+      />
 
       <form className="lens-ev-qa-form" onSubmit={handleSubmit}>
         <div className="lens-ev-qa-input-shell">

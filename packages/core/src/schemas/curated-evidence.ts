@@ -282,6 +282,10 @@ export const QABlockSchema = z.object({
 export const EvidenceQueryRequestSchema = z.object({
   question: z.string().min(1).max(2000),
   isFollowup: z.boolean().optional(),
+  history: z.array(z.object({
+    role: z.enum(["user", "assistant"]),
+    content: z.string().min(1).max(4000),
+  }).strict()).max(20).optional(),
 }).strict();
 
 export const EvidenceQueryRefSchema = z.object({

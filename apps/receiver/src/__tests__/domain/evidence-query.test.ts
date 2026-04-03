@@ -296,6 +296,28 @@ describe('buildEvidenceQueryAnswer', () => {
     expect(result2.question).toBe('First question')
   })
 
+  it('uses recent history to resolve underspecified follow-up action questions', async () => {
+    const incident = makeIncident({
+      diagnosisResult: makeDiagnosisResult(),
+    })
+    const store = makeMockStore()
+
+    const result = await buildEvidenceQueryAnswer(
+      incident,
+      store,
+      '次のアクションは？',
+      true,
+      'ja',
+      [
+        { role: 'user', content: 'checkout の失敗原因は？' },
+        { role: 'assistant', content: '外部 API 側のレート制限が疑わしい。' },
+      ],
+    )
+
+    expect(result.status).toBe('answered')
+    expect(result.segments.some((segment) => segment.text.includes('最小アクション'))).toBe(true)
+  })
+
   it('span summary includes httpStatus when using new stable attribute http.response.status_code', async () => {
     const incident = makeIncident({ diagnosisResult: makeDiagnosisResult() })
     // makeMockStore already uses 'http.response.status_code': 504

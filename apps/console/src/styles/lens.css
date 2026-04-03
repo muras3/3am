@@ -2575,6 +2575,43 @@
   line-height: var(--lh-read);
 }
 
+.lens-ev-qa-followups {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.lens-ev-qa-chip {
+  border: 1px solid rgba(13, 115, 119, 0.18);
+  background: rgba(13, 115, 119, 0.08);
+  color: var(--teal);
+  border-radius: 999px;
+  padding: 8px 12px;
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  line-height: 1.2;
+  cursor: pointer;
+  transition: background 140ms ease, border-color 140ms ease, transform 140ms ease;
+}
+
+.lens-ev-qa-chip:hover {
+  background: rgba(13, 115, 119, 0.14);
+  border-color: rgba(13, 115, 119, 0.28);
+  transform: translateY(-1px);
+}
+
+.lens-ev-qa-chip:focus-visible {
+  outline: 2px solid rgba(13, 115, 119, 0.28);
+  outline-offset: 2px;
+}
+
+.lens-ev-qa-chip:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  transform: none;
+}
+
 /* ── Metrics view ─────────────────────────────────────────────── */
 .lens-metrics-root {
   display: flex;

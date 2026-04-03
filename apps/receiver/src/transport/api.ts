@@ -349,6 +349,7 @@ export function createApiRouter(
       parsed.data.question,
       parsed.data.isFollowup ?? false,
       locale,
+      parsed.data.history ?? [],
     );
     return c.json(result);
   });

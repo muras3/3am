@@ -79,6 +79,10 @@ export const curatedQueries = {
 export interface EvidenceQueryRequest {
   question: string;
   isFollowup?: boolean;
+  history?: Array<{
+    role: "user" | "assistant";
+    content: string;
+  }>;
 }
 
 export interface RerunDiagnosisResponse {

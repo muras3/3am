@@ -34,6 +34,7 @@ type QueryIntent =
   | "logs"
   | "traces"
   | "root_cause"
+  | "action"
   | "greeting"
   | "general";
 
@@ -99,6 +100,41 @@ function localizeNoAnswerForGreeting(locale: "en" | "ja"): string {
     : "Ask about traces, metrics, logs, or the diagnosed cause for this incident.";
 }
 
+type EvidenceConversationTurn = {
+  role: "user" | "assistant";
+  content: string;
+};
+
+function isUnderspecifiedFollowup(question: string): boolean {
+  const trimmed = question.trim().toLowerCase();
+  if (!trimmed) return true;
+  if (trimmed.length <= 18) return true;
+  return /(次のアクション|どうあるべき|あるべき|何をすべき|どうすべき|what next|next action|what should|should it|do first|how should)/i.test(trimmed);
+}
+
+function buildQuestionWithHistory(
+  question: string,
+  history: EvidenceConversationTurn[],
+  isFollowup: boolean,
+): string {
+  if (!isFollowup || history.length === 0 || !isUnderspecifiedFollowup(question)) {
+    return question;
+  }
+
+  const previousUserTurns = history.filter((turn) => turn.role === "user");
+  const previousAssistantTurns = history.filter((turn) => turn.role === "assistant");
+  const previousUser = previousUserTurns.at(-1)?.content.trim();
+  const previousAssistant = previousAssistantTurns.at(-1)?.content.trim();
+
+  if (previousUser && previousAssistant) {
+    return `Previous user question: ${previousUser}\nPrevious assistant answer: ${previousAssistant}\nFollow-up question: ${question}`;
+  }
+  if (previousUser) {
+    return `Previous user question: ${previousUser}\nFollow-up question: ${question}`;
+  }
+  return question;
+}
+
 function buildDirectAnswer(
   intent: IntentProfile,
   locale: "en" | "ja",
@@ -113,6 +149,15 @@ function buildDirectAnswer(
       text: locale === "ja"
         ? `現時点では、${incident.diagnosisResult.summary.root_cause_hypothesis}`
         : `Current best explanation: ${incident.diagnosisResult.summary.root_cause_hypothesis}`,
+    };
+  }
+
+  if (intent.kind === "action" && incident.diagnosisResult) {
+    return {
+      kind: "inference",
+      text: locale === "ja"
+        ? `いま取るべき最小アクションは、${incident.diagnosisResult.recommendation.immediate_action}`
+        : `The minimum next action is ${incident.diagnosisResult.recommendation.immediate_action}`,
     };
   }
 
@@ -165,6 +210,11 @@ function buildInferenceTail(
     return locale === "ja"
       ? "この説明は既存の diagnosis と、いま取得できている traces / metrics / logs の並びに一致しています。"
       : "That explanation matches the existing diagnosis and the currently retrieved traces, metrics, and logs.";
+  }
+  if (intent.kind === "action") {
+    return locale === "ja"
+      ? `このアクションを優先する理由は、${incident.diagnosisResult.recommendation.action_rationale_short}`
+      : `That action is prioritized because ${incident.diagnosisResult.recommendation.action_rationale_short}`;
   }
   return locale === "ja"
     ? `この並びは、${incident.diagnosisResult.summary.root_cause_hypothesis} という既存 diagnosis と整合しています。`
@@ -313,6 +363,9 @@ function classifyQuestionIntent(question: string): IntentProfile {
   const lower = question.toLowerCase();
   if (/^(hi|hello|hey|こんにちは|こんばんは|おはよう)/i.test(question.trim())) {
     return { kind: "greeting", preferredSurfaces: [] };
+  }
+  if (/(next action|what should|do first|should we|mitigation|remediation|対応|初動|次のアクション|何をすべき|どうすべき|どうあるべき|あるべき)/i.test(lower)) {
+    return { kind: "action", preferredSurfaces: ["traces", "logs", "metrics"] };
   }
   if (/(metric|metrics|throughput|latency|error rate|spike|メトリクス|指標|スループット|レイテンシ|遅延)/i.test(lower)) {
     return { kind: "metrics", preferredSurfaces: ["metrics", "traces", "logs"] };
@@ -648,12 +701,14 @@ export async function buildEvidenceQueryAnswer(
   incident: Incident,
   telemetryStore: TelemetryStoreDriver,
   question: string,
-  _isFollowup: boolean,
+  isFollowup: boolean,
   locale: "en" | "ja" = "en",
+  history: EvidenceConversationTurn[] = [],
 ): Promise<EvidenceQueryResponse> {
   const diagnosisState = determineDiagnosisState(incident);
   const curatedEvidence = await buildCuratedEvidence(incident, telemetryStore);
-  const intent = classifyQuestionIntent(question);
+  const effectiveQuestion = buildQuestionWithHistory(question, history, isFollowup);
+  const intent = classifyQuestionIntent(effectiveQuestion);
 
   if (diagnosisState === "unavailable") {
     return buildDeterministicNoAnswer(
@@ -680,7 +735,7 @@ export async function buildEvidenceQueryAnswer(
   }
 
   const catalog = buildEvidenceCatalog(curatedEvidence);
-  const retrieved = retrieveEvidence(question, catalog, intent);
+  const retrieved = retrieveEvidence(effectiveQuestion, catalog, intent);
   if (retrieved.length === 0) {
     return buildDeterministicNoAnswer(
       question,
@@ -705,6 +760,7 @@ export async function buildEvidenceQueryAnswer(
     const generated = await generateEvidenceQuery(
       {
         question,
+        history,
         intent: intent.kind,
         preferredSurfaces: intent.preferredSurfaces,
         diagnosis: incident.diagnosisResult
