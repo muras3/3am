@@ -328,6 +328,70 @@ export class D1StorageAdapter implements StorageDriver {
       .where(eq(incidents.incidentId, incidentId));
   }
 
+  // #256: Combined expand + append in one read-modify-write (2 D1 round-trips instead of 6)
+  async expandAndAppend(
+    incidentId: string,
+    expansion: { windowStartMs: number; windowEndMs: number; memberServices: string[]; dependencyServices: string[]; spanIds: string[] },
+    signals: AnomalousSignal[],
+  ): Promise<void> {
+    const [row] = await this.db.select().from(incidents).where(eq(incidents.incidentId, incidentId));
+    if (!row) return;
+
+    // Expand telemetry scope
+    const currentScope = row.telemetryScope
+      ? (JSON.parse(row.telemetryScope) as TelemetryScope)
+      : deriveTelemetryScopeFromPacket(JSON.parse(row.packet) as IncidentPacket);
+    const memberSet = new Set(currentScope.memberServices);
+    for (const s of expansion.memberServices) memberSet.add(s);
+    const depSet = new Set(currentScope.dependencyServices);
+    for (const s of expansion.dependencyServices) depSet.add(s);
+    const updatedScope: TelemetryScope = {
+      ...currentScope,
+      windowStartMs: Math.min(currentScope.windowStartMs, expansion.windowStartMs),
+      windowEndMs: Math.max(currentScope.windowEndMs, expansion.windowEndMs),
+      memberServices: [...memberSet],
+      dependencyServices: [...depSet],
+    };
+
+    // Append span membership
+    const rawState = row.rawState ? (JSON.parse(row.rawState) as LegacyRawState) : null;
+    const currentMembership = row.spanMembership
+      ? (JSON.parse(row.spanMembership) as string[])
+      : deriveSpanMembershipFromRawState(rawState);
+    const existingIds = new Set(currentMembership);
+    let updatedMembership = [...currentMembership];
+    for (const id of expansion.spanIds) {
+      if (!existingIds.has(id)) {
+        updatedMembership.push(id);
+        existingIds.add(id);
+      }
+    }
+    if (updatedMembership.length > MAX_SPAN_MEMBERSHIP) {
+      updatedMembership = updatedMembership.slice(updatedMembership.length - MAX_SPAN_MEMBERSHIP);
+    }
+
+    // Append anomalous signals
+    const currentSignals = row.anomalousSignals
+      ? (JSON.parse(row.anomalousSignals) as AnomalousSignal[])
+      : deriveAnomalousSignalsFromRawState(rawState);
+    let updatedSignals = [...currentSignals, ...signals];
+    if (updatedSignals.length > MAX_ANOMALOUS_SIGNALS) {
+      updatedSignals = updatedSignals.slice(updatedSignals.length - MAX_ANOMALOUS_SIGNALS);
+    }
+
+    const now = new Date().toISOString();
+    await this.db
+      .update(incidents)
+      .set({
+        telemetryScope: JSON.stringify(updatedScope),
+        spanMembership: JSON.stringify(updatedMembership),
+        anomalousSignals: JSON.stringify(updatedSignals),
+        lastActivityAt: now,
+        updatedAt: now,
+      })
+      .where(eq(incidents.incidentId, incidentId));
+  }
+
   async appendPlatformEvents(incidentId: string, events: PlatformEvent[]): Promise<void> {
     if (events.length === 0) return;
     const [row] = await this.db.select().from(incidents).where(eq(incidents.incidentId, incidentId));
