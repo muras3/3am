@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useTranslation, Trans } from "react-i18next";
-import { saveAuthToken, getStoredAuthToken } from "../api/client.js";
+import { saveAuthToken, getStoredAuthToken, AUTH_FAILURE_EVENT } from "../api/client.js";
 import { detectPreferredContentLanguage, setPreferredLocale } from "../i18n/index.js";
 
 interface SetupStatus {
@@ -330,6 +330,13 @@ export function SetupGate({ children }: SetupGateProps) {
 
   useEffect(() => {
     runSetup();
+  }, []);
+
+  // Listen for auth failure (401/403) — redirect to recovery screen
+  useEffect(() => {
+    const onAuthFailure = () => setState("recovery");
+    window.addEventListener(AUTH_FAILURE_EVENT, onAuthFailure);
+    return () => window.removeEventListener(AUTH_FAILURE_EVENT, onAuthFailure);
   }, []);
 
   if (state === "loading") {

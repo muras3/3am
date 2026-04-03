@@ -9,10 +9,10 @@
  *  4. Detect platform CLI
  *  5. Check platform auth
  *  6. Confirm deploy
- *  7. Run platform deploy
- *  8. Wait for Receiver readiness
- *  9. Get AUTH_TOKEN (setup-token or prompt)
- * 10. Update .env
+ *  7. Resolve auth token (CLI credentials or generate)
+ *  8. Set platform secrets + deploy
+ *  9. Wait for Receiver readiness
+ * 10. Connect app runtime (CF Worker config / .env update)
  * 11. Completion output
  *
  * - No npm dependencies — only Node built-ins
@@ -28,10 +28,11 @@ import {
   type Platform,
 } from "./deploy/platform.js";
 import { createProvider } from "./deploy/provider.js";
-import { updateAppEnv, promptAuthToken } from "./deploy/env-writer.js";
-import { waitForReceiver, fetchSetupToken } from "./shared/health.js";
-import { resolveApiKey } from "./init/credentials.js";
+import { updateAppEnv } from "./deploy/env-writer.js";
+import { waitForReceiver } from "./shared/health.js";
+import { resolveApiKey, loadCredentials, saveCredentials } from "./init/credentials.js";
 import { connectCloudflareWorkerToReceiver } from "./cloudflare-workers.js";
+import { randomUUID } from "node:crypto";
 
 export interface DeployOptions {
   platform?: "vercel" | "cloudflare";
@@ -189,7 +190,31 @@ export async function runDeploy(
   }
 
   // -------------------------------------------------------------------------
-  // Step 7: Provision and deploy Receiver
+  // Step 7: Resolve auth token (CLI-managed, stable across re-deploys)
+  // -------------------------------------------------------------------------
+  let authToken: string;
+
+  if (options.authToken) {
+    // --auth-token flag takes highest priority
+    authToken = options.authToken;
+  } else {
+    // Load from CLI credentials or generate new
+    const creds = loadCredentials();
+    if (creds.receiverAuthToken) {
+      authToken = creds.receiverAuthToken;
+      info("Using existing auth token from CLI credentials.\n", json);
+    } else {
+      authToken = randomUUID();
+      info("Generated new auth token.\n", json);
+    }
+  }
+
+  // Persist to CLI credentials (idempotent)
+  const existingCreds = loadCredentials();
+  saveCredentials({ ...existingCreds, receiverAuthToken: authToken });
+
+  // -------------------------------------------------------------------------
+  // Step 8: Provision and deploy Receiver
   // -------------------------------------------------------------------------
   info(`\nDeploying Receiver to ${platform}...\n`, json);
   const provider = createProvider(platform, {
@@ -197,9 +222,11 @@ export async function runDeploy(
   });
   let deployedUrl: string;
   try {
-    // Set ANTHROPIC_API_KEY on the platform before deploying
+    // Set secrets on the platform before deploying
     info("Setting ANTHROPIC_API_KEY on platform...\n", json);
     await provider.setEnvVar("ANTHROPIC_API_KEY", apiKey);
+    info("Setting RECEIVER_AUTH_TOKEN on platform...\n", json);
+    await provider.setEnvVar("RECEIVER_AUTH_TOKEN", authToken);
 
     const result = await provider.deploy();
     deployedUrl = result.url;
@@ -219,7 +246,7 @@ export async function runDeploy(
   info(`\nReceiver deployed: ${deployedUrl}\n`, json);
 
   // -------------------------------------------------------------------------
-  // Step 8: Wait for Receiver readiness
+  // Step 9: Wait for Receiver readiness
   // -------------------------------------------------------------------------
   info("\nWaiting for Receiver to become ready...\n", json);
   const ready = await waitForReceiver(deployedUrl, 60_000);
@@ -232,66 +259,6 @@ export async function runDeploy(
     );
   } else {
     info("Receiver is ready.\n", json);
-  }
-
-  // -------------------------------------------------------------------------
-  // Step 9: Get AUTH_TOKEN
-  // -------------------------------------------------------------------------
-  let authToken: string;
-
-  if (options.authToken) {
-    // --auth-token flag takes priority (covers --no-setup case too)
-    authToken = options.authToken;
-  } else if (options.noSetup) {
-    // Validated in step 1: --no-setup without --auth-token is already blocked
-    // This branch is unreachable, but TypeScript needs it
-    process.stderr.write(
-      "Error: --no-setup requires --auth-token.\n\n" +
-        "Fix:\n" +
-        "  npx 3amoncall deploy --no-setup --auth-token <token>\n",
-    );
-    process.exit(1);
-    return;
-  } else {
-    // --setup or auto-detect via setup token API
-    info("\nFetching setup token...\n", json);
-    const setupResult = await fetchSetupToken(deployedUrl);
-
-    if (setupResult.status === "token") {
-      authToken = setupResult.token;
-      info("Setup token obtained.\n", json);
-    } else if (setupResult.status === "already-setup") {
-      info(
-        "Receiver is already configured (setup token already consumed).\n",
-        json,
-      );
-      if (options.noInteractive) {
-        process.stderr.write(
-          "Error: Receiver already set up and no --auth-token provided.\n\n" +
-            "Fix:\n" +
-            "  npx 3amoncall deploy --no-setup --auth-token <token>\n",
-        );
-        process.exit(1);
-        return;
-      }
-      authToken = await promptAuthToken();
-    } else {
-      // status === "error"
-      info(
-        `Warning: could not fetch setup token: ${setupResult.message}\n`,
-        json,
-      );
-      if (options.noInteractive) {
-        process.stderr.write(
-          "Error: could not obtain auth token and running in non-interactive mode.\n\n" +
-            "Fix:\n" +
-            "  npx 3amoncall deploy --no-setup --auth-token <token>\n",
-        );
-        process.exit(1);
-        return;
-      }
-      authToken = await promptAuthToken();
-    }
   }
 
   // -------------------------------------------------------------------------
@@ -311,7 +278,7 @@ export async function runDeploy(
           "  1. Create a Cloudflare API Token with account-level Workers Scripts:Edit and Logs:Edit.\n" +
           "  2. Export it as CLOUDFLARE_API_TOKEN.\n" +
           "  3. Re-run: npx 3amoncall deploy cloudflare --yes\n\n" +
-          "  The setup token has NOT been consumed — re-running deploy will fetch it again.\n",
+          "  Re-running deploy will use the same token from CLI credentials.\n",
       );
       process.exit(1);
       return;
@@ -338,11 +305,13 @@ export async function runDeploy(
     process.stdout.write("\nDeploy complete!\n\n");
     process.stdout.write(`  Receiver URL: ${deployedUrl}\n`);
     process.stdout.write(`  Console URL:  ${deployedUrl}\n`);
+    process.stdout.write(`  Auth Token:   ${authToken}\n`);
     process.stdout.write(`  Worker:       ${state.workerName}\n`);
     process.stdout.write(`  Wrangler:     ${state.configPath}\n\n`);
     process.stdout.write("Next steps:\n");
     process.stdout.write("  1. Trigger requests against your Cloudflare Worker\n");
-    process.stdout.write(`  2. Open ${deployedUrl} to view incidents\n\n`);
+    process.stdout.write(`  2. Open ${deployedUrl} and enter the auth token above\n`);
+    process.stdout.write("  3. Token is stored in ~/.config/3amoncall/credentials\n\n");
     return;
   }
 
@@ -418,7 +387,8 @@ export async function runDeploy(
   } else {
     process.stdout.write("\nDeploy complete!\n\n");
     process.stdout.write(`  Receiver URL: ${deployedUrl}\n`);
-    process.stdout.write(`  Console URL:  ${consoleUrl}\n\n`);
+    process.stdout.write(`  Console URL:  ${consoleUrl}\n`);
+    process.stdout.write(`  Auth Token:   ${authToken}\n\n`);
     process.stdout.write("Next steps:\n");
     if (!envUpdated) {
       process.stdout.write("  1. Add to your app's .env:\n");
@@ -429,11 +399,11 @@ export async function runDeploy(
         `       OTEL_EXPORTER_OTLP_HEADERS=Authorization=Bearer ${authToken}\n`,
       );
       process.stdout.write("  2. Restart your app\n");
-      process.stdout.write(`  3. Open ${consoleUrl} to view incidents\n`);
+      process.stdout.write(`  3. Open ${consoleUrl} and enter the auth token above\n`);
     } else {
       process.stdout.write("  1. Restart your app to pick up the new .env\n");
-      process.stdout.write(`  2. Open ${consoleUrl} to view incidents\n`);
+      process.stdout.write(`  2. Open ${consoleUrl} and enter the auth token above\n`);
     }
-    process.stdout.write("\n");
+    process.stdout.write("  Token is stored in ~/.config/3amoncall/credentials\n\n");
   }
 }
