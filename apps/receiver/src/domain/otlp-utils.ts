@@ -51,14 +51,28 @@ export function getStringAttr(attrs: unknown, key: string): string {
 }
 
 /**
+ * Known dummy service.name values that CF Workers Observability sets on its
+ * own auto-instrumented traces.  When forwarded via OTLP destinations these
+ * would mask the real worker name available in faas.name / cloudflare.script_name.
+ */
+const CF_DUMMY_SERVICE_NAMES = new Set([
+  'cloudflare-workers-observability',
+])
+
+/**
  * Resolve the logical service name from OTLP resource attributes.
- * CF Workers OTLP may omit service.name and send faas.name/cloudflare.script_name instead.
+ * CF Workers OTLP may set service.name to a generic platform value — skip it
+ * and fall back to faas.name / cloudflare.script_name in that case.
  */
 export function resolveResourceServiceName(attrs: unknown): string {
+  const serviceName = getStringAttr(attrs, 'service.name')
+  if (serviceName && !CF_DUMMY_SERVICE_NAMES.has(serviceName)) {
+    return serviceName
+  }
   return (
-    getStringAttr(attrs, 'service.name') ||
     getStringAttr(attrs, 'faas.name') ||
     getStringAttr(attrs, 'cloudflare.script_name') ||
+    serviceName ||  // still better than 'unknown' if no alternatives exist
     'unknown'
   )
 }

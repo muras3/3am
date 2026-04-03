@@ -107,6 +107,21 @@ describe('resolveResourceServiceName', () => {
     expect(resolveResourceServiceName([{ key: 'cloudflare.script_name', value: { stringValue: 'worker-b' } }])).toBe('worker-b')
   })
 
+  it('skips CF dummy service.name and falls back to faas.name', () => {
+    const attrs = [
+      { key: 'service.name', value: { stringValue: 'cloudflare-workers-observability' } },
+      { key: 'faas.name', value: { stringValue: 'my-worker' } },
+    ]
+    expect(resolveResourceServiceName(attrs)).toBe('my-worker')
+  })
+
+  it('returns CF dummy service.name when no alternatives exist', () => {
+    const attrs = [
+      { key: 'service.name', value: { stringValue: 'cloudflare-workers-observability' } },
+    ]
+    expect(resolveResourceServiceName(attrs)).toBe('cloudflare-workers-observability')
+  })
+
   it('defaults to unknown when no resource service attribute is present', () => {
     expect(resolveResourceServiceName([])).toBe('unknown')
   })
