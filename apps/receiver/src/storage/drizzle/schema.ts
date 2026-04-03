@@ -23,6 +23,7 @@ export const incidents = sqliteTable("incidents", {
   spanMembership: text("span_membership"),    // JSON string of string[] | null
   anomalousSignals: text("anomalous_signals"),// JSON string of AnomalousSignal[] | null
   platformEvents: text("platform_events"),    // JSON string of PlatformEvent[] | null
+  diagnosisScheduledAt: text("diagnosis_scheduled_at"),   // ISO timestamp | null
   diagnosisDispatchedAt: text("diagnosis_dispatched_at"), // ISO timestamp | null
   createdAt: text("created_at").notNull().default(sql`(strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))`),
   updatedAt: text("updated_at").notNull().default(sql`(strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))`),

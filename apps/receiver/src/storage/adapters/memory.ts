@@ -72,6 +72,8 @@ export class MemoryAdapter implements StorageDriver {
     this.incidents.set(id, {
       ...incident,
       diagnosisResult: result,
+      diagnosisScheduledAt: undefined,
+      diagnosisDispatchedAt: undefined,
     });
   }
 
@@ -151,6 +153,19 @@ export class MemoryAdapter implements StorageDriver {
     const incident = this.incidents.get(incidentId);
     if (!incident) return;
     incident.diagnosisDispatchedAt = undefined;
+  }
+
+  async markDiagnosisScheduled(incidentId: string, at?: string): Promise<void> {
+    const incident = this.incidents.get(incidentId);
+    if (!incident) return;
+    if (incident.diagnosisScheduledAt) return; // already set — idempotent
+    incident.diagnosisScheduledAt = at ?? new Date().toISOString();
+  }
+
+  async clearDiagnosisScheduled(incidentId: string): Promise<void> {
+    const incident = this.incidents.get(incidentId);
+    if (!incident) return;
+    incident.diagnosisScheduledAt = undefined;
   }
 
   async listIncidents(opts: {

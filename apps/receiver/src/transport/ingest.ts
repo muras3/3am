@@ -352,12 +352,14 @@ export function createIngestRouter(
       // Schedule delayed diagnosis. Generation threshold is checked in rebuildAndNotify above.
       if (enqueueDiagnosis) {
         // CF Workers: use Queue native delay (no waitUntil+sleep needed)
+        await storage.markDiagnosisScheduled(incidentId);
         const delaySec = diagnosisConfig.maxWaitMs > 0
           ? Math.ceil(diagnosisConfig.maxWaitMs / 1000)
           : undefined;
         await enqueueDiagnosis(incidentId, "diagnosis", delaySec);
       } else if (diagnosisRunner) {
         // Vercel / Node.js: use waitUntil + sleep for delayed execution
+        await storage.markDiagnosisScheduled(incidentId);
         if (diagnosisConfig.maxWaitMs > 0) {
           const waitUntilFn = await waitUntilPromise;
           scheduleDelayedDiagnosis(incidentId, storage, diagnosisRunner, {

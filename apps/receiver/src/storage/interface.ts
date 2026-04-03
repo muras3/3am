@@ -69,6 +69,7 @@ export interface Incident {
   packet: IncidentPacket;
   diagnosisResult?: DiagnosisResult;
   consoleNarrative?: ConsoleNarrative;
+  diagnosisScheduledAt?: string;       // ISO timestamp — set when diagnosis is enqueued/scheduled
   diagnosisDispatchedAt?: string;     // ISO timestamp — set when diagnosis dispatch is claimed
   telemetryScope: TelemetryScope;
   spanMembership: string[];          // "traceId:spanId" compact ref set
@@ -165,6 +166,19 @@ export interface StorageDriver {
    * Used when diagnosis fails after claiming dispatch.
    */
   releaseDiagnosisDispatch(incidentId: string): Promise<void>;
+
+  /**
+   * Mark that a diagnosis has been scheduled/enqueued for an incident.
+   * Only sets the timestamp if diagnosisScheduledAt is not already set (idempotent).
+   * Used to distinguish "pending" from "unavailable" in the diagnosis state machine.
+   */
+  markDiagnosisScheduled(incidentId: string, at?: string): Promise<void>;
+
+  /**
+   * Clear the diagnosisScheduledAt marker.
+   * Used when diagnosis completes or is no longer expected.
+   */
+  clearDiagnosisScheduled(incidentId: string): Promise<void>;
 
   saveThinEvent(event: ThinEvent): Promise<void>;
 
