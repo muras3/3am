@@ -13,7 +13,12 @@ import { EvidenceQueryResponseSchema } from '@3am/core/schemas/curated-evidence'
 import type { DiagnosisResult } from '@3am/core'
 import type * as DiagnosisModule from '@3am/diagnosis'
 
-const { generateEvidenceQueryMock } = vi.hoisted(() => ({
+const { generateEvidencePlanMock, generateEvidenceQueryMock } = vi.hoisted(() => ({
+  generateEvidencePlanMock: vi.fn(async (input: { question: string }) => ({
+    mode: 'answer' as const,
+    rewrittenQuestion: input.question,
+    preferredSurfaces: ['traces', 'metrics', 'logs'] as const,
+  })),
   generateEvidenceQueryMock: vi.fn(async (input: { question: string }, options?: { locale?: 'en' | 'ja' }) => ({
     question: input.question,
     status: 'answered' as const,
@@ -32,6 +37,7 @@ vi.mock('@3am/diagnosis', async () => {
   const actual = await vi.importActual<typeof DiagnosisModule>('@3am/diagnosis')
   return {
     ...actual,
+    generateEvidencePlan: generateEvidencePlanMock,
     generateEvidenceQuery: generateEvidenceQueryMock,
   }
 })

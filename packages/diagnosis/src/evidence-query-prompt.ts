@@ -8,6 +8,7 @@ export type EvidenceQueryPromptEvidence = {
 
 export type EvidenceQueryPromptInput = {
   question: string;
+  answerMode?: "answer" | "action" | "missing_evidence";
   history?: Array<{
     role: "user" | "assistant";
     content: string;
@@ -46,6 +47,7 @@ export function buildEvidenceQueryPrompt(
     : "  (none)";
 
   const prioritySection = [
+    `answer_mode: ${input.answerMode ?? "answer"}`,
     `question_intent: ${input.intent}`,
     `preferred_surfaces: ${input.preferredSurfaces.join(", ") || "(none)"}`,
   ].join("\n");
@@ -81,6 +83,7 @@ Product contract:
 - Use recent conversation history to resolve underspecified follow-up questions whenever the referent is reasonably clear.
 - If the user asks for the next action or how something should behave, answer with the minimum concrete action that follows from the diagnosis and cited evidence.
 - Do not repeat the previous assistant answer unless the user is explicitly asking for the same thing again.
+- Follow the answer_mode strictly. If answer_mode is "action", return operational next steps. If "missing_evidence", explain the missing signal and the next verification step.
 
 Curated diagnosis:
 ${diagnosisSection}

@@ -12,13 +12,22 @@ export { parseNarrative } from "./parse-narrative.js";
 export type { NarrativeMeta } from "./parse-narrative.js";
 export { generateEvidenceQuery } from "./generate-evidence-query.js";
 export type { GenerateEvidenceQueryOptions } from "./generate-evidence-query.js";
+export { generateEvidencePlan } from "./generate-evidence-plan.js";
+export type { GenerateEvidencePlanOptions } from "./generate-evidence-plan.js";
 export { buildEvidenceQueryPrompt } from "./evidence-query-prompt.js";
 export type {
   EvidenceQueryPromptEvidence,
   EvidenceQueryPromptInput,
 } from "./evidence-query-prompt.js";
+export { buildEvidencePlanPrompt } from "./evidence-plan-prompt.js";
+export type {
+  EvidencePlanPromptEvidence,
+  EvidencePlanPromptInput,
+} from "./evidence-plan-prompt.js";
 export { parseEvidenceQuery } from "./parse-evidence-query.js";
 export type { EvidenceQueryParseMeta } from "./parse-evidence-query.js";
+export { parseEvidencePlan } from "./parse-evidence-plan.js";
+export type { EvidencePlan, EvidencePlanMode } from "./parse-evidence-plan.js";
 export {
   PROVIDER_NAMES,
   resolveProvider,
