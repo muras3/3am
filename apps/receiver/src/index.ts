@@ -221,8 +221,8 @@ export function createApp(storage?: StorageDriver, options?: AppOptions): Hono {
     return Number.isNaN(n) ? fallback : n;
   };
   const diagnosisConfig: DiagnosisConfig = {
-    generationThreshold: parseEnvInt(process.env["DIAGNOSIS_GENERATION_THRESHOLD"], 50),
-    maxWaitMs: parseEnvInt(process.env["DIAGNOSIS_MAX_WAIT_MS"], 180000),
+    generationThreshold: parseEnvInt(process.env["DIAGNOSIS_GENERATION_THRESHOLD"], 15),
+    maxWaitMs: parseEnvInt(process.env["DIAGNOSIS_MAX_WAIT_MS"], 30000),
   };
 
   // Setup endpoints (public, no auth required) — must be registered before API router
