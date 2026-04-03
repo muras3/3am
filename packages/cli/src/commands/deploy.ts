@@ -310,7 +310,8 @@ export async function runDeploy(
           "Fix:\n" +
           "  1. Create a Cloudflare API Token with account-level Workers Scripts:Edit and Logs:Edit.\n" +
           "  2. Export it as CLOUDFLARE_API_TOKEN.\n" +
-          "  3. Re-run: npx 3amoncall deploy cloudflare --yes\n",
+          "  3. Re-run: npx 3amoncall deploy cloudflare --yes\n\n" +
+          "  The setup token has NOT been consumed — re-running deploy will fetch it again.\n",
       );
       process.exit(1);
       return;
