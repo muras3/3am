@@ -20,6 +20,27 @@ interface Props {
 
 const NARRATIVE_POLL_INTERVAL_MS = 5_000;
 
+function historyToRequest(history: QAHistoryItem[]) {
+  return history.flatMap((entry) => {
+    const turns: Array<{ role: "user" | "assistant"; content: string }> = [
+      { role: "user", content: entry.question },
+    ];
+
+    if (entry.status === "answered" && entry.response) {
+      const assistantContent = entry.response.segments.length > 0
+        ? entry.response.segments.map((segment) => segment.text).join(" ")
+        : entry.response.noAnswerReason;
+      if (assistantContent) {
+        turns.push({ role: "assistant", content: assistantContent });
+      }
+    } else if (entry.status === "failed" && entry.error) {
+      turns.push({ role: "assistant", content: entry.error });
+    }
+
+    return turns;
+  }).slice(-20);
+}
+
 export function LensEvidenceStudio({ incidentId }: Props) {
   const { t } = useTranslation();
   const search = useLensSearch();
@@ -122,7 +143,7 @@ export function LensEvidenceStudio({ incidentId }: Props) {
     const isFollowup = history.length > 0;
     setHistory((current) => [...current, { id: entryId, question, status: "pending" }]);
     groundedQueryMutation.mutate(
-      { question, isFollowup },
+      { question, isFollowup, history: historyToRequest(history) },
       {
         onSuccess: (response) => {
           setHistory((current) =>

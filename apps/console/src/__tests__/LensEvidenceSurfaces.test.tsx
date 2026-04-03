@@ -661,7 +661,7 @@ describe("Degraded states — QA", () => {
     expect(screen.getByText(evidenceSparse.qa.noAnswerReason!)).toBeInTheDocument();
   });
 
-  it("follow-up chips are removed from degraded states", () => {
+  it("follow-up chips remain available in degraded states", () => {
     render(
       <QAFrame
         qa={evidenceSparse.qa}
@@ -673,7 +673,7 @@ describe("Degraded states — QA", () => {
       />,
     );
     const chips = document.querySelectorAll(".lens-ev-qa-chip");
-    expect(chips).toHaveLength(0);
+    expect(chips.length).toBeGreaterThan(0);
   });
 
   it("input stays disabled when isSubmitting=true", () => {

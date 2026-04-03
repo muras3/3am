@@ -212,9 +212,10 @@ describe("LensEvidenceStudio — Q&A frame", () => {
     );
   });
 
-  it("does not render suggested follow-up chips", () => {
+  it("renders suggested follow-up chips", () => {
     renderStudio("inc_0892", setupReady());
-    expect(document.querySelectorAll(".lens-ev-qa-chip")).toHaveLength(0);
+    expect(document.querySelectorAll(".lens-ev-qa-chip").length).toBeGreaterThan(0);
+    expect(screen.getByRole("button", { name: /Is there retry logic\?/ })).toBeInTheDocument();
   });
 });
 
@@ -413,10 +414,10 @@ describe("QAFrame", () => {
     ).toBeInTheDocument();
   });
 
-  it("does not render follow-up chips", () => {
+  it("renders follow-up chips", () => {
     renderQAFrame(evidenceReady.qa);
     const chips = document.querySelectorAll(".lens-ev-qa-chip");
-    expect(chips).toHaveLength(0);
+    expect(chips.length).toBeGreaterThan(0);
   });
 
   it("renders fixed fallback QA object from receiver contract", () => {
@@ -1006,7 +1007,7 @@ describe("LensEvidenceStudio — Q&A mutation integration", () => {
     );
   });
 
-  it("first question is sent as a non-follow-up", async () => {
+  it("first question is sent as a non-follow-up with empty history", async () => {
     const user = userEvent.setup();
     renderStudio("inc_0892", setupReady());
     const input = screen.getByLabelText("Ask a grounded question about this incident");
@@ -1016,7 +1017,7 @@ describe("LensEvidenceStudio — Q&A mutation integration", () => {
     expect(fetchSpy).toHaveBeenCalledWith(
       expect.any(String),
       expect.objectContaining({
-        body: JSON.stringify({ question: "First question", isFollowup: false }),
+        body: JSON.stringify({ question: "First question", isFollowup: false, history: [] }),
       }),
     );
   });
@@ -1032,7 +1033,7 @@ describe("LensEvidenceStudio — Q&A mutation integration", () => {
     expect((await screen.findAllByText("Grounded answer")).length).toBeGreaterThan(1);
   });
 
-  it("second question is sent as a follow-up", async () => {
+  it("second question is sent as a follow-up with transcript history", async () => {
     const user = userEvent.setup();
     renderStudio("inc_0892", setupReady());
     const input = screen.getByLabelText("Ask a grounded question about this incident");
@@ -1047,7 +1048,35 @@ describe("LensEvidenceStudio — Q&A mutation integration", () => {
     expect(fetchSpy).toHaveBeenLastCalledWith(
       expect.any(String),
       expect.objectContaining({
-        body: JSON.stringify({ question: "Second question", isFollowup: true }),
+        body: JSON.stringify({
+          question: "Second question",
+          isFollowup: true,
+          history: [
+            { role: "user", content: "First question" },
+            {
+              role: "assistant",
+              content: groundedAnswer.segments.map((segment) => segment.text).join(" "),
+            },
+          ],
+        }),
+      }),
+    );
+  });
+
+  it("clicking a follow-up chip sends it immediately", async () => {
+    const user = userEvent.setup();
+    renderStudio("inc_0892", setupReady());
+
+    await user.click(screen.getByRole("button", { name: /Is there retry logic\?/ }));
+
+    expect(fetchSpy).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        body: JSON.stringify({
+          question: "Is there retry logic?",
+          isFollowup: false,
+          history: [],
+        }),
       }),
     );
   });
