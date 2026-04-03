@@ -1,4 +1,4 @@
-# 3amoncall
+# 3am
 
 Diagnose serverless app incidents in under 5 minutes using OTel data + LLM.
 
@@ -13,36 +13,36 @@ Diagnose serverless app incidents in under 5 minutes using OTel data + LLM.
 
 ```bash
 # 1. Set up OTel SDK in your app
-npx 3amoncall init
+npx 3am init
 
 # 2. Start local Receiver (requires Docker Desktop)
-npx 3amoncall local
+npx 3am local
 
 # 2b. If you selected manual mode, start the local bridge
-npx 3amoncall bridge
+npx 3am bridge
 
 # 3. (In another terminal) Run a demo incident — see diagnosis in action
-npx 3amoncall local demo
+npx 3am local demo
 
 # 4. Open Console to see the diagnosis
 open http://localhost:3333
 ```
 
-`3amoncall local demo` injects a synthetic downstream-timeout scenario into the local Receiver and runs a real LLM diagnosis (~¥10/run). No real incident needed — you see the full diagnosis and AI copilot experience immediately. Demo data uses `service.name=3amoncall-demo` and won't mix with your app's telemetry.
+`3am local demo` injects a synthetic downstream-timeout scenario into the local Receiver and runs a real LLM diagnosis (~¥10/run). No real incident needed — you see the full diagnosis and AI copilot experience immediately. Demo data uses `service.name=3am-demo` and won't mix with your app's telemetry.
 
-`3amoncall init` is runtime-aware. For Node.js and Vercel it installs OTel dependencies, creates `instrumentation.ts/js`, and writes `OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:3333` to `.env`. For Cloudflare Workers it updates `wrangler.toml` or `wrangler.jsonc` to enable Workers Observability for traces and logs.
+`3am init` is runtime-aware. For Node.js and Vercel it installs OTel dependencies, creates `instrumentation.ts/js`, and writes `OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:3333` to `.env`. For Cloudflare Workers it updates `wrangler.toml` or `wrangler.jsonc` to enable Workers Observability for traces and logs.
 
-`3amoncall init` now captures a diagnosis mode and provider choice.
+`3am init` now captures a diagnosis mode and provider choice.
 
 - `automatic`: Receiver runs diagnosis server-side
 - `manual`: Console and CLI route diagnosis through the local bridge, so you can use Claude Code, Codex, Ollama, or another local/provider-backed setup without issuing an Anthropic API key
 
-`3amoncall local` pulls and runs the Receiver image via Docker. In manual mode, also start `npx 3amoncall bridge` so Console-triggered local diagnosis can reach your local provider.
+`3am local` pulls and runs the Receiver image via Docker. In manual mode, also start `npx 3am bridge` so Console-triggered local diagnosis can reach your local provider.
 
 You can also run manual diagnosis directly from the CLI:
 
 ```bash
-npx 3amoncall diagnose \
+npx 3am diagnose \
   --incident-id inc_000001 \
   --receiver-url http://localhost:3333 \
   --provider claude-code
@@ -63,7 +63,7 @@ Optional receiver tuning:
 
 ## Deploy to Vercel (Production)
 
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/3amoncall/3amoncall&env=ANTHROPIC_API_KEY&envDescription=Anthropic%20API%20key%20for%20LLM%20diagnosis&envLink=https://console.anthropic.com/settings/keys&products=%5B%7B%22type%22%3A%22integration%22%2C%22group%22%3A%22postgres%22%7D%5D&project-name=3amoncall&repository-name=3amoncall)
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/muras3/3am&env=ANTHROPIC_API_KEY&envDescription=Anthropic%20API%20key%20for%20LLM%20diagnosis&envLink=https://console.anthropic.com/settings/keys&products=%5B%7B%22type%22%3A%22integration%22%2C%22group%22%3A%22postgres%22%7D%5D&project-name=3am&repository-name=3am)
 
 1. Click the button above
 2. Choose `automatic` or `manual` diagnosis mode for the deployment
@@ -74,10 +74,10 @@ Optional receiver tuning:
 7. Point your app at the production Receiver:
 
 ```bash
-npx 3amoncall deploy vercel
+npx 3am deploy vercel
 
 # Or non-interactively (for CI / Claude Code):
-npx 3amoncall deploy vercel --yes --no-interactive --json
+npx 3am deploy vercel --yes --no-interactive --json
 ```
 
 ---
@@ -95,12 +95,12 @@ Then export it before running deploy:
 
 ```bash
 export CLOUDFLARE_API_TOKEN=your-cloudflare-api-token
-npx 3amoncall deploy cloudflare --yes
+npx 3am deploy cloudflare --yes
 ```
 
 What `deploy cloudflare` does:
 
-1. Deploys the 3amoncall receiver to Cloudflare
+1. Deploys the 3am receiver to Cloudflare
 2. Creates or updates OTLP destinations for traces and logs
 3. Updates the current directory's `wrangler.toml` or `wrangler.jsonc`
 4. Deploys the current Cloudflare Worker so telemetry starts flowing to the receiver
@@ -109,7 +109,7 @@ For Claude Code or CI, the same environment variable applies:
 
 ```bash
 export CLOUDFLARE_API_TOKEN=your-cloudflare-api-token
-npx 3amoncall deploy cloudflare --yes --no-interactive --json
+npx 3am deploy cloudflare --yes --no-interactive --json
 ```
 
 If `CLOUDFLARE_API_TOKEN` is missing, the CLI falls back to prompting for a Global API Key in interactive mode only.
@@ -118,12 +118,12 @@ If `CLOUDFLARE_API_TOKEN` is missing, the CLI falls back to prompting for a Glob
 
 ## Self-Instrumentation
 
-3amoncall can emit OpenTelemetry about the receiver itself in addition to ingesting telemetry from your application.
+3am can emit OpenTelemetry about the receiver itself in addition to ingesting telemetry from your application.
 
 - Vercel and local Node.js are the supported self-instrumentation targets.
 - Cloudflare Workers self-instrumentation is experimental and uses Cloudflare's official automatic tracing and logging path.
 - Capability is intentionally not symmetric across platforms.
-- Self telemetry should go to a dedicated OTLP backend, or to a separate 3amoncall environment reserved for dogfooding. Do not point it at the same receiver ingest endpoint that is handling your application telemetry.
+- Self telemetry should go to a dedicated OTLP backend, or to a separate 3am environment reserved for dogfooding. Do not point it at the same receiver ingest endpoint that is handling your application telemetry.
 
 ### Platform Matrix
 
@@ -139,8 +139,8 @@ Set these environment variables for the receiver deployment:
 ```bash
 SELF_OTEL_ENABLED=true
 SELF_OTEL_EXPORTER_OTLP_ENDPOINT=https://your-otel-backend.example.com
-SELF_OTEL_SERVICE_NAME=3amoncall-receiver
-SELF_OTEL_SERVICE_NAMESPACE=3amoncall
+SELF_OTEL_SERVICE_NAME=3am-receiver
+SELF_OTEL_SERVICE_NAMESPACE=3am
 SELF_OTEL_DEPLOYMENT_ENVIRONMENT=production
 ```
 
@@ -159,19 +159,19 @@ What is emitted on Node/Vercel:
 
 ### Cloudflare Workers Setup
 
-Cloudflare Workers support is experimental. The receiver enables Workers Observability in [`apps/receiver/wrangler.toml`](/Users/murase/project/3amoncall-self-instrumentation/apps/receiver/wrangler.toml), which is the intended path for automatic tracing and log capture on Workers.
+Cloudflare Workers support is experimental. The receiver enables Workers Observability in [`apps/receiver/wrangler.toml`](/Users/murase/project/3am-self-instrumentation/apps/receiver/wrangler.toml), which is the intended path for automatic tracing and log capture on Workers.
 
 - traces: supported
 - logs: supported
 - metrics: not supported for receiver self-instrumentation
 - custom spans: not a pre-release requirement and not implemented here
 
-For deployment and verification details, see [`docs/self-instrumentation.md`](/Users/murase/project/3amoncall-self-instrumentation/docs/self-instrumentation.md).
+For deployment and verification details, see [`docs/self-instrumentation.md`](/Users/murase/project/3am-self-instrumentation/docs/self-instrumentation.md).
 
-### User Telemetry vs 3amoncall Self Telemetry
+### User Telemetry vs 3am Self Telemetry
 
-- user telemetry is the telemetry your application sends to the 3amoncall receiver via `/v1/traces`, `/v1/logs`, and `/v1/metrics`
-- self telemetry is the telemetry emitted by the 3amoncall receiver process or worker about its own requests and internal activity
+- user telemetry is the telemetry your application sends to the 3am receiver via `/v1/traces`, `/v1/logs`, and `/v1/metrics`
+- self telemetry is the telemetry emitted by the 3am receiver process or worker about its own requests and internal activity
 
 Use separate destinations, projects, or tenants so dogfooding data does not pollute the incident stream you are analyzing for your application.
 
@@ -210,19 +210,19 @@ Invalid values (non-integer, zero, negative) fall back to the default (1 hour). 
 
 ## Notification Setup
 
-3amoncall can post a message to a Slack or Discord channel when an incident is detected.
+3am can post a message to a Slack or Discord channel when an incident is detected.
 
 ### Slack Incoming Webhook
 
 1. Go to https://api.slack.com/apps → "Create New App" → "From Scratch"
-2. Name the app (e.g. "3amoncall") and select your workspace
+2. Name the app (e.g. "3am") and select your workspace
 3. Under "Incoming Webhooks" → toggle ON → "Add New Webhook to Workspace" → select channel
 4. Copy the webhook URL (starts with `https://hooks.slack.com/services/...`)
 
 ### Discord Webhook
 
 1. In Discord, go to Server Settings → Integrations → Webhooks → "New Webhook"
-2. Name it (e.g. "3amoncall") and select the target channel
+2. Name it (e.g. "3am") and select the target channel
 3. Copy the webhook URL (starts with `https://discord.com/api/webhooks/...`)
 
 ### Configuration
@@ -232,12 +232,12 @@ Invalid values (non-integer, zero, negative) fall back to the default (1 hour). 
 export NOTIFICATION_WEBHOOK_URL="https://hooks.slack.com/services/..."
 
 # Or configure during init
-npx 3amoncall init
+npx 3am init
 ```
 
 ### How It Works
 
-- When an incident is detected, 3amoncall sends a notification to the configured webhook
+- When an incident is detected, 3am sends a notification to the configured webhook
 - The notification includes: incident ID, severity, affected service, trigger signals, and a link to the console
 - Notifications are fire-and-forget — they never block incident processing
 - Only Slack and Discord webhook URLs are supported (validated by hostname)

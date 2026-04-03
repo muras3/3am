@@ -73,7 +73,7 @@ async function main() {
   serve({ fetch: app.fetch, port, hostname: "0.0.0.0" }, (info) => {
     emitSelfTelemetryLog({
       severity: "INFO",
-      body: "3amoncall receiver listening",
+      body: "3am receiver listening",
       attributes: {
         "server.address": "0.0.0.0",
         "server.port": info.port,

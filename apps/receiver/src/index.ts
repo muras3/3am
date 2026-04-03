@@ -12,7 +12,7 @@ import { SpanBuffer } from "./ambient/span-buffer.js";
 import type { DiagnosisConfig } from "./runtime/diagnosis-debouncer.js";
 import { DiagnosisRunner } from "./runtime/diagnosis-runner.js";
 import type { EnqueueDiagnosisFn } from "./runtime/diagnosis-dispatch.js";
-import { PROVIDER_NAMES } from "@3amoncall/diagnosis";
+import { PROVIDER_NAMES } from "@3am/diagnosis";
 import {
   getReceiverLlmSettings,
   SETTINGS_KEY_DIAGNOSIS_MODE,
@@ -54,7 +54,7 @@ export async function resolveAuthToken(storage: StorageDriver): Promise<string |
   emitSelfTelemetryLog({
     severity: "INFO",
     body: "[receiver] generated new auth token",
-    attributes: { "3amoncall.receiver.event": "auth-token-generated" },
+    attributes: { "3am.receiver.event": "auth-token-generated" },
   });
   return generated;
 }
@@ -80,14 +80,14 @@ export function createApp(storage?: StorageDriver, options?: AppOptions): Hono {
   const allowInsecure = process.env["ALLOW_INSECURE_DEV_MODE"] === "true";
 
   if (isSelfTelemetryActive()) {
-    const tracer = trace.getTracer("3amoncall.receiver.self");
+    const tracer = trace.getTracer("3am.receiver.self");
     app.use("*", async (c, next) => {
       return tracer.startActiveSpan(
         `${c.req.method} ${c.req.path}`,
         {
           kind: SpanKind.SERVER,
           attributes: {
-            "3amoncall.telemetry.stream": "self",
+            "3am.telemetry.stream": "self",
             "http.route": c.req.path,
             "http.request.method": c.req.method,
             "url.path": new URL(c.req.url).pathname,
@@ -111,7 +111,7 @@ export function createApp(storage?: StorageDriver, options?: AppOptions): Hono {
               "http.response.status_code": status,
               "server.address": url.hostname,
               "server.port": Number(url.port || (url.protocol === "https:" ? 443 : 80)),
-              "3amoncall.request.duration_ms": durationMs,
+              "3am.request.duration_ms": durationMs,
             });
             if (status >= 400 && !failed) {
               span.setStatus({ code: SpanStatusCode.ERROR });
@@ -132,7 +132,7 @@ export function createApp(storage?: StorageDriver, options?: AppOptions): Hono {
                 "url.path": url.pathname,
                 "server.address": url.hostname,
                 "server.port": Number(url.port || (url.protocol === "https:" ? 443 : 80)),
-                "3amoncall.request.duration_ms": durationMs,
+                "3am.request.duration_ms": durationMs,
               },
             });
             span.end();
@@ -185,7 +185,7 @@ export function createApp(storage?: StorageDriver, options?: AppOptions): Hono {
     emitSelfTelemetryLog({
       severity: "WARN",
       body: "[receiver] auth disabled for insecure dev mode",
-      attributes: { "3amoncall.receiver.event": "auth-disabled-dev-mode" },
+      attributes: { "3am.receiver.event": "auth-disabled-dev-mode" },
     });
   } else {
     // Deferred setup completion: mark setup as done on first authenticated

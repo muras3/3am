@@ -1,11 +1,11 @@
 /**
- * `npx 3amoncall local demo` — inject a demo incident and run real LLM diagnosis.
+ * `npx 3am local demo` — inject a demo incident and run real LLM diagnosis.
  *
  * Sends a synthetic downstream-timeout trace to the local Receiver,
  * waits for the diagnosis pipeline to complete, and guides the user
  * to the Console to inspect the result and try the AI copilot.
  *
- * - service.name = "3amoncall-demo"
+ * - service.name = "3am-demo"
  * - deployment.environment.name = "demo"
  * - Real LLM diagnosis (ANTHROPIC_API_KEY required)
  * - Local/dev only
@@ -52,7 +52,7 @@ export function buildDemoPayload(): object {
       {
         resource: {
           attributes: [
-            { key: "service.name", value: { stringValue: "3amoncall-demo" } },
+            { key: "service.name", value: { stringValue: "3am-demo" } },
             {
               key: "deployment.environment.name",
               value: { stringValue: "demo" },
@@ -177,8 +177,8 @@ export async function runDemo(
       "Error: ANTHROPIC_API_KEY is required to run the demo.\n" +
         "The demo runs a real LLM diagnosis — an API key must be configured.\n\n" +
         "Fix:\n" +
-        "  npx 3amoncall init --api-key <your-key>\n" +
-        "  npx 3amoncall local demo\n",
+        "  npx 3am init --api-key <your-key>\n" +
+        "  npx 3am local demo\n",
     );
     process.exit(1);
     return;
@@ -191,9 +191,9 @@ export async function runDemo(
     process.stderr.write(
       `Error: Receiver is not running at ${baseUrl}.\n\n` +
         "Start it first:\n" +
-        "  npx 3amoncall local\n\n" +
+        "  npx 3am local\n\n" +
         "Then in another terminal:\n" +
-        "  npx 3amoncall local demo\n",
+        "  npx 3am local demo\n",
     );
     process.exit(1);
     return;
@@ -202,7 +202,7 @@ export async function runDemo(
   // 3. Cost consent
   process.stdout.write("\n");
   process.stdout.write("  scenario:    downstream timeout cascade\n");
-  process.stdout.write("  service:     3amoncall-demo\n");
+  process.stdout.write("  service:     3am-demo\n");
   process.stdout.write("  environment: demo\n\n");
 
   if (!options.yes) {
@@ -272,7 +272,7 @@ export async function runDemo(
       "  The Receiver may still be running the diagnosis.\n" +
         "  Check the Console in a moment.\n" +
         "  If diagnosis doesn't appear, make sure the Receiver was started\n" +
-        "  with ANTHROPIC_API_KEY (re-run `npx 3amoncall local`).\n",
+        "  with ANTHROPIC_API_KEY (re-run `npx 3am local`).\n",
     );
   }
 

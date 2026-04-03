@@ -1,7 +1,7 @@
 /**
  * DeployProvider — platform-abstracted Receiver deployment.
  *
- * The Receiver code lives in the 3amoncall repo, NOT in the user's cwd.
+ * The Receiver code lives in the 3am repo, NOT in the user's cwd.
  * Each provider clones the repo to a temp directory, provisions the platform
  * project, sets env vars, and deploys from there.
  *
@@ -32,17 +32,17 @@ export interface ProviderOptions {
   projectName?: string;
 }
 
-const REPO_URL = "https://github.com/muras3/3amoncall.git";
-const CLOUDFLARE_DIAGNOSIS_QUEUE = "3amoncall-diagnosis";
-const CLOUDFLARE_DIAGNOSIS_DLQ = "3amoncall-diagnosis-dlq";
+const REPO_URL = "https://github.com/muras3/3am.git";
+const CLOUDFLARE_DIAGNOSIS_QUEUE = "3am-diagnosis";
+const CLOUDFLARE_DIAGNOSIS_DLQ = "3am-diagnosis-dlq";
 
 // ---------------------------------------------------------------------------
 // Shared helpers
 // ---------------------------------------------------------------------------
 
 function cloneReceiver(): string {
-  const dir = mkdtempSync(join(tmpdir(), "3amoncall-deploy-"));
-  const repoSource = process.env["THREEAMONCALL_DEPLOY_REPO"] ?? REPO_URL;
+  const dir = mkdtempSync(join(tmpdir(), "3am-deploy-"));
+  const repoSource = process.env["THREEAM_DEPLOY_REPO"] ?? REPO_URL;
   const cloneArgs = repoSource.startsWith("http")
     ? ["clone", "--depth", "1", "--single-branch", repoSource, dir]
     : ["clone", repoSource, dir];
@@ -146,7 +146,7 @@ function extractVercelUrl(output: string): string | undefined {
 
 export function createVercelProvider(options: ProviderOptions = {}): DeployProvider {
   let tempDir: string | undefined = cloneReceiver();
-  const projectName = options.projectName ?? "3amoncall-receiver";
+  const projectName = options.projectName ?? "3am-receiver";
   process.stderr.write(`Cloned Receiver to ${tempDir}\n`);
 
   // Create Vercel project link so env vars can be set before deploy.
@@ -329,14 +329,14 @@ export function createCloudflareProvider(): DeployProvider {
 
   // Build Console (static assets referenced by wrangler.toml [assets])
   process.stderr.write("Building Console...\n");
-  execFileSync("pnpm", ["turbo", "run", "build", "--filter=@3amoncall/console..."], {
+  execFileSync("pnpm", ["turbo", "run", "build", "--filter=@3am/console..."], {
     cwd: tempDir,
     stdio: "inherit",
   });
 
   // Get or create D1 database (reuses existing on re-deploy)
   process.stderr.write("Provisioning D1 database...\n");
-  const dbId = ensureD1Database("3amoncall-db", receiverDir);
+  const dbId = ensureD1Database("3am-db", receiverDir);
   patchWranglerToml(receiverDir, dbId);
   process.stderr.write(`D1 database ready: ${dbId}\n`);
 

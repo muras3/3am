@@ -24,7 +24,7 @@ function appendPath(endpoint: string, suffix: "/v1/traces" | "/v1/logs" | "/v1/m
 export async function initializeNodeSelfTelemetry(
   runtime: Exclude<SelfTelemetryRuntime, "cloudflare-workers">,
 ): Promise<NodeSDK | null> {
-  process.env["THREEAMONCALL_RUNTIME"] = runtime;
+  process.env["THREEAM_RUNTIME"] = runtime;
 
   if (sdkPromise) {
     return sdkPromise;
@@ -47,8 +47,8 @@ export async function initializeNodeSelfTelemetry(
         [ATTR_SERVICE_NAMESPACE]: config.serviceNamespace,
         [ATTR_SERVICE_VERSION]: config.serviceVersion,
         "deployment.environment.name": config.deploymentEnvironment,
-        "3amoncall.telemetry.stream": "self",
-        "3amoncall.runtime": runtime,
+        "3am.telemetry.stream": "self",
+        "3am.runtime": runtime,
       }),
       traceExporter: new OTLPTraceExporter({
         url: appendPath(config.exporterEndpoint!, "/v1/traces"),

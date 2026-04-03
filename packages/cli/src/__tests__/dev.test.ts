@@ -188,7 +188,7 @@ describe("runDev", () => {
 
     expect(mockSpawnSync).toHaveBeenCalledWith(
       "docker",
-      expect.arrayContaining(["ghcr.io/3amoncall/receiver:v1.2.3"]),
+      expect.arrayContaining(["ghcr.io/3am/receiver:v1.2.3"]),
       expect.any(Object),
     );
   });
@@ -207,7 +207,7 @@ describe("runDev", () => {
 
     expect(mockSpawnSync).toHaveBeenCalledWith(
       "docker",
-      expect.arrayContaining(["ghcr.io/3amoncall/receiver:v0.0.0-unknown"]),
+      expect.arrayContaining(["ghcr.io/3am/receiver:v0.0.0-unknown"]),
       expect.any(Object),
     );
     // Must NOT use ":vlatest" which would silently pull wrong image
@@ -283,12 +283,12 @@ describe("runDev", () => {
     runDev();
 
     expect(mockExecSync).toHaveBeenCalledWith(
-      "docker build -t 3amoncall-receiver:local .",
+      "docker build -t 3am-receiver:local .",
       expect.objectContaining({ stdio: "inherit" }),
     );
     expect(mockSpawnSync).toHaveBeenCalledWith(
       "docker",
-      expect.arrayContaining(["3amoncall-receiver:local"]),
+      expect.arrayContaining(["3am-receiver:local"]),
       expect.any(Object),
     );
   });

@@ -114,7 +114,7 @@ describe("self-instrumentation integration", () => {
       .flatMap((resourceSpan) => resourceSpan.resource?.attributes ?? [])
       .filter((attribute) => attribute.key === "service.name")
       .map((attribute) => attribute.value?.stringValue);
-    expect(serviceNames).toContain("3amoncall-receiver");
+    expect(serviceNames).toContain("3am-receiver");
 
     const requestSpans = traceBodies
       .flatMap((body) => (body as { resourceSpans?: Array<{ scopeSpans?: Array<{ spans?: Array<{ attributes?: Array<{ key?: string; value?: { stringValue?: string } }> }> }> }> }).resourceSpans ?? [])
@@ -155,13 +155,13 @@ describe("self-instrumentation integration", () => {
       .flatMap((resourceMetric) => resourceMetric.resource?.attributes ?? [])
       .filter((attribute) => attribute.key === "service.name")
       .map((attribute) => attribute.value?.stringValue);
-    expect(metricServiceNames).toContain("3amoncall-receiver");
+    expect(metricServiceNames).toContain("3am-receiver");
 
     const metricNames = metrics
       .flatMap((resourceMetric) => resourceMetric.scopeMetrics ?? [])
       .flatMap((scopeMetric) => scopeMetric.metrics ?? [])
       .map((metric) => metric.name);
-    expect(metricNames).toContain("3amoncall.receiver.requests");
-    expect(metricNames).toContain("3amoncall.receiver.request.duration");
+    expect(metricNames).toContain("3am.receiver.requests");
+    expect(metricNames).toContain("3am.receiver.request.duration");
   });
 });

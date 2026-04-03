@@ -2,7 +2,7 @@
  * DiagnosisResult fixtures matching the 5 validation scenarios + 1 sparse case.
  * These represent stage 1 output that stage 2 reads.
  */
-import type { DiagnosisResult } from "@3amoncall/core";
+import type { DiagnosisResult } from "@3am/core";
 
 export const rateLimit: DiagnosisResult = {
   summary: {

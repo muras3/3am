@@ -2,7 +2,7 @@
 
 ## Goal
 
-3amoncall の Incident Console を、Datadog / New Relic / Dynatrace / incident.io / PagerDuty に負けない UI/UX で Figma に落とす。
+3am の Incident Console を、Datadog / New Relic / Dynatrace / incident.io / PagerDuty に負けない UI/UX で Figma に落とす。
 
 主画面は **incident-first**。  
 画面を開いた 5 秒以内に、以下が分かることを最優先にする。
@@ -53,7 +53,7 @@
 
 ### Local mock
 
-- [docs/mock/incident-console-concepts.html](/Users/murase/project/3amoncall/docs/mock/incident-console-concepts.html)
+- [docs/mock/incident-console-concepts.html](/Users/murase/project/3am/docs/mock/incident-console-concepts.html)
 
 ### Official references
 
@@ -169,7 +169,7 @@ Please produce:
 ## Suggested Figma Prompt
 
 ```text
-Design a premium, white-based incident console for 3amoncall.
+Design a premium, white-based incident console for 3am.
 
 Use Datadog, New Relic, Dynatrace, incident.io, and PagerDuty as reference inputs.
 The strongest visual reference should be Datadog.

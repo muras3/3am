@@ -1,5 +1,5 @@
 /**
- * `npx 3amoncall deploy` — deploy the Receiver to Vercel or Cloudflare,
+ * `npx 3am deploy` — deploy the Receiver to Vercel or Cloudflare,
  * then wire up the app's .env with the deployed URL and auth token.
  *
  * Orchestration flow:
@@ -90,7 +90,7 @@ export async function runDeploy(
     process.stderr.write(
       "Error: --no-setup requires --auth-token.\n\n" +
         "Fix:\n" +
-        "  npx 3amoncall deploy --no-setup --auth-token <token>\n",
+        "  npx 3am deploy --no-setup --auth-token <token>\n",
     );
     process.exit(1);
     return;
@@ -100,7 +100,7 @@ export async function runDeploy(
     process.stderr.write(
       "Error: --no-interactive requires --yes and an explicit deploy target.\n\n" +
         "Fix:\n" +
-        "  npx 3amoncall deploy vercel --no-interactive --yes\n",
+        "  npx 3am deploy vercel --no-interactive --yes\n",
     );
     process.exit(1);
     return;
@@ -114,8 +114,8 @@ export async function runDeploy(
     process.stderr.write(
       "Error: ANTHROPIC_API_KEY is required to deploy.\n\n" +
         "Fix:\n" +
-        "  npx 3amoncall init --api-key <your-key>\n" +
-        "  npx 3amoncall deploy\n",
+        "  npx 3am init --api-key <your-key>\n" +
+        "  npx 3am deploy\n",
     );
     process.exit(1);
     return;
@@ -131,7 +131,7 @@ export async function runDeploy(
     process.stderr.write(
       "Error: --no-interactive requires an explicit deploy target.\n\n" +
         "Fix:\n" +
-        "  npx 3amoncall deploy vercel --no-interactive --yes\n",
+        "  npx 3am deploy vercel --no-interactive --yes\n",
     );
     process.exit(1);
     return;
@@ -151,7 +151,7 @@ export async function runDeploy(
       `Error: ${binaryName} CLI is not installed.\n\n` +
         "Fix:\n" +
         `  ${installCmd}\n` +
-        `  npx 3amoncall deploy\n`,
+        `  npx 3am deploy\n`,
     );
     process.exit(1);
     return;
@@ -169,7 +169,7 @@ export async function runDeploy(
       `Error: not logged in to ${binaryName}.\n\n` +
         "Fix:\n" +
         `  ${loginCmd}\n` +
-        `  npx 3amoncall deploy\n`,
+        `  npx 3am deploy\n`,
     );
     process.exit(1);
     return;
@@ -227,7 +227,7 @@ export async function runDeploy(
     info(
       "Warning: Receiver did not become ready within 60s. Continuing anyway.\n" +
         "  The Receiver may still be starting up. If the .env update fails,\n" +
-        "  wait a moment and re-run: npx 3amoncall deploy --no-setup --auth-token <token>\n",
+        "  wait a moment and re-run: npx 3am deploy --no-setup --auth-token <token>\n",
       json,
     );
   } else {
@@ -248,7 +248,7 @@ export async function runDeploy(
     process.stderr.write(
       "Error: --no-setup requires --auth-token.\n\n" +
         "Fix:\n" +
-        "  npx 3amoncall deploy --no-setup --auth-token <token>\n",
+        "  npx 3am deploy --no-setup --auth-token <token>\n",
     );
     process.exit(1);
     return;
@@ -269,7 +269,7 @@ export async function runDeploy(
         process.stderr.write(
           "Error: Receiver already set up and no --auth-token provided.\n\n" +
             "Fix:\n" +
-            "  npx 3amoncall deploy --no-setup --auth-token <token>\n",
+            "  npx 3am deploy --no-setup --auth-token <token>\n",
         );
         process.exit(1);
         return;
@@ -285,7 +285,7 @@ export async function runDeploy(
         process.stderr.write(
           "Error: could not obtain auth token and running in non-interactive mode.\n\n" +
             "Fix:\n" +
-            "  npx 3amoncall deploy --no-setup --auth-token <token>\n",
+            "  npx 3am deploy --no-setup --auth-token <token>\n",
         );
         process.exit(1);
         return;
@@ -310,7 +310,7 @@ export async function runDeploy(
           "Fix:\n" +
           "  1. Create a Cloudflare API Token with account-level Workers Scripts:Edit and Logs:Edit.\n" +
           "  2. Export it as CLOUDFLARE_API_TOKEN.\n" +
-          "  3. Re-run: npx 3amoncall deploy cloudflare --yes\n\n" +
+          "  3. Re-run: npx 3am deploy cloudflare --yes\n\n" +
           "  The setup token has NOT been consumed — re-running deploy will fetch it again.\n",
       );
       process.exit(1);

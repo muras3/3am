@@ -105,6 +105,6 @@ v1alpha では、以下は固定しない。
 
 ## Related
 
-- [0005-raw-evaluation-inputs.md](/Users/murase/project/3amoncall/docs/adr/0005-raw-evaluation-inputs.md)
-- [0007-incident-packet-generated-in-receiver.md](/Users/murase/project/3amoncall/docs/adr/0007-incident-packet-generated-in-receiver.md)
-- [0008-problem-grouping-and-packetization-without-llm.md](/Users/murase/project/3amoncall/docs/adr/0008-problem-grouping-and-packetization-without-llm.md)
+- [0005-raw-evaluation-inputs.md](/Users/murase/project/3am/docs/adr/0005-raw-evaluation-inputs.md)
+- [0007-incident-packet-generated-in-receiver.md](/Users/murase/project/3am/docs/adr/0007-incident-packet-generated-in-receiver.md)
+- [0008-problem-grouping-and-packetization-without-llm.md](/Users/murase/project/3am/docs/adr/0008-problem-grouping-and-packetization-without-llm.md)

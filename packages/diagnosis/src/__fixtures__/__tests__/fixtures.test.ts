@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ReasoningStructureSchema, DiagnosisResultSchema } from "@3amoncall/core";
+import { ReasoningStructureSchema, DiagnosisResultSchema } from "@3am/core";
 import { allFixtures as rsFixtures } from "../reasoning-structures.js";
 import { allFixtures as drFixtures } from "../diagnosis-results.js";
 

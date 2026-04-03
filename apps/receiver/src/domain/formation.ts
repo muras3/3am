@@ -1,4 +1,4 @@
-import type { IncidentFormationKey } from '@3amoncall/core'
+import type { IncidentFormationKey } from '@3am/core'
 import type { ExtractedSpan } from './anomaly-detector.js'
 import type { Incident } from '../storage/interface.js'
 

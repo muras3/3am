@@ -154,7 +154,7 @@ async function main(): Promise<void> {
   const baseUrl = `http://127.0.0.1:${receiverPort}`;
   const mockServer = await startMockAnthropicServer(mockAnthropicPort);
   const restoreDevVars = writeDevVars(mockAnthropicPort);
-  const persistPath = mkdtempSync(path.join(tmpdir(), "3amoncall-cf-queue-"));
+  const persistPath = mkdtempSync(path.join(tmpdir(), "3am-cf-queue-"));
   const wrangler = startWranglerDev(receiverPort, persistPath);
 
   wrangler.stdout?.on("data", (chunk: Buffer) => process.stdout.write(chunk));

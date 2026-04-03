@@ -1,7 +1,7 @@
 # Railway Staging プロダクト検証レポート
 
 - Date: 2026-03-23
-- Target: `https://3amoncall-production.up.railway.app`
+- Target: `https://3am-production.up.railway.app`
 - Method: API (curl) + browser-use (headless Chromium 1512x982)
 - Incident tested: `inc_070c0148` (rate_limit_cascade, critical, with diagnosis)
 - Empty state tested: `inc_413bde8a` (medium, diagnosis unavailable)
@@ -10,7 +10,7 @@
 
 ## プロダクト評価
 
-> **3amoncall の約束: 「午前3時に叩き起こされたエンジニアが、5分以内に原因を特定し、正しい初動を取れるようにする」**
+> **3am の約束: 「午前3時に叩き起こされたエンジニアが、5分以内に原因を特定し、正しい初動を取れるようにする」**
 
 この約束が、実際のユーザー体験として果たされているかを評価する。
 

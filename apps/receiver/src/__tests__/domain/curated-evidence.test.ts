@@ -1,14 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { TelemetryStoreDriver } from '../../telemetry/interface.js'
 import type { Incident } from '../../storage/interface.js'
-import type { IncidentPacket, DiagnosisResult, ConsoleNarrative } from '@3amoncall/core'
+import type { IncidentPacket, DiagnosisResult, ConsoleNarrative } from '@3am/core'
 import type {
   BaselineContext,
   CuratedTraceSurface,
   CuratedMetricsSurface,
   CuratedLogsSurface,
   CuratedEvidenceRef,
-} from '@3amoncall/core/schemas/curated-evidence'
+} from '@3am/core/schemas/curated-evidence'
 
 vi.mock('../../domain/trace-surface.js', () => ({ buildTraceSurface: vi.fn() }))
 vi.mock('../../domain/metrics-surface.js', () => ({ buildMetricsSurface: vi.fn() }))

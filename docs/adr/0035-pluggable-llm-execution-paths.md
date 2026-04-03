@@ -15,7 +15,7 @@ This project also needs a consistent execution model across stage 1 diagnosis, s
 
 ## Decision
 
-We introduce a pluggable provider layer in `@3amoncall/diagnosis`.
+We introduce a pluggable provider layer in `@3am/diagnosis`.
 
 - all model execution goes through provider resolution instead of Anthropic-only calls
 - the primary local-subscription providers are `claude-code` and `codex`

@@ -1,13 +1,13 @@
 {
-  "name": "@3amoncall/cli",
+  "name": "@3am/cli",
   "version": "0.1.0",
   "private": false,
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "bin": {
-    "3amoncall": "./dist/cli.js",
-    "3amoncall-cli": "./dist/index.js"
+    "3am": "./dist/cli.js",
+    "3am-cli": "./dist/index.js"
   },
   "exports": {
     ".": {
@@ -22,13 +22,13 @@
     "lint": "eslint src --max-warnings 0"
   },
   "dependencies": {
-    "@3amoncall/core": "workspace:*",
-    "@3amoncall/diagnosis": "workspace:*",
+    "@3am/core": "workspace:*",
+    "@3am/diagnosis": "workspace:*",
     "commander": "^14.0.3"
   },
   "devDependencies": {
-    "@3amoncall/config-eslint": "workspace:*",
-    "@3amoncall/config-typescript": "workspace:*",
+    "@3am/config-eslint": "workspace:*",
+    "@3am/config-typescript": "workspace:*",
     "@eslint/js": "^9.0.0",
     "@types/node": "^22.0.0",
     "eslint": "^9.0.0",

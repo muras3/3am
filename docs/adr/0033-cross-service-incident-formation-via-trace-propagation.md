@@ -159,7 +159,7 @@ if (sharedTraceIds.length > 0 && scope.affectedServices.length < MAX_CROSS_SERVI
 この制約は ADR 0032 の scoring パイプラインにも影響する。scoring の入力に他 incident の evidence が混入すると、選別精度が下がる可能性がある。
 
 **緩和策**:
-- 3amoncall のターゲット環境（小規模サーバーレスアプリ）では同時並走 incident は稀
+- 3am のターゲット環境（小規模サーバーレスアプリ）では同時並走 incident は稀
 - Metrics scoring の z-score baseline は incident window の 4 倍で計算するため、overlapping incident の metric 変動は baseline にも反映され、相対的な異常度は保たれる
 - Logs は traceId 相関 bonus により incident-bound log が優先される
 

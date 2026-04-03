@@ -1,6 +1,6 @@
 {
   "setup": {
-    "title": "3amoncall セットアップ",
+    "title": "3am セットアップ",
     "tokenGenerated": "auth token が生成されました。今すぐ保存してください。再表示はできません。",
     "copied": "コピー済み",
     "copy": "コピー",
@@ -35,7 +35,7 @@
     }
   },
   "header": {
-    "logo": "3amoncall",
+    "logo": "3am",
     "env": "production",
     "backToMap": "Back to Map",
     "backToMapLabel": "\u2190 Map",

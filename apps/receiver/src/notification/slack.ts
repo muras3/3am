@@ -60,7 +60,7 @@ export function formatSlack(payload: NotificationPayload): Record<string, unknow
       elements: [
         {
           type: "mrkdwn",
-          text: `3amoncall · <!date^${Math.floor(new Date(payload.openedAt).getTime() / 1000)}^{date_short_pretty} at {time}|${payload.openedAt}>`,
+          text: `3am · <!date^${Math.floor(new Date(payload.openedAt).getTime() / 1000)}^{date_short_pretty} at {time}|${payload.openedAt}>`,
         },
       ],
     },

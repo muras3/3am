@@ -1,4 +1,4 @@
-import type { DiagnosisResult, ReasoningStructure } from "@3amoncall/core";
+import type { DiagnosisResult, ReasoningStructure } from "@3am/core";
 
 export interface BuildNarrativePromptOptions {
   locale?: "en" | "ja";

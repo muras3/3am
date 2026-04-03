@@ -1,5 +1,5 @@
 /**
- * Curated API types — re-exported from @3amoncall/core.
+ * Curated API types — re-exported from @3am/core.
  *
  * Single source of truth for receiver, diagnosis, and frontend.
  * See packages/core/src/schemas/runtime-map.ts,
@@ -44,4 +44,4 @@ export type {
   LogEntry,
   SideNote,
   Followup,
-} from "@3amoncall/core";
+} from "@3am/core";

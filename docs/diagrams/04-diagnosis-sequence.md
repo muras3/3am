@@ -6,7 +6,7 @@
 sequenceDiagram
   participant R as Receiver
   participant GH as GitHub Actions
-  participant CLI as @3amoncall/cli
+  participant CLI as @3am/cli
   participant LLM as Claude API<br/>(sonnet-4-6)
 
   Note over R: Incident created, packet stored

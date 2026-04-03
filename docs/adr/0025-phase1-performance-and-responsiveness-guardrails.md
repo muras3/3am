@@ -5,7 +5,7 @@
 
 ## Context
 
-3amoncall の価値は、単に診断が正しいことではなく、**深夜 3 時でも素早く気持ちよく使えること** にある。  
+3am の価値は、単に診断が正しいことではなく、**深夜 3 時でも素早く気持ちよく使えること** にある。  
 このカテゴリでは、遅さ自体がプロダクト価値を損なう。
 
 したがって Phase 1 では、堅牢性だけでなく **responsiveness-first** の非機能要件を明文化する必要がある。
@@ -61,7 +61,7 @@ Phase 1 では、以下を優先しない。
 
 ## Related
 
-- [0015-diagnosis-runtime-github-actions-with-cli-parity.md](/Users/murase/project/3amoncall/docs/adr/0015-diagnosis-runtime-github-actions-with-cli-parity.md)
-- [0020-thin-event-contract-for-diagnosis-trigger.md](/Users/murase/project/3amoncall/docs/adr/0020-thin-event-contract-for-diagnosis-trigger.md)
-- [0021-receiver-and-github-actions-integration.md](/Users/murase/project/3amoncall/docs/adr/0021-receiver-and-github-actions-integration.md)
-- [incident-console-v3.html](/Users/murase/project/3amoncall/docs/mock/incident-console-v3.html)
+- [0015-diagnosis-runtime-github-actions-with-cli-parity.md](/Users/murase/project/3am/docs/adr/0015-diagnosis-runtime-github-actions-with-cli-parity.md)
+- [0020-thin-event-contract-for-diagnosis-trigger.md](/Users/murase/project/3am/docs/adr/0020-thin-event-contract-for-diagnosis-trigger.md)
+- [0021-receiver-and-github-actions-integration.md](/Users/murase/project/3am/docs/adr/0021-receiver-and-github-actions-integration.md)
+- [incident-console-v3.html](/Users/murase/project/3am/docs/mock/incident-console-v3.html)

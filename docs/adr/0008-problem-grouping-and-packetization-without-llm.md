@@ -46,6 +46,6 @@ LLM（v5）は、この前段で作られた incident packet を受け取って
 
 ## Related
 
-- [0007-incident-packet-generated-in-receiver.md](/Users/murase/project/3amoncall/docs/adr/0007-incident-packet-generated-in-receiver.md)
-- [0005-raw-evaluation-inputs.md](/Users/murase/project/3amoncall/docs/adr/0005-raw-evaluation-inputs.md)
-- [product-concept-v0.2.md](/Users/murase/project/3amoncall/docs/product-concept-v0.2.md)
+- [0007-incident-packet-generated-in-receiver.md](/Users/murase/project/3am/docs/adr/0007-incident-packet-generated-in-receiver.md)
+- [0005-raw-evaluation-inputs.md](/Users/murase/project/3am/docs/adr/0005-raw-evaluation-inputs.md)
+- [product-concept-v0.2.md](/Users/murase/project/3am/docs/product-concept-v0.2.md)

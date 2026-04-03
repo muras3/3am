@@ -4,7 +4,7 @@ import type { StorageDriver } from "../../storage/interface.js";
 import type { Incident } from "../../storage/interface.js";
 import type { TelemetryStoreDriver } from "../../telemetry/interface.js";
 
-vi.mock("@3amoncall/diagnosis", () => ({
+vi.mock("@3am/diagnosis", () => ({
   diagnose: vi.fn(),
   generateConsoleNarrative: vi.fn(),
 }));
@@ -13,7 +13,7 @@ vi.mock("../../domain/reasoning-structure-builder.js", () => ({
   buildReasoningStructure: vi.fn(),
 }));
 
-import { diagnose, generateConsoleNarrative } from "@3amoncall/diagnosis";
+import { diagnose, generateConsoleNarrative } from "@3am/diagnosis";
 import { buildReasoningStructure } from "../../domain/reasoning-structure-builder.js";
 
 function makeIncident(partial: Partial<Incident> = {}): Incident {

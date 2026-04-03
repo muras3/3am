@@ -1,4 +1,4 @@
-name = "3amoncall-receiver"
+name = "3am-receiver"
 main = "src/cf-entry.ts"
 compatibility_date = "2025-03-01"
 compatibility_flags = ["nodejs_compat_v2"]
@@ -27,17 +27,17 @@ run_worker_first = ["/api/*", "/v1/*", "/healthz"]
 
 [[d1_databases]]
 binding = "DB"
-database_name = "3amoncall-db"
+database_name = "3am-db"
 database_id = "7a20d92c-33ae-4ca4-ae83-05cefefb3183"
 
 [[queues.producers]]
 binding = "DIAGNOSIS_QUEUE"
-queue = "3amoncall-diagnosis"
+queue = "3am-diagnosis"
 
 [[queues.consumers]]
-queue = "3amoncall-diagnosis"
+queue = "3am-diagnosis"
 max_batch_size = 1
 max_batch_timeout = 1
 max_retries = 6
-dead_letter_queue = "3amoncall-diagnosis-dlq"
+dead_letter_queue = "3am-diagnosis-dlq"
 retry_delay = 30

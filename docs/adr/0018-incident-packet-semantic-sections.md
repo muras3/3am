@@ -124,6 +124,6 @@ packet から raw data や保存済み artifact へ戻るための層。
 
 ## Related
 
-- [0016-incident-packet-v1alpha.md](/Users/murase/project/3amoncall/docs/adr/0016-incident-packet-v1alpha.md)
-- [0017-incident-formation-rules-v1.md](/Users/murase/project/3amoncall/docs/adr/0017-incident-formation-rules-v1.md)
-- [incident-console-v3.html](/Users/murase/project/3amoncall/docs/mock/incident-console-v3.html)
+- [0016-incident-packet-v1alpha.md](/Users/murase/project/3am/docs/adr/0016-incident-packet-v1alpha.md)
+- [0017-incident-formation-rules-v1.md](/Users/murase/project/3am/docs/adr/0017-incident-formation-rules-v1.md)
+- [incident-console-v3.html](/Users/murase/project/3am/docs/mock/incident-console-v3.html)

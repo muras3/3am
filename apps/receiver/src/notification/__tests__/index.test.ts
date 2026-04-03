@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import type { IncidentPacket } from "@3amoncall/core";
+import type { IncidentPacket } from "@3am/core";
 
 // Mock the sub-modules so we can assert calls without real HTTP
 vi.mock("../detect.js", () => ({
@@ -139,13 +139,13 @@ describe("notifyIncidentCreated", () => {
 
   it("uses CONSOLE_BASE_URL for console link", async () => {
     process.env["NOTIFICATION_WEBHOOK_URL"] = "https://hooks.slack.com/services/T/B/x";
-    process.env["CONSOLE_BASE_URL"] = "https://app.3amoncall.dev";
+    process.env["CONSOLE_BASE_URL"] = "https://app.3am.dev";
     mockDetect.mockReturnValue("slack");
 
     await notifyIncidentCreated(makePacket(), "inc_000001");
 
     const payloadArg = mockFormatSlack.mock.calls[0]![0]!;
-    expect(payloadArg.consoleUrl).toBe("https://app.3amoncall.dev/incidents/inc_000001");
+    expect(payloadArg.consoleUrl).toBe("https://app.3am.dev/incidents/inc_000001");
   });
 
   it("defaults CONSOLE_BASE_URL to http://localhost:3333", async () => {

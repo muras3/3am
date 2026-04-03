@@ -1,5 +1,5 @@
 /**
- * Platform detection utilities for `npx 3amoncall deploy`.
+ * Platform detection utilities for `npx 3am deploy`.
  *
  * Detects whether platform CLIs (vercel / wrangler) are installed and
  * authenticated, and prompts the user to select a target platform.

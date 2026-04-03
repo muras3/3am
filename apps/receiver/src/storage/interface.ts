@@ -1,4 +1,4 @@
-import type { IncidentPacket, DiagnosisResult, ConsoleNarrative, PlatformEvent, ThinEvent } from "@3amoncall/core";
+import type { IncidentPacket, DiagnosisResult, ConsoleNarrative, PlatformEvent, ThinEvent } from "@3am/core";
 
 export interface AnomalousSignal {
   signal: string;       // e.g., "http_429", "http_500", "span_error", "slow_span", "exception"

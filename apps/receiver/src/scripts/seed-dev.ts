@@ -21,7 +21,7 @@ import { diagnosis as d02 } from "../__tests__/fixtures/scenarios/02-cascading-t
 import { diagnosis as d03 } from "../__tests__/fixtures/scenarios/03-db-migration-lock.js";
 import { diagnosis as d04 } from "../__tests__/fixtures/scenarios/04-secrets-rotation.js";
 import { diagnosis as d05 } from "../__tests__/fixtures/scenarios/05-cdn-cache-poison.js";
-import type { DiagnosisResult } from "@3amoncall/core";
+import type { DiagnosisResult } from "@3am/core";
 
 const BASE_URL =
   process.argv.find((a) => a.startsWith("--url="))?.split("=")[1] ??

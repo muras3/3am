@@ -5,7 +5,7 @@
  * Produces the deterministic context that diagnosis reads.
  */
 
-import type { ReasoningStructure, ProofRef, BlastRadiusTarget, AbsenceCandidate } from "@3amoncall/core";
+import type { ReasoningStructure, ProofRef, BlastRadiusTarget, AbsenceCandidate } from "@3am/core";
 import type { TelemetryStoreDriver, TelemetrySpan, TelemetryLog } from "../telemetry/interface.js";
 import { buildIncidentQueryFilter } from "../telemetry/interface.js";
 import type { Incident, TelemetryScope, AnomalousSignal } from "../storage/interface.js";

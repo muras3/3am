@@ -23,8 +23,8 @@ import { spawnSync } from "child_process";
 import { writeFileSync, unlinkSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
-import { diagnose, buildPrompt, parseResult } from "@3amoncall/diagnosis";
-import type { IncidentPacket, DiagnosisResult } from "@3amoncall/core";
+import { diagnose, buildPrompt, parseResult } from "@3am/diagnosis";
+import type { IncidentPacket, DiagnosisResult } from "@3am/core";
 
 const BASE_URL = process.env["RECEIVER_BASE_URL"] ?? "http://localhost:4319";
 const MAX_DIAGNOSES = Number(process.env["MAX_DIAGNOSES"] ?? "1");
@@ -75,7 +75,7 @@ function callCli(prompt: string, model: string): string {
     // Write prompt to temp file and redirect stdin from it via shell.
     // spawnSync({ input }) doesn't reliably reach claude --print when
     // invoked from npx tsx, and -p with $(cat) hits ARG_MAX for large prompts.
-    const tmpFile = join(tmpdir(), `3amoncall-prompt-${Date.now()}.txt`);
+    const tmpFile = join(tmpdir(), `3am-prompt-${Date.now()}.txt`);
     try {
       writeFileSync(tmpFile, prompt, "utf8");
       const proc = spawnSync("sh", ["-c", `claude --print --model "${model}" < "${tmpFile}"`], {

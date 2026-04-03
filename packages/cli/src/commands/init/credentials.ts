@@ -1,5 +1,5 @@
 /**
- * Manage ANTHROPIC_API_KEY stored at ~/.config/3amoncall/credentials.
+ * Manage ANTHROPIC_API_KEY stored at ~/.config/3am/credentials.
  *
  * - User-scoped, not project-scoped (same pattern as Sentry CLI, GitHub CLI)
  * - NOT in .env (it's a user credential, not a project dependency)
@@ -9,7 +9,7 @@ import { existsSync, readFileSync, writeFileSync, mkdirSync, chmodSync } from "n
 import { join } from "node:path";
 import { homedir } from "node:os";
 import { createInterface } from "node:readline";
-import type { ProviderName } from "@3amoncall/diagnosis";
+import type { ProviderName } from "@3am/diagnosis";
 
 export type DiagnosisMode = "automatic" | "manual";
 
@@ -23,7 +23,7 @@ export interface Credentials {
 }
 
 function getCredentialsDir(): string {
-  return join(homedir(), ".config", "3amoncall");
+  return join(homedir(), ".config", "3am");
 }
 
 function getCredentialsPath(): string {

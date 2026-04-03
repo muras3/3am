@@ -54,5 +54,5 @@ Phase 1 では、以下を目指さない。
 
 ## Related
 
-- [0013-cross-platform-storage-driver.md](/Users/murase/project/3amoncall/docs/adr/0013-cross-platform-storage-driver.md)
-- [0021-receiver-and-github-actions-integration.md](/Users/murase/project/3amoncall/docs/adr/0021-receiver-and-github-actions-integration.md)
+- [0013-cross-platform-storage-driver.md](/Users/murase/project/3am/docs/adr/0013-cross-platform-storage-driver.md)
+- [0021-receiver-and-github-actions-integration.md](/Users/murase/project/3am/docs/adr/0021-receiver-and-github-actions-integration.md)

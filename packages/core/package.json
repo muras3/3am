@@ -1,5 +1,5 @@
 {
-  "name": "@3amoncall/core",
+  "name": "@3am/core",
   "version": "0.1.0",
   "private": false,
   "type": "module",
@@ -37,8 +37,8 @@
     "zod": "^3.x"
   },
   "devDependencies": {
-    "@3amoncall/config-eslint": "workspace:*",
-    "@3amoncall/config-typescript": "workspace:*",
+    "@3am/config-eslint": "workspace:*",
+    "@3am/config-typescript": "workspace:*",
     "@eslint/js": "^9.0.0",
     "eslint": "^9.0.0",
     "typescript": "5.9.3",

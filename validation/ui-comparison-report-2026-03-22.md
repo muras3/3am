@@ -2,7 +2,7 @@
 
 **Date**: 2026-03-22
 **Mock**: `docs/mock/lens-prototype-v1.html`
-**Production**: `https://3amoncall.vercel.app`
+**Production**: `https://3am.vercel.app`
 **Incident**: `inc_8e390cb6-4133-480d-b479-f3c403ff6168`
 **Screenshots**: `/tmp/comparison/`
 

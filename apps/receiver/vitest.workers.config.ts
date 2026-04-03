@@ -8,15 +8,15 @@ export default defineWorkersConfig({
   resolve: {
     alias: [
       {
-        find: /^@3amoncall\/core$/,
+        find: /^@3am\/core$/,
         replacement: path.resolve(__dirname, "../../packages/core/src/index.ts"),
       },
       {
-        find: /^@3amoncall\/core\/(.+)$/,
+        find: /^@3am\/core\/(.+)$/,
         replacement: path.resolve(__dirname, "../../packages/core/src/$1.ts"),
       },
       {
-        find: /^@3amoncall\/diagnosis$/,
+        find: /^@3am\/diagnosis$/,
         replacement: path.resolve(__dirname, "../../packages/diagnosis/src/index.ts"),
       },
     ],

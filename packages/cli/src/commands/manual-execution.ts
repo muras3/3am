@@ -3,13 +3,13 @@ import type {
   DiagnosisResult,
   IncidentPacket,
   ReasoningStructure,
-} from "@3amoncall/core";
+} from "@3am/core";
 import {
   callModelMessages,
   diagnose,
   generateConsoleNarrative,
   type ProviderName,
-} from "@3amoncall/diagnosis";
+} from "@3am/diagnosis";
 import { resolveProviderModel } from "./provider-model.js";
 
 export type ManualExecutionOptions = {

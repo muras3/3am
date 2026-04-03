@@ -1,6 +1,6 @@
-# 3amoncall Validation MVP v0.1
+# 3am Validation MVP v0.1
 
-> 目的: 実インシデントの生データがない段階で、3amoncall の診断品質を改善できる検証基盤を作る。
+> 目的: 実インシデントの生データがない段階で、3am の診断品質を改善できる検証基盤を作る。
 
 ## 1. 検証MVPの位置づけ
 
@@ -80,7 +80,7 @@
 
 ## 5. 最初に実装する障害シナリオ
 
-最初は 5 本で十分。`2026-03-05-fixture-designs.md` の approved fixture から、3amoncall の価値検証に効くものを優先する。
+最初は 5 本で十分。`2026-03-05-fixture-designs.md` の approved fixture から、3am の価値検証に効くものを優先する。
 
 ### A. third_party_api_rate_limit_cascade
 
@@ -287,7 +287,7 @@ trigger と internal design flaw を区別して説明できているか。
 理由:
 
 - 最初から 5 本同時に作るとデータ品質の失敗原因を切り分けにくい
-- rate limit cascade は signals が豊富で、3amoncall の初動提案価値も出やすい
+- rate limit cascade は signals が豊富で、3am の初動提案価値も出やすい
 
 ## 10. 検証時のモデル選択
 

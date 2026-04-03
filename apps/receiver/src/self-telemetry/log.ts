@@ -12,7 +12,7 @@ const severityNumbers: Record<LogSeverity, number> = {
 
 function resolveRuntime(): SelfTelemetryRuntime {
   return (
-    (process.env["THREEAMONCALL_RUNTIME"] as SelfTelemetryRuntime | undefined) ?? "node"
+    (process.env["THREEAM_RUNTIME"] as SelfTelemetryRuntime | undefined) ?? "node"
   );
 }
 
@@ -40,13 +40,13 @@ export function emitSelfTelemetryLog(input: {
     "service.name": config.serviceName,
     "service.namespace": config.serviceNamespace,
     "deployment.environment.name": config.deploymentEnvironment,
-    "3amoncall.telemetry.stream": "self",
-    "3amoncall.runtime": runtime,
+    "3am.telemetry.stream": "self",
+    "3am.runtime": runtime,
     ...input.attributes,
   };
 
   try {
-    logs.getLogger("3amoncall.receiver.self").emit({
+    logs.getLogger("3am.receiver.self").emit({
       severityNumber: severityNumbers[input.severity],
       severityText: input.severity,
       body: input.body,

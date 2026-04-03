@@ -2,7 +2,7 @@ import type {
   DiagnosisResult,
   ReasoningStructure,
   ConsoleNarrative,
-} from "@3amoncall/core";
+} from "@3am/core";
 import { buildNarrativePrompt } from "./narrative-prompt.js";
 import { parseNarrative } from "./parse-narrative.js";
 import { callModel } from "./model-client.js";

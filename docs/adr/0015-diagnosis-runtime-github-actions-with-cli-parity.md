@@ -52,6 +52,6 @@ GitHub Actions と CLI は、同一の packet schema と同一の診断入力契
 
 ## Related
 
-- [0007-incident-packet-generated-in-receiver.md](/Users/murase/project/3amoncall/docs/adr/0007-incident-packet-generated-in-receiver.md)
-- [0008-problem-grouping-and-packetization-without-llm.md](/Users/murase/project/3amoncall/docs/adr/0008-problem-grouping-and-packetization-without-llm.md)
-- [product-concept-v0.2.md](/Users/murase/project/3amoncall/docs/product-concept-v0.2.md)
+- [0007-incident-packet-generated-in-receiver.md](/Users/murase/project/3am/docs/adr/0007-incident-packet-generated-in-receiver.md)
+- [0008-problem-grouping-and-packetization-without-llm.md](/Users/murase/project/3am/docs/adr/0008-problem-grouping-and-packetization-without-llm.md)
+- [product-concept-v0.2.md](/Users/murase/project/3am/docs/product-concept-v0.2.md)

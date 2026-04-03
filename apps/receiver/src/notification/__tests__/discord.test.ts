@@ -61,11 +61,11 @@ describe("formatDiscord", () => {
     expect(new Date(timestamp).toISOString()).toBe(base.openedAt);
   });
 
-  it("has embeds[0].footer.text === '3amoncall'", () => {
+  it("has embeds[0].footer.text === '3am'", () => {
     const result = formatDiscord(base);
     const embeds = result["embeds"] as Array<Record<string, unknown>>;
     const footer = embeds[0]["footer"] as Record<string, string>;
-    expect(footer["text"]).toBe("3amoncall");
+    expect(footer["text"]).toBe("3am");
   });
 
   it("has fields for trigger signals", () => {

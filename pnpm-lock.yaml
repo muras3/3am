@@ -15,10 +15,10 @@ importers:
 
   .:
     devDependencies:
-      '@3amoncall/core':
+      '@3am/core':
         specifier: workspace:*
         version: link:packages/core
-      '@3amoncall/diagnosis':
+      '@3am/diagnosis':
         specifier: workspace:*
         version: link:packages/diagnosis
       stylelint:
@@ -39,7 +39,7 @@ importers:
 
   apps/console:
     dependencies:
-      '@3amoncall/core':
+      '@3am/core':
         specifier: workspace:*
         version: link:../../packages/core
       '@tanstack/react-query':
@@ -67,10 +67,10 @@ importers:
         specifier: ^16.6.6
         version: 16.6.6(i18next@25.10.10(typescript@5.9.3))(react-dom@19.2.4(react@19.2.4))(react@19.2.4)(typescript@5.9.3)
     devDependencies:
-      '@3amoncall/config-eslint':
+      '@3am/config-eslint':
         specifier: workspace:*
         version: link:../../packages/config-eslint
-      '@3amoncall/config-typescript':
+      '@3am/config-typescript':
         specifier: workspace:*
         version: link:../../packages/config-typescript
       '@eslint/js':
@@ -121,10 +121,10 @@ importers:
 
   apps/receiver:
     dependencies:
-      '@3amoncall/core':
+      '@3am/core':
         specifier: workspace:*
         version: link:../../packages/core
-      '@3amoncall/diagnosis':
+      '@3am/diagnosis':
         specifier: workspace:*
         version: link:../../packages/diagnosis
       '@anthropic-ai/sdk':
@@ -191,10 +191,10 @@ importers:
         specifier: ^3.25.76
         version: 3.25.76
     devDependencies:
-      '@3amoncall/config-eslint':
+      '@3am/config-eslint':
         specifier: workspace:*
         version: link:../../packages/config-eslint
-      '@3amoncall/config-typescript':
+      '@3am/config-typescript':
         specifier: workspace:*
         version: link:../../packages/config-typescript
       '@bufbuild/buf':
@@ -252,20 +252,20 @@ importers:
 
   packages/cli:
     dependencies:
-      '@3amoncall/core':
+      '@3am/core':
         specifier: workspace:*
         version: link:../core
-      '@3amoncall/diagnosis':
+      '@3am/diagnosis':
         specifier: workspace:*
         version: link:../diagnosis
       commander:
         specifier: ^14.0.3
         version: 14.0.3
     devDependencies:
-      '@3amoncall/config-eslint':
+      '@3am/config-eslint':
         specifier: workspace:*
         version: link:../config-eslint
-      '@3amoncall/config-typescript':
+      '@3am/config-typescript':
         specifier: workspace:*
         version: link:../config-typescript
       '@eslint/js':
@@ -307,10 +307,10 @@ importers:
         specifier: ^3.x
         version: 3.25.76
     devDependencies:
-      '@3amoncall/config-eslint':
+      '@3am/config-eslint':
         specifier: workspace:*
         version: link:../config-eslint
-      '@3amoncall/config-typescript':
+      '@3am/config-typescript':
         specifier: workspace:*
         version: link:../config-typescript
       '@eslint/js':
@@ -331,7 +331,7 @@ importers:
 
   packages/diagnosis:
     dependencies:
-      '@3amoncall/core':
+      '@3am/core':
         specifier: workspace:*
         version: link:../core
       '@anthropic-ai/sdk':
@@ -341,10 +341,10 @@ importers:
         specifier: ^3.0.0
         version: 3.25.76
     devDependencies:
-      '@3amoncall/config-eslint':
+      '@3am/config-eslint':
         specifier: workspace:*
         version: link:../config-eslint
-      '@3amoncall/config-typescript':
+      '@3am/config-typescript':
         specifier: workspace:*
         version: link:../config-typescript
       '@eslint/js':

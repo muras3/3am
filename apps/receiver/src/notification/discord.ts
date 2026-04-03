@@ -12,7 +12,7 @@ export function formatDiscord(payload: NotificationPayload): Record<string, unkn
   const severityLabel = payload.severity.toUpperCase();
   const title = `[${severityLabel}] Incident ${payload.incidentId}`;
   const description = `**${payload.service}** · ${payload.environment}`;
-  const footer = { text: "3amoncall" };
+  const footer = { text: "3am" };
 
   const signals = payload.triggerSignals;
   const shown = signals.slice(0, MAX_SIGNALS);

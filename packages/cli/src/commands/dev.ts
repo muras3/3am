@@ -87,8 +87,8 @@ export function runDev(options: DevOptions = {}): void {
   const version = getCLIVersion();
   const repoRoot = resolveLocalRepoRoot();
   const image = repoRoot
-    ? "3amoncall-receiver:local"
-    : `ghcr.io/3amoncall/receiver:v${version}`;
+    ? "3am-receiver:local"
+    : `ghcr.io/3am/receiver:v${version}`;
 
   const creds = loadCredentials();
   const apiKey = options.apiKey
@@ -140,7 +140,7 @@ export function runDev(options: DevOptions = {}): void {
     args.push("-e", `CONSOLE_BASE_URL=${consoleBaseUrl}`);
   }
 
-  process.stdout.write(`Starting 3amoncall receiver on http://localhost:${port}\n`);
+  process.stdout.write(`Starting 3am receiver on http://localhost:${port}\n`);
 
   if (repoRoot) {
     try {

@@ -1,7 +1,7 @@
 # Mock Docs
 
-- [incident-console-concepts.html](/Users/murase/project/3amoncall/docs/mock/incident-console-concepts.html)
-- [incident-console-directions-v1.html](/Users/murase/project/3amoncall/docs/mock/incident-console-directions-v1.html)
+- [incident-console-concepts.html](/Users/murase/project/3am/docs/mock/incident-console-concepts.html)
+- [incident-console-directions-v1.html](/Users/murase/project/3am/docs/mock/incident-console-directions-v1.html)
 
 このディレクトリは ADR や実装計画の補助資料として使う軽量モックを置く。
 現時点のモックは完成デザインではなく、情報設計とインタラクション比較用の探索プロトタイプである。

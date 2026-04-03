@@ -1,6 +1,6 @@
 # Production Audit Report — 2026-03-23 (v2)
 
-**Target:** `https://3amoncall-production.up.railway.app` (Railway staging)
+**Target:** `https://3am-production.up.railway.app` (Railway staging)
 **Reference:** `docs/mock/lens-prototype-v1.html`
 **Method:** Mock と Production を Playwright で操作し、スクリーンショットで目視比較。
 **Previous audit:** 2026-03-23 v1 (同日、準拠率 ~52%)

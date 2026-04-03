@@ -1,6 +1,6 @@
 # Self-Instrumentation
 
-3amoncall emits self telemetry about the receiver itself so the product can be dogfooded without pretending the Vercel and Cloudflare runtimes behave identically.
+3am emits self telemetry about the receiver itself so the product can be dogfooded without pretending the Vercel and Cloudflare runtimes behave identically.
 
 ## Scope
 
@@ -10,7 +10,7 @@ The current scope is intentionally narrow and explainable:
 - receiver request completion logs with method, path, status, and duration
 - Node/Vercel outbound `fetch` and Undici activity when the runtime performs internal HTTP calls
 
-This scope is enough to verify that 3amoncall itself emits real traces and logs without mixing those signals into normal application ingest by default.
+This scope is enough to verify that 3am itself emits real traces and logs without mixing those signals into normal application ingest by default.
 
 ## Platform Behavior
 
@@ -33,8 +33,8 @@ SELF_OTEL_EXPORTER_OTLP_ENDPOINT=https://your-otel-backend.example.com
 Recommended resource naming:
 
 ```bash
-SELF_OTEL_SERVICE_NAME=3amoncall-receiver
-SELF_OTEL_SERVICE_NAMESPACE=3amoncall
+SELF_OTEL_SERVICE_NAME=3am-receiver
+SELF_OTEL_SERVICE_NAMESPACE=3am
 SELF_OTEL_DEPLOYMENT_ENVIRONMENT=production
 ```
 
@@ -47,7 +47,7 @@ Experimental path:
 - traces and logs come from Cloudflare's runtime-managed automatic path
 - self metrics are intentionally out of scope
 
-This means the runtime contract is "3amoncall itself emits observable traces and logs on Workers", not "the Worker and Node implementation are byte-for-byte symmetric".
+This means the runtime contract is "3am itself emits observable traces and logs on Workers", not "the Worker and Node implementation are byte-for-byte symmetric".
 
 ## Validation
 
@@ -57,7 +57,7 @@ Run:
 
 ```bash
 pnpm install
-pnpm --filter @3amoncall/receiver test:self-instrumentation
+pnpm --filter @3am/receiver test:self-instrumentation
 ```
 
 The integration test:
@@ -66,7 +66,7 @@ The integration test:
 - starts the receiver as an actual HTTP server with self-instrumentation enabled
 - sends real requests to `/healthz`, `/v1/traces`, `/api/incidents`, and a 404 path
 - verifies real OTLP trace and log exports were received
-- verifies `service.name=3amoncall-receiver`
+- verifies `service.name=3am-receiver`
 - verifies a 404 request path also emitted telemetry
 
 ### Vercel deployment checks
@@ -76,7 +76,7 @@ After deployment:
 1. Configure the `SELF_OTEL_*` environment variables.
 2. Hit `/healthz` and one authenticated `/api/*` route.
 3. Send one OTLP request to `/v1/traces`.
-4. In your OTLP backend, confirm traces and logs exist for `service.name=3amoncall-receiver`.
+4. In your OTLP backend, confirm traces and logs exist for `service.name=3am-receiver`.
 5. Confirm self telemetry is arriving in the dedicated dogfooding destination, not the same incident stream used for application telemetry.
 
 ### Cloudflare deployment checks
