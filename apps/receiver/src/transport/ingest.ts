@@ -357,7 +357,10 @@ export function createIngestRouter(
         scheduleDelayedDiagnosis(incidentId, storage, diagnosisRunner, {
           maxWaitMs: diagnosisConfig.maxWaitMs,
         }, waitUntilFn, enqueueDiagnosis);
-      } else if (!enqueueDiagnosis && diagnosisRunner) {
+      } else if (enqueueDiagnosis) {
+        // Both debounce triggers disabled but queue available: immediate enqueue
+        await enqueueDiagnosis(incidentId);
+      } else if (diagnosisRunner) {
         // No delay configured and no queue: immediate inline diagnosis (ADR 0034)
         void runIfNeeded(incidentId, storage, diagnosisRunner);
       }

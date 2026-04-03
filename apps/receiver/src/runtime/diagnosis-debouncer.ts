@@ -102,6 +102,9 @@ export function scheduleDelayedDiagnosis(
     (async () => {
       try {
         await sleep(opts.maxWaitMs);
+        // Check if diagnosis was already triggered (e.g. by threshold) before enqueueing.
+        const incident = await storage.getIncident(incidentId);
+        if (incident?.diagnosisResult) return; // Already diagnosed — skip.
         if (enqueueDiagnosis) {
           await enqueueDiagnosis(incidentId);
         } else if (runner) {
@@ -132,7 +135,12 @@ export function checkGenerationThreshold(
 ): void {
   if (opts.generationThreshold > 0 && generation >= opts.generationThreshold) {
     if (enqueueDiagnosis) {
-      void enqueueDiagnosis(incidentId);
+      // Guard against redundant enqueues: skip if diagnosis already in progress or complete.
+      void (async () => {
+        const incident = await storage.getIncident(incidentId);
+        if (incident?.diagnosisResult) return;
+        await enqueueDiagnosis(incidentId);
+      })();
     } else if (runner) {
       void runIfNeeded(incidentId, storage, runner);
     }
