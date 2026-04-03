@@ -11,17 +11,12 @@ import type {
   EvidenceResponse,
   Followup,
 } from "@3am/core";
-import { generateEvidenceQuery } from "@3am/diagnosis";
+import { generateEvidencePlan, generateEvidenceQuery } from "@3am/diagnosis";
 import type { Incident } from "../storage/interface.js";
 import { classifyDiagnosisState } from "./diagnosis-state.js";
 import type { TelemetryStoreDriver } from "../telemetry/interface.js";
 import { buildCuratedEvidence } from "./curated-evidence.js";
-import {
-  buildClarificationResponse,
-  planEvidenceConversation,
-  type EvidenceConversationTurn,
-  type IntentProfile,
-} from "./evidence-conversation.js";
+import type { EvidenceConversationTurn, IntentProfile } from "./evidence-conversation.js";
 
 const EVIDENCE_QUERY_MODEL =
   process.env["EVIDENCE_QUERY_MODEL"] ?? "claude-haiku-4-5-20251001";
@@ -90,10 +85,6 @@ function localizeNoAnswerForGreeting(locale: "en" | "ja"): string {
   return locale === "ja"
     ? "このインシデントについて、トレース・メトリクス・ログ・原因を聞いて。"
     : "Ask about traces, metrics, logs, or the diagnosed cause for this incident.";
-}
-
-function isMissingLogsQuestion(question: string): boolean {
-  return /(why.*log|why.*logs|missing log|no log|ログがない|ログが無い|なぜlogがない|なぜログがない|logがない)/i.test(question);
 }
 
 function buildDirectAnswer(
@@ -270,6 +261,16 @@ function detectExplanatoryTerm(question: string, locale: "en" | "ja"): Explanato
     definition: locale === "ja" ? term.definitionJa : term.definitionEn,
     preferredSurfaces: term.preferredSurfaces,
   };
+}
+
+function intentFromMode(mode: "answer" | "action" | "missing_evidence"): IntentProfile {
+  if (mode === "action") {
+    return { kind: "action", preferredSurfaces: ["traces", "logs", "metrics"] };
+  }
+  if (mode === "missing_evidence") {
+    return { kind: "logs", preferredSurfaces: ["logs", "traces", "metrics"] };
+  }
+  return { kind: "general", preferredSurfaces: ["traces", "metrics", "logs"] };
 }
 
 function buildExplanatoryAnswer(
@@ -703,19 +704,6 @@ export async function buildEvidenceQueryAnswer(
 ): Promise<EvidenceQueryResponse> {
   const diagnosisState = determineDiagnosisState(incident);
   const curatedEvidence = await buildCuratedEvidence(incident, telemetryStore);
-  const plan = planEvidenceConversation(question, history, isFollowup, locale);
-
-  if (plan.kind === "clarification") {
-    return buildClarificationResponse(
-      question,
-      curatedEvidence,
-      plan.clarificationQuestion,
-      plan.followups,
-    );
-  }
-
-  const effectiveQuestion = plan.effectiveQuestion;
-  const intent = plan.intent;
 
   if (diagnosisState === "unavailable") {
     return buildDeterministicNoAnswer(
@@ -733,7 +721,7 @@ export async function buildEvidenceQueryAnswer(
     );
   }
 
-  if (intent.kind === "greeting") {
+  if (/^(hi|hello|hey|こんにちは|こんばんは|おはよう)/i.test(question.trim())) {
     return buildDeterministicNoAnswer(
       question,
       curatedEvidence,
@@ -742,6 +730,67 @@ export async function buildEvidenceQueryAnswer(
   }
 
   const catalog = buildEvidenceCatalog(curatedEvidence);
+  const planningIntent: IntentProfile = { kind: "general", preferredSurfaces: ["traces", "metrics", "logs"] };
+  const planningCandidates = retrieveEvidence(question, catalog, planningIntent).slice(0, 8);
+  const explanatoryTerm = detectExplanatoryTerm(question, locale);
+  if (explanatoryTerm) {
+    return buildExplanatoryAnswer(
+      question,
+      explanatoryTerm,
+      incident,
+      curatedEvidence,
+      planningCandidates,
+      locale,
+    );
+  }
+
+  let effectiveQuestion = question;
+  let intent: IntentProfile = planningIntent;
+  let answerMode: "answer" | "action" | "missing_evidence" = "answer";
+
+  try {
+    const plan = await generateEvidencePlan(
+      {
+        question,
+        history,
+        diagnosis: incident.diagnosisResult
+          ? {
+              whatHappened: incident.diagnosisResult.summary.what_happened,
+              rootCauseHypothesis: incident.diagnosisResult.summary.root_cause_hypothesis,
+              immediateAction: incident.diagnosisResult.recommendation.immediate_action,
+              causalChain: incident.diagnosisResult.reasoning.causal_chain.map((step) => step.title),
+            }
+          : null,
+        evidence: planningCandidates.map(({ ref, surface, summary }) => ({ ref, surface, summary })),
+      },
+      { model: EVIDENCE_QUERY_MODEL, locale },
+    );
+
+    if (plan.mode === "clarification") {
+      return {
+        question,
+        status: "clarification",
+        clarificationQuestion: plan.clarificationQuestion,
+        segments: [],
+        evidenceSummary: summarizeEvidence(curatedEvidence.surfaces),
+        followups: buildFollowups(planningCandidates, curatedEvidence, question, locale),
+      };
+    }
+
+    effectiveQuestion = plan.rewrittenQuestion;
+    answerMode = plan.mode;
+    intent = intentFromMode(plan.mode);
+    intent.preferredSurfaces = plan.preferredSurfaces;
+  } catch {
+    if (/^(hi|hello|hey|こんにちは|こんばんは|おはよう)/i.test(question.trim())) {
+      return buildDeterministicNoAnswer(
+        question,
+        curatedEvidence,
+        localizeNoAnswerForGreeting(locale),
+      );
+    }
+  }
+
   const retrieved = retrieveEvidence(effectiveQuestion, catalog, intent);
   if (retrieved.length === 0) {
     return buildDeterministicNoAnswer(
@@ -751,30 +800,11 @@ export async function buildEvidenceQueryAnswer(
     );
   }
 
-  const explanatoryTerm = detectExplanatoryTerm(question, locale);
-  if (explanatoryTerm) {
-    return buildExplanatoryAnswer(
-      question,
-      explanatoryTerm,
-      incident,
-      curatedEvidence,
-      retrieved,
-      locale,
-    );
-  }
-
-  if (isMissingLogsQuestion(question)) {
-    return buildMissingLogsAnswer(question, incident, curatedEvidence, retrieved, locale);
-  }
-
-  if (intent.kind === "action") {
-    return buildFallbackAnswer(question, incident, curatedEvidence, retrieved, intent, locale);
-  }
-
   try {
     const generated = await generateEvidenceQuery(
       {
         question,
+        answerMode,
         history,
         intent: intent.kind,
         preferredSurfaces: intent.preferredSurfaces,
@@ -797,6 +827,9 @@ export async function buildEvidenceQueryAnswer(
       followups: buildFollowups(retrieved, curatedEvidence, question, locale),
     };
   } catch {
+    if (answerMode === "missing_evidence") {
+      return buildMissingLogsAnswer(question, incident, curatedEvidence, retrieved, locale);
+    }
     return buildFallbackAnswer(question, incident, curatedEvidence, retrieved, intent, locale);
   }
 }

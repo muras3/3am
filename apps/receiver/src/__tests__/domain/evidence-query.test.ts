@@ -5,17 +5,22 @@
  * Path 3 (LLM) is not tested here — Anthropic SDK is not mocked.
  */
 
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { TelemetryLog, TelemetryMetric, TelemetrySpan, TelemetryStoreDriver } from '../../telemetry/interface.js'
 import type { Incident } from '../../storage/interface.js'
 import type { IncidentPacket, DiagnosisResult } from '@3am/core'
 import { EvidenceQueryResponseSchema } from '@3am/core/schemas/curated-evidence'
 import * as diagnosis from '@3am/diagnosis'
+const { generateEvidencePlanMock, generateEvidenceQueryMock } = vi.hoisted(() => ({
+  generateEvidencePlanMock: vi.fn(),
+  generateEvidenceQueryMock: vi.fn(),
+}))
 vi.mock('@3am/diagnosis', async () => {
   const actual = await vi.importActual('@3am/diagnosis')
   return {
     ...actual,
-    generateEvidenceQuery: vi.fn().mockRejectedValue(new Error('LLM not available in test')),
+    generateEvidencePlan: generateEvidencePlanMock,
+    generateEvidenceQuery: generateEvidenceQueryMock,
   }
 })
 
@@ -179,6 +184,41 @@ function makeIncident(overrides: Partial<Incident> = {}): Incident {
 // ── Tests ────────────────────────────────────────────────────────────────
 
 describe('buildEvidenceQueryAnswer', () => {
+  beforeEach(() => {
+    generateEvidencePlanMock.mockReset()
+    generateEvidenceQueryMock.mockReset()
+    generateEvidencePlanMock.mockImplementation(async (input: { question: string }) => {
+      if (input.question === 'どうあるべき？') {
+        return {
+          mode: 'clarification',
+          rewrittenQuestion: 'Clarify the user intent.',
+          preferredSurfaces: ['traces'],
+          clarificationQuestion: '何を知りたいかを一段具体化して。',
+        }
+      }
+      if (input.question.includes('何をすればいい') || input.question.includes('次のアクション')) {
+        return {
+          mode: 'action',
+          rewrittenQuestion: 'What should the operator do first for this incident?',
+          preferredSurfaces: ['traces', 'logs', 'metrics'],
+        }
+      }
+      if (input.question.includes('logがない') || input.question.includes('ログがない')) {
+        return {
+          mode: 'missing_evidence',
+          rewrittenQuestion: 'Why are the expected logs missing and what should be checked next?',
+          preferredSurfaces: ['logs', 'traces', 'metrics'],
+        }
+      }
+      return {
+        mode: 'answer',
+        rewrittenQuestion: input.question,
+        preferredSurfaces: ['traces', 'metrics', 'logs'],
+      }
+    })
+    generateEvidenceQueryMock.mockRejectedValue(new Error('LLM not available in test'))
+  })
+
   it('returns noAnswerReason when diagnosis is unavailable', async () => {
     const incident = makeIncident()
     const store = makeMockStore()
