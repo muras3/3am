@@ -20,6 +20,8 @@ export interface Credentials {
   llmProvider?: ProviderName;
   llmBridgeUrl?: string;
   llmModel?: string;
+  /** Auth token for the deployed Receiver — CLI-managed, synced to platform secret on deploy. */
+  receiverAuthToken?: string;
 }
 
 function getCredentialsDir(): string {
