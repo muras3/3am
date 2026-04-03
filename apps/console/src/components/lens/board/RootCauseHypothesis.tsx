@@ -16,7 +16,7 @@ function formatBasis(text: string): string {
 export function RootCauseHypothesis({ hypothesis, state, confidence }: Props) {
   const { t } = useTranslation();
   const fullText = hypothesis.trim() || sectionFallback(state, "rootCause");
-  const previewText = shortenForViewport(fullText, 170);
+  const previewText = shortenForViewport(fullText, 400);
   const isShortened = previewText !== fullText;
   const isProvisional = state.diagnosis !== "ready" || state.evidenceDensity === "sparse";
   const heading = isProvisional ? t("board.rootCause.titleProvisional") : t("board.rootCause.title");
