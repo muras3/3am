@@ -290,6 +290,7 @@
       "checking": "Checking\u2026",
       "ask": "Ask",
       "noAnswer": "No answer",
+      "clarifyingQuestion": "Clarifying question",
       "groundedAnswer": "Grounded answer",
       "preparedRead": "Prepared read",
       "currentRead": "Current read",

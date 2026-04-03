@@ -300,7 +300,7 @@ export const EvidenceQuerySegmentSchema = z.object({
   evidenceRefs: z.array(EvidenceQueryRefSchema).min(1),
 }).strict();
 
-export const EvidenceQueryStatusSchema = z.enum(["answered", "no_answer"]);
+export const EvidenceQueryStatusSchema = z.enum(["answered", "no_answer", "clarification"]);
 
 export const EvidenceQueryResponseSchema = z.object({
   question: z.string(),
@@ -309,6 +309,7 @@ export const EvidenceQueryResponseSchema = z.object({
   evidenceSummary: EvidenceSummarySchema,
   followups: z.array(FollowupSchema),
   noAnswerReason: z.string().optional(),
+  clarificationQuestion: z.string().optional(),
 }).strict();
 
 export const SideNoteSchema = z.object({

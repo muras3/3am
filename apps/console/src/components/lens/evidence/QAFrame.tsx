@@ -128,6 +128,7 @@ function SegmentBadge({ kind }: { kind: EvidenceQuerySegment["kind"] }) {
 
 function SegmentedAnswer({
   segments,
+  clarificationQuestion,
   noAnswerReason,
   emptyLabel,
   answerSegmentsLabel,
@@ -139,13 +140,14 @@ function SegmentedAnswer({
     text: string;
     evidenceRefs: Array<EvidenceRef | EvidenceQueryRef>;
   }>;
+  clarificationQuestion?: string;
   noAnswerReason?: string;
   emptyLabel: string;
   answerSegmentsLabel: string;
   evidenceRefsLabel: string;
 }) {
   if (segments.length === 0) {
-    return <div className="lens-ev-qa-no-answer">{noAnswerReason ?? emptyLabel}</div>;
+    return <div className="lens-ev-qa-no-answer">{clarificationQuestion ?? noAnswerReason ?? emptyLabel}</div>;
   }
 
   return (
@@ -284,7 +286,9 @@ export function QAFrame({
                   <>
                     <div className="lens-ev-qa-answer-head">
                       <span className="lens-ev-qa-state-label">
-                        {entry.response?.status === "no_answer"
+                        {entry.response?.status === "clarification"
+                          ? t("evidence.qa.clarifyingQuestion")
+                          : entry.response?.status === "no_answer"
                           ? t("evidence.qa.noAnswer")
                           : t("evidence.qa.groundedAnswer")}
                       </span>
@@ -294,6 +298,7 @@ export function QAFrame({
                     </div>
                     <SegmentedAnswer
                       segments={entry.response?.segments ?? []}
+                      clarificationQuestion={entry.response?.clarificationQuestion}
                       noAnswerReason={entry.response?.noAnswerReason}
                       emptyLabel={t("evidence.qa.noAnswer")}
                       answerSegmentsLabel={t("evidence.qa.answerSegmentsLabel")}
