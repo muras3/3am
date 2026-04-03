@@ -188,8 +188,21 @@ export function createApp(storage?: StorageDriver, options?: AppOptions): Hono {
       attributes: { "3amoncall.receiver.event": "auth-disabled-dev-mode" },
     });
   } else {
+    // Deferred setup completion: mark setup as done on first authenticated
+    // request, not on token fetch. Allows re-fetching if post-setup fails. (#236)
+    let setupMarkedComplete = false;
+    const markSetupComplete = async () => {
+      if (setupMarkedComplete) return;
+      setupMarkedComplete = true;
+      await store.setSettings(SETTINGS_KEY_SETUP_COMPLETE, "true").catch(() => {});
+    };
+
     // /v1/*: OTel SDK ingest — requires Bearer token
-    app.use("/v1/*", bearerAuth({ token: authToken }));
+    app.use("/v1/*", async (c, next) => {
+      const result = await bearerAuth({ token: authToken })(c, next);
+      if (c.res.ok) await markSetupComplete();
+      return result;
+    });
     // /api/setup-status and /api/setup-token are public (no auth) — registered before /api/* auth
     // /api/*: Console API — requires Bearer token (ADR 0034: inline diagnosis, no GitHub Actions)
     app.use("/api/*", async (c, next) => {
@@ -201,7 +214,9 @@ export function createApp(storage?: StorageDriver, options?: AppOptions): Hono {
       ) {
         return next();
       }
-      return bearerAuth({ token: authToken })(c, next);
+      const result = await bearerAuth({ token: authToken })(c, next);
+      if (c.res.ok) await markSetupComplete();
+      return result;
     });
   }
 
@@ -249,7 +264,9 @@ export function createApp(storage?: StorageDriver, options?: AppOptions): Hono {
       return c.json({ error: "token not available (env var mode)" }, 404);
     }
 
-    await store.setSettings(SETTINGS_KEY_SETUP_COMPLETE, "true");
+    // Do NOT mark setup complete here — defer until the first successful
+    // authenticated API call. This allows re-fetching the token if
+    // post-setup steps (e.g. CF destination wiring) fail. (#236)
     return c.json({ token });
   });
 
