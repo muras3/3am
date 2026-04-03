@@ -340,6 +340,27 @@ export function createIngestRouter(
         await storage.appendSpanMembership(incidentId, expansion.spanIds);
         await storage.appendAnomalousSignals(incidentId, buildAnomalousSignals(signalSpans));
         await rebuildAndNotify(incidentId, telemetryStore, storage, diagnosisConfig, diagnosisRunner, enqueueDiagnosis);
+
+        // Fix #254: Schedule diagnosis for race-loser path too.
+        // The winner may have already scheduled, but markDiagnosisScheduled is
+        // idempotent (WHERE diagnosis_scheduled_at IS NULL).
+        if (enqueueDiagnosis) {
+          await storage.markDiagnosisScheduled(incidentId);
+          const delaySec = diagnosisConfig.maxWaitMs > 0
+            ? Math.ceil(diagnosisConfig.maxWaitMs / 1000)
+            : undefined;
+          await enqueueDiagnosis(incidentId, "diagnosis", delaySec);
+        } else if (diagnosisRunner) {
+          await storage.markDiagnosisScheduled(incidentId);
+          if (diagnosisConfig.maxWaitMs > 0) {
+            const waitUntilFn = await waitUntilPromise;
+            scheduleDelayedDiagnosis(incidentId, storage, diagnosisRunner, {
+              maxWaitMs: diagnosisConfig.maxWaitMs,
+            }, waitUntilFn);
+          } else {
+            void runIfNeeded(incidentId, storage, diagnosisRunner);
+          }
+        }
         return c.json({ status: "ok", incidentId, packetId: created.packet.packetId });
       }
 
