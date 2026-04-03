@@ -87,8 +87,37 @@ describe('deriveDominantOperation', () => {
     expect(dominant?.family).toEqual({ kind: 'span_name', value: 'd1_run' })
   })
 
+  it('filters to primaryService, ignoring dependency spans', () => {
+    const spans = [
+      makeSpan({ serviceName: 'web', httpRoute: '/api/checkout', httpMethod: 'POST' }),
+      makeSpan({ serviceName: 'stripe', spanName: 'POST /v1/charges', httpMethod: 'POST' }),
+      makeSpan({ serviceName: 'stripe', spanName: 'POST /v1/charges', httpMethod: 'POST' }),
+      makeSpan({ serviceName: 'stripe', spanName: 'POST /v1/charges', httpMethod: 'POST' }),
+    ]
+    // Without filter, stripe would win (3 vs 1). With primaryService='web', web wins.
+    const dominant = deriveDominantOperation(spans, 'web')
+    expect(dominant?.family).toEqual({ kind: 'route', value: '/api/checkout' })
+  })
+
+  it('breaks ties deterministically by key order', () => {
+    const spans = [
+      makeSpan({ httpRoute: '/b', httpMethod: 'POST' }),
+      makeSpan({ httpRoute: '/a', httpMethod: 'POST' }),
+    ]
+    const dominant = deriveDominantOperation(spans)
+    // '/a' < '/b' lexicographically
+    expect(dominant?.family).toEqual({ kind: 'route', value: '/a' })
+  })
+
   it('returns undefined for empty spans', () => {
     expect(deriveDominantOperation([])).toBeUndefined()
+  })
+
+  it('returns undefined when no spans match primaryService', () => {
+    const spans = [
+      makeSpan({ serviceName: 'stripe', spanName: 'POST /v1/charges' }),
+    ]
+    expect(deriveDominantOperation(spans, 'web')).toBeUndefined()
   })
 })
 

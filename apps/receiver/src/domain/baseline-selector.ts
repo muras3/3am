@@ -34,25 +34,36 @@ export function deriveOperationIdentity(span: TelemetrySpan): OperationIdentity 
   }
 }
 
-/** Derive the dominant operation identity from a set of anomalous spans. */
-export function deriveDominantOperation(spans: TelemetrySpan[]): OperationIdentity | undefined {
-  if (spans.length === 0) return undefined
+/**
+ * Derive the dominant operation identity from anomalous spans.
+ * Only considers spans belonging to primaryService to avoid picking
+ * dependency/internal spans (e.g. Stripe calls) as the baseline target.
+ * Ties are broken by key lexicographic order for stable results.
+ */
+export function deriveDominantOperation(
+  spans: TelemetrySpan[],
+  primaryService?: string,
+): OperationIdentity | undefined {
+  const filtered = primaryService
+    ? spans.filter((s) => s.serviceName === primaryService)
+    : spans
+  if (filtered.length === 0) return undefined
 
-  const counts = new Map<string, { identity: OperationIdentity; count: number }>()
-  for (const span of spans) {
+  const counts = new Map<string, { identity: OperationIdentity; count: number; key: string }>()
+  for (const span of filtered) {
     const id = deriveOperationIdentity(span)
     const key = `${id.family.kind}:${id.family.value}:${id.method ?? ''}`
     const entry = counts.get(key)
     if (entry) {
       entry.count++
     } else {
-      counts.set(key, { identity: id, count: 1 })
+      counts.set(key, { identity: id, count: 1, key })
     }
   }
 
-  let best: { identity: OperationIdentity; count: number } | undefined
+  let best: { identity: OperationIdentity; count: number; key: string } | undefined
   for (const entry of counts.values()) {
-    if (!best || entry.count > best.count) {
+    if (!best || entry.count > best.count || (entry.count === best.count && entry.key < best.key)) {
       best = entry
     }
   }

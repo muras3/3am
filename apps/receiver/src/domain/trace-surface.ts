@@ -276,7 +276,7 @@ export async function buildTraceSurface(
   // ── Expected (baseline) traces ───────────────────────────────────────
 
   const primaryService = incident.packet.scope.primaryService
-  const dominantOperation = deriveDominantOperation(incidentSpans)
+  const dominantOperation = deriveDominantOperation(incidentSpans, primaryService)
 
   const baselineResult = await selectBaseline(telemetryStore, {
     incidentWindowStartMs: incident.telemetryScope.windowStartMs,
