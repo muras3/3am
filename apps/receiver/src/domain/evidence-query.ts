@@ -18,7 +18,6 @@ import type { TelemetryStoreDriver } from "../telemetry/interface.js";
 import { buildCuratedEvidence } from "./curated-evidence.js";
 import {
   buildClarificationResponse,
-  classifyQuestionIntent,
   planEvidenceConversation,
   type EvidenceConversationTurn,
   type IntentProfile,

@@ -3,7 +3,6 @@ import type {
   EvidenceResponse,
   Followup,
 } from "@3am/core";
-import type { Incident } from "../storage/interface.js";
 
 export type EvidenceConversationTurn = {
   role: "user" | "assistant";
