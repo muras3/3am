@@ -349,20 +349,23 @@ export function createIngestRouter(
       // Fire-and-forget notification to Slack/Discord (if configured)
       void notifyIncidentCreated(packet, incidentId);
 
-      // Schedule delayed diagnosis via debouncer (both CF Workers and Vercel).
-      // Generation threshold is checked in rebuildAndNotify above.
-      // If maxWaitMs > 0, schedule a time-based fallback; otherwise immediate.
-      if (diagnosisConfig.maxWaitMs > 0 && (enqueueDiagnosis || diagnosisRunner)) {
-        const waitUntilFn = await waitUntilPromise;
-        scheduleDelayedDiagnosis(incidentId, storage, diagnosisRunner, {
-          maxWaitMs: diagnosisConfig.maxWaitMs,
-        }, waitUntilFn, enqueueDiagnosis);
-      } else if (enqueueDiagnosis) {
-        // Both debounce triggers disabled but queue available: immediate enqueue
-        await enqueueDiagnosis(incidentId);
+      // Schedule delayed diagnosis. Generation threshold is checked in rebuildAndNotify above.
+      if (enqueueDiagnosis) {
+        // CF Workers: use Queue native delay (no waitUntil+sleep needed)
+        const delaySec = diagnosisConfig.maxWaitMs > 0
+          ? Math.ceil(diagnosisConfig.maxWaitMs / 1000)
+          : undefined;
+        await enqueueDiagnosis(incidentId, "diagnosis", delaySec);
       } else if (diagnosisRunner) {
-        // No delay configured and no queue: immediate inline diagnosis (ADR 0034)
-        void runIfNeeded(incidentId, storage, diagnosisRunner);
+        // Vercel / Node.js: use waitUntil + sleep for delayed execution
+        if (diagnosisConfig.maxWaitMs > 0) {
+          const waitUntilFn = await waitUntilPromise;
+          scheduleDelayedDiagnosis(incidentId, storage, diagnosisRunner, {
+            maxWaitMs: diagnosisConfig.maxWaitMs,
+          }, waitUntilFn);
+        } else {
+          void runIfNeeded(incidentId, storage, diagnosisRunner);
+        }
       }
       return c.json({ status: "ok", incidentId, packetId: packet.packetId });
     }

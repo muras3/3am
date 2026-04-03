@@ -93,23 +93,18 @@ export function _resetWaitUntilForTest(): void {
 export function scheduleDelayedDiagnosis(
   incidentId: string,
   storage: StorageDriver,
-  runner: DiagnosisRunner | undefined,
+  runner: DiagnosisRunner,
   opts: { maxWaitMs: number },
   waitUntilFn: WaitUntilFn,
-  enqueueDiagnosis?: EnqueueDiagnosisFn,
 ): void {
   waitUntilFn(
     (async () => {
       try {
         await sleep(opts.maxWaitMs);
-        // Check if diagnosis was already triggered (e.g. by threshold) before enqueueing.
+        // Check if diagnosis was already triggered (e.g. by threshold) before running.
         const incident = await storage.getIncident(incidentId);
         if (incident?.diagnosisResult) return; // Already diagnosed — skip.
-        if (enqueueDiagnosis) {
-          await enqueueDiagnosis(incidentId);
-        } else if (runner) {
-          await runIfNeeded(incidentId, storage, runner);
-        }
+        await runIfNeeded(incidentId, storage, runner);
       } catch (err) {
         // Prevent unhandled rejection when waitUntil is fire-and-forget.
         // DiagnosisRunner.run() handles its own errors, but guard defensively.
