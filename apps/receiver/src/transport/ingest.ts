@@ -218,6 +218,8 @@ async function rebuildAndNotify(
 ): Promise<void> {
   if (waitUntilFn) {
     // #256: CF Workers path — defer snapshot rebuild to after HTTP response.
+    // Check generation threshold using predicted next generation so diagnosis
+    // can be enqueued (with Queue delay) while rebuild runs in waitUntil.
     if (diagnosisConfig.generationThreshold > 0 && enqueueDiagnosis) {
       const current = await storage.getIncident(incidentId);
       if (current) {
@@ -236,7 +238,7 @@ async function rebuildAndNotify(
       console.error(`[ingest] deferred rebuildSnapshots failed for ${incidentId}:`, err);
     }));
   } else {
-    // Non-CF path: rebuild synchronously, then check threshold
+    // Non-CF path (Vercel/Node): rebuild synchronously, then check threshold
     await rebuildSnapshots(incidentId, telemetryStore, storage);
     if (diagnosisConfig.generationThreshold > 0) {
       const updated = await storage.getIncident(incidentId);
@@ -277,7 +279,9 @@ export function createIngestRouter(
   );
 
   app.post("/v1/traces", async (c) => {
-    // #256: Defer snapshot rebuild only on CF Workers (where enqueueDiagnosis exists).
+    // #256: Defer snapshot rebuild only on CF Workers (where enqueueDiagnosis exists
+    // and Queue delay guarantees rebuild completes before diagnosis reads the packet).
+    // On Vercel/Node, rebuild stays synchronous for consistent read-after-write.
     const waitUntilFn = enqueueDiagnosis ? await resolveWaitUntil() : undefined;
     await maybeCleanup(storage, telemetryStore);
 
