@@ -31,6 +31,6 @@
 
 ## Related
 
-- [validation-mvp-v0.1.md](/Users/murase/project/3amoncall/docs/validation-mvp-v0.1.md)
-- [local-validation-stack-v0.1.md](/Users/murase/project/3amoncall/docs/local-validation-stack-v0.1.md)
-- [compose-and-scenario-draft-v0.1.md](/Users/murase/project/3amoncall/docs/compose-and-scenario-draft-v0.1.md)
+- [validation-mvp-v0.1.md](/Users/murase/project/3am/docs/validation-mvp-v0.1.md)
+- [local-validation-stack-v0.1.md](/Users/murase/project/3am/docs/local-validation-stack-v0.1.md)
+- [compose-and-scenario-draft-v0.1.md](/Users/murase/project/3am/docs/compose-and-scenario-draft-v0.1.md)

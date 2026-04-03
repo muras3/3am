@@ -1,4 +1,4 @@
-import type { IncidentPacket } from "@3amoncall/core";
+import type { IncidentPacket } from "@3am/core";
 
 export interface BuildPromptOptions {
   locale?: "en" | "ja";

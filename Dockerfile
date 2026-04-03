@@ -26,7 +26,7 @@ COPY packages/config-typescript/ ./packages/config-typescript/
 COPY packages/config-eslint/ ./packages/config-eslint/
 
 # Build receiver + console (turbo handles dependency order: core first)
-RUN pnpm turbo run build --filter=@3amoncall/receiver --filter=@3amoncall/console
+RUN pnpm turbo run build --filter=@3am/receiver --filter=@3am/console
 
 # Stage 2: runtime
 FROM node:22-slim AS runtime

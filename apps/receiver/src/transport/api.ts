@@ -6,8 +6,8 @@ import {
   EvidenceQueryRequestSchema,
   ReasoningStructureSchema,
   type DiagnosisResult,
-} from "@3amoncall/core";
-import { callModelMessages } from "@3amoncall/diagnosis";
+} from "@3am/core";
+import { callModelMessages } from "@3am/diagnosis";
 import { jwtCookieSetter, jwtCookieValidator } from "../middleware/session-cookie.js";
 import { rateLimiter } from "../middleware/rate-limit.js";
 import type { Incident, IncidentPage, StorageDriver } from "../storage/interface.js";

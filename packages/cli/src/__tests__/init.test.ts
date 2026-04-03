@@ -477,7 +477,7 @@ describe("credentials", () => {
 
   it("creates credentials file with 0600 permissions", () => {
     saveCredentials({ anthropicApiKey: "sk-test" });
-    const stat = statSync(join(tmpDir, ".config", "3amoncall", "credentials"));
+    const stat = statSync(join(tmpDir, ".config", "3am", "credentials"));
     expect(stat.mode & 0o777).toBe(0o600);
   });
 
@@ -745,7 +745,7 @@ describe("runInit()", () => {
 
     const combined = stderrChunks.join("");
     expect(combined).toContain("ANTHROPIC_API_KEY not configured");
-    expect(combined).toContain("npx 3amoncall init --api-key");
+    expect(combined).toContain("npx 3am init --api-key");
   });
 
   it("preserves existing .env values on second run (idempotency)", async () => {
@@ -892,8 +892,8 @@ describe("runInit()", () => {
 
     expect(vi.mocked(runDev)).not.toHaveBeenCalled();
     const combined = stdoutChunks.join("");
-    expect(combined).toContain("npx 3amoncall local");
-    expect(combined).toContain("npx 3amoncall local demo");
+    expect(combined).toContain("npx 3am local");
+    expect(combined).toContain("npx 3am local demo");
   });
 
   it("exits with error when no package.json", async () => {

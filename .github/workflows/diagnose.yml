@@ -34,9 +34,9 @@ jobs:
 
       - name: Build packages
         run: |
-          pnpm --filter @3amoncall/core build
-          pnpm --filter @3amoncall/diagnosis build
-          pnpm --filter @3amoncall/cli build
+          pnpm --filter @3am/core build
+          pnpm --filter @3am/diagnosis build
+          pnpm --filter @3am/cli build
 
       - name: Fetch incident packet
         env:

@@ -77,7 +77,7 @@ export default async function globalSetup(): Promise<void> {
 
   // Store PID in a temp file so globalTeardown (which may run in a separate
   // Node.js context) can reliably read it across process boundaries.
-  const pidFile = path.join(tmpdir(), "3amoncall-e2e-receiver.pid");
+  const pidFile = path.join(tmpdir(), "3am-e2e-receiver.pid");
   writeFileSync(pidFile, String(receiverProcess.pid), "utf8");
   process.env["E2E_RECEIVER_PID_FILE"] = pidFile;
 

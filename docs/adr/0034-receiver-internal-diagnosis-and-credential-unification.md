@@ -29,9 +29,9 @@ product-concept-v0.2 では、Receiver と診断ランタイム (GitHub Actions)
 
 ## Decision
 
-1. **診断を Receiver 内で直接実行する** — `@3amoncall/diagnosis` の `diagnose()` を Receiver から直接呼び出す
+1. **診断を Receiver 内で直接実行する** — `@3am/diagnosis` の `diagnose()` を Receiver から直接呼び出す
 2. **`ANTHROPIC_API_KEY` を Receiver の環境変数に追加する**
-3. **GitHub Actions workflow は診断ランタイムとしては廃止する** — CLI (`3amoncall-cli --packet`) はローカル再現・評価用として維持
+3. **GitHub Actions workflow は診断ランタイムとしては廃止する** — CLI (`3am-cli --packet`) はローカル再現・評価用として維持
 4. **thin event (ThinEventSchema) は外部通知用としては廃止する** — Receiver 内で診断が完結するため不要
 5. **Vercel Firewall の rate limiting + WAF を推奨セキュリティ設定としてドキュメント化する**
 
@@ -52,9 +52,9 @@ product-concept-v0.2 では、Receiver と診断ランタイム (GitHub Actions)
 
 ### Neutral
 
-- CLI (`3amoncall-cli`) は変更なし。ローカル再現・評価・CI 用途として維持
-- `@3amoncall/diagnosis` パッケージは変更なし。呼び出し元が変わるだけ
-- `@3amoncall/core` のスキーマは変更なし
+- CLI (`3am-cli`) は変更なし。ローカル再現・評価・CI 用途として維持
+- `@3am/diagnosis` パッケージは変更なし。呼び出し元が変わるだけ
+- `@3am/core` のスキーマは変更なし
 
 ## Addendum: waitUntil-based Diagnosis Debouncer
 

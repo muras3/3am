@@ -75,6 +75,6 @@ Phase 1 では、以下を行わない。
 
 ## Related
 
-- [0016-incident-packet-v1alpha.md](/Users/murase/project/3amoncall/docs/adr/0016-incident-packet-v1alpha.md)
-- [0018-incident-packet-semantic-sections.md](/Users/murase/project/3amoncall/docs/adr/0018-incident-packet-semantic-sections.md)
-- [0021-receiver-and-github-actions-integration.md](/Users/murase/project/3amoncall/docs/adr/0021-receiver-and-github-actions-integration.md)
+- [0016-incident-packet-v1alpha.md](/Users/murase/project/3am/docs/adr/0016-incident-packet-v1alpha.md)
+- [0018-incident-packet-semantic-sections.md](/Users/murase/project/3am/docs/adr/0018-incident-packet-semantic-sections.md)
+- [0021-receiver-and-github-actions-integration.md](/Users/murase/project/3am/docs/adr/0021-receiver-and-github-actions-integration.md)

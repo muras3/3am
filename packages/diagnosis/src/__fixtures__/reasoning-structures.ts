@@ -3,7 +3,7 @@
  * Hand-written from ground_truth.template.json files.
  * These represent what the receiver would deterministically produce.
  */
-import type { ReasoningStructure } from "@3amoncall/core";
+import type { ReasoningStructure } from "@3am/core";
 
 export const rateLimit: ReasoningStructure = {
   incidentId: "inc_rate_limit",

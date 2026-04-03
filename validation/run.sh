@@ -63,7 +63,7 @@ if [[ -n "$DATABASE_URL" ]]; then
   RECEIVER_ENDPOINT="$RECEIVER_ENDPOINT" docker compose up -d --wait postgres
   log "Running DB migrations..."
   cd "$REPO_ROOT"
-  DATABASE_URL="$DATABASE_URL" pnpm --filter @3amoncall/receiver db:migrate > /dev/null 2>&1
+  DATABASE_URL="$DATABASE_URL" pnpm --filter @3am/receiver db:migrate > /dev/null 2>&1
 fi
 
 # ── 3. Start Receiver ────────────────────────────────────────────────────────
@@ -80,12 +80,12 @@ cd "$REPO_ROOT"
 
 if [[ -n "$DATABASE_URL" ]]; then
   # Build compiled receiver to avoid tsx watch restart issues
-  pnpm --filter @3amoncall/receiver build > /dev/null 2>&1
+  pnpm --filter @3am/receiver build > /dev/null 2>&1
   DATABASE_URL="$DATABASE_URL" PORT=$RECEIVER_PORT ALLOW_INSECURE_DEV_MODE=true \
-    node apps/receiver/dist/server.js > /tmp/3amoncall-receiver.log 2>&1 &
+    node apps/receiver/dist/server.js > /tmp/3am-receiver.log 2>&1 &
 else
   PORT=$RECEIVER_PORT ALLOW_INSECURE_DEV_MODE=true \
-    pnpm --filter @3amoncall/receiver dev > /tmp/3amoncall-receiver.log 2>&1 &
+    pnpm --filter @3am/receiver dev > /tmp/3am-receiver.log 2>&1 &
 fi
 RECEIVER_PID=$!
 
@@ -95,7 +95,7 @@ for i in $(seq 1 30); do
 done
 
 if ! curl -sf "$RECEIVER_BASE_URL/api/incidents" > /dev/null 2>&1; then
-  err "Receiver failed to start. Check /tmp/3amoncall-receiver.log"
+  err "Receiver failed to start. Check /tmp/3am-receiver.log"
   exit 1
 fi
 log "Receiver ready (PID $RECEIVER_PID)"

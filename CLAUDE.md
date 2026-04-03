@@ -1,4 +1,4 @@
-# 3amoncall
+# 3am
 
 OSS tool that diagnoses serverless app incidents in under 5 minutes using OTel data + LLM.
 
@@ -30,9 +30,9 @@ apps/
   receiver/     # Hono backend — OTLP ingest / anomaly detection / packetizer / console API
   console/      # React + Vite SPA
 packages/
-  core/         # @3amoncall/core — incident packet Zod schema, formation types
-  diagnosis/    # @3amoncall/diagnosis — LLM diagnosis engine (Anthropic SDK)
-  cli/          # @3amoncall/cli — thin wrapper around diagnosis
+  core/         # @3am/core — incident packet Zod schema, formation types
+  diagnosis/    # @3am/diagnosis — LLM diagnosis engine (Anthropic SDK)
+  cli/          # @3am/cli — thin wrapper around diagnosis
   config-typescript/ config-eslint/  # shared config (private)
 ```
 

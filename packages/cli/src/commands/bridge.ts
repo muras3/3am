@@ -103,6 +103,6 @@ export function runBridge(options: BridgeOptions = {}): void {
   });
 
   server.listen(port, "127.0.0.1", () => {
-    process.stdout.write(`3amoncall bridge listening on http://127.0.0.1:${port}\n`);
+    process.stdout.write(`3am bridge listening on http://127.0.0.1:${port}\n`);
   });
 }

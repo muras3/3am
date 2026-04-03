@@ -1,5 +1,5 @@
 {
-  "name": "@3amoncall/console",
+  "name": "@3am/console",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -17,7 +17,7 @@
     "e2e:ui": "playwright test --ui"
   },
   "dependencies": {
-    "@3amoncall/core": "workspace:*",
+    "@3am/core": "workspace:*",
     "@tanstack/react-query": "^5.74.4",
     "@tanstack/react-router": "^1.114.22",
     "clsx": "^2.1.1",
@@ -28,8 +28,8 @@
     "react-i18next": "^16.6.6"
   },
   "devDependencies": {
-    "@3amoncall/config-eslint": "workspace:*",
-    "@3amoncall/config-typescript": "workspace:*",
+    "@3am/config-eslint": "workspace:*",
+    "@3am/config-typescript": "workspace:*",
     "@eslint/js": "^9.23.0",
     "@playwright/test": "^1.52.0",
     "@testing-library/jest-dom": "^6.6.3",

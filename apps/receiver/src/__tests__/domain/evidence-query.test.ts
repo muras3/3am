@@ -8,11 +8,11 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { TelemetryLog, TelemetryMetric, TelemetrySpan, TelemetryStoreDriver } from '../../telemetry/interface.js'
 import type { Incident } from '../../storage/interface.js'
-import type { IncidentPacket, DiagnosisResult } from '@3amoncall/core'
-import { EvidenceQueryResponseSchema } from '@3amoncall/core/schemas/curated-evidence'
-import * as diagnosis from '@3amoncall/diagnosis'
-vi.mock('@3amoncall/diagnosis', async () => {
-  const actual = await vi.importActual('@3amoncall/diagnosis')
+import type { IncidentPacket, DiagnosisResult } from '@3am/core'
+import { EvidenceQueryResponseSchema } from '@3am/core/schemas/curated-evidence'
+import * as diagnosis from '@3am/diagnosis'
+vi.mock('@3am/diagnosis', async () => {
+  const actual = await vi.importActual('@3am/diagnosis')
   return {
     ...actual,
     generateEvidenceQuery: vi.fn().mockRejectedValue(new Error('LLM not available in test')),

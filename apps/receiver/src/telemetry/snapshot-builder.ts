@@ -16,7 +16,7 @@
  *   8. Build packet directly and persist via updatePacket
  */
 
-import type { ChangedMetric, IncidentPacket, RelevantLog } from '@3amoncall/core'
+import type { ChangedMetric, IncidentPacket, RelevantLog } from '@3am/core'
 import type { TelemetryStoreDriver, TelemetrySpan } from './interface.js'
 import { buildIncidentQueryFilter } from './interface.js'
 import type { StorageDriver } from '../storage/interface.js'

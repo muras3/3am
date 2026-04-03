@@ -5,7 +5,7 @@ import { D1StorageAdapter } from "../../storage/drizzle/d1.js";
 import { D1TelemetryAdapter } from "../../telemetry/drizzle/d1.js";
 import { makeMembership, makePacket } from "../storage/shared-suite.js";
 
-vi.mock("@3amoncall/diagnosis", () => ({
+vi.mock("@3am/diagnosis", () => ({
   diagnose: vi.fn().mockResolvedValue({
     summary: {
       what_happened: "Stripe 429s caused checkout 500s.",
@@ -122,11 +122,11 @@ async function seedIncident(overrides: { withDiagnosis?: boolean } = {}): Promis
 
 describe("Cloudflare Queue consumer", () => {
   it("retries the message when diagnosis execution fails", async () => {
-    const { diagnose } = await import("@3amoncall/diagnosis");
+    const { diagnose } = await import("@3am/diagnosis");
     vi.mocked(diagnose).mockRejectedValueOnce(new Error("Anthropic timeout"));
     const incidentId = await seedIncident();
 
-    const batch = createMessageBatch("3amoncall-diagnosis", [
+    const batch = createMessageBatch("3am-diagnosis", [
       { id: "msg-retry", timestamp: new Date(), attempts: 1, body: { incidentId } },
     ]);
     const ctx = createExecutionContext();
@@ -139,7 +139,7 @@ describe("Cloudflare Queue consumer", () => {
   });
 
   it("acks malformed queue payloads without retrying", async () => {
-    const batch = createMessageBatch("3amoncall-diagnosis", [
+    const batch = createMessageBatch("3am-diagnosis", [
       { id: "msg-bad", timestamp: new Date(), attempts: 1, body: { incidentId: "" } },
     ]);
     const ctx = createExecutionContext();
@@ -153,7 +153,7 @@ describe("Cloudflare Queue consumer", () => {
 
   it("acks duplicate work when the incident is already diagnosed", async () => {
     const incidentId = await seedIncident({ withDiagnosis: true });
-    const batch = createMessageBatch("3amoncall-diagnosis", [
+    const batch = createMessageBatch("3am-diagnosis", [
       { id: "msg-skip", timestamp: new Date(), attempts: 1, body: { incidentId } },
     ]);
     const ctx = createExecutionContext();
@@ -167,7 +167,7 @@ describe("Cloudflare Queue consumer", () => {
 
   it("reruns stage 2 narrative when requested explicitly", async () => {
     const incidentId = await seedIncident({ withDiagnosis: true });
-    const batch = createMessageBatch("3amoncall-diagnosis", [
+    const batch = createMessageBatch("3am-diagnosis", [
       { id: "msg-narrative", timestamp: new Date(), attempts: 1, body: { incidentId, mode: "narrative" } },
     ]);
     const ctx = createExecutionContext();

@@ -15,7 +15,7 @@ export default async function globalTeardown(): Promise<void> {
   // Stop receiver process (PID stored in temp file by global-setup)
   const pidFile =
     process.env["E2E_RECEIVER_PID_FILE"] ??
-    path.join(tmpdir(), "3amoncall-e2e-receiver.pid");
+    path.join(tmpdir(), "3am-e2e-receiver.pid");
   try {
     const pid = parseInt(readFileSync(pidFile, "utf8"), 10);
     process.kill(pid, "SIGTERM");

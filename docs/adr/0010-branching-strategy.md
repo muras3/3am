@@ -40,4 +40,4 @@ docs/zzz ──PR──> develop
 
 ## Related
 
-- [0006-pr-only-integration-workflow.md](/Users/murase/project/3amoncall/docs/adr/0006-pr-only-integration-workflow.md)
+- [0006-pr-only-integration-workflow.md](/Users/murase/project/3am/docs/adr/0006-pr-only-integration-workflow.md)

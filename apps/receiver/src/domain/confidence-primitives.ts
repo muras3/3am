@@ -11,7 +11,7 @@
 import type { TelemetryStoreDriver, TelemetryQueryFilter, EvidenceSnapshot } from '../telemetry/interface.js'
 import { buildIncidentQueryFilter } from '../telemetry/interface.js'
 import type { TelemetryScope, AnomalousSignal } from '../storage/interface.js'
-import type { ConfidencePrimitives, CorrelationEntry } from '@3amoncall/core/schemas/incident-detail-extension'
+import type { ConfidencePrimitives, CorrelationEntry } from '@3am/core/schemas/incident-detail-extension'
 import { spearmanCorrelation, extractMetricValue } from '../telemetry/scoring/metric-scorer.js'
 import { BASELINE_MULTIPLIER } from '../telemetry/constants.js'
 

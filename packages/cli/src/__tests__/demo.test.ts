@@ -15,7 +15,7 @@ import { runDemo, buildDemoPayload } from "../commands/demo.js";
 // ---------------------------------------------------------------------------
 
 describe("buildDemoPayload()", () => {
-  it("returns OTLP JSON with 3amoncall-demo service", () => {
+  it("returns OTLP JSON with 3am-demo service", () => {
     const payload = buildDemoPayload() as {
       resourceSpans: Array<{
         resource: {
@@ -31,7 +31,7 @@ describe("buildDemoPayload()", () => {
     const serviceName = resource.attributes.find(
       (a) => a.key === "service.name",
     );
-    expect(serviceName?.value.stringValue).toBe("3amoncall-demo");
+    expect(serviceName?.value.stringValue).toBe("3am-demo");
 
     const env = resource.attributes.find(
       (a) => a.key === "deployment.environment.name",
@@ -285,7 +285,7 @@ describe("runDemo()", () => {
 
     const stdout = stdoutChunks.join("");
     expect(stdout).toContain("downstream timeout cascade");
-    expect(stdout).toContain("3amoncall-demo");
+    expect(stdout).toContain("3am-demo");
     expect(stdout).toContain("demo");
     expect(stdout).toContain("won't appear in production");
   });
@@ -337,7 +337,7 @@ describe("runDemo()", () => {
     const serviceName = parsed.resourceSpans[0]!.resource.attributes.find(
       (a) => a.key === "service.name",
     );
-    expect(serviceName?.value.stringValue).toBe("3amoncall-demo");
+    expect(serviceName?.value.stringValue).toBe("3am-demo");
   });
 
   it("uses custom receiver URL when provided", async () => {

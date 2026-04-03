@@ -1,13 +1,13 @@
 {
   "setup": {
-    "title": "3amoncall Setup",
+    "title": "3am Setup",
     "tokenGenerated": "Your auth token has been generated. Save it now — it will not be shown again.",
     "copied": "Copied!",
     "copy": "Copy",
     "saveAndContinue": "I have saved this token — Continue",
     "recoverFooter": "To recover a lost token, set <code>RECEIVER_AUTH_TOKEN</code> in your Vercel environment variables.",
     "enterToken": "Enter Auth Token",
-    "enterTokenBody": "Your auth token was previously set up but is not present in this browser. Enter your token to continue. You can find it in your Vercel environment variables (<code>RECEIVER_AUTH_TOKEN</code>) or from when you first set up 3amoncall.",
+    "enterTokenBody": "Your auth token was previously set up but is not present in this browser. Enter your token to continue. You can find it in your Vercel environment variables (<code>RECEIVER_AUTH_TOKEN</code>) or from when you first set up 3am.",
     "tokenPlaceholder": "Paste your auth token here",
     "saveAndContinueShort": "Save and Continue",
     "failed": "Setup Failed",
@@ -35,7 +35,7 @@
     }
   },
   "header": {
-    "logo": "3amoncall",
+    "logo": "3am",
     "env": "production",
     "backToMap": "Back to Map",
     "backToMapLabel": "\u2190 Map",

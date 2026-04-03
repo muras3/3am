@@ -1,5 +1,5 @@
 {
-  "name": "3amoncall",
+  "name": "3am",
   "private": true,
   "type": "module",
   "packageManager": "pnpm@10.31.0",
@@ -11,8 +11,8 @@
     "dev": "turbo dev"
   },
   "devDependencies": {
-    "@3amoncall/core": "workspace:*",
-    "@3amoncall/diagnosis": "workspace:*",
+    "@3am/core": "workspace:*",
+    "@3am/diagnosis": "workspace:*",
     "stylelint": "^17.5.0",
     "stylelint-config-standard": "^40.0.0",
     "tsx": "^4.0.0",

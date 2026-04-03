@@ -19,12 +19,12 @@ import { buildCuratedEvidence } from '../domain/curated-evidence.js'
 import { buildReasoningStructure } from '../domain/reasoning-structure-builder.js'
 import type { TelemetrySpan, TelemetryMetric, TelemetryLog } from '../telemetry/interface.js'
 import type { Incident, TelemetryScope, AnomalousSignal } from '../storage/interface.js'
-import type { IncidentPacket, DiagnosisResult, ConsoleNarrative } from '@3amoncall/core'
+import type { IncidentPacket, DiagnosisResult, ConsoleNarrative } from '@3am/core'
 
-import { RuntimeMapResponseSchema } from '@3amoncall/core/schemas/runtime-map'
-import { ExtendedIncidentSchema } from '@3amoncall/core/schemas/incident-detail-extension'
-import { EvidenceResponseSchema } from '@3amoncall/core/schemas/curated-evidence'
-import { ReasoningStructureSchema } from '@3amoncall/core/schemas/reasoning-structure'
+import { RuntimeMapResponseSchema } from '@3am/core/schemas/runtime-map'
+import { ExtendedIncidentSchema } from '@3am/core/schemas/incident-detail-extension'
+import { EvidenceResponseSchema } from '@3am/core/schemas/curated-evidence'
+import { ReasoningStructureSchema } from '@3am/core/schemas/reasoning-structure'
 
 // ── Shared constants ────────────────────────────────────────────────────
 
@@ -817,7 +817,7 @@ describe('Integration: Curated API assembly (§6)', () => {
   describe('Step 4: Stage 2 pipeline', () => {
     // For pipeline tests we mock the LLM calls
     beforeEach(() => {
-      vi.mock('@3amoncall/diagnosis', async (importOriginal) => {
+      vi.mock('@3am/diagnosis', async (importOriginal) => {
         const original = await importOriginal()
         return {
           ...(original as Record<string, unknown>),
@@ -835,7 +835,7 @@ describe('Integration: Curated API assembly (§6)', () => {
 
     it('stage2-pipeline-connected: DiagnosisRunner calls buildReasoningStructure + generateConsoleNarrative', async () => {
       const { DiagnosisRunner } = await import('../runtime/diagnosis-runner.js')
-      const { generateConsoleNarrative } = await import('@3amoncall/diagnosis')
+      const { generateConsoleNarrative } = await import('@3am/diagnosis')
 
       await seedRichTelemetry(telemetryStore)
       const incident = makeIncident()
@@ -859,7 +859,7 @@ describe('Integration: Curated API assembly (§6)', () => {
 
     it('stage2-retry-on-failure: retries once on narrative generation failure', async () => {
       const { DiagnosisRunner } = await import('../runtime/diagnosis-runner.js')
-      const { generateConsoleNarrative } = await import('@3amoncall/diagnosis')
+      const { generateConsoleNarrative } = await import('@3am/diagnosis')
 
       // Fail first, succeed on retry
       const mockGenerate = vi.mocked(generateConsoleNarrative)

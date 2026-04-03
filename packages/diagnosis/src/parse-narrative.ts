@@ -2,7 +2,7 @@ import {
   ConsoleNarrativeSchema,
   type ConsoleNarrative,
   type ReasoningStructure,
-} from "@3amoncall/core";
+} from "@3am/core";
 
 export type NarrativeMeta = {
   model: string;

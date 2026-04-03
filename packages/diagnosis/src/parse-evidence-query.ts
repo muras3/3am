@@ -2,7 +2,7 @@ import {
   EvidenceQueryResponseSchema,
   type EvidenceQueryRef,
   type EvidenceQueryResponse,
-} from "@3amoncall/core";
+} from "@3am/core";
 
 export type EvidenceQueryParseMeta = {
   question: string;

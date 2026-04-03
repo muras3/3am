@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import type { DiagnosisResult, IncidentPacket } from '@3amoncall/core'
+import type { DiagnosisResult, IncidentPacket } from '@3am/core'
 import type { Incident } from '../../storage/interface.js'
 import type { TelemetryLog, TelemetryMetric, TelemetrySpan, TelemetryStoreDriver } from '../../telemetry/interface.js'
 

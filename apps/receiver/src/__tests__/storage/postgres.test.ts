@@ -2,7 +2,7 @@
  * PostgresAdapter contract tests.
  *
  * Requires a running Postgres instance. Set DATABASE_URL before running:
- *   DATABASE_URL=postgres://... pnpm --filter @3amoncall/receiver test
+ *   DATABASE_URL=postgres://... pnpm --filter @3am/receiver test
  *
  * In CI this is provided by the GitHub Actions postgres service container.
  * Tests are skipped automatically when DATABASE_URL is not set.

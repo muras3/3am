@@ -5,7 +5,7 @@
  * telemetryScope/spanMembership/anomalousSignals/platformEvents from
  * legacy rawState + packet data when the new columns are NULL.
  */
-import type { IncidentPacket, PlatformEvent } from "@3amoncall/core";
+import type { IncidentPacket, PlatformEvent } from "@3am/core";
 import type { AnomalousSignal, TelemetryScope } from "../interface.js";
 import { spanMembershipKey } from "../interface.js";
 

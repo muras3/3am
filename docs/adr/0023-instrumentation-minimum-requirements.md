@@ -8,7 +8,7 @@
 Phase 1 では、個人開発者や小規模チームが Claude Code などを使って現実的に導入できることが重要である。  
 一方で、OTel を「送ってくれれば何でもよい」とすると、incident formation・diagnosis・Console の品質が安定しない。
 
-したがって、Phase 1 で 3amoncall が実用的に動くための **instrumentation minimum requirements** を決める必要がある。
+したがって、Phase 1 で 3am が実用的に動くための **instrumentation minimum requirements** を決める必要がある。
 
 ## Decision
 
@@ -69,6 +69,6 @@ Phase 1 では、以下を必須にしない。
 
 ## Related
 
-- [0022-ingest-protocol-and-platform-log-separation.md](/Users/murase/project/3amoncall/docs/adr/0022-ingest-protocol-and-platform-log-separation.md)
-- [0018-incident-packet-semantic-sections.md](/Users/murase/project/3amoncall/docs/adr/0018-incident-packet-semantic-sections.md)
-- [0019-diagnosis-result-minimum-contract.md](/Users/murase/project/3amoncall/docs/adr/0019-diagnosis-result-minimum-contract.md)
+- [0022-ingest-protocol-and-platform-log-separation.md](/Users/murase/project/3am/docs/adr/0022-ingest-protocol-and-platform-log-separation.md)
+- [0018-incident-packet-semantic-sections.md](/Users/murase/project/3am/docs/adr/0018-incident-packet-semantic-sections.md)
+- [0019-diagnosis-result-minimum-contract.md](/Users/murase/project/3am/docs/adr/0019-diagnosis-result-minimum-contract.md)

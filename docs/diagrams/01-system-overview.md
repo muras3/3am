@@ -1,10 +1,10 @@
-# System Overview — 3amoncall
+# System Overview — 3am
 
 > High-level system context: who talks to what, and where the boundaries are.
 
 ```mermaid
 C4Context
-  title 3amoncall System Context
+  title 3am System Context
 
   Person(operator, "On-Call Engineer", "Views incidents, reads diagnosis, asks AI copilot")
 

@@ -116,7 +116,7 @@ Phase 1 では、以下は行わない。
 
 ## Related
 
-- [0007-incident-packet-generated-in-receiver.md](/Users/murase/project/3amoncall/docs/adr/0007-incident-packet-generated-in-receiver.md)
-- [0008-problem-grouping-and-packetization-without-llm.md](/Users/murase/project/3amoncall/docs/adr/0008-problem-grouping-and-packetization-without-llm.md)
-- [0016-incident-packet-v1alpha.md](/Users/murase/project/3amoncall/docs/adr/0016-incident-packet-v1alpha.md)
+- [0007-incident-packet-generated-in-receiver.md](/Users/murase/project/3am/docs/adr/0007-incident-packet-generated-in-receiver.md)
+- [0008-problem-grouping-and-packetization-without-llm.md](/Users/murase/project/3am/docs/adr/0008-problem-grouping-and-packetization-without-llm.md)
+- [0016-incident-packet-v1alpha.md](/Users/murase/project/3am/docs/adr/0016-incident-packet-v1alpha.md)
 - [0033-cross-service-incident-formation-via-trace-propagation.md](0033-cross-service-incident-formation-via-trace-propagation.md) — trace-based cross-service merge 拡張

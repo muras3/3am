@@ -5,7 +5,7 @@ import { MemoryAdapter } from "../../storage/adapters/memory.js";
 import { createEmptyTelemetryScope, type InitialMembership } from "../../storage/interface.js";
 import type { TelemetryStoreDriver } from "../../telemetry/interface.js";
 import type { DiagnosisRunner } from "../../runtime/diagnosis-runner.js";
-import type { DiagnosisResult, IncidentPacket } from "@3amoncall/core";
+import type { DiagnosisResult, IncidentPacket } from "@3am/core";
 
 const TOKEN = "test-token";
 

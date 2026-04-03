@@ -22,7 +22,7 @@ const TOKEN = "test-static-token";
 let consoleDist: string;
 
 beforeAll(() => {
-  consoleDist = mkdtempSync(join(tmpdir(), "3amoncall-static-test-"));
+  consoleDist = mkdtempSync(join(tmpdir(), "3am-static-test-"));
   mkdirSync(join(consoleDist, "assets"), { recursive: true });
   writeFileSync(join(consoleDist, "index.html"), MOCK_HTML);
   writeFileSync(join(consoleDist, "assets", "app.js"), "console.log('app')");

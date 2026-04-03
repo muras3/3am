@@ -10,11 +10,11 @@
 
 | Check | Result | Detail |
 |-------|--------|--------|
-| `@3amoncall/core` test | ✅ PASS | 36/36 tests |
-| `@3amoncall/core` typecheck | ✅ PASS | tsc --noEmit clean |
-| `@3amoncall/receiver` test | ✅ PASS | 72/72 tests |
-| `@3amoncall/receiver` typecheck | ✅ PASS | tsc --noEmit clean |
-| `@3amoncall/receiver` lint | ⚠️ SKIP | eslint binary not installed in monorepo (no `eslint` devDep at root) |
+| `@3am/core` test | ✅ PASS | 36/36 tests |
+| `@3am/core` typecheck | ✅ PASS | tsc --noEmit clean |
+| `@3am/receiver` test | ✅ PASS | 72/72 tests |
+| `@3am/receiver` typecheck | ✅ PASS | tsc --noEmit clean |
+| `@3am/receiver` lint | ⚠️ SKIP | eslint binary not installed in monorepo (no `eslint` devDep at root) |
 
 ---
 

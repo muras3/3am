@@ -21,7 +21,7 @@ import type {
   ConsoleNarrative,
   ProofCardNarrative,
   ProofRef,
-} from '@3amoncall/core'
+} from '@3am/core'
 import { buildTraceSurface } from './trace-surface.js'
 import { buildMetricsSurface } from './metrics-surface.js'
 import { buildLogsSurface } from './logs-surface.js'

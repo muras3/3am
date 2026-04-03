@@ -20,7 +20,7 @@ import type {
   MetricRow,
   MetricGroupKey,
   CuratedEvidenceRef,
-} from '@3amoncall/core/schemas/curated-evidence'
+} from '@3am/core/schemas/curated-evidence'
 import { extractMetricValue, classifyMetric, scoreMetrics } from '../telemetry/scoring/metric-scorer.js'
 import { BASELINE_MULTIPLIER } from '../telemetry/constants.js'
 

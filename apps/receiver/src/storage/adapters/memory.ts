@@ -1,4 +1,4 @@
-import type { IncidentPacket, DiagnosisResult, ConsoleNarrative, PlatformEvent, ThinEvent } from "@3amoncall/core";
+import type { IncidentPacket, DiagnosisResult, ConsoleNarrative, PlatformEvent, ThinEvent } from "@3am/core";
 import type { AnomalousSignal, Incident, IncidentPage, InitialMembership, StorageDriver } from "../interface.js";
 import { MAX_ANOMALOUS_SIGNALS, MAX_SPAN_MEMBERSHIP } from "../interface.js";
 

@@ -16,8 +16,8 @@
       "cache": false,
       "persistent": true
     },
-    "@3amoncall/receiver#bundle": {
-      "dependsOn": ["@3amoncall/receiver#build", "@3amoncall/console#build"],
+    "@3am/receiver#bundle": {
+      "dependsOn": ["@3am/receiver#build", "@3am/console#build"],
       "outputs": ["bundle/**"]
     }
   }

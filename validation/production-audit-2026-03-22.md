@@ -1,6 +1,6 @@
 # Production Audit Report — 2026-03-22 (REDO)
 
-**Target:** `https://3amoncall.vercel.app` (branch `feat/p0-p1-fixes-and-model-env`)
+**Target:** `https://3am.vercel.app` (branch `feat/p0-p1-fixes-and-model-env`)
 **Reference:** `docs/mock/lens-prototype-v1.html`
 **Method:** Mock と Production を browser-use で同時に開き、スクリーンショットを目視比較。DOM存在チェックではなく、視覚的・機能的な準拠を確認。
 **Timestamp:** 2026-03-22 11:23 UTC
@@ -14,7 +14,7 @@
 
 今回は以下の手順で実施：
 1. Mock を `http://localhost:8765/lens-prototype-v1.html` でブラウザに表示
-2. Production を `https://3amoncall.vercel.app` でブラウザに表示
+2. Production を `https://3am.vercel.app` でブラウザに表示
 3. L0 → L1 → L2 の各画面をスクリーンショット撮影し、目視で比較
 4. インタラクション（クリック、展開、タブ切替）も実際に操作して確認
 5. スクリーンショットは `validation/e2e-screenshots/audit-redo-mock/` と `audit-redo-live/` に保存

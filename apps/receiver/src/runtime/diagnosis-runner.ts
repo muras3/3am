@@ -1,4 +1,4 @@
-import { diagnose, generateConsoleNarrative } from "@3amoncall/diagnosis";
+import { diagnose, generateConsoleNarrative } from "@3am/diagnosis";
 import type { StorageDriver, Incident } from "../storage/interface.js";
 import type { TelemetryStoreDriver } from "../telemetry/interface.js";
 import { buildReasoningStructure } from "../domain/reasoning-structure-builder.js";

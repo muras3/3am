@@ -1,4 +1,4 @@
-import type { IncidentPacket, DiagnosisResult } from "@3amoncall/core";
+import type { IncidentPacket, DiagnosisResult } from "@3am/core";
 
 // Scenario: secrets_rotation_partial_propagation
 // API key rotated: key_v2 deployed to new instances but old instances still use key_v1.

@@ -282,11 +282,11 @@ describe("runDeploy()", () => {
       yes: true,
       noInteractive: true,
       platform: "vercel",
-      projectName: "3amoncall-receiver-dev",
+      projectName: "3am-receiver-dev",
     });
 
     expect(vi.mocked(createProvider)).toHaveBeenCalledWith("vercel", {
-      projectName: "3amoncall-receiver-dev",
+      projectName: "3am-receiver-dev",
     });
   });
 

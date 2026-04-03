@@ -29,7 +29,7 @@ Layer 2: Score & Select — anomaly scoring → ranking → diversity fill → b
 Layer 3: Format for LLM — token budget management → prompt construction
 ```
 
-3amoncall は Layer 2 の metrics/logs 選別が未実装。PR #89 の buildPrompt 側 cap は Layer 3 での応急処置であり、間違った層で対処している。
+3am は Layer 2 の metrics/logs 選別が未実装。PR #89 の buildPrompt 側 cap は Layer 3 での応急処置であり、間違った層で対処している。
 
 詳細: [docs/research/telemetry-evidence-selection-2026-03.md](../research/telemetry-evidence-selection-2026-03.md)
 

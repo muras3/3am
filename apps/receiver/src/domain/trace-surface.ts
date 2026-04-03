@@ -15,7 +15,7 @@ import type {
   CuratedGroupedTrace,
   CuratedTraceSpan,
   CuratedEvidenceRef,
-} from '@3amoncall/core/schemas/curated-evidence'
+} from '@3am/core/schemas/curated-evidence'
 import { selectBaseline, deriveDominantOperation } from './baseline-selector.js'
 
 // ── Constants ────────────────────────────────────────────────────────────

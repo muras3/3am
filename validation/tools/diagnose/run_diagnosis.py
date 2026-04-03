@@ -3,7 +3,7 @@
 
 Adapted from probe-investigate/scripts/run_diagnosis.py.
 Differences:
-- Loads scenario.probe.json (3amoncall format) first, falls back to scenario.json
+- Loads scenario.probe.json (3am format) first, falls back to scenario.json
 - Saves diagnosis.json directly into the run directory (not bench/results/)
 """
 
@@ -25,7 +25,7 @@ except ImportError:
 def load_fixture(fixture_dir: Path) -> dict:
     """Load all fixture files from a directory.
 
-    Prefers scenario.probe.json (3amoncall output) over scenario.json.
+    Prefers scenario.probe.json (3am output) over scenario.json.
     """
     for name in ("scenario.probe.json", "scenario.json"):
         scenario_path = fixture_dir / name

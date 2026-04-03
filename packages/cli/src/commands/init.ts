@@ -10,7 +10,7 @@ import { detectRuntimeTarget, findWranglerConfigPath } from "./init/detect-runti
 import { updateCloudflareObservabilityConfig } from "./cloudflare-workers.js";
 import { resolveApiKey, loadCredentials, saveCredentials } from "./init/credentials.js";
 import { createInterface } from "node:readline";
-import { PROVIDER_NAMES, type ProviderName } from "@3amoncall/diagnosis";
+import { PROVIDER_NAMES, type ProviderName } from "@3am/diagnosis";
 
 const OTEL_DEPS = [
   "@opentelemetry/sdk-node",
@@ -255,7 +255,7 @@ export async function runInit(_argv: string[], options: InitOptions = {}): Promi
     process.stderr.write(
       "Warning: ANTHROPIC_API_KEY not configured.\n" +
       "Anthropic automatic diagnosis will not run until you set it.\n" +
-      "Fix: npx 3amoncall init --api-key <your-key>\n",
+      "Fix: npx 3am init --api-key <your-key>\n",
     );
   }
 
@@ -369,7 +369,7 @@ export async function runInit(_argv: string[], options: InitOptions = {}): Promi
   }
 
   // --- 7. Signal check ---
-  process.stdout.write(ja ? "\n3amoncall init 完了!\n\n" : "\n3amoncall init complete!\n\n");
+  process.stdout.write(ja ? "\n3am init 完了!\n\n" : "\n3am init complete!\n\n");
   if (runtimeTarget === "cloudflare-workers") {
     process.stdout.write(ja ? "実行基盤: Cloudflare Workers\n" : "Runtime target: Cloudflare Workers\n");
   }
@@ -429,14 +429,14 @@ export async function runInit(_argv: string[], options: InitOptions = {}): Promi
   process.stdout.write(
     ja
       ? runtimeTarget === "cloudflare-workers"
-        ? "\n次のステップ:\n  1. Cloudflare の OTLP destination を 3amoncall receiver に向ける\n  2. `wrangler deploy`\n  3. リクエストを発生させて traces/logs の到達を確認する\n"
+        ? "\n次のステップ:\n  1. Cloudflare の OTLP destination を 3am receiver に向ける\n  2. `wrangler deploy`\n  3. リクエストを発生させて traces/logs の到達を確認する\n"
         : mode === "manual"
-          ? "\n次のステップ:\n  1. `npx 3amoncall local`\n  2. 別ターミナルで `npx 3amoncall bridge`\n  3. `npx 3amoncall local demo`\n"
-          : "\n次のステップ:\n  1. `npx 3amoncall local`\n  2. 別ターミナルで `npx 3amoncall local demo`\n"
+          ? "\n次のステップ:\n  1. `npx 3am local`\n  2. 別ターミナルで `npx 3am bridge`\n  3. `npx 3am local demo`\n"
+          : "\n次のステップ:\n  1. `npx 3am local`\n  2. 別ターミナルで `npx 3am local demo`\n"
       : runtimeTarget === "cloudflare-workers"
-        ? "\nNext steps:\n  1. Point your Cloudflare OTLP destination at the 3amoncall receiver\n  2. `wrangler deploy`\n  3. Trigger a request and confirm traces/logs arrive\n"
+        ? "\nNext steps:\n  1. Point your Cloudflare OTLP destination at the 3am receiver\n  2. `wrangler deploy`\n  3. Trigger a request and confirm traces/logs arrive\n"
         : mode === "manual"
-          ? "\nNext steps:\n  1. `npx 3amoncall local`\n  2. In another terminal, `npx 3amoncall bridge`\n  3. `npx 3amoncall local demo`\n"
-          : "\nNext steps:\n  1. `npx 3amoncall local`\n  2. In another terminal, `npx 3amoncall local demo`\n",
+          ? "\nNext steps:\n  1. `npx 3am local`\n  2. In another terminal, `npx 3am bridge`\n  3. `npx 3am local demo`\n"
+          : "\nNext steps:\n  1. `npx 3am local`\n  2. In another terminal, `npx 3am local demo`\n",
   );
 }

@@ -1,6 +1,6 @@
 # E2E Browser Test Checklist
 
-Target: `https://3amoncall-production.up.railway.app`
+Target: `https://3am-production.up.railway.app`
 Auth: Bearer token from `.env.staging`
 Tool: `agent-browser`
 
@@ -16,9 +16,9 @@ Tool: `agent-browser`
 3. Verify API readiness:
    ```bash
    curl -s -H "Authorization: Bearer $RECEIVER_AUTH_TOKEN" \
-     https://3amoncall-production.up.railway.app/api/runtime-map | jq '.summary'
+     https://3am-production.up.railway.app/api/runtime-map | jq '.summary'
    curl -s -H "Authorization: Bearer $RECEIVER_AUTH_TOKEN" \
-     https://3amoncall-production.up.railway.app/api/incidents | jq '.[0].incidentId'
+     https://3am-production.up.railway.app/api/incidents | jq '.[0].incidentId'
    ```
    - runtime-map summary should have non-zero values
    - At least 1 incident should exist
@@ -53,7 +53,7 @@ Source: lens-prototype-v1.html L0, console-data-requirements.md §1 Normal
 - [ ] Clicking incident row navigates to Level 1
 
 ### L0-5: Header
-- [ ] Logo "3amoncall" with alert dot (pulsing if incidents exist)
+- [ ] Logo "3am" with alert dot (pulsing if incidents exist)
 - [ ] Environment tag (e.g. "production")
 - [ ] Clock display
 

@@ -8,7 +8,7 @@
 フルスケール run では raw observability inputs が数 MB 規模になり、そのまま LLM に流し込むと context window と推論品質の両方で不利になる。
 
 既存の observability AI は、生ログ・生 trace を一括投入するのではなく、先に incident scope を絞り、関連 signal を束ねた上で推論させている。  
-3amoncall でも、LLM に渡す前段として `incident packet` を生成する層が必要である。
+3am でも、LLM に渡す前段として `incident packet` を生成する層が必要である。
 
 `incident packet` は LLM を必要としない。役割は以下である。
 
@@ -46,6 +46,6 @@
 
 ## Related
 
-- [0001-validation-mvp-scope.md](/Users/murase/project/3amoncall/docs/adr/0001-validation-mvp-scope.md)
-- [0005-raw-evaluation-inputs.md](/Users/murase/project/3amoncall/docs/adr/0005-raw-evaluation-inputs.md)
-- [product-concept-v0.2.md](/Users/murase/project/3amoncall/docs/product-concept-v0.2.md)
+- [0001-validation-mvp-scope.md](/Users/murase/project/3am/docs/adr/0001-validation-mvp-scope.md)
+- [0005-raw-evaluation-inputs.md](/Users/murase/project/3am/docs/adr/0005-raw-evaluation-inputs.md)
+- [product-concept-v0.2.md](/Users/murase/project/3am/docs/product-concept-v0.2.md)

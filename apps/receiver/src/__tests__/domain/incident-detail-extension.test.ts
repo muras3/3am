@@ -9,7 +9,7 @@ import { MemoryTelemetryAdapter } from '../../telemetry/adapters/memory.js'
 import { buildIncidentDetailExtension } from '../../domain/incident-detail-extension.js'
 import type { TelemetrySpan, TelemetryMetric, TelemetryLog } from '../../telemetry/interface.js'
 import type { Incident, TelemetryScope, AnomalousSignal } from '../../storage/interface.js'
-import type { IncidentPacket, DiagnosisResult } from '@3amoncall/core'
+import type { IncidentPacket, DiagnosisResult } from '@3am/core'
 
 // ── Test helpers ─────────────────────────────────────────────────────────
 

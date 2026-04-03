@@ -377,7 +377,7 @@ export async function resolveCloudflareApiAuth(options: {
   if (options.noInteractive) {
     throw new Error(
       "Cloudflare Observability destination setup requires CLOUDFLARE_API_TOKEN. " +
-      "For initial OSS setup, create a Cloudflare API Token with Workers Scripts:Edit and Logs:Edit, then export CLOUDFLARE_API_TOKEN before running `3amoncall deploy cloudflare`.",
+      "For initial OSS setup, create a Cloudflare API Token with Workers Scripts:Edit and Logs:Edit, then export CLOUDFLARE_API_TOKEN before running `3am deploy cloudflare`.",
     );
   }
 
@@ -406,7 +406,7 @@ export async function resolveCloudflareApiAuth(options: {
 }
 
 function buildDestinationName(workerName: string, kind: "traces" | "logs"): string {
-  return `${workerName}-3amoncall-${kind}`;
+  return `${workerName}-3am-${kind}`;
 }
 
 async function listDestinations(auth: CloudflareApiAuth, accountId: string): Promise<CloudflareDestination[]> {

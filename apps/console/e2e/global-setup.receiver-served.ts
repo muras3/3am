@@ -82,7 +82,7 @@ export default async function globalSetup(): Promise<void> {
     stdio: "pipe",
   });
 
-  const pidFile = path.join(tmpdir(), "3amoncall-e2e-receiver.pid");
+  const pidFile = path.join(tmpdir(), "3am-e2e-receiver.pid");
   writeFileSync(pidFile, String(receiverProcess.pid), "utf8");
   process.env["E2E_RECEIVER_PID_FILE"] = pidFile;
 

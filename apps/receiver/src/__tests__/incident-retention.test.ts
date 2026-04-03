@@ -4,7 +4,7 @@ import { MemoryAdapter } from "../storage/adapters/memory.js";
 import { MemoryTelemetryAdapter } from "../telemetry/adapters/memory.js";
 import { createEmptyTelemetryScope, type InitialMembership } from "../storage/interface.js";
 import { _resetCleanupTimerForTest } from "../retention/lazy-cleanup.js";
-import type { IncidentPacket } from "@3amoncall/core";
+import type { IncidentPacket } from "@3am/core";
 
 function makePacket(id: string): IncidentPacket {
   return {

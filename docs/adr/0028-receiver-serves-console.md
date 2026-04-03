@@ -36,7 +36,7 @@ This splits auth by caller type:
 
 ### Serving
 
-- After `pnpm --filter @3amoncall/console build`, Receiver serves `apps/console/dist/` at `/`.
+- After `pnpm --filter @3am/console build`, Receiver serves `apps/console/dist/` at `/`.
 - `/*` (non-API, non-ingest) falls through to `dist/index.html` (SPA client-side routing).
 - Static routes are mounted outside the auth middleware.
 
@@ -90,7 +90,7 @@ For multi-tenant or public deployments, a per-user auth layer would be needed. T
 - **Positive**: Single binary/process to deploy.
 - **Positive**: SPA routing and API auth handled in one place.
 - **Neutral**: `/api/*` is accessible without Bearer auth — intentional; same-origin serving is the access gate.
-- **Negative**: Build order matters: `@3amoncall/console` must build before Receiver can serve Console.
+- **Negative**: Build order matters: `@3am/console` must build before Receiver can serve Console.
 - **Negative**: In dev, Console still runs as a separate Vite dev server (Vite proxy handles `/api`).
 
 ## Implementation checklist

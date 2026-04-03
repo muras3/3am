@@ -3,7 +3,7 @@ import { gunzip } from "node:zlib";
 import { Hono, type Context } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { z } from "zod";
-import { PlatformEventSchema, type PlatformEvent } from "@3amoncall/core";
+import { PlatformEventSchema, type PlatformEvent } from "@3am/core";
 import type { Incident, StorageDriver } from "../storage/interface.js";
 import { spanMembershipKey } from "../storage/interface.js";
 import type { SpanBuffer } from "../ambient/span-buffer.js";

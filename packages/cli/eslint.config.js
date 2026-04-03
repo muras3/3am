@@ -1,2 +1,2 @@
-import config from "@3amoncall/config-eslint";
+import config from "@3am/config-eslint";
 export default config;

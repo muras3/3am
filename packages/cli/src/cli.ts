@@ -7,7 +7,7 @@ import { runLocal } from "./commands/local.js";
 const program = new Command();
 
 program
-  .name("3amoncall")
+  .name("3am")
   .description("Diagnose serverless app incidents in under 5 minutes using OTel data + LLM")
   .version("0.1.0");
 
@@ -27,7 +27,7 @@ program
 program
   .command("init")
   .description("Set up OpenTelemetry SDK in your project")
-  .option("--api-key <key>", "Anthropic API key (saved to ~/.config/3amoncall/credentials)")
+  .option("--api-key <key>", "Anthropic API key (saved to ~/.config/3am/credentials)")
   .option("--mode <mode>", "Diagnosis mode (automatic or manual)")
   .option("--provider <provider>", "LLM provider (anthropic, openai, ollama, claude-code, codex)")
   .option("--model <model>", "Default provider model override")
@@ -46,7 +46,7 @@ program
 
 program
   .command("local")
-  .description("Use 3amoncall locally (default action: start)")
+  .description("Use 3am locally (default action: start)")
   .option("--port <number>", "Port to expose (default: 3333)", parseInt)
   .option("--yes", "Skip cost consent prompt when running the demo")
   .option("--no-interactive", "Skip interactive prompts")
