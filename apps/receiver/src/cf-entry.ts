@@ -34,7 +34,7 @@ interface ExecutionContext {
   props: Record<string, unknown>;
 }
 interface QueueBinding<T> {
-  send(message: T): Promise<void>;
+  send(message: T, options?: { delaySeconds?: number }): Promise<void>;
 }
 interface QueueMessage<T> {
   body: T;
@@ -121,8 +121,8 @@ async function getRuntime(env: Env): Promise<RuntimeServices> {
     const resolvedAuthToken = await resolveAuthToken(storage);
     const diagnosisRunner = new DiagnosisRunner(storage, telemetryStore);
     const enqueueDiagnosis = env.DIAGNOSIS_QUEUE
-      ? async (incidentId: string, mode: DiagnosisQueueMessage["mode"] = "diagnosis") => {
-          await env.DIAGNOSIS_QUEUE!.send({ incidentId, mode });
+      ? async (incidentId: string, mode: DiagnosisQueueMessage["mode"] = "diagnosis", delaySeconds?: number) => {
+          await env.DIAGNOSIS_QUEUE!.send({ incidentId, mode }, delaySeconds ? { delaySeconds } : undefined);
         }
       : undefined;
 
