@@ -61,7 +61,7 @@ const BASELINE_HIGH: BaselineContext = {
   windowEnd: '2024-01-01T00:05:00Z',
   sampleCount: 50,
   confidence: 'high',
-  source: { kind: 'same_route', route: '/api/checkout', service: 'web' },
+  source: { kind: 'exact_operation', operation: '/api/checkout', service: 'web' },
 }
 
 const BASELINE_LOW: BaselineContext = {
@@ -69,7 +69,7 @@ const BASELINE_LOW: BaselineContext = {
   windowEnd: '2024-01-01T00:05:00Z',
   sampleCount: 2,
   confidence: 'low',
-  source: { kind: 'same_service', service: 'web' },
+  source: { kind: 'same_operation_family', operation: '/api/checkout', service: 'web' },
 }
 
 const BASELINE_UNAVAILABLE: BaselineContext = {
@@ -1029,7 +1029,7 @@ describe('L2 Evidence Contracts', () => {
 
       const baseline = result.surfaces.traces.baseline
       expect(baseline).toBeDefined()
-      expect(baseline!.source).toBe('same_route')
+      expect(baseline!.source).toBe('exact_operation')
       expect(baseline!.windowStart).toBe('2024-01-01T00:00:00Z')
       expect(baseline!.windowEnd).toBe('2024-01-01T00:05:00Z')
       expect(baseline!.sampleCount).toBe(50)

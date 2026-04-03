@@ -150,7 +150,7 @@ export const evidenceReady: EvidenceResponse = {
       ],
       smokingGunSpanId: "stripe-api-001",
       baseline: {
-        source: "same_route",
+        source: "exact_operation",
         windowStart: "2024-03-20T14:15:00Z",
         windowEnd: "2024-03-20T14:22:00Z",
         sampleCount: 42,
