@@ -51,6 +51,31 @@ export function getStringAttr(attrs: unknown, key: string): string {
 }
 
 /**
+ * Resolve the logical service name from OTLP resource attributes.
+ * CF Workers OTLP may omit service.name and send faas.name/cloudflare.script_name instead.
+ */
+export function resolveResourceServiceName(attrs: unknown): string {
+  return (
+    getStringAttr(attrs, 'service.name') ||
+    getStringAttr(attrs, 'faas.name') ||
+    getStringAttr(attrs, 'cloudflare.script_name') ||
+    'unknown'
+  )
+}
+
+/**
+ * Resolve the deployment environment from OTLP resource attributes.
+ * CF Workers OTLP may omit deployment.environment.name and send cloudflare.environment instead.
+ */
+export function resolveResourceEnvironment(attrs: unknown): string {
+  return (
+    getStringAttr(attrs, 'deployment.environment.name') ||
+    getStringAttr(attrs, 'cloudflare.environment') ||
+    'production'
+  )
+}
+
+/**
  * Allowlist of OTLP attribute keys to persist in TelemetryStore.
  * Bounds payload size while retaining diagnostically significant fields.
  */

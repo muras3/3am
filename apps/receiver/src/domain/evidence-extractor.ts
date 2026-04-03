@@ -15,7 +15,13 @@
 import type { ChangedMetric, RelevantLog } from '@3amoncall/core'
 import type { Incident } from '../storage/interface.js'
 import { FORMATION_WINDOW_MS } from './formation.js'
-import { isRecord, isArray, nanoToMs, getStringAttr } from './otlp-utils.js'
+import {
+  isRecord,
+  isArray,
+  nanoToMs,
+  resolveResourceServiceName,
+  resolveResourceEnvironment,
+} from './otlp-utils.js'
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -66,9 +72,8 @@ export function extractMetricEvidence(body: unknown): ChangedMetric[] {
   for (const rm of resourceMetrics) {
     if (!isRecord(rm)) continue
     const attrs = getResourceAttrs(rm)
-    const service = getStringAttr(attrs, 'service.name')
-    const environment = getStringAttr(attrs, 'deployment.environment.name')
-    if (!service) continue
+    const service = resolveResourceServiceName(attrs)
+    const environment = resolveResourceEnvironment(attrs)
 
     const scopeMetrics = rm['scopeMetrics']
     if (!isArray(scopeMetrics)) continue
@@ -141,9 +146,8 @@ export function extractLogEvidence(body: unknown): RelevantLog[] {
   for (const rl of resourceLogs) {
     if (!isRecord(rl)) continue
     const attrs = getResourceAttrs(rl)
-    const service = getStringAttr(attrs, 'service.name')
-    const environment = getStringAttr(attrs, 'deployment.environment.name')
-    if (!service) continue
+    const service = resolveResourceServiceName(attrs)
+    const environment = resolveResourceEnvironment(attrs)
 
     const scopeLogs = rl['scopeLogs']
     if (!isArray(scopeLogs)) continue

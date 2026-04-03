@@ -195,6 +195,57 @@ describe('extractSpans', () => {
     expect(spans[0]!.peerService).toBe('stripe')
   })
 
+  it('falls back to faas.name and cloudflare.environment for CF Workers resources', () => {
+    const payload = {
+      resourceSpans: [{
+        resource: {
+          attributes: [
+            { key: 'faas.name', value: { stringValue: 'checkout-worker' } },
+            { key: 'cloudflare.environment', value: { stringValue: 'staging' } },
+          ],
+        },
+        scopeSpans: [{
+          spans: [{
+            traceId: 'abc123',
+            spanId: 'span001',
+            startTimeUnixNano: '1700000000000000000',
+            endTimeUnixNano: '1700000001000000000',
+            status: { code: 2 },
+            attributes: [],
+            events: [],
+          }],
+        }],
+      }],
+    }
+
+    const spans = extractSpans(payload)
+    expect(spans[0]!.serviceName).toBe('checkout-worker')
+    expect(spans[0]!.environment).toBe('staging')
+  })
+
+  it('defaults serviceName to unknown and environment to production when resource attrs are missing', () => {
+    const payload = {
+      resourceSpans: [{
+        resource: { attributes: [] },
+        scopeSpans: [{
+          spans: [{
+            traceId: 'abc123',
+            spanId: 'span001',
+            startTimeUnixNano: '1700000000000000000',
+            endTimeUnixNano: '1700000001000000000',
+            status: { code: 2 },
+            attributes: [],
+            events: [],
+          }],
+        }],
+      }],
+    }
+
+    const spans = extractSpans(payload)
+    expect(spans[0]!.serviceName).toBe('unknown')
+    expect(spans[0]!.environment).toBe('production')
+  })
+
   it('extracts exceptionCount from exception events (ADR 0023)', () => {
     const spans = extractSpans(validPayload)
     expect(spans[0]!.exceptionCount).toBe(1)

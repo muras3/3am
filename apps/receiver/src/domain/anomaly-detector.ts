@@ -169,7 +169,13 @@ export function selectIncidentTriggerSpans(spans: ExtractedSpan[]): ExtractedSpa
   return spans.filter((span) => triggerKeys.has(`${span.traceId}:${span.spanId}`))
 }
 
-import { isRecord, nanoToMs, flattenOtlpAttributes } from './otlp-utils.js'
+import {
+  isRecord,
+  nanoToMs,
+  flattenOtlpAttributes,
+  resolveResourceServiceName,
+  resolveResourceEnvironment,
+} from './otlp-utils.js'
 
 type OtlpAttributeValue =
   | { stringValue: string }
@@ -210,8 +216,8 @@ export function extractSpans(payload: unknown): ExtractedSpan[] {
       ? (resource['attributes'] as OtlpAttribute[])
       : []
 
-    const serviceName = getAttr(resourceAttrs, 'service.name') ?? ''
-    const environment = getAttr(resourceAttrs, 'deployment.environment.name') ?? ''
+    const serviceName = resolveResourceServiceName(resourceAttrs)
+    const environment = resolveResourceEnvironment(resourceAttrs)
 
     const scopeSpans = Array.isArray(rs['scopeSpans']) ? (rs['scopeSpans'] as unknown[]) : []
 

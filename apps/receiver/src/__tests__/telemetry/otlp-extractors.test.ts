@@ -182,6 +182,25 @@ describe('extractTelemetryMetrics', () => {
     expect(result[0]!.service).toBe('payment-svc')
   })
 
+  it('falls back to CF Workers service and environment resource attributes', () => {
+    const body = {
+      resourceMetrics: [{
+        resource: {
+          attributes: [
+            { key: 'faas.name', value: { stringValue: 'edge-worker' } },
+            { key: 'cloudflare.environment', value: { stringValue: 'preview' } },
+          ],
+        },
+        scopeMetrics: [{
+          metrics: [{ name: 'metric_a', gauge: { dataPoints: [{ timeUnixNano: BASE_TIME_NS, asDouble: 1.0 }] } }],
+        }],
+      }],
+    }
+    const result = extractTelemetryMetrics(body)
+    expect(result[0]!.service).toBe('edge-worker')
+    expect(result[0]!.environment).toBe('preview')
+  })
+
   it('uses timeUnixNano for startTimeMs (observation time priority)', () => {
     const body = makeResourceMetrics({
       histogram: {
@@ -230,14 +249,17 @@ describe('extractTelemetryMetrics', () => {
     expect(result[0]!.ingestedAt).toBeLessThanOrEqual(after)
   })
 
-  it('skips resources with no service.name', () => {
+  it('defaults service to unknown when resource service attrs are missing', () => {
     const body = {
       resourceMetrics: [{
         resource: { attributes: [] },
         scopeMetrics: [{ metrics: [{ name: 'foo', gauge: { dataPoints: [{ timeUnixNano: BASE_TIME_NS, asDouble: 1 }] } }] }],
       }],
     }
-    expect(extractTelemetryMetrics(body)).toHaveLength(0)
+    const result = extractTelemetryMetrics(body)
+    expect(result).toHaveLength(1)
+    expect(result[0]!.service).toBe('unknown')
+    expect(result[0]!.environment).toBe('production')
   })
 
   it('returns empty array for non-object input', () => {
@@ -292,6 +314,30 @@ describe('extractTelemetryLogs', () => {
     expect(result[0]!.environment).toBe('production')
     expect(result[0]!.traceId).toBe('abcdef0123456789abcdef0123456789')
     expect(result[0]!.spanId).toBe('abcdef0123456789')
+  })
+
+  it('falls back to CF Workers service and environment attrs for logs', async () => {
+    const body = {
+      resourceLogs: [{
+        resource: {
+          attributes: [
+            { key: 'cloudflare.script_name', value: { stringValue: 'edge-worker' } },
+            { key: 'cloudflare.environment', value: { stringValue: 'preview' } },
+          ],
+        },
+        scopeLogs: [{
+          logRecords: [{
+            timeUnixNano: BASE_TIME_NS,
+            severityNumber: 17,
+            body: { stringValue: 'worker failed' },
+            attributes: [],
+          }],
+        }],
+      }],
+    }
+    const result = await extractTelemetryLogs(body)
+    expect(result[0]!.service).toBe('edge-worker')
+    expect(result[0]!.environment).toBe('preview')
   })
 
   it('preserves severityNumber as a number', async () => {

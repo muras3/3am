@@ -221,7 +221,28 @@ describe('extractMetricEvidence', () => {
         scopeMetrics: [{ metrics: [{ name: 'foo', gauge: { dataPoints: [{ timeUnixNano: BASE_TIME_NS, asDouble: 1 }] } }] }],
       }],
     }
-    expect(extractMetricEvidence(body)).toHaveLength(0)
+    const result = extractMetricEvidence(body)
+    expect(result).toHaveLength(1)
+    expect(result[0]!.service).toBe('unknown')
+    expect(result[0]!.environment).toBe('production')
+  })
+
+  it('falls back to CF Workers metric resource attrs', () => {
+    const body = {
+      resourceMetrics: [{
+        resource: {
+          attributes: [
+            { key: 'faas.name', value: { stringValue: 'edge-worker' } },
+            { key: 'cloudflare.environment', value: { stringValue: 'preview' } },
+          ],
+        },
+        scopeMetrics: [{ metrics: [{ name: 'foo', gauge: { dataPoints: [{ timeUnixNano: BASE_TIME_NS, asDouble: 1 }] } }] }],
+      }],
+    }
+    const result = extractMetricEvidence(body)
+    expect(result).toHaveLength(1)
+    expect(result[0]!.service).toBe('edge-worker')
+    expect(result[0]!.environment).toBe('preview')
   })
 })
 
@@ -271,6 +292,31 @@ describe('extractLogEvidence', () => {
       }],
     }
     expect(extractLogEvidence(body)).toHaveLength(0)
+  })
+
+  it('falls back to CF Workers log resource attrs', () => {
+    const body = {
+      resourceLogs: [{
+        resource: {
+          attributes: [
+            { key: 'cloudflare.script_name', value: { stringValue: 'edge-worker' } },
+            { key: 'cloudflare.environment', value: { stringValue: 'preview' } },
+          ],
+        },
+        scopeLogs: [{
+          logRecords: [{
+            timeUnixNano: BASE_TIME_NS,
+            severityNumber: 17,
+            body: { stringValue: 'worker failed' },
+            attributes: [],
+          }],
+        }],
+      }],
+    }
+    const result = extractLogEvidence(body)
+    expect(result).toHaveLength(1)
+    expect(result[0]!.service).toBe('edge-worker')
+    expect(result[0]!.environment).toBe('preview')
   })
 
   it('JSON.stringify non-string body values', () => {
