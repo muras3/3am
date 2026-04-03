@@ -51,7 +51,6 @@ vi.mock("../commands/deploy/env-writer.js", () => ({
 vi.mock("../commands/shared/health.js", () => ({
   checkReceiver: vi.fn(),
   waitForReceiver: vi.fn(),
-  fetchSetupToken: vi.fn(),
 }));
 
 vi.mock("../commands/cloudflare-workers.js", () => ({
@@ -61,6 +60,12 @@ vi.mock("../commands/cloudflare-workers.js", () => ({
 
 vi.mock("../commands/init/credentials.js", () => ({
   resolveApiKey: vi.fn(),
+  loadCredentials: vi.fn(),
+  saveCredentials: vi.fn(),
+}));
+
+vi.mock("node:crypto", () => ({
+  randomUUID: vi.fn(() => "generated-uuid-token"),
 }));
 
 // ---------------------------------------------------------------------------
@@ -72,8 +77,8 @@ import {
   checkPlatformAuth,
 } from "../commands/deploy/platform.js";
 import { updateAppEnv } from "../commands/deploy/env-writer.js";
-import { waitForReceiver, fetchSetupToken } from "../commands/shared/health.js";
-import { resolveApiKey } from "../commands/init/credentials.js";
+import { waitForReceiver } from "../commands/shared/health.js";
+import { resolveApiKey, loadCredentials, saveCredentials } from "../commands/init/credentials.js";
 import { connectCloudflareWorkerToReceiver } from "../commands/cloudflare-workers.js";
 import { runDeploy } from "../commands/deploy.js";
 
@@ -85,14 +90,12 @@ function setupHappyPathMocks(): void {
   vi.mocked(resolveApiKey).mockResolvedValue("sk-ant-test");
   vi.mocked(detectPlatformCli).mockReturnValue(true);
   vi.mocked(checkPlatformAuth).mockResolvedValue(true);
+  vi.mocked(loadCredentials).mockReturnValue({});
+  vi.mocked(saveCredentials).mockReturnValue(undefined);
   mockProvider.deploy.mockResolvedValue({ url: "https://test.vercel.app" });
   mockProvider.setEnvVar.mockResolvedValue(undefined);
   mockProvider.cleanup.mockReturnValue(undefined);
   vi.mocked(waitForReceiver).mockResolvedValue(true);
-  vi.mocked(fetchSetupToken).mockResolvedValue({
-    status: "token",
-    token: "test-token",
-  });
   vi.mocked(updateAppEnv).mockReturnValue({
     added: ["OTEL_EXPORTER_OTLP_ENDPOINT", "OTEL_EXPORTER_OTLP_HEADERS"],
     updated: [],
@@ -221,6 +224,8 @@ describe("runDeploy()", () => {
     vi.mocked(resolveApiKey).mockResolvedValue("sk-ant-test");
     vi.mocked(detectPlatformCli).mockReturnValue(true);
     vi.mocked(checkPlatformAuth).mockResolvedValue(true);
+    vi.mocked(loadCredentials).mockReturnValue({});
+    vi.mocked(saveCredentials).mockReturnValue(undefined);
     mockProvider.setEnvVar.mockResolvedValue(undefined);
     mockProvider.deploy.mockRejectedValue(
       new Error("vercel deploy exited with code 1"),
@@ -254,7 +259,7 @@ describe("runDeploy()", () => {
   // Provider interaction
   // -------------------------------------------------------------------------
 
-  it("sets ANTHROPIC_API_KEY on platform before deploying", async () => {
+  it("sets ANTHROPIC_API_KEY and RECEIVER_AUTH_TOKEN on platform before deploying", async () => {
     setupHappyPathMocks();
 
     await runDeploy([], {
@@ -267,11 +272,17 @@ describe("runDeploy()", () => {
       "ANTHROPIC_API_KEY",
       "sk-ant-test",
     );
+    expect(mockProvider.setEnvVar).toHaveBeenCalledWith(
+      "RECEIVER_AUTH_TOKEN",
+      "generated-uuid-token",
+    );
 
-    // setEnvVar must be called before deploy
-    const setEnvOrder = mockProvider.setEnvVar.mock.invocationCallOrder[0];
+    // Both setEnvVar calls must happen before deploy
+    const setEnvOrders = mockProvider.setEnvVar.mock.invocationCallOrder;
     const deployOrder = mockProvider.deploy.mock.invocationCallOrder[0];
-    expect(setEnvOrder).toBeLessThan(deployOrder!);
+    for (const order of setEnvOrders) {
+      expect(order).toBeLessThan(deployOrder!);
+    }
   });
 
   it("passes projectName to the provider factory", async () => {
@@ -346,7 +357,7 @@ describe("runDeploy()", () => {
   // Happy paths
   // -------------------------------------------------------------------------
 
-  it("happy path: first deploy with setup token", async () => {
+  it("happy path: first deploy generates token and syncs to platform", async () => {
     setupHappyPathMocks();
 
     await runDeploy([], {
@@ -361,26 +372,53 @@ describe("runDeploy()", () => {
       "ANTHROPIC_API_KEY",
       "sk-ant-test",
     );
+    expect(mockProvider.setEnvVar).toHaveBeenCalledWith(
+      "RECEIVER_AUTH_TOKEN",
+      "generated-uuid-token",
+    );
     expect(waitForReceiver).toHaveBeenCalledWith(
       "https://test.vercel.app",
       60_000,
     );
-    expect(fetchSetupToken).toHaveBeenCalledWith("https://test.vercel.app");
+    expect(saveCredentials).toHaveBeenCalledWith(
+      expect.objectContaining({ receiverAuthToken: "generated-uuid-token" }),
+    );
 
     const calls = vi.mocked(updateAppEnv).mock.calls;
     const writeCall = calls.find((c) => !c[0].dryRun);
     expect(writeCall).toBeDefined();
     expect(writeCall![0].receiverUrl).toBe("https://test.vercel.app");
-    expect(writeCall![0].authToken).toBe("test-token");
+    expect(writeCall![0].authToken).toBe("generated-uuid-token");
 
     const stdout = stdoutChunks.join("");
     expect(stdout).toContain("Deploy complete");
     expect(stdout).toContain("https://test.vercel.app");
   });
 
-  it("happy path: re-deploy with --auth-token", async () => {
+  it("happy path: re-deploy uses stored token from credentials", async () => {
     setupHappyPathMocks();
-    vi.mocked(fetchSetupToken).mockResolvedValue({ status: "already-setup" });
+    vi.mocked(loadCredentials).mockReturnValue({ receiverAuthToken: "stored-token" });
+
+    await runDeploy([], {
+      yes: true,
+      noInteractive: true,
+      platform: "vercel",
+    });
+
+    expect(process.exit).not.toHaveBeenCalled();
+    expect(mockProvider.setEnvVar).toHaveBeenCalledWith(
+      "RECEIVER_AUTH_TOKEN",
+      "stored-token",
+    );
+
+    const calls = vi.mocked(updateAppEnv).mock.calls;
+    const writeCall = calls.find((c) => !c[0].dryRun);
+    expect(writeCall![0].authToken).toBe("stored-token");
+  });
+
+  it("--auth-token flag overrides stored token", async () => {
+    setupHappyPathMocks();
+    vi.mocked(loadCredentials).mockReturnValue({ receiverAuthToken: "stored-token" });
 
     await runDeploy([], {
       yes: true,
@@ -390,10 +428,13 @@ describe("runDeploy()", () => {
     });
 
     expect(process.exit).not.toHaveBeenCalled();
-
-    const calls = vi.mocked(updateAppEnv).mock.calls;
-    const writeCall = calls.find((c) => !c[0].dryRun);
-    expect(writeCall![0].authToken).toBe("provided-token");
+    expect(mockProvider.setEnvVar).toHaveBeenCalledWith(
+      "RECEIVER_AUTH_TOKEN",
+      "provided-token",
+    );
+    expect(saveCredentials).toHaveBeenCalledWith(
+      expect.objectContaining({ receiverAuthToken: "provided-token" }),
+    );
   });
 
   it("connects the current Cloudflare Worker instead of writing .env", async () => {
@@ -414,7 +455,7 @@ describe("runDeploy()", () => {
     expect(vi.mocked(connectCloudflareWorkerToReceiver)).toHaveBeenCalledWith(
       process.cwd(),
       "https://test.workers.dev",
-      "test-token",
+      "generated-uuid-token",
       { noInteractive: true },
     );
     expect(updateAppEnv).not.toHaveBeenCalled();
@@ -450,7 +491,7 @@ describe("runDeploy()", () => {
 
     expect(parsed.status).toBe("deployed");
     expect(parsed.receiverUrl).toBe("https://test.vercel.app");
-    expect(parsed.authToken).toBe("test-token");
+    expect(parsed.authToken).toBe("generated-uuid-token");
     expect(parsed.envUpdated).toBe(true);
 
     expect(stderrText).toContain("Deploying Receiver");

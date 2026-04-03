@@ -1,5 +1,8 @@
 const STORAGE_KEY = "receiver_auth_token";
 
+/** Event name dispatched on window when the API returns 401/403. */
+export const AUTH_FAILURE_EVENT = "3amoncall:auth-failure";
+
 function getAuthHeaders(): HeadersInit {
   const token = localStorage.getItem(STORAGE_KEY);
   if (token) {
@@ -13,6 +16,12 @@ function userMessage(status: number): string {
   if (status === 401 || status === 403) return "Unauthorized.";
   if (status >= 500) return "Server error. Please try again.";
   return `Request failed (${status}).`;
+}
+
+/** Clear stored token and notify SetupGate to show recovery screen. */
+function handleAuthFailure(): void {
+  localStorage.removeItem(STORAGE_KEY);
+  window.dispatchEvent(new CustomEvent(AUTH_FAILURE_EVENT));
 }
 
 export function saveAuthToken(token: string): void {
@@ -34,6 +43,9 @@ export async function apiFetchPost<T>(path: string, body: unknown): Promise<T> {
     if (import.meta.env.DEV) {
       console.error(`[apiFetch] POST ${res.status} ${path}:`, rawBody);
     }
+    if (res.status === 401 || res.status === 403) {
+      handleAuthFailure();
+    }
     throw new ApiError(res.status, rawBody);
   }
   return res.json() as Promise<T>;
@@ -47,6 +59,9 @@ export async function apiFetch<T>(path: string): Promise<T> {
     const rawBody = await res.text();
     if (import.meta.env.DEV) {
       console.error(`[apiFetch] ${res.status} ${path}:`, rawBody);
+    }
+    if (res.status === 401 || res.status === 403) {
+      handleAuthFailure();
     }
     throw new ApiError(res.status, rawBody);
   }
