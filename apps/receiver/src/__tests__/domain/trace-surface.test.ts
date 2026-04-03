@@ -8,6 +8,7 @@ import type { BaselineContext } from '@3amoncall/core/schemas/curated-evidence'
 // ── Mock baseline-selector ─────────────────────────────────────────────
 
 vi.mock('../../domain/baseline-selector.js', async (importOriginal) => {
+  // eslint-disable-next-line @typescript-eslint/consistent-type-imports
   const actual = await importOriginal<typeof import('../../domain/baseline-selector.js')>()
   return {
     ...actual,
