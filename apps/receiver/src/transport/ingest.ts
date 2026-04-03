@@ -191,8 +191,7 @@ async function rebuildAndNotify(
   enqueueDiagnosis?: EnqueueDiagnosisFn,
 ): Promise<void> {
   await rebuildSnapshots(incidentId, telemetryStore, storage);
-  if (enqueueDiagnosis) return;
-  if (runner && diagnosisConfig.generationThreshold > 0) {
+  if (diagnosisConfig.generationThreshold > 0) {
     const updated = await storage.getIncident(incidentId);
     if (updated) {
       checkGenerationThreshold(
@@ -201,6 +200,7 @@ async function rebuildAndNotify(
         storage,
         runner,
         { generationThreshold: diagnosisConfig.generationThreshold },
+        enqueueDiagnosis,
       );
     }
   }
@@ -349,22 +349,17 @@ export function createIngestRouter(
       // Fire-and-forget notification to Slack/Discord (if configured)
       void notifyIncidentCreated(packet, incidentId);
 
-      if (enqueueDiagnosis) {
-        await enqueueDiagnosis(incidentId);
-      } else if (diagnosisRunner) {
-        // Schedule delayed diagnosis via waitUntil (serverless-safe).
-        // Generation threshold is checked in rebuildAndNotify above.
-        // If maxWaitMs > 0, schedule a delayed fallback; otherwise immediate diagnosis.
-        if (diagnosisConfig.maxWaitMs > 0) {
-          const waitUntilFn = await waitUntilPromise;
-          scheduleDelayedDiagnosis(incidentId, storage, diagnosisRunner, {
-            maxWaitMs: diagnosisConfig.maxWaitMs,
-          }, waitUntilFn);
-        } else {
-          // No delay configured: immediate inline diagnosis (ADR 0034)
-          // Route through runIfNeeded to respect claim protocol.
-          void runIfNeeded(incidentId, storage, diagnosisRunner);
-        }
+      // Schedule delayed diagnosis via debouncer (both CF Workers and Vercel).
+      // Generation threshold is checked in rebuildAndNotify above.
+      // If maxWaitMs > 0, schedule a time-based fallback; otherwise immediate.
+      if (diagnosisConfig.maxWaitMs > 0 && (enqueueDiagnosis || diagnosisRunner)) {
+        const waitUntilFn = await waitUntilPromise;
+        scheduleDelayedDiagnosis(incidentId, storage, diagnosisRunner, {
+          maxWaitMs: diagnosisConfig.maxWaitMs,
+        }, waitUntilFn, enqueueDiagnosis);
+      } else if (!enqueueDiagnosis && diagnosisRunner) {
+        // No delay configured and no queue: immediate inline diagnosis (ADR 0034)
+        void runIfNeeded(incidentId, storage, diagnosisRunner);
       }
       return c.json({ status: "ok", incidentId, packetId: packet.packetId });
     }

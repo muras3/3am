@@ -1,5 +1,6 @@
 import type { StorageDriver } from "../storage/interface.js";
 import type { DiagnosisRunner } from "./diagnosis-runner.js";
+import type { EnqueueDiagnosisFn } from "./diagnosis-dispatch.js";
 import { DEFAULT_DIAGNOSIS_LEASE_MS } from "./diagnosis-dispatch.js";
 
 export interface DiagnosisConfig {
@@ -92,15 +93,20 @@ export function _resetWaitUntilForTest(): void {
 export function scheduleDelayedDiagnosis(
   incidentId: string,
   storage: StorageDriver,
-  runner: DiagnosisRunner,
+  runner: DiagnosisRunner | undefined,
   opts: { maxWaitMs: number },
   waitUntilFn: WaitUntilFn,
+  enqueueDiagnosis?: EnqueueDiagnosisFn,
 ): void {
   waitUntilFn(
     (async () => {
       try {
         await sleep(opts.maxWaitMs);
-        await runIfNeeded(incidentId, storage, runner);
+        if (enqueueDiagnosis) {
+          await enqueueDiagnosis(incidentId);
+        } else if (runner) {
+          await runIfNeeded(incidentId, storage, runner);
+        }
       } catch (err) {
         // Prevent unhandled rejection when waitUntil is fire-and-forget.
         // DiagnosisRunner.run() handles its own errors, but guard defensively.
@@ -120,11 +126,16 @@ export function checkGenerationThreshold(
   incidentId: string,
   generation: number,
   storage: StorageDriver,
-  runner: DiagnosisRunner,
+  runner: DiagnosisRunner | undefined,
   opts: { generationThreshold: number },
+  enqueueDiagnosis?: EnqueueDiagnosisFn,
 ): void {
   if (opts.generationThreshold > 0 && generation >= opts.generationThreshold) {
-    void runIfNeeded(incidentId, storage, runner);
+    if (enqueueDiagnosis) {
+      void enqueueDiagnosis(incidentId);
+    } else if (runner) {
+      void runIfNeeded(incidentId, storage, runner);
+    }
   }
 }
 
