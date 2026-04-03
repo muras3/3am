@@ -147,6 +147,17 @@ export interface StorageDriver {
   appendAnomalousSignals(incidentId: string, signals: AnomalousSignal[]): Promise<void>;
 
   /**
+   * #256: Combined expand scope + append membership + append signals in one read-modify-write.
+   * Reduces D1 round-trips from 6 (3 reads + 3 writes) to 2 (1 read + 1 write).
+   * Falls back to calling the three individual methods if not overridden.
+   */
+  expandAndAppend?(
+    incidentId: string,
+    expansion: { windowStartMs: number; windowEndMs: number; memberServices: string[]; dependencyServices: string[]; spanIds: string[] },
+    signals: AnomalousSignal[],
+  ): Promise<void>;
+
+  /**
    * Append platform events to the incident.
    * Unknown incidentId is a no-op.
    */

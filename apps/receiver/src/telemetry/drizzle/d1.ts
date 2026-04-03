@@ -40,8 +40,10 @@ type Schema = {
 
 export class D1TelemetryAdapter implements TelemetryStoreDriver {
   private db: DrizzleD1Database<Schema>;
+  private rawDb: D1Database;
 
   constructor(d1: D1Database) {
+    this.rawDb = d1;
     this.db = drizzle(d1, {
       schema: { telemetrySpans, telemetryMetrics, telemetryLogs, incidentEvidenceSnapshots },
     });
@@ -145,50 +147,37 @@ export class D1TelemetryAdapter implements TelemetryStoreDriver {
 
   async ingestSpans(rows: TelemetrySpan[]): Promise<void> {
     if (rows.length === 0) return;
-    // D1 does not support interactive transactions — batch individual inserts
-    for (const row of rows) {
-      await this.db
-        .insert(telemetrySpans)
-        .values({
-          traceId: row.traceId,
-          spanId: row.spanId,
-          parentSpanId: row.parentSpanId ?? null,
-          serviceName: row.serviceName,
-          environment: row.environment,
-          spanName: row.spanName,
-          httpRoute: row.httpRoute ?? null,
-          httpStatusCode: row.httpStatusCode ?? null,
-          spanStatusCode: row.spanStatusCode,
-          durationMs: row.durationMs,
-          startTimeMs: row.startTimeMs,
-          peerService: row.peerService ?? null,
-          exceptionCount: row.exceptionCount,
-          httpMethod: row.httpMethod ?? null,
-          spanKind: row.spanKind ?? null,
-          attributes: JSON.stringify(row.attributes),
-          ingestedAt: row.ingestedAt,
-        })
-        .onConflictDoUpdate({
-          target: [telemetrySpans.traceId, telemetrySpans.spanId],
-          set: {
-            parentSpanId: row.parentSpanId ?? null,
-            serviceName: row.serviceName,
-            environment: row.environment,
-            spanName: row.spanName,
-            httpRoute: row.httpRoute ?? null,
-            httpStatusCode: row.httpStatusCode ?? null,
-            spanStatusCode: row.spanStatusCode,
-            durationMs: row.durationMs,
-            startTimeMs: row.startTimeMs,
-            peerService: row.peerService ?? null,
-            exceptionCount: row.exceptionCount,
-            httpMethod: row.httpMethod ?? null,
-            spanKind: row.spanKind ?? null,
-            attributes: JSON.stringify(row.attributes),
-            ingestedAt: row.ingestedAt,
-          },
-        });
-    }
+    // #256: Use D1 batch API — single round-trip for all spans instead of N sequential INSERTs.
+    const stmts = rows.map((row) =>
+      (this.rawDb.prepare as (sql: string) => { bind: (...args: unknown[]) => unknown })(
+        `INSERT INTO telemetry_spans (trace_id, span_id, parent_span_id, service_name, environment, span_name, http_route, http_status_code, span_status_code, duration_ms, start_time_ms, peer_service, exception_count, http_method, span_kind, attributes, ingested_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT (trace_id, span_id) DO UPDATE SET
+           parent_span_id = excluded.parent_span_id,
+           service_name = excluded.service_name,
+           environment = excluded.environment,
+           span_name = excluded.span_name,
+           http_route = excluded.http_route,
+           http_status_code = excluded.http_status_code,
+           span_status_code = excluded.span_status_code,
+           duration_ms = excluded.duration_ms,
+           start_time_ms = excluded.start_time_ms,
+           peer_service = excluded.peer_service,
+           exception_count = excluded.exception_count,
+           http_method = excluded.http_method,
+           span_kind = excluded.span_kind,
+           attributes = excluded.attributes,
+           ingested_at = excluded.ingested_at`,
+      ).bind(
+        row.traceId, row.spanId, row.parentSpanId ?? null,
+        row.serviceName, row.environment, row.spanName,
+        row.httpRoute ?? null, row.httpStatusCode ?? null, row.spanStatusCode,
+        row.durationMs, row.startTimeMs, row.peerService ?? null,
+        row.exceptionCount, row.httpMethod ?? null, row.spanKind ?? null,
+        JSON.stringify(row.attributes), row.ingestedAt,
+      ),
+    );
+    await this.rawDb.batch(stmts);
   }
 
   async ingestMetrics(rows: TelemetryMetric[]): Promise<void> {

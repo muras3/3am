@@ -4,7 +4,7 @@ import { Hono, type Context } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { z } from "zod";
 import { PlatformEventSchema, type PlatformEvent } from "@3am/core";
-import type { Incident, StorageDriver } from "../storage/interface.js";
+import type { Incident, StorageDriver, AnomalousSignal } from "../storage/interface.js";
 import { spanMembershipKey } from "../storage/interface.js";
 import type { SpanBuffer } from "../ambient/span-buffer.js";
 import type { TelemetryStoreDriver, TelemetrySpan } from "../telemetry/interface.js";
@@ -33,6 +33,22 @@ import { decodeTraces, decodeMetrics, decodeLogs } from "./otlp-protobuf.js";
 import { notifyIncidentCreated } from "../notification/index.js";
 
 const gunzipAsync = promisify(gunzip);
+
+/** #256: Use combined expandAndAppend when available (D1), fall back to 3 individual calls. */
+async function expandAndAppendFallback(
+  storage: StorageDriver,
+  incidentId: string,
+  expansion: { windowStartMs: number; windowEndMs: number; memberServices: string[]; dependencyServices: string[]; spanIds: string[] },
+  signals: AnomalousSignal[],
+): Promise<void> {
+  if (storage.expandAndAppend) {
+    await storage.expandAndAppend(incidentId, expansion, signals);
+  } else {
+    await storage.expandTelemetryScope(incidentId, expansion);
+    await storage.appendSpanMembership(incidentId, expansion.spanIds);
+    await storage.appendAnomalousSignals(incidentId, signals);
+  }
+}
 
 const INGEST_BODY_LIMIT = 1 * 1024 * 1024; // 1MB per ADR 0022 (resource exhaustion protection)
 const PlatformEventsRequestSchema = z.object({
@@ -182,6 +198,15 @@ function computeScopeExpansion(spans: Array<{ traceId: string; spanId: string; s
 }
 
 /** Rebuild snapshots and check generation threshold for diagnosis trigger. */
+type WaitUntilFn = (p: Promise<unknown>) => void;
+
+/**
+ * Rebuild snapshots and check generation threshold.
+ * #256: When waitUntilFn is provided, rebuildSnapshots runs asynchronously
+ * after the HTTP response is sent (deferred via ctx.waitUntil on CF Workers).
+ * Generation threshold is checked using predicted next generation (current + 1)
+ * so that threshold-based diagnosis fires even when rebuild is deferred.
+ */
 async function rebuildAndNotify(
   incidentId: string,
   telemetryStore: TelemetryStoreDriver,
@@ -189,19 +214,42 @@ async function rebuildAndNotify(
   diagnosisConfig: DiagnosisConfig,
   runner?: DiagnosisRunner,
   enqueueDiagnosis?: EnqueueDiagnosisFn,
+  waitUntilFn?: WaitUntilFn,
 ): Promise<void> {
-  await rebuildSnapshots(incidentId, telemetryStore, storage);
-  if (diagnosisConfig.generationThreshold > 0) {
-    const updated = await storage.getIncident(incidentId);
-    if (updated) {
-      checkGenerationThreshold(
-        incidentId,
-        updated.packet.generation ?? 1,
-        storage,
-        runner,
-        { generationThreshold: diagnosisConfig.generationThreshold },
-        enqueueDiagnosis,
-      );
+  if (waitUntilFn) {
+    // #256: CF Workers path — defer snapshot rebuild to after HTTP response.
+    if (diagnosisConfig.generationThreshold > 0 && enqueueDiagnosis) {
+      const current = await storage.getIncident(incidentId);
+      if (current) {
+        const nextGeneration = (current.packet.generation ?? 1) + 1;
+        checkGenerationThreshold(
+          incidentId,
+          nextGeneration,
+          storage,
+          runner,
+          { generationThreshold: diagnosisConfig.generationThreshold },
+          enqueueDiagnosis,
+        );
+      }
+    }
+    waitUntilFn(rebuildSnapshots(incidentId, telemetryStore, storage).catch((err) => {
+      console.error(`[ingest] deferred rebuildSnapshots failed for ${incidentId}:`, err);
+    }));
+  } else {
+    // Non-CF path: rebuild synchronously, then check threshold
+    await rebuildSnapshots(incidentId, telemetryStore, storage);
+    if (diagnosisConfig.generationThreshold > 0) {
+      const updated = await storage.getIncident(incidentId);
+      if (updated) {
+        checkGenerationThreshold(
+          incidentId,
+          updated.packet.generation ?? 1,
+          storage,
+          runner,
+          { generationThreshold: diagnosisConfig.generationThreshold },
+          enqueueDiagnosis,
+        );
+      }
     }
   }
 }
@@ -229,6 +277,8 @@ export function createIngestRouter(
   );
 
   app.post("/v1/traces", async (c) => {
+    // #256: Defer snapshot rebuild only on CF Workers (where enqueueDiagnosis exists).
+    const waitUntilFn = enqueueDiagnosis ? await resolveWaitUntil() : undefined;
     await maybeCleanup(storage, telemetryStore);
 
     const result = await decodeOtlpBody(c, decodeTraces);
@@ -305,10 +355,8 @@ export function createIngestRouter(
       if (existing) {
         // Expand telemetry scope and membership for existing incident
         const expansion = computeScopeExpansion(spans);
-        await storage.expandTelemetryScope(existing.incidentId, expansion);
-        await storage.appendSpanMembership(existing.incidentId, expansion.spanIds);
-        await storage.appendAnomalousSignals(existing.incidentId, buildAnomalousSignals(signalSpans));
-        await rebuildAndNotify(existing.incidentId, telemetryStore, storage, diagnosisConfig, diagnosisRunner, enqueueDiagnosis);
+        await expandAndAppendFallback(storage, existing.incidentId, expansion, buildAnomalousSignals(signalSpans));
+        await rebuildAndNotify(existing.incidentId, telemetryStore, storage, diagnosisConfig, diagnosisRunner, enqueueDiagnosis, waitUntilFn);
       }
       return c.json({ status: "ok" });
     }
@@ -336,10 +384,8 @@ export function createIngestRouter(
       if (created && created.packet.packetId !== packet.packetId) {
         // Another request won the race — attach our spans to the existing incident
         const expansion = computeScopeExpansion(spans);
-        await storage.expandTelemetryScope(incidentId, expansion);
-        await storage.appendSpanMembership(incidentId, expansion.spanIds);
-        await storage.appendAnomalousSignals(incidentId, buildAnomalousSignals(signalSpans));
-        await rebuildAndNotify(incidentId, telemetryStore, storage, diagnosisConfig, diagnosisRunner, enqueueDiagnosis);
+        await expandAndAppendFallback(storage, incidentId, expansion, buildAnomalousSignals(signalSpans));
+        await rebuildAndNotify(incidentId, telemetryStore, storage, diagnosisConfig, diagnosisRunner, enqueueDiagnosis, waitUntilFn);
 
         // Fix #254: Schedule diagnosis for race-loser path too.
         // The winner may have already scheduled, but markDiagnosisScheduled is
@@ -353,10 +399,10 @@ export function createIngestRouter(
         } else if (diagnosisRunner) {
           await storage.markDiagnosisScheduled(incidentId);
           if (diagnosisConfig.maxWaitMs > 0) {
-            const waitUntilFn = await waitUntilPromise;
+            const diagWaitUntil = await waitUntilPromise;
             scheduleDelayedDiagnosis(incidentId, storage, diagnosisRunner, {
               maxWaitMs: diagnosisConfig.maxWaitMs,
-            }, waitUntilFn);
+            }, diagWaitUntil);
           } else {
             void runIfNeeded(incidentId, storage, diagnosisRunner);
           }
@@ -365,7 +411,7 @@ export function createIngestRouter(
       }
 
       // ADR 0032: Rebuild snapshots for new incident
-      await rebuildAndNotify(incidentId, telemetryStore, storage, diagnosisConfig, diagnosisRunner, enqueueDiagnosis);
+      await rebuildAndNotify(incidentId, telemetryStore, storage, diagnosisConfig, diagnosisRunner, enqueueDiagnosis, waitUntilFn);
 
       // Fire-and-forget notification to Slack/Discord (if configured)
       void notifyIncidentCreated(packet, incidentId);
@@ -382,10 +428,10 @@ export function createIngestRouter(
         // Vercel / Node.js: use waitUntil + sleep for delayed execution
         await storage.markDiagnosisScheduled(incidentId);
         if (diagnosisConfig.maxWaitMs > 0) {
-          const waitUntilFn = await waitUntilPromise;
+          const diagWaitUntil = await waitUntilPromise;
           scheduleDelayedDiagnosis(incidentId, storage, diagnosisRunner, {
             maxWaitMs: diagnosisConfig.maxWaitMs,
-          }, waitUntilFn);
+          }, diagWaitUntil);
         } else {
           void runIfNeeded(incidentId, storage, diagnosisRunner);
         }
@@ -395,10 +441,8 @@ export function createIngestRouter(
 
     // Existing incident attach — expand scope and membership, then rebuild.
     const expansion = computeScopeExpansion(spans);
-    await storage.expandTelemetryScope(incidentId, expansion);
-    await storage.appendSpanMembership(incidentId, expansion.spanIds);
-    await storage.appendAnomalousSignals(incidentId, buildAnomalousSignals(signalSpans));
-    await rebuildAndNotify(incidentId, telemetryStore, storage, diagnosisConfig, diagnosisRunner, enqueueDiagnosis);
+    await expandAndAppendFallback(storage, incidentId, expansion, buildAnomalousSignals(signalSpans));
+    await rebuildAndNotify(incidentId, telemetryStore, storage, diagnosisConfig, diagnosisRunner, enqueueDiagnosis, waitUntilFn);
     return c.json({ status: "ok", incidentId, packetId: existing.packet.packetId });
   });
 
