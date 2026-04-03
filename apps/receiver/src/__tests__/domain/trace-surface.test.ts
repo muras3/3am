@@ -7,9 +7,14 @@ import type { BaselineContext } from '@3amoncall/core/schemas/curated-evidence'
 
 // ── Mock baseline-selector ─────────────────────────────────────────────
 
-vi.mock('../../domain/baseline-selector.js', () => ({
-  selectBaseline: vi.fn(),
-}))
+vi.mock('../../domain/baseline-selector.js', async (importOriginal) => {
+  // eslint-disable-next-line @typescript-eslint/consistent-type-imports
+  const actual = await importOriginal<typeof import('../../domain/baseline-selector.js')>()
+  return {
+    ...actual,
+    selectBaseline: vi.fn(),
+  }
+})
 
 import { selectBaseline } from '../../domain/baseline-selector.js'
 const mockSelectBaseline = vi.mocked(selectBaseline)
@@ -342,7 +347,7 @@ describe('buildTraceSurface', () => {
       windowEnd: '2024-01-01T00:05:00Z',
       sampleCount: 35,
       confidence: 'high',
-      source: { kind: 'same_route', route: '/api/orders', service: 'web' },
+      source: { kind: 'exact_operation', operation: '/api/orders', service: 'web' },
     }
     const baselineSpan = makeSpan({
       traceId: 'baseline-trace',
@@ -377,7 +382,10 @@ describe('buildTraceSurface', () => {
       incidentWindowStartMs: 1700000000000,
       incidentWindowEndMs: 1700000300000,
       primaryService: 'web',
-      httpRoute: '/api/orders',
+      operation: expect.objectContaining({
+        service: 'web',
+        family: { kind: 'route', value: '/api/orders' },
+      }),
     })
   })
 
@@ -602,11 +610,13 @@ describe('buildTraceSurface', () => {
 
   // ── httpRoute falls back to undefined when affectedRoutes is empty ──
 
-  it('passes undefined httpRoute to selectBaseline when affectedRoutes is empty', async () => {
+  it('derives operation from incident spans, not affectedRoutes', async () => {
     const span = makeSpan({
       traceId: 'trace-1',
       spanId: 'root',
       parentSpanId: undefined,
+      httpRoute: undefined,
+      spanName: 'd1_run',
     })
     const incident = makeIncident([span], {
       packet: makeMinimalPacket({
@@ -627,7 +637,9 @@ describe('buildTraceSurface', () => {
       incidentWindowStartMs: 1700000000000,
       incidentWindowEndMs: 1700000300000,
       primaryService: 'web',
-      httpRoute: undefined,
+      operation: expect.objectContaining({
+        family: { kind: 'span_name', value: 'd1_run' },
+      }),
     })
   })
 })

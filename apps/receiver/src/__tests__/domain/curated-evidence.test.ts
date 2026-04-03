@@ -248,7 +248,7 @@ describe('buildCuratedEvidence', () => {
         ...EMPTY_BASELINE,
         confidence: 'high',
         sampleCount: 50,
-        source: { kind: 'same_service', service: 'web' },
+        source: { kind: 'same_operation_family', operation: '/checkout', service: 'web' },
       }),
       evidenceRefs: new Map(),
     })
@@ -317,7 +317,7 @@ describe('buildCuratedEvidence', () => {
       windowEnd: '2024-01-01T00:05:00Z',
       sampleCount: 50,
       confidence: 'high',
-      source: { kind: 'same_route', route: '/checkout', service: 'web' },
+      source: { kind: 'exact_operation', operation: '/checkout', service: 'web' },
     }
 
     mockBuildTraceSurface.mockResolvedValue({
@@ -354,7 +354,7 @@ describe('buildCuratedEvidence', () => {
     const result = await buildCuratedEvidence(makeIncident(), makeMockStore())
 
     expect(result.surfaces.traces.baseline).toBeDefined()
-    expect(result.surfaces.traces.baseline!.source).toBe('same_route')
+    expect(result.surfaces.traces.baseline!.source).toBe('exact_operation')
     expect(result.surfaces.traces.baseline!.sampleCount).toBe(50)
     expect(result.surfaces.traces.baseline!.confidence).toBe('high')
     expect(result.surfaces.traces.baseline!.windowStart).toBe('2024-01-01T00:00:00Z')

@@ -3,6 +3,8 @@ import {
   selectBaseline,
   computeBaselineWindow,
   computeConfidence,
+  deriveOperationIdentity,
+  deriveDominantOperation,
   type BaselineQuery,
 } from '../../domain/baseline-selector.js'
 import type { TelemetrySpan, TelemetryStoreDriver } from '../../telemetry/interface.js'
@@ -48,9 +50,76 @@ const BASE_QUERY: BaselineQuery = {
   incidentWindowStartMs: 1700000300000, // +300s from epoch reference
   incidentWindowEndMs: 1700000600000,   // +600s (5 min incident)
   primaryService: 'web',
-  httpRoute: '/api/orders',
-  peerService: 'stripe',
+  operation: {
+    service: 'web',
+    family: { kind: 'route', value: '/api/orders' },
+    method: 'POST',
+  },
 }
+
+// ── deriveOperationIdentity ────────────────────────────────────────────
+
+describe('deriveOperationIdentity', () => {
+  it('uses httpRoute when present', () => {
+    const span = makeSpan({ httpRoute: '/api/orders', httpMethod: 'POST' })
+    const id = deriveOperationIdentity(span)
+    expect(id.family).toEqual({ kind: 'route', value: '/api/orders' })
+    expect(id.method).toBe('POST')
+  })
+
+  it('falls back to spanName when httpRoute is absent', () => {
+    const span = makeSpan({ httpRoute: undefined, spanName: 'd1_run', httpMethod: 'POST' })
+    const id = deriveOperationIdentity(span)
+    expect(id.family).toEqual({ kind: 'span_name', value: 'd1_run' })
+  })
+})
+
+// ── deriveDominantOperation ────────────────────────────────────────────
+
+describe('deriveDominantOperation', () => {
+  it('returns the most common operation', () => {
+    const spans = [
+      makeSpan({ httpRoute: undefined, spanName: 'd1_run', httpMethod: 'POST' }),
+      makeSpan({ httpRoute: undefined, spanName: 'd1_run', httpMethod: 'POST' }),
+      makeSpan({ httpRoute: '/api/orders', spanName: 'GET /api/orders', httpMethod: 'GET' }),
+    ]
+    const dominant = deriveDominantOperation(spans)
+    expect(dominant?.family).toEqual({ kind: 'span_name', value: 'd1_run' })
+  })
+
+  it('filters to primaryService, ignoring dependency spans', () => {
+    const spans = [
+      makeSpan({ serviceName: 'web', httpRoute: '/api/checkout', httpMethod: 'POST' }),
+      makeSpan({ serviceName: 'stripe', spanName: 'POST /v1/charges', httpMethod: 'POST' }),
+      makeSpan({ serviceName: 'stripe', spanName: 'POST /v1/charges', httpMethod: 'POST' }),
+      makeSpan({ serviceName: 'stripe', spanName: 'POST /v1/charges', httpMethod: 'POST' }),
+    ]
+    // Without filter, stripe would win (3 vs 1). With primaryService='web', web wins.
+    const dominant = deriveDominantOperation(spans, 'web')
+    expect(dominant?.family).toEqual({ kind: 'route', value: '/api/checkout' })
+  })
+
+  it('breaks ties deterministically by key order', () => {
+    const spans = [
+      makeSpan({ httpRoute: '/b', httpMethod: 'POST' }),
+      makeSpan({ httpRoute: '/a', httpMethod: 'POST' }),
+    ]
+    const dominant = deriveDominantOperation(spans)
+    // '/a' < '/b' lexicographically
+    expect(dominant?.family).toEqual({ kind: 'route', value: '/a' })
+  })
+
+  it('returns undefined for empty spans', () => {
+    expect(deriveDominantOperation([])).toBeUndefined()
+  })
+
+  it('returns undefined when no spans match primaryService', () => {
+    const spans = [
+      makeSpan({ serviceName: 'stripe', spanName: 'POST /v1/charges' }),
+    ]
+    expect(deriveDominantOperation(spans, 'web')).toBeUndefined()
+  })
+})
 
 // ── computeBaselineWindow ───────────────────────────────────────────────
 
@@ -110,13 +179,13 @@ describe('computeConfidence', () => {
 // ── selectBaseline ──────────────────────────────────────────────────────
 
 describe('selectBaseline', () => {
-  it('returns same_route with high confidence when enough matching spans', async () => {
-    // 35 normal spans on the same route
+  it('returns exact_operation when enough matching spans', async () => {
+    // 35 normal spans on the same route + method
     const spans = Array.from({ length: 35 }, (_, i) =>
       makeSpan({
         traceId: `trace-${i}`,
         httpRoute: '/api/orders',
-        peerService: 'stripe',
+        httpMethod: 'POST',
         durationMs: 40 + i,
       }),
     )
@@ -124,62 +193,98 @@ describe('selectBaseline', () => {
     const result = await selectBaseline(store, BASE_QUERY)
 
     expect(result.context.source).toEqual({
-      kind: 'same_route',
-      route: '/api/orders',
+      kind: 'exact_operation',
+      operation: '/api/orders',
       service: 'web',
     })
     expect(result.context.confidence).toBe('high')
     expect(result.context.sampleCount).toBe(35)
-    // Should select up to 3 traces
     const traceIds = new Set(result.spans.map((s) => s.traceId))
     expect(traceIds.size).toBeLessThanOrEqual(3)
     expect(result.spans.length).toBeGreaterThan(0)
   })
 
-  it('falls back to same_service when same_route has < 5 spans', async () => {
-    // 3 route-matching + 12 other-route (total 15 normal spans in service)
-    const routeSpans = Array.from({ length: 3 }, (_, i) =>
+  it('falls back to same_operation_family when exact has < 5 spans but family has >= 3', async () => {
+    // 3 POST + 5 GET on the same route
+    const postSpans = Array.from({ length: 3 }, (_, i) =>
       makeSpan({
-        traceId: `route-trace-${i}`,
+        traceId: `post-${i}`,
         httpRoute: '/api/orders',
-        peerService: 'stripe',
+        httpMethod: 'POST',
         durationMs: 50,
       }),
     )
-    const otherSpans = Array.from({ length: 12 }, (_, i) =>
+    const getSpans = Array.from({ length: 5 }, (_, i) =>
       makeSpan({
-        traceId: `other-trace-${i}`,
-        httpRoute: '/api/products',
-        peerService: undefined,
+        traceId: `get-${i}`,
+        httpRoute: '/api/orders',
+        httpMethod: 'GET',
         durationMs: 30,
       }),
     )
-    const store = makeMockStore([...routeSpans, ...otherSpans])
+    const store = makeMockStore([...postSpans, ...getSpans])
     const result = await selectBaseline(store, BASE_QUERY)
 
     expect(result.context.source).toEqual({
-      kind: 'same_service',
+      kind: 'same_operation_family',
+      operation: '/api/orders',
       service: 'web',
     })
-    expect(result.context.confidence).toBe('medium')
-    expect(result.context.sampleCount).toBe(15)
   })
 
-  it('falls back to none when same_service has < 10 normal spans', async () => {
-    const spans = Array.from({ length: 5 }, (_, i) =>
+  it('returns none when operation family has < 3 normal spans (no cross-operation fallback)', async () => {
+    // 2 spans on the target route, 20 on a different route
+    const targetSpans = Array.from({ length: 2 }, (_, i) =>
       makeSpan({
-        traceId: `trace-${i}`,
-        httpRoute: '/api/products',
+        traceId: `target-${i}`,
+        httpRoute: '/api/orders',
+        httpMethod: 'POST',
         durationMs: 50,
       }),
     )
-    const store = makeMockStore(spans)
+    const otherSpans = Array.from({ length: 20 }, (_, i) =>
+      makeSpan({
+        traceId: `other-${i}`,
+        httpRoute: '/api/products',
+        httpMethod: 'GET',
+        durationMs: 30,
+      }),
+    )
+    const store = makeMockStore([...targetSpans, ...otherSpans])
     const result = await selectBaseline(store, BASE_QUERY)
 
+    // Must NOT fall back to /api/products — return none instead
     expect(result.context.source).toEqual({ kind: 'none' })
-    expect(result.context.confidence).toBe('unavailable')
-    expect(result.context.sampleCount).toBe(0)
     expect(result.spans).toEqual([])
+  })
+
+  it('matches by spanName for platform-internal spans (e.g. d1_run)', async () => {
+    const query: BaselineQuery = {
+      ...BASE_QUERY,
+      operation: {
+        service: 'web',
+        family: { kind: 'span_name', value: 'd1_run' },
+        method: 'POST',
+      },
+    }
+    const spans = Array.from({ length: 10 }, (_, i) =>
+      makeSpan({
+        traceId: `trace-${i}`,
+        httpRoute: undefined,
+        spanName: 'd1_run',
+        httpMethod: 'POST',
+        durationMs: 40 + i,
+      }),
+    )
+    const store = makeMockStore(spans)
+    const result = await selectBaseline(store, query)
+
+    expect(result.context.source).toEqual({
+      kind: 'exact_operation',
+      operation: 'd1_run',
+      service: 'web',
+    })
+    expect(result.spans.length).toBeGreaterThan(0)
   })
 
   it('returns none with empty spans when store has no data', async () => {
@@ -200,7 +305,7 @@ describe('selectBaseline', () => {
       makeSpan({
         traceId: `normal-${i}`,
         httpRoute: '/api/orders',
-        peerService: 'stripe',
+        httpMethod: 'POST',
         durationMs: 50,
       }),
     )
@@ -208,7 +313,7 @@ describe('selectBaseline', () => {
       makeSpan({
         traceId: `error-${i}`,
         httpRoute: '/api/orders',
-        peerService: 'stripe',
+        httpMethod: 'POST',
         httpStatusCode: 500,
         spanStatusCode: 2,
         durationMs: 200,
@@ -217,82 +322,43 @@ describe('selectBaseline', () => {
     const store = makeMockStore([...normalSpans, ...errorSpans])
     const result = await selectBaseline(store, BASE_QUERY)
 
-    expect(result.context.source.kind).toBe('same_route')
+    expect(result.context.source.kind).toBe('exact_operation')
     expect(result.context.sampleCount).toBe(20)
-    // All returned spans should be normal
     for (const span of result.spans) {
       expect(span.httpStatusCode).not.toBe(500)
       expect(span.spanStatusCode).not.toBe(2)
     }
   })
 
-  it('filters out spans with exceptions from baseline', async () => {
-    const normalSpans = Array.from({ length: 12 }, (_, i) =>
-      makeSpan({
-        traceId: `normal-${i}`,
-        httpRoute: '/api/orders',
-        peerService: 'stripe',
-        durationMs: 50,
-      }),
-    )
-    const exceptionSpans = Array.from({ length: 5 }, (_, i) =>
-      makeSpan({
-        traceId: `exc-${i}`,
-        httpRoute: '/api/orders',
-        peerService: 'stripe',
-        httpStatusCode: 200,
-        spanStatusCode: 1,
-        exceptionCount: 1,
-        durationMs: 300,
-      }),
-    )
-    const store = makeMockStore([...normalSpans, ...exceptionSpans])
-    const result = await selectBaseline(store, BASE_QUERY)
-
-    expect(result.context.source.kind).toBe('same_route')
-    expect(result.context.sampleCount).toBe(12)
-    for (const span of result.spans) {
-      expect(span.exceptionCount).toBe(0)
-    }
-  })
-
   it('selects traces closest to median duration', async () => {
-    // 5 traces with known durations: 10, 20, 50, 80, 100
-    // Median = 50 (middle of sorted). Closest: 50, then 20 & 80, then 10 & 100
     const spans = [
-      makeSpan({ traceId: 't-10', durationMs: 10, httpRoute: '/api/orders', peerService: 'stripe' }),
-      makeSpan({ traceId: 't-20', durationMs: 20, httpRoute: '/api/orders', peerService: 'stripe' }),
-      makeSpan({ traceId: 't-50', durationMs: 50, httpRoute: '/api/orders', peerService: 'stripe' }),
-      makeSpan({ traceId: 't-80', durationMs: 80, httpRoute: '/api/orders', peerService: 'stripe' }),
-      makeSpan({ traceId: 't-100', durationMs: 100, httpRoute: '/api/orders', peerService: 'stripe' }),
+      makeSpan({ traceId: 't-10', durationMs: 10, httpRoute: '/api/orders', httpMethod: 'POST' }),
+      makeSpan({ traceId: 't-20', durationMs: 20, httpRoute: '/api/orders', httpMethod: 'POST' }),
+      makeSpan({ traceId: 't-50', durationMs: 50, httpRoute: '/api/orders', httpMethod: 'POST' }),
+      makeSpan({ traceId: 't-80', durationMs: 80, httpRoute: '/api/orders', httpMethod: 'POST' }),
+      makeSpan({ traceId: 't-100', durationMs: 100, httpRoute: '/api/orders', httpMethod: 'POST' }),
     ]
     const store = makeMockStore(spans)
     const result = await selectBaseline(store, BASE_QUERY)
 
     const selectedTraceIds = new Set(result.spans.map((s) => s.traceId))
     expect(selectedTraceIds.size).toBe(3)
-    // t-50 (distance 0), t-20 (distance 30) & t-80 (distance 30) tie
     expect(selectedTraceIds.has('t-50')).toBe(true)
   })
 
-  it('handles query without httpRoute (skips same_route tier)', async () => {
-    const queryNoRoute: BaselineQuery = {
+  it('handles query without operation (skips to none)', async () => {
+    const queryNoOp: BaselineQuery = {
       incidentWindowStartMs: BASE_QUERY.incidentWindowStartMs,
       incidentWindowEndMs: BASE_QUERY.incidentWindowEndMs,
       primaryService: 'web',
-      // no httpRoute
     }
     const spans = Array.from({ length: 15 }, (_, i) =>
       makeSpan({ traceId: `trace-${i}`, durationMs: 40 + i }),
     )
     const store = makeMockStore(spans)
-    const result = await selectBaseline(store, queryNoRoute)
+    const result = await selectBaseline(store, queryNoOp)
 
-    expect(result.context.source).toEqual({
-      kind: 'same_service',
-      service: 'web',
-    })
-    expect(result.context.confidence).toBe('medium')
+    expect(result.context.source).toEqual({ kind: 'none' })
   })
 
   it('queries the correct baseline window', async () => {

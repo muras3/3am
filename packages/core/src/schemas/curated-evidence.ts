@@ -31,8 +31,8 @@ export const EvidenceIndexSchema = z.object({
 // ── Baseline Context ─────────────────────────────────────────
 
 export const BaselineSourceSchema = z.discriminatedUnion("kind", [
-  z.object({ kind: z.literal("same_route"), route: z.string(), service: z.string() }).strict(),
-  z.object({ kind: z.literal("same_service"), service: z.string() }).strict(),
+  z.object({ kind: z.literal("exact_operation"), operation: z.string(), service: z.string() }).strict(),
+  z.object({ kind: z.literal("same_operation_family"), operation: z.string(), service: z.string() }).strict(),
   z.object({ kind: z.literal("none") }).strict(),
 ]);
 
@@ -191,7 +191,7 @@ export const TraceGroupSchema = z.object({
 }).strict();
 
 export const PublicBaselineSchema = z.object({
-  source: z.enum(["same_route", "same_service", "none"]),
+  source: z.enum(["exact_operation", "same_operation_family", "none"]),
   windowStart: z.string(),
   windowEnd: z.string(),
   sampleCount: z.number(),

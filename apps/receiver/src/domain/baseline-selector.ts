@@ -2,14 +2,73 @@
  * Baseline Selector — selects normal (expected) traces for comparison
  * with incident (observed) traces.
  *
- * 3-tier fallback:
- *   1. same_route  (httpRoute + service + peerService, min 5 normal spans)
- *   2. same_service (service-wide, min 10 normal spans)
- *   3. none         (no baseline available)
+ * 3-tier fallback (within same operation family only):
+ *   1. exact_operation  (family + method, min 5 normal spans)
+ *   2. same_operation_family (family only, relax method, min 3 normal spans)
+ *   3. none             (no baseline available)
  */
 
 import type { TelemetrySpan, TelemetryStoreDriver } from '../telemetry/interface.js'
 import type { BaselineContext, BaselineSource } from '@3amoncall/core/schemas/curated-evidence'
+
+// ── Operation Identity ──────────────────────────────────────────────────
+
+export type OperationFamily =
+  | { kind: 'route'; value: string }
+  | { kind: 'span_name'; value: string }
+
+export interface OperationIdentity {
+  service: string
+  family: OperationFamily
+  method?: string
+}
+
+/** Derive an operation identity from a TelemetrySpan. */
+export function deriveOperationIdentity(span: TelemetrySpan): OperationIdentity {
+  return {
+    service: span.serviceName,
+    family: span.httpRoute
+      ? { kind: 'route', value: span.httpRoute }
+      : { kind: 'span_name', value: span.spanName },
+    method: span.httpMethod,
+  }
+}
+
+/**
+ * Derive the dominant operation identity from anomalous spans.
+ * Only considers spans belonging to primaryService to avoid picking
+ * dependency/internal spans (e.g. Stripe calls) as the baseline target.
+ * Ties are broken by key lexicographic order for stable results.
+ */
+export function deriveDominantOperation(
+  spans: TelemetrySpan[],
+  primaryService?: string,
+): OperationIdentity | undefined {
+  const filtered = primaryService
+    ? spans.filter((s) => s.serviceName === primaryService)
+    : spans
+  if (filtered.length === 0) return undefined
+
+  const counts = new Map<string, { identity: OperationIdentity; count: number; key: string }>()
+  for (const span of filtered) {
+    const id = deriveOperationIdentity(span)
+    const key = `${id.family.kind}:${id.family.value}:${id.method ?? ''}`
+    const entry = counts.get(key)
+    if (entry) {
+      entry.count++
+    } else {
+      counts.set(key, { identity: id, count: 1, key })
+    }
+  }
+
+  let best: { identity: OperationIdentity; count: number; key: string } | undefined
+  for (const entry of counts.values()) {
+    if (!best || entry.count > best.count || (entry.count === best.count && entry.key < best.key)) {
+      best = entry
+    }
+  }
+  return best?.identity
+}
 
 // ── Public Types ────────────────────────────────────────────────────────
 
@@ -17,8 +76,7 @@ export interface BaselineQuery {
   incidentWindowStartMs: number
   incidentWindowEndMs: number
   primaryService: string
-  httpRoute?: string
-  peerService?: string
+  operation?: OperationIdentity
 }
 
 export interface BaselineResult {
@@ -31,8 +89,8 @@ export interface BaselineResult {
 const MIN_BASELINE_WINDOW_MS = 300_000 // 5 minutes
 const BASELINE_MULTIPLIER = 4
 
-const MIN_SAME_ROUTE_SPANS = 5
-const MIN_SAME_SERVICE_SPANS = 10
+const MIN_EXACT_OPERATION_SPANS = 5
+const MIN_SAME_FAMILY_SPANS = 3
 
 const MAX_TRACES = 3
 
@@ -134,50 +192,59 @@ export async function selectBaseline(
   // Filter to normal spans only
   const normalSpans = allSpans.filter(isNormalSpan)
 
-  // ── Tier 1: same_route ──────────────────────────────────────────────
-  if (query.httpRoute) {
-    const routeSpans = normalSpans.filter((s) => {
-      if (s.httpRoute !== query.httpRoute) return false
-      if (query.peerService && s.peerService !== query.peerService) return false
-      return true
-    })
+  if (query.operation) {
+    const { family, method } = query.operation
 
-    if (routeSpans.length >= MIN_SAME_ROUTE_SPANS) {
-      const selected = selectRepresentativeTraces(routeSpans)
+    /** Check if a span matches the operation family. */
+    const matchesFamily = (s: TelemetrySpan): boolean => {
+      if (family.kind === 'route') return s.httpRoute === family.value
+      return s.spanName === family.value
+    }
+
+    // ── Tier 1: exact_operation (family + method) ───────────────────
+    const exactSpans = normalSpans.filter((s) =>
+      matchesFamily(s) && (!method || s.httpMethod === method),
+    )
+
+    if (exactSpans.length >= MIN_EXACT_OPERATION_SPANS) {
+      const selected = selectRepresentativeTraces(exactSpans)
       const source: BaselineSource = {
-        kind: 'same_route',
-        route: query.httpRoute,
+        kind: 'exact_operation',
+        operation: family.value,
         service: query.primaryService,
       }
       return {
         context: {
           windowStart: new Date(window.startMs).toISOString(),
           windowEnd: new Date(window.endMs).toISOString(),
-          sampleCount: routeSpans.length,
-          confidence: computeConfidence(routeSpans.length),
+          sampleCount: exactSpans.length,
+          confidence: computeConfidence(exactSpans.length),
           source,
         },
         spans: selected,
       }
     }
-  }
 
-  // ── Tier 2: same_service ────────────────────────────────────────────
-  if (normalSpans.length >= MIN_SAME_SERVICE_SPANS) {
-    const selected = selectRepresentativeTraces(normalSpans)
-    const source: BaselineSource = {
-      kind: 'same_service',
-      service: query.primaryService,
-    }
-    return {
-      context: {
-        windowStart: new Date(window.startMs).toISOString(),
-        windowEnd: new Date(window.endMs).toISOString(),
-        sampleCount: normalSpans.length,
-        confidence: computeConfidence(normalSpans.length),
-        source,
-      },
-      spans: selected,
+    // ── Tier 2: same_operation_family (family only, relax method) ───
+    const familySpans = method ? normalSpans.filter(matchesFamily) : exactSpans
+
+    if (familySpans.length >= MIN_SAME_FAMILY_SPANS) {
+      const selected = selectRepresentativeTraces(familySpans)
+      const source: BaselineSource = {
+        kind: 'same_operation_family',
+        operation: family.value,
+        service: query.primaryService,
+      }
+      return {
+        context: {
+          windowStart: new Date(window.startMs).toISOString(),
+          windowEnd: new Date(window.endMs).toISOString(),
+          sampleCount: familySpans.length,
+          confidence: computeConfidence(familySpans.length),
+          source,
+        },
+        spans: selected,
+      }
     }
   }
 

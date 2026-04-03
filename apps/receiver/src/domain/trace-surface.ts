@@ -16,7 +16,7 @@ import type {
   CuratedTraceSpan,
   CuratedEvidenceRef,
 } from '@3amoncall/core/schemas/curated-evidence'
-import { selectBaseline } from './baseline-selector.js'
+import { selectBaseline, deriveDominantOperation } from './baseline-selector.js'
 
 // ── Constants ────────────────────────────────────────────────────────────
 
@@ -276,13 +276,13 @@ export async function buildTraceSurface(
   // ── Expected (baseline) traces ───────────────────────────────────────
 
   const primaryService = incident.packet.scope.primaryService
-  const httpRoute = incident.packet.scope.affectedRoutes[0] ?? undefined
+  const dominantOperation = deriveDominantOperation(incidentSpans, primaryService)
 
   const baselineResult = await selectBaseline(telemetryStore, {
     incidentWindowStartMs: incident.telemetryScope.windowStartMs,
     incidentWindowEndMs: incident.telemetryScope.windowEndMs,
     primaryService,
-    httpRoute,
+    operation: dominantOperation,
   })
 
   const baselineGroups = groupSpansByTrace(baselineResult.spans)
