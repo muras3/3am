@@ -39,17 +39,28 @@ exports[`evidence query golden responses > keeps the inc_000006 follow-up answer
       {
         "evidenceRefs": [
           {
+            "id": "trace-1:checkout-001",
+            "kind": "span",
+          },
+          {
             "id": "mgroup:0",
             "kind": "metric_group",
           },
-          {
-            "id": "lcluster:0",
-            "kind": "log_cluster",
-          },
         ],
         "id": "seg_answer_1",
-        "kind": "inference",
-        "text": "現時点では、Stripe rate limiting and retry amplification caused the checkout failures.",
+        "kind": "fact",
+        "text": "はい。いまの evidence で直接確認できる異常があります。",
+      },
+      {
+        "evidenceRefs": [
+          {
+            "id": "trace-1:checkout-001",
+            "kind": "span",
+          },
+        ],
+        "id": "seg_fact_1",
+        "kind": "fact",
+        "text": "Trace POST /checkout span POST /checkout returned httpStatus=500 with durationMs=2340.",
       },
       {
         "evidenceRefs": [
@@ -58,23 +69,16 @@ exports[`evidence query golden responses > keeps the inc_000006 follow-up answer
             "kind": "metric_group",
           },
         ],
-        "id": "seg_fact_1",
+        "id": "seg_fact_2",
         "kind": "fact",
         "text": "Metric group mgroup:0 indicates web error_rate Verdict=Inferred.",
       },
       {
         "evidenceRefs": [
           {
-            "id": "lcluster:0",
-            "kind": "log_cluster",
+            "id": "trace-1:checkout-001",
+            "kind": "span",
           },
-        ],
-        "id": "seg_fact_2",
-        "kind": "fact",
-        "text": "Log evidence web error logs of type recovery appeared 1 times.",
-      },
-      {
-        "evidenceRefs": [
           {
             "id": "mgroup:0",
             "kind": "metric_group",
@@ -82,7 +86,7 @@ exports[`evidence query golden responses > keeps the inc_000006 follow-up answer
         ],
         "id": "seg_inference_1",
         "kind": "inference",
-        "text": "この説明は既存の diagnosis と、いま取得できている traces / metrics / logs の並びに一致しています。",
+        "text": "この並びは、Stripe rate limiting and retry amplification caused the checkout failures. という既存 diagnosis と整合しています。",
       },
     ],
     "status": "answered",
@@ -124,17 +128,28 @@ exports[`evidence query golden responses > keeps the inc_000006 follow-up answer
       {
         "evidenceRefs": [
           {
+            "id": "trace-1:checkout-001",
+            "kind": "span",
+          },
+          {
             "id": "mgroup:0",
             "kind": "metric_group",
           },
+        ],
+        "id": "seg_answer_1",
+        "kind": "fact",
+        "text": "はい。いまの evidence で直接確認できる異常があります。",
+      },
+      {
+        "evidenceRefs": [
           {
             "id": "trace-1:checkout-001",
             "kind": "span",
           },
         ],
-        "id": "seg_answer_1",
+        "id": "seg_fact_1",
         "kind": "fact",
-        "text": "はい。メトリクスでは明確な異常があります。",
+        "text": "Trace POST /checkout span POST /checkout returned httpStatus=500 with durationMs=2340.",
       },
       {
         "evidenceRefs": [
@@ -143,19 +158,19 @@ exports[`evidence query golden responses > keeps the inc_000006 follow-up answer
             "kind": "metric_group",
           },
         ],
-        "id": "seg_fact_1",
+        "id": "seg_fact_2",
         "kind": "fact",
         "text": "Metric group mgroup:0 indicates web error_rate Verdict=Inferred.",
       },
       {
         "evidenceRefs": [
           {
-            "id": "mgroup:0",
-            "kind": "metric_group",
-          },
-          {
             "id": "trace-1:checkout-001",
             "kind": "span",
+          },
+          {
+            "id": "mgroup:0",
+            "kind": "metric_group",
           },
         ],
         "id": "seg_inference_1",
@@ -202,17 +217,28 @@ exports[`evidence query golden responses > keeps the inc_000006 follow-up answer
       {
         "evidenceRefs": [
           {
+            "id": "trace-1:checkout-001",
+            "kind": "span",
+          },
+          {
             "id": "mgroup:0",
             "kind": "metric_group",
           },
-          {
-            "id": "lcluster:0",
-            "kind": "log_cluster",
-          },
         ],
         "id": "seg_answer_1",
-        "kind": "inference",
-        "text": "現時点では、Stripe rate limiting and retry amplification caused the checkout failures.",
+        "kind": "fact",
+        "text": "はい。いまの evidence で直接確認できる異常があります。",
+      },
+      {
+        "evidenceRefs": [
+          {
+            "id": "trace-1:checkout-001",
+            "kind": "span",
+          },
+        ],
+        "id": "seg_fact_1",
+        "kind": "fact",
+        "text": "Trace POST /checkout span POST /checkout returned httpStatus=500 with durationMs=2340.",
       },
       {
         "evidenceRefs": [
@@ -221,23 +247,16 @@ exports[`evidence query golden responses > keeps the inc_000006 follow-up answer
             "kind": "metric_group",
           },
         ],
-        "id": "seg_fact_1",
+        "id": "seg_fact_2",
         "kind": "fact",
         "text": "Metric group mgroup:0 indicates web error_rate Verdict=Inferred.",
       },
       {
         "evidenceRefs": [
           {
-            "id": "lcluster:0",
-            "kind": "log_cluster",
+            "id": "trace-1:checkout-001",
+            "kind": "span",
           },
-        ],
-        "id": "seg_fact_2",
-        "kind": "fact",
-        "text": "Log evidence web error logs of type recovery appeared 1 times.",
-      },
-      {
-        "evidenceRefs": [
           {
             "id": "mgroup:0",
             "kind": "metric_group",
@@ -245,7 +264,7 @@ exports[`evidence query golden responses > keeps the inc_000006 follow-up answer
         ],
         "id": "seg_inference_1",
         "kind": "inference",
-        "text": "この説明は既存の diagnosis と、いま取得できている traces / metrics / logs の並びに一致しています。",
+        "text": "この並びは、Stripe rate limiting and retry amplification caused the checkout failures. という既存 diagnosis と整合しています。",
       },
     ],
     "status": "answered",
