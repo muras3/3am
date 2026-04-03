@@ -134,6 +134,7 @@ export function checkGenerationThreshold(
       void (async () => {
         const incident = await storage.getIncident(incidentId);
         if (incident?.diagnosisResult) return;
+        await storage.markDiagnosisScheduled(incidentId);
         await enqueueDiagnosis(incidentId);
       })();
     } else if (runner) {
@@ -160,7 +161,15 @@ export async function runClaimedDiagnosis(
   inFlight.add(incidentId);
   try {
     const ok = await runner.run(incidentId);
+    if (!ok) {
+      // Diagnosis failed silently — clear scheduled state so UI shows "unavailable"
+      // rather than leaving it stuck in "pending" forever.
+      await storage.clearDiagnosisScheduled(incidentId);
+    }
     return ok ? "succeeded" : "failed";
+  } catch (err) {
+    await storage.clearDiagnosisScheduled(incidentId);
+    throw err;
   } finally {
     await storage.releaseDiagnosisDispatch(incidentId);
     inFlight.delete(incidentId);

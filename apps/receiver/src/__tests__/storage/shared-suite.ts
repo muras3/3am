@@ -553,6 +553,65 @@ export function runStorageSuite(
       expect(result).toBe(false);
     });
 
+    // markDiagnosisScheduled / clearDiagnosisScheduled ──────────────────────
+
+    it("markDiagnosisScheduled sets diagnosisScheduledAt on first call", async () => {
+      const packet = makePacket();
+      await driver.createIncident(packet, makeMembership());
+
+      const before = await driver.getIncident(packet.incidentId);
+      expect(before?.diagnosisScheduledAt).toBeUndefined();
+
+      await driver.markDiagnosisScheduled(packet.incidentId);
+
+      const after = await driver.getIncident(packet.incidentId);
+      expect(after?.diagnosisScheduledAt).toBeDefined();
+    });
+
+    it("markDiagnosisScheduled is idempotent — does not overwrite existing value", async () => {
+      const packet = makePacket();
+      await driver.createIncident(packet, makeMembership());
+
+      await driver.markDiagnosisScheduled(packet.incidentId, "2026-03-09T03:00:00Z");
+      const first = await driver.getIncident(packet.incidentId);
+
+      await driver.markDiagnosisScheduled(packet.incidentId, "2026-03-09T04:00:00Z");
+      const second = await driver.getIncident(packet.incidentId);
+
+      // Should retain the first value, not be overwritten
+      expect(second?.diagnosisScheduledAt).toBe(first?.diagnosisScheduledAt);
+    });
+
+    it("clearDiagnosisScheduled removes diagnosisScheduledAt", async () => {
+      const packet = makePacket();
+      await driver.createIncident(packet, makeMembership());
+      await driver.markDiagnosisScheduled(packet.incidentId);
+
+      const before = await driver.getIncident(packet.incidentId);
+      expect(before?.diagnosisScheduledAt).toBeDefined();
+
+      await driver.clearDiagnosisScheduled(packet.incidentId);
+
+      const after = await driver.getIncident(packet.incidentId);
+      expect(after?.diagnosisScheduledAt).toBeUndefined();
+    });
+
+    it("appendDiagnosis clears diagnosisScheduledAt", async () => {
+      const packet = makePacket();
+      await driver.createIncident(packet, makeMembership());
+      await driver.markDiagnosisScheduled(packet.incidentId);
+
+      const before = await driver.getIncident(packet.incidentId);
+      expect(before?.diagnosisScheduledAt).toBeDefined();
+
+      const dr = makeDiagnosis(packet.incidentId, packet.packetId);
+      await driver.appendDiagnosis(packet.incidentId, dr);
+
+      const after = await driver.getIncident(packet.incidentId);
+      expect(after?.diagnosisScheduledAt).toBeUndefined();
+      expect(after?.diagnosisResult).toBeDefined();
+    });
+
     // getSettings / setSettings ─────────────────────────────────────────────
 
     it("getSettings returns null for non-existent key", async () => {

@@ -12,6 +12,8 @@ function createMockStorage(incident?: { diagnosisResult?: unknown }): StorageDri
     ),
     claimDiagnosisDispatch: vi.fn().mockResolvedValue(true),
     releaseDiagnosisDispatch: vi.fn().mockResolvedValue(undefined),
+    markDiagnosisScheduled: vi.fn().mockResolvedValue(undefined),
+    clearDiagnosisScheduled: vi.fn().mockResolvedValue(undefined),
     createIncident: vi.fn(),
     updatePacket: vi.fn(),
     updateIncidentStatus: vi.fn(),

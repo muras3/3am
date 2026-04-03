@@ -2,10 +2,6 @@ import type { Incident } from "../storage/interface.js";
 
 const DIAGNOSIS_LEASE_MS = 15 * 60_000;
 
-/** Grace period after incident creation before declaring diagnosis unavailable.
- *  Covers Queue delay + OTLP propagation time. */
-const DIAGNOSIS_GRACE_MS = 90_000;
-
 export function hasActiveDiagnosisLease(incident: Incident): boolean {
   if (!incident.diagnosisDispatchedAt) return false;
   const claimedAt = new Date(incident.diagnosisDispatchedAt).getTime();
@@ -13,16 +9,20 @@ export function hasActiveDiagnosisLease(incident: Incident): boolean {
   return claimedAt + DIAGNOSIS_LEASE_MS > Date.now();
 }
 
+/** Returns true when diagnosisScheduledAt is set (diagnosis has been enqueued). */
+export function hasScheduledDiagnosis(incident: Incident): boolean {
+  return incident.diagnosisScheduledAt !== undefined && incident.diagnosisScheduledAt !== null;
+}
+
 export function classifyDiagnosisState(
   incident: Incident,
 ): "ready" | "pending" | "unavailable" {
-  // Active lease takes priority: a rerun may be in progress even if old diagnosisResult exists
+  // 1. Active lease takes priority: a rerun may be in progress even if old diagnosisResult exists
   if (hasActiveDiagnosisLease(incident)) return "pending";
+  // 2. Diagnosis result exists — ready
   if (incident.diagnosisResult) return "ready";
-  // Within grace period after incident creation: diagnosis is expected but not yet dispatched
-  const openedAt = new Date(incident.openedAt).getTime();
-  if (Number.isFinite(openedAt) && openedAt + DIAGNOSIS_GRACE_MS > Date.now()) {
-    return "pending";
-  }
+  // 3. Diagnosis has been scheduled/enqueued but not yet dispatched — pending
+  if (hasScheduledDiagnosis(incident)) return "pending";
+  // 4. No scheduled diagnosis and no result — unavailable
   return "unavailable";
 }

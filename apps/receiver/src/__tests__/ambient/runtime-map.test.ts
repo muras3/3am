@@ -62,6 +62,8 @@ function makeMockStorage(incidents: Incident[] = []): StorageDriver {
     appendPlatformEvents: vi.fn(),
     claimDiagnosisDispatch: vi.fn(),
     releaseDiagnosisDispatch: vi.fn(),
+    markDiagnosisScheduled: vi.fn(),
+    clearDiagnosisScheduled: vi.fn(),
     saveThinEvent: vi.fn(),
     listThinEvents: vi.fn().mockResolvedValue([]),
     getSettings: vi.fn(),

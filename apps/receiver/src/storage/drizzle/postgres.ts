@@ -43,6 +43,7 @@ const pgIncidents = pgTable("incidents", {
   spanMembership: jsonb("span_membership"),
   anomalousSignals: jsonb("anomalous_signals"),
   platformEvents: jsonb("platform_events"),
+  diagnosisScheduledAt: timestamp("diagnosis_scheduled_at", { withTimezone: true }),
   diagnosisDispatchedAt: timestamp("diagnosis_dispatched_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
@@ -95,6 +96,7 @@ export class PostgresAdapter implements StorageDriver {
         span_membership    JSONB,
         anomalous_signals  JSONB,
         platform_events    JSONB,
+        diagnosis_scheduled_at TIMESTAMPTZ,
         diagnosis_dispatched_at TIMESTAMPTZ,
         created_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
         updated_at         TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -118,6 +120,9 @@ export class PostgresAdapter implements StorageDriver {
     `);
     await this.db.execute(drizzleSql`
       ALTER TABLE incidents ADD COLUMN IF NOT EXISTS platform_events JSONB
+    `);
+    await this.db.execute(drizzleSql`
+      ALTER TABLE incidents ADD COLUMN IF NOT EXISTS diagnosis_scheduled_at TIMESTAMPTZ
     `);
     await this.db.execute(drizzleSql`
       ALTER TABLE incidents ADD COLUMN IF NOT EXISTS diagnosis_dispatched_at TIMESTAMPTZ
@@ -186,6 +191,9 @@ export class PostgresAdapter implements StorageDriver {
     }
     if (row.consoleNarrative) {
       incident.consoleNarrative = row.consoleNarrative as ConsoleNarrative;
+    }
+    if (row.diagnosisScheduledAt) {
+      incident.diagnosisScheduledAt = row.diagnosisScheduledAt.toISOString();
     }
     if (row.diagnosisDispatchedAt) {
       incident.diagnosisDispatchedAt = row.diagnosisDispatchedAt.toISOString();
@@ -263,7 +271,7 @@ export class PostgresAdapter implements StorageDriver {
   async appendDiagnosis(id: string, result: DiagnosisResult): Promise<void> {
     await this.db
       .update(pgIncidents)
-      .set({ diagnosisResult: result, diagnosisDispatchedAt: null, updatedAt: new Date() })
+      .set({ diagnosisResult: result, diagnosisScheduledAt: null, diagnosisDispatchedAt: null, updatedAt: new Date() })
       .where(eq(pgIncidents.incidentId, id));
   }
 
@@ -390,6 +398,26 @@ export class PostgresAdapter implements StorageDriver {
     await this.db
       .update(pgIncidents)
       .set({ diagnosisDispatchedAt: null, updatedAt: new Date() })
+      .where(eq(pgIncidents.incidentId, incidentId));
+  }
+
+  async markDiagnosisScheduled(incidentId: string, at?: string): Promise<void> {
+    const ts = at ? new Date(at) : new Date();
+    await this.db
+      .update(pgIncidents)
+      .set({ diagnosisScheduledAt: ts, updatedAt: new Date() })
+      .where(
+        and(
+          eq(pgIncidents.incidentId, incidentId),
+          drizzleSql`${pgIncidents.diagnosisScheduledAt} IS NULL`,
+        ),
+      );
+  }
+
+  async clearDiagnosisScheduled(incidentId: string): Promise<void> {
+    await this.db
+      .update(pgIncidents)
+      .set({ diagnosisScheduledAt: null, updatedAt: new Date() })
       .where(eq(pgIncidents.incidentId, incidentId));
   }
 

@@ -63,6 +63,7 @@ export class SQLiteAdapter implements StorageDriver {
         span_membership   TEXT,
         anomalous_signals TEXT,
         platform_events   TEXT,
+        diagnosis_scheduled_at TEXT,
         diagnosis_dispatched_at TEXT,
         created_at        TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
         updated_at        TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
@@ -74,6 +75,7 @@ export class SQLiteAdapter implements StorageDriver {
       "span_membership TEXT",
       "anomalous_signals TEXT",
       "platform_events TEXT",
+      "diagnosis_scheduled_at TEXT",
       "diagnosis_dispatched_at TEXT",
       "console_narrative TEXT",
       "last_activity_at TEXT",
@@ -138,6 +140,9 @@ export class SQLiteAdapter implements StorageDriver {
     }
     if (row.consoleNarrative) {
       incident.consoleNarrative = JSON.parse(row.consoleNarrative) as ConsoleNarrative;
+    }
+    if (row.diagnosisScheduledAt) {
+      incident.diagnosisScheduledAt = row.diagnosisScheduledAt;
     }
     if (row.diagnosisDispatchedAt) {
       incident.diagnosisDispatchedAt = row.diagnosisDispatchedAt;
@@ -221,6 +226,7 @@ export class SQLiteAdapter implements StorageDriver {
       .update(incidents)
       .set({
         diagnosisResult: JSON.stringify(result),
+        diagnosisScheduledAt: null,
         diagnosisDispatchedAt: null,
         updatedAt: now,
       })
@@ -364,6 +370,29 @@ export class SQLiteAdapter implements StorageDriver {
     this.db
       .update(incidents)
       .set({ diagnosisDispatchedAt: null, updatedAt: now })
+      .where(eq(incidents.incidentId, incidentId))
+      .run();
+  }
+
+  async markDiagnosisScheduled(incidentId: string, at?: string): Promise<void> {
+    const now = at ?? new Date().toISOString();
+    this.db
+      .update(incidents)
+      .set({ diagnosisScheduledAt: now, updatedAt: new Date().toISOString() })
+      .where(
+        and(
+          eq(incidents.incidentId, incidentId),
+          sql`${incidents.diagnosisScheduledAt} IS NULL`,
+        ),
+      )
+      .run();
+  }
+
+  async clearDiagnosisScheduled(incidentId: string): Promise<void> {
+    const now = new Date().toISOString();
+    this.db
+      .update(incidents)
+      .set({ diagnosisScheduledAt: null, updatedAt: now })
       .where(eq(incidents.incidentId, incidentId))
       .run();
   }

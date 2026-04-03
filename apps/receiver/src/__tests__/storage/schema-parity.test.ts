@@ -42,6 +42,7 @@ describe("Schema parity: SQLite vs Postgres", () => {
       "created_at",
       "diagnosis_dispatched_at",
       "diagnosis_result",
+      "diagnosis_scheduled_at",
       "incident_id",
       "last_activity_at",
       "opened_at",

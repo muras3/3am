@@ -298,6 +298,7 @@ export function createApiRouter(
         const mode = incident.diagnosisResult && !incident.consoleNarrative
           ? "narrative"
           : "diagnosis";
+        await storage.markDiagnosisScheduled(id);
         await enqueueDiagnosis(id, mode);
         return c.json({ status: "accepted" }, 202);
       }
@@ -307,6 +308,7 @@ export function createApiRouter(
         return c.json({ error: "already_running" }, 409);
       }
 
+      await storage.markDiagnosisScheduled(id);
       const waitUntil = await resolveWaitUntil();
       waitUntil((async () => {
         try {
