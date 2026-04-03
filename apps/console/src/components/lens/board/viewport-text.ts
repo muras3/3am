@@ -29,7 +29,7 @@ export function splitActionForViewport(text: string, maxSteps = 3): string[] {
     .filter(Boolean);
 
   if (parts.length <= 1) {
-    return [shortenForViewport(trimmed, 84)];
+    return [trimmed];
   }
 
   return parts.slice(0, maxSteps);
