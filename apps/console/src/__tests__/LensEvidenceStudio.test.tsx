@@ -525,6 +525,26 @@ describe("QAFrame — interaction", () => {
     expect(status).toHaveAttribute("aria-live", "polite");
   });
 
+  it("clarification response renders clarification label and question", () => {
+    renderQAFrame(evidenceReady.qa, {
+      history: [{
+        id: "clarify-1",
+        question: "どうあるべき？",
+        status: "answered",
+        response: {
+          question: "どうあるべき？",
+          status: "clarification",
+          clarificationQuestion: "何を知りたいかを一段具体化して。",
+          segments: [],
+          evidenceSummary: evidenceReady.qa.evidenceSummary,
+          followups: evidenceReady.qa.followups,
+        },
+      }],
+    });
+    expect(screen.getByText("Clarifying question")).toBeInTheDocument();
+    expect(screen.getByText("何を知りたいかを一段具体化して。")).toBeInTheDocument();
+  });
+
   it("evidence ref click calls navigate with correct tab/targetId (span → traces)", async () => {
     const user = userEvent.setup();
     renderQAFrame(evidenceReady.qa);

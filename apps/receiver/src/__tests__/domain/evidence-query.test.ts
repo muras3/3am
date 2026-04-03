@@ -318,6 +318,45 @@ describe('buildEvidenceQueryAnswer', () => {
     expect(result.segments.some((segment) => segment.text.includes('最小アクション'))).toBe(true)
   })
 
+  it('asks for clarification when an underspecified follow-up has no usable history', async () => {
+    const incident = makeIncident({
+      diagnosisResult: makeDiagnosisResult(),
+    })
+    const store = makeMockStore()
+
+    const result = await buildEvidenceQueryAnswer(
+      incident,
+      store,
+      'どうあるべき？',
+      true,
+      'ja',
+      [],
+    )
+
+    expect(result.status).toBe('clarification')
+    expect(result.clarificationQuestion).toContain('何を知りたいかを一段具体化して')
+    expect(result.followups.length).toBeGreaterThan(0)
+  })
+
+  it('answers missing-log questions without collapsing back to the generic cause template', async () => {
+    const incident = makeIncident({
+      diagnosisResult: makeDiagnosisResult(),
+    })
+    const store = makeMockStore()
+
+    const result = await buildEvidenceQueryAnswer(
+      incident,
+      store,
+      'なぜlogがない？',
+      false,
+      'ja',
+    )
+
+    expect(result.status).toBe('answered')
+    expect(result.segments.some((segment) => segment.text.includes('失敗ログ'))).toBe(true)
+    expect(result.segments.some((segment) => segment.text.includes('収集経路'))).toBe(true)
+  })
+
   it('span summary includes httpStatus when using new stable attribute http.response.status_code', async () => {
     const incident = makeIncident({ diagnosisResult: makeDiagnosisResult() })
     // makeMockStore already uses 'http.response.status_code': 504

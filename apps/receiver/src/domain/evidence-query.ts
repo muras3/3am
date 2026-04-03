@@ -16,6 +16,12 @@ import type { Incident } from "../storage/interface.js";
 import { classifyDiagnosisState } from "./diagnosis-state.js";
 import type { TelemetryStoreDriver } from "../telemetry/interface.js";
 import { buildCuratedEvidence } from "./curated-evidence.js";
+import {
+  buildClarificationResponse,
+  planEvidenceConversation,
+  type EvidenceConversationTurn,
+  type IntentProfile,
+} from "./evidence-conversation.js";
 
 const EVIDENCE_QUERY_MODEL =
   process.env["EVIDENCE_QUERY_MODEL"] ?? "claude-haiku-4-5-20251001";
@@ -27,20 +33,6 @@ type RetrievedEvidence = {
   surface: "traces" | "metrics" | "logs";
   summary: string;
   score: number;
-};
-
-type QueryIntent =
-  | "metrics"
-  | "logs"
-  | "traces"
-  | "root_cause"
-  | "action"
-  | "greeting"
-  | "general";
-
-type IntentProfile = {
-  kind: QueryIntent;
-  preferredSurfaces: Array<"traces" | "metrics" | "logs">;
 };
 
 type ExplanatoryTerm = {
@@ -100,39 +92,8 @@ function localizeNoAnswerForGreeting(locale: "en" | "ja"): string {
     : "Ask about traces, metrics, logs, or the diagnosed cause for this incident.";
 }
 
-type EvidenceConversationTurn = {
-  role: "user" | "assistant";
-  content: string;
-};
-
-function isUnderspecifiedFollowup(question: string): boolean {
-  const trimmed = question.trim().toLowerCase();
-  if (!trimmed) return true;
-  if (trimmed.length <= 18) return true;
-  return /(次のアクション|どうあるべき|あるべき|何をすべき|どうすべき|what next|next action|what should|should it|do first|how should)/i.test(trimmed);
-}
-
-function buildQuestionWithHistory(
-  question: string,
-  history: EvidenceConversationTurn[],
-  isFollowup: boolean,
-): string {
-  if (!isFollowup || history.length === 0 || !isUnderspecifiedFollowup(question)) {
-    return question;
-  }
-
-  const previousUserTurns = history.filter((turn) => turn.role === "user");
-  const previousAssistantTurns = history.filter((turn) => turn.role === "assistant");
-  const previousUser = previousUserTurns.at(-1)?.content.trim();
-  const previousAssistant = previousAssistantTurns.at(-1)?.content.trim();
-
-  if (previousUser && previousAssistant) {
-    return `Previous user question: ${previousUser}\nPrevious assistant answer: ${previousAssistant}\nFollow-up question: ${question}`;
-  }
-  if (previousUser) {
-    return `Previous user question: ${previousUser}\nFollow-up question: ${question}`;
-  }
-  return question;
+function isMissingLogsQuestion(question: string): boolean {
+  return /(why.*log|why.*logs|missing log|no log|ログがない|ログが無い|なぜlogがない|なぜログがない|logがない)/i.test(question);
 }
 
 function buildDirectAnswer(
@@ -359,29 +320,6 @@ function buildExplanatoryAnswer(
   };
 }
 
-function classifyQuestionIntent(question: string): IntentProfile {
-  const lower = question.toLowerCase();
-  if (/^(hi|hello|hey|こんにちは|こんばんは|おはよう)/i.test(question.trim())) {
-    return { kind: "greeting", preferredSurfaces: [] };
-  }
-  if (/(next action|what should|do first|should we|mitigation|remediation|対応|初動|次のアクション|何をすべき|どうすべき|どうあるべき|あるべき)/i.test(lower)) {
-    return { kind: "action", preferredSurfaces: ["traces", "logs", "metrics"] };
-  }
-  if (/(metric|metrics|throughput|latency|error rate|spike|メトリクス|指標|スループット|レイテンシ|遅延)/i.test(lower)) {
-    return { kind: "metrics", preferredSurfaces: ["metrics", "traces", "logs"] };
-  }
-  if (/(log|logs|retry|backoff|message|ログ|メッセージ|再試行|バックオフ)/i.test(lower)) {
-    return { kind: "logs", preferredSurfaces: ["logs", "traces", "metrics"] };
-  }
-  if (/(trace|traces|span|route|path|trace path|トレース|スパン|経路|ルート|パス)/i.test(lower)) {
-    return { kind: "traces", preferredSurfaces: ["traces", "logs", "metrics"] };
-  }
-  if (/(root cause|cause|why|what caused|原因|根本原因|なぜ)/i.test(lower)) {
-    return { kind: "root_cause", preferredSurfaces: ["metrics", "logs", "traces"] };
-  }
-  return { kind: "general", preferredSurfaces: ["traces", "metrics", "logs"] };
-}
-
 function summarizeEvidence(evidence: EvidenceResponse["surfaces"]) {
   return {
     traces: evidence.traces.observed.length,
@@ -484,6 +422,64 @@ function buildDeterministicNoAnswer(
     evidenceSummary: summarizeEvidence(evidence.surfaces),
     followups: buildFollowups([], evidence, question),
     noAnswerReason: reason,
+  };
+}
+
+function buildMissingLogsAnswer(
+  question: string,
+  incident: Incident,
+  evidence: EvidenceResponse,
+  retrieved: RetrievedEvidence[],
+  locale: "en" | "ja",
+): EvidenceQueryResponse {
+  const absenceClaim = evidence.surfaces.logs.claims.find((claim) => claim.type === "absence");
+  const primaryTrace = retrieved.find((entry) => entry.surface === "traces") ?? retrieved[0];
+  const evidenceRefs = [
+    ...(absenceClaim ? [{
+      kind: "absence" as const,
+      id: absenceClaim.id,
+    }] : []),
+    ...(primaryTrace ? [primaryTrace.ref] : []),
+  ];
+
+  const segments: EvidenceQueryResponse["segments"] = [];
+  if (absenceClaim) {
+    segments.push({
+      id: "seg_missing_logs_1",
+      kind: "fact",
+      text: locale === "ja"
+        ? `${absenceClaim.label} に対応する失敗ログは、現在のインシデント窓では観測されていない。`
+        : `The current incident window does not contain matching failure logs for ${absenceClaim.label}.`,
+      evidenceRefs: [{ kind: "absence", id: absenceClaim.id }],
+    });
+  }
+
+  segments.push({
+    id: "seg_missing_logs_2",
+    kind: "unknown",
+    text: locale === "ja"
+      ? "いま分かるのは「ログが無い」ことまでで、依存先がログを出す前に失敗したのか、収集経路が欠けたのかはまだ断定できない。"
+      : "The evidence currently proves the logs are absent, but it does not yet distinguish between a pre-log failure and a collection gap.",
+    evidenceRefs: evidenceRefs.length > 0 ? evidenceRefs : retrieved.slice(0, 2).map((entry) => entry.ref),
+  });
+
+  if (incident.diagnosisResult) {
+    segments.push({
+      id: "seg_missing_logs_3",
+      kind: "inference",
+      text: locale === "ja"
+        ? "まずは最初の 500 を返した span と、その依存先のログ収集設定を確認するのが最短。"
+        : "The shortest next step is to inspect the first 500 span and the logging path for the implicated dependency.",
+      evidenceRefs: evidenceRefs.length > 0 ? evidenceRefs : retrieved.slice(0, 2).map((entry) => entry.ref),
+    });
+  }
+
+  return {
+    question,
+    status: "answered",
+    segments,
+    evidenceSummary: summarizeEvidence(evidence.surfaces),
+    followups: buildFollowups(retrieved, evidence, question, locale),
   };
 }
 
@@ -707,8 +703,19 @@ export async function buildEvidenceQueryAnswer(
 ): Promise<EvidenceQueryResponse> {
   const diagnosisState = determineDiagnosisState(incident);
   const curatedEvidence = await buildCuratedEvidence(incident, telemetryStore);
-  const effectiveQuestion = buildQuestionWithHistory(question, history, isFollowup);
-  const intent = classifyQuestionIntent(effectiveQuestion);
+  const plan = planEvidenceConversation(question, history, isFollowup, locale);
+
+  if (plan.kind === "clarification") {
+    return buildClarificationResponse(
+      question,
+      curatedEvidence,
+      plan.clarificationQuestion,
+      plan.followups,
+    );
+  }
+
+  const effectiveQuestion = plan.effectiveQuestion;
+  const intent = plan.intent;
 
   if (diagnosisState === "unavailable") {
     return buildDeterministicNoAnswer(
@@ -754,6 +761,14 @@ export async function buildEvidenceQueryAnswer(
       retrieved,
       locale,
     );
+  }
+
+  if (isMissingLogsQuestion(question)) {
+    return buildMissingLogsAnswer(question, incident, curatedEvidence, retrieved, locale);
+  }
+
+  if (intent.kind === "action") {
+    return buildFallbackAnswer(question, incident, curatedEvidence, retrieved, intent, locale);
   }
 
   try {
