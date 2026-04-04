@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, writeFileSync, copyFileSync, unlinkSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync, copyFileSync, unlinkSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { execSync } from "node:child_process";
 import { detectFramework } from "./init/detect-framework.js";
@@ -25,9 +25,12 @@ const OTEL_DEPS = [
 const VERCEL_OTEL_DEPS = [
   "@vercel/otel",
   "@opentelemetry/api",
-  "@opentelemetry/api-logs",
   "@opentelemetry/exporter-trace-otlp-http",
 ];
+
+function isDirectory(p: string): boolean {
+  try { return statSync(p).isDirectory(); } catch { return false; }
+}
 
 function getInstallCommand(pm: string, deps: string[]): string {
   const depsStr = deps.join(" ");
@@ -207,7 +210,7 @@ export async function runInit(_argv: string[], options: InitOptions = {}): Promi
 
     // --- 2. Generate instrumentation file ---
     // Next.js with src/ directory requires instrumentation file in src/
-    const hasSrcDir = existsSync(join(cwd, 'src'));
+    const hasSrcDir = isNextjs && isDirectory(join(cwd, 'src'));
     const instrumentationDir = hasSrcDir ? join(cwd, 'src') : cwd;
     const instrumentationPath = join(instrumentationDir, instrumentationFile);
 
