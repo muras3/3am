@@ -12,7 +12,6 @@ import {
   waitForReceiver,
   fetchSetupToken,
   fetchSetupTokenWithRetry,
-  type SetupTokenResult,
 } from "../commands/shared/health.js";
 
 /** Flush all pending microtasks (Promise callbacks) */
