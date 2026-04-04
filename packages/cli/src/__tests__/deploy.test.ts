@@ -51,6 +51,7 @@ vi.mock("../commands/deploy/env-writer.js", () => ({
 vi.mock("../commands/shared/health.js", () => ({
   checkReceiver: vi.fn(),
   waitForReceiver: vi.fn(),
+  fetchSetupTokenWithRetry: vi.fn(),
 }));
 
 vi.mock("../commands/cloudflare-workers.js", () => ({
@@ -77,7 +78,7 @@ import {
   checkPlatformAuth,
 } from "../commands/deploy/platform.js";
 import { updateAppEnv } from "../commands/deploy/env-writer.js";
-import { waitForReceiver } from "../commands/shared/health.js";
+import { waitForReceiver, fetchSetupTokenWithRetry } from "../commands/shared/health.js";
 import { resolveApiKey, loadCredentials, saveCredentials } from "../commands/init/credentials.js";
 import { connectCloudflareWorkerToReceiver } from "../commands/cloudflare-workers.js";
 import { runDeploy } from "../commands/deploy.js";
@@ -96,6 +97,7 @@ function setupHappyPathMocks(): void {
   mockProvider.setEnvVar.mockResolvedValue(undefined);
   mockProvider.cleanup.mockReturnValue(undefined);
   vi.mocked(waitForReceiver).mockResolvedValue(true);
+  vi.mocked(fetchSetupTokenWithRetry).mockResolvedValue({ status: "token", token: "setup-tok" });
   vi.mocked(updateAppEnv).mockReturnValue({
     added: ["OTEL_EXPORTER_OTLP_ENDPOINT", "OTEL_EXPORTER_OTLP_HEADERS"],
     updated: [],
