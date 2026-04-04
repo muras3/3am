@@ -268,29 +268,32 @@ export async function runDeploy(
   // After healthz passes the DB migration may still be running, which causes
   // setup-status to return 401. Retry with exponential backoff so we can
   // confirm the Receiver is fully initialised before declaring success.
-  info("\nVerifying Receiver initialisation...\n", json);
-  const setupResult = await fetchSetupTokenWithRetry(
-    deployedUrl,
-    5, // maxRetries
-    (attempt, max, delayMs, message) => {
+  // Only applies to Vercel deploys — CF Workers have a different lifecycle.
+  if (platform === "vercel") {
+    info("\nVerifying Receiver initialisation...\n", json);
+    const setupResult = await fetchSetupTokenWithRetry(
+      deployedUrl,
+      5, // maxRetries
+      (attempt, max, delayMs, message) => {
+        info(
+          `  Setup not ready (${message}), retrying in ${delayMs / 1000}s... (${attempt}/${max})\n`,
+          json,
+        );
+      },
+    );
+
+    if (setupResult.status === "error") {
       info(
-        `  Setup not ready (${message}), retrying in ${delayMs / 1000}s... (${attempt}/${max})\n`,
+        `Warning: could not verify setup status: ${setupResult.message}\n` +
+          "  The Receiver may still be initialising. If this persists, check\n" +
+          "  the deployment logs on the platform dashboard.\n",
         json,
       );
-    },
-  );
-
-  if (setupResult.status === "error") {
-    info(
-      `Warning: could not verify setup status: ${setupResult.message}\n` +
-        "  The Receiver may still be initialising. If this persists, check\n" +
-        "  the deployment logs on the platform dashboard.\n",
-      json,
-    );
-  } else if (setupResult.status === "already-setup") {
-    info("Receiver setup already complete.\n", json);
-  } else {
-    info("Receiver initialisation verified.\n", json);
+    } else if (setupResult.status === "already-setup") {
+      info("Receiver setup already complete.\n", json);
+    } else {
+      info("Receiver initialisation verified.\n", json);
+    }
   }
 
   // -------------------------------------------------------------------------

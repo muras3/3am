@@ -387,6 +387,24 @@ describe("fetchSetupTokenWithRetry()", () => {
     expect(onRetry).not.toHaveBeenCalled();
   });
 
+  it("makes at least one attempt when maxRetries is 0 (clamped to 1)", async () => {
+    globalThis.fetch = (vi.fn() as MockedFunction<typeof fetch>)
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ setupComplete: false }), { status: 200 }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ token: "tok" }), { status: 200 }),
+      );
+
+    const promise = fetchSetupTokenWithRetry("http://localhost:3333", 0);
+    await vi.advanceTimersByTimeAsync(0);
+    const result = await promise;
+
+    expect(result).toEqual({ status: "token", token: "tok" });
+    // Exactly 2 fetch calls: setup-status + setup-token
+    expect(globalThis.fetch).toHaveBeenCalledTimes(2);
+  });
+
   it("uses exponential backoff capped at 15s", async () => {
     globalThis.fetch = vi.fn().mockResolvedValue(
       new Response("Unauthorized", { status: 401 }),

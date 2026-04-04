@@ -145,9 +145,10 @@ export async function fetchSetupTokenWithRetry(
   maxRetries = 5,
   onRetry?: (attempt: number, maxRetries: number, delayMs: number, message: string) => void,
 ): Promise<SetupTokenResult> {
+  const effectiveRetries = Math.max(1, maxRetries);
   let result: SetupTokenResult | null = null;
 
-  for (let attempt = 0; attempt < maxRetries; attempt++) {
+  for (let attempt = 0; attempt < effectiveRetries; attempt++) {
     result = await fetchSetupToken(baseUrl);
 
     // Success or non-retryable result — stop immediately
@@ -155,10 +156,10 @@ export async function fetchSetupTokenWithRetry(
     if (!result.retryable) return result;
 
     // Last attempt — don't sleep, just return the error
-    if (attempt === maxRetries - 1) break;
+    if (attempt === effectiveRetries - 1) break;
 
     const delay = Math.min(3_000 * Math.pow(2, attempt), 15_000);
-    onRetry?.(attempt + 1, maxRetries, delay, result.message);
+    onRetry?.(attempt + 1, effectiveRetries, delay, result.message);
     await new Promise((r) => setTimeout(r, delay));
   }
 
