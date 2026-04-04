@@ -1,5 +1,22 @@
 import type { Framework } from "./detect-framework.js";
 
+export function nextjsVercelTemplate(): string {
+  return `import { registerOTel } from "@vercel/otel";
+import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
+
+export function register() {
+  registerOTel({
+    serviceName: process.env.OTEL_SERVICE_NAME || "my-app",
+    traceExporter: new OTLPTraceExporter(),
+    attributes: {
+      "deployment.environment.name":
+        process.env.VERCEL_ENV || "development",
+    },
+  });
+}
+`;
+}
+
 export function getInstrumentationTemplate(framework: Framework): string {
   if (framework === "nextjs") {
     return `import { NodeSDK } from "@opentelemetry/sdk-node";

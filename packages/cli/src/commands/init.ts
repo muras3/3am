@@ -1,10 +1,10 @@
-import { existsSync, readFileSync, writeFileSync, copyFileSync, unlinkSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync, copyFileSync, unlinkSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { execSync } from "node:child_process";
 import { detectFramework } from "./init/detect-framework.js";
 import { detectLogger } from "./init/detect-logger.js";
 import { detectPackageManager } from "./init/detect-package-manager.js";
-import { getInstrumentationTemplate } from "./init/templates.js";
+import { getInstrumentationTemplate, nextjsVercelTemplate } from "./init/templates.js";
 import { patchScripts } from "./init/patch-scripts.js";
 import { detectRuntimeTarget, findWranglerConfigPath } from "./init/detect-runtime.js";
 import { updateCloudflareObservabilityConfig } from "./cloudflare-workers.js";
@@ -21,6 +21,16 @@ const OTEL_DEPS = [
   "@opentelemetry/sdk-logs",
   "@opentelemetry/sdk-metrics",
 ];
+
+const VERCEL_OTEL_DEPS = [
+  "@vercel/otel",
+  "@opentelemetry/api",
+  "@opentelemetry/exporter-trace-otlp-http",
+];
+
+function isDirectory(p: string): boolean {
+  try { return statSync(p).isDirectory(); } catch { return false; }
+}
 
 function getInstallCommand(pm: string, deps: string[]): string {
   const depsStr = deps.join(" ");
@@ -171,8 +181,11 @@ export async function runInit(_argv: string[], options: InitOptions = {}): Promi
     const pkgBackupPath = pkgPath + ".bak";
     copyFileSync(pkgPath, pkgBackupPath);
 
-    const depsToInstall = [...OTEL_DEPS];
-    if (logger.detected) {
+    const isVercelProject = existsSync(join(cwd, '.vercel')) || existsSync(join(cwd, 'vercel.json'));
+    const useVercelOtel = isNextjs && isVercelProject;
+
+    const depsToInstall = useVercelOtel ? [...VERCEL_OTEL_DEPS] : [...OTEL_DEPS];
+    if (!useVercelOtel && logger.detected) {
       depsToInstall.push(logger.instrumentationPackage);
     }
     const installCmd = getInstallCommand(pm, depsToInstall);
@@ -196,14 +209,20 @@ export async function runInit(_argv: string[], options: InitOptions = {}): Promi
     }
 
     // --- 2. Generate instrumentation file ---
-    const instrumentationPath = join(cwd, instrumentationFile);
+    // Next.js with src/ directory requires instrumentation file in src/
+    const hasSrcDir = isNextjs && isDirectory(join(cwd, 'src'));
+    const instrumentationDir = hasSrcDir ? join(cwd, 'src') : cwd;
+    const instrumentationPath = join(instrumentationDir, instrumentationFile);
 
     if (existsSync(instrumentationPath)) {
       process.stdout.write(`${instrumentationFile} already exists — skipping.\n`);
     } else {
-      const template = getInstrumentationTemplate(framework);
+      const template = useVercelOtel
+        ? nextjsVercelTemplate()
+        : getInstrumentationTemplate(framework);
       writeFileSync(instrumentationPath, template, "utf-8");
-      process.stdout.write(`Created ${instrumentationFile}\n`);
+      const relPath = hasSrcDir ? `src/${instrumentationFile}` : instrumentationFile;
+      process.stdout.write(`Created ${relPath}\n`);
     }
 
     // --- 3. Patch package.json scripts ---
