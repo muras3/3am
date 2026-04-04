@@ -5,7 +5,7 @@
 export type SetupTokenResult =
   | { status: "token"; token: string }
   | { status: "already-setup" }
-  | { status: "error"; message: string };
+  | { status: "error"; message: string; retryable?: boolean };
 
 /**
  * Check whether the Receiver is reachable and responding.
@@ -71,9 +71,15 @@ export async function fetchSetupToken(
       signal: AbortSignal.timeout(5_000),
     });
     if (!res.ok) {
+      // 401/503 typically mean DB migration hasn't completed yet —
+      // the HTTP server is up (healthz passes) but the app layer
+      // isn't fully initialised. Mark these as retryable so the
+      // caller can back off and retry.
+      const retryable = res.status === 401 || res.status === 503;
       return {
         status: "error",
         message: `setup-status returned ${res.status}`,
+        retryable,
       };
     }
     const data = (await res.json()) as { setupComplete?: boolean };
@@ -82,6 +88,7 @@ export async function fetchSetupToken(
     return {
       status: "error",
       message: `failed to reach setup-status: ${String(err)}`,
+      retryable: true,
     };
   }
 
@@ -118,4 +125,42 @@ export async function fetchSetupToken(
       message: `failed to reach setup-token: ${String(err)}`,
     };
   }
+}
+
+/**
+ * Retry `fetchSetupToken` with exponential backoff.
+ *
+ * After a fresh deploy the HTTP server may be up (healthz 200) while DB
+ * migrations are still running, causing setup-status to return 401 or 503.
+ * This wrapper retries on retryable errors so the deploy command can
+ * reliably obtain the setup token without manual intervention.
+ *
+ * @param baseUrl      Receiver base URL
+ * @param maxRetries   Maximum number of attempts (default 5)
+ * @param onRetry      Optional callback for logging retry progress
+ * @returns The final `SetupTokenResult` after retries are exhausted
+ */
+export async function fetchSetupTokenWithRetry(
+  baseUrl: string,
+  maxRetries = 5,
+  onRetry?: (attempt: number, maxRetries: number, delayMs: number, message: string) => void,
+): Promise<SetupTokenResult> {
+  let result: SetupTokenResult | null = null;
+
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    result = await fetchSetupToken(baseUrl);
+
+    // Success or non-retryable result — stop immediately
+    if (result.status !== "error") return result;
+    if (!result.retryable) return result;
+
+    // Last attempt — don't sleep, just return the error
+    if (attempt === maxRetries - 1) break;
+
+    const delay = Math.min(3_000 * Math.pow(2, attempt), 15_000);
+    onRetry?.(attempt + 1, maxRetries, delay, result.message);
+    await new Promise((r) => setTimeout(r, delay));
+  }
+
+  return result!;
 }

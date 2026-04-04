@@ -12,6 +12,7 @@
  *  7. Resolve auth token (CLI credentials or generate)
  *  8. Set platform secrets + deploy
  *  9. Wait for Receiver readiness
+ *  9b. Verify Receiver initialisation (setup token fetch with retry)
  * 10. Connect app runtime (CF Worker config / .env update)
  * 11. Completion output
  *
@@ -29,7 +30,7 @@ import {
 } from "./deploy/platform.js";
 import { createProvider } from "./deploy/provider.js";
 import { updateAppEnv } from "./deploy/env-writer.js";
-import { waitForReceiver } from "./shared/health.js";
+import { waitForReceiver, fetchSetupTokenWithRetry } from "./shared/health.js";
 import { resolveApiKey, loadCredentials, saveCredentials } from "./init/credentials.js";
 import { connectCloudflareWorkerToReceiver } from "./cloudflare-workers.js";
 import { randomUUID } from "node:crypto";
@@ -259,6 +260,37 @@ export async function runDeploy(
     );
   } else {
     info("Receiver is ready.\n", json);
+  }
+
+  // -------------------------------------------------------------------------
+  // Step 9b: Verify Receiver initialisation via setup token fetch
+  // -------------------------------------------------------------------------
+  // After healthz passes the DB migration may still be running, which causes
+  // setup-status to return 401. Retry with exponential backoff so we can
+  // confirm the Receiver is fully initialised before declaring success.
+  info("\nVerifying Receiver initialisation...\n", json);
+  const setupResult = await fetchSetupTokenWithRetry(
+    deployedUrl,
+    5, // maxRetries
+    (attempt, max, delayMs, message) => {
+      info(
+        `  Setup not ready (${message}), retrying in ${delayMs / 1000}s... (${attempt}/${max})\n`,
+        json,
+      );
+    },
+  );
+
+  if (setupResult.status === "error") {
+    info(
+      `Warning: could not verify setup status: ${setupResult.message}\n` +
+        "  The Receiver may still be initialising. If this persists, check\n" +
+        "  the deployment logs on the platform dashboard.\n",
+      json,
+    );
+  } else if (setupResult.status === "already-setup") {
+    info("Receiver setup already complete.\n", json);
+  } else {
+    info("Receiver initialisation verified.\n", json);
   }
 
   // -------------------------------------------------------------------------
