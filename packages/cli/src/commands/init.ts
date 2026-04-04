@@ -26,6 +26,10 @@ const VERCEL_OTEL_DEPS = [
   "@vercel/otel",
   "@opentelemetry/api",
   "@opentelemetry/exporter-trace-otlp-http",
+  "@opentelemetry/exporter-metrics-otlp-http",
+  "@opentelemetry/exporter-logs-otlp-http",
+  "@opentelemetry/sdk-metrics",
+  "@opentelemetry/sdk-logs",
 ];
 
 function isDirectory(p: string): boolean {
