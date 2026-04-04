@@ -4,7 +4,7 @@ OSS tool that diagnoses serverless app incidents in under 5 minutes using OTel d
 
 ## Quick Start
 
-**Local (no Railway):**
+**Local:**
 ```bash
 cd validation
 docker compose up -d
@@ -12,14 +12,13 @@ docker compose exec scenario-runner node run.js third_party_api_rate_limit_casca
 ls validation/out/runs/
 ```
 
-**Staging (Railway receiver):**
+**Staging (CF Workers receiver):**
 ```bash
 cd validation
 # First time: cp .env.staging.example .env.staging  →  fill RECEIVER_ENDPOINT + RECEIVER_AUTH_TOKEN
 make check-env
-make up
-make run SCENARIO=third_party_api_rate_limit_cascade
-make down
+make cf
+# or step-by-step: make cf-up && make cf-run SCENARIO=<id> && make cf-down
 ```
 See `validation/Makefile` for all targets (`make help`).
 
