@@ -25,6 +25,7 @@ const OTEL_DEPS = [
 const VERCEL_OTEL_DEPS = [
   "@vercel/otel",
   "@opentelemetry/api",
+  "@opentelemetry/auto-instrumentations-node",
   "@opentelemetry/exporter-trace-otlp-http",
   "@opentelemetry/exporter-metrics-otlp-http",
   "@opentelemetry/exporter-logs-otlp-http",

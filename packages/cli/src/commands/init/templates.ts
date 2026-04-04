@@ -84,13 +84,17 @@ export async function register() {
   globalThis.__otelAllSignalsRegistered = true;
 
   try {
-    const pipeline = await createSignalPipeline(otlpBaseUrl);
+    const [pipeline, { getNodeAutoInstrumentations }] = await Promise.all([
+      createSignalPipeline(otlpBaseUrl),
+      import("@opentelemetry/auto-instrumentations-node"),
+    ]);
     registerOTel({
       serviceName: process.env.OTEL_SERVICE_NAME || "my-app",
       attributes: {
         "deployment.environment.name":
           process.env.VERCEL_ENV || process.env.NODE_ENV || "development",
       },
+      instrumentations: [getNodeAutoInstrumentations()],
       ...pipeline,
     });
   } catch (error) {
