@@ -27,8 +27,8 @@ run_worker_first = ["/api/*", "/v1/*", "/healthz"]
 
 [[d1_databases]]
 binding = "DB"
-database_name = "3am-db"
-database_id = "7a20d92c-33ae-4ca4-ae83-05cefefb3183"
+database_name = "3amoncall-db"
+database_id = "758eddf1-c31d-445a-ab0a-eff25d6d4661"
 
 [[queues.producers]]
 binding = "DIAGNOSIS_QUEUE"
