@@ -94,7 +94,8 @@ export async function register() {
         "deployment.environment.name":
           process.env.VERCEL_ENV || process.env.NODE_ENV || "development",
       },
-      instrumentations: [getNodeAutoInstrumentations()],
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      instrumentations: getNodeAutoInstrumentations() as any,
       ...pipeline,
     });
   } catch (error) {
