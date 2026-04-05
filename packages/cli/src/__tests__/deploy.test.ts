@@ -121,6 +121,7 @@ describe("runDeploy()", () => {
   let stderrChunks: string[];
 
   beforeEach(() => {
+    vi.clearAllMocks();
     stdoutChunks = [];
     stderrChunks = [];
     _rlAnswers.length = 0;

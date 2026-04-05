@@ -863,6 +863,7 @@ describe('Integration: Curated API assembly (§6)', () => {
 
       // Fail first, succeed on retry
       const mockGenerate = vi.mocked(generateConsoleNarrative)
+      mockGenerate.mockClear()
       mockGenerate
         .mockRejectedValueOnce(new Error('LLM timeout'))
         .mockResolvedValueOnce(makeNarrative())
