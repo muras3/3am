@@ -3,6 +3,16 @@ import type { Framework } from "./detect-framework.js";
 export function nextjsVercelTemplate(): string {
   return `import { registerOTel } from "@vercel/otel";
 import type { Configuration } from "@vercel/otel";
+import { SeverityNumber } from "@opentelemetry/api-logs";
+import { getNodeAutoInstrumentations } from "@opentelemetry/auto-instrumentations-node";
+import { OTLPLogExporter } from "@opentelemetry/exporter-logs-otlp-http";
+import { OTLPMetricExporter } from "@opentelemetry/exporter-metrics-otlp-http";
+import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
+import { BunyanInstrumentation } from "@opentelemetry/instrumentation-bunyan";
+import { PinoInstrumentation } from "@opentelemetry/instrumentation-pino";
+import { WinstonInstrumentation } from "@opentelemetry/instrumentation-winston";
+import { BatchLogRecordProcessor } from "@opentelemetry/sdk-logs";
+import { PeriodicExportingMetricReader } from "@opentelemetry/sdk-metrics";
 
 declare global {
   var __otelAllSignalsRegistered: boolean | undefined;
@@ -31,47 +41,47 @@ function parseOtlpHeaders(raw: string | undefined) {
   return Object.keys(headers).length > 0 ? headers : undefined;
 }
 
-async function createSignalPipeline(
+function createSignalPipeline(
   baseUrl: string
-): Promise<
-  Pick<Configuration, "traceExporter" | "metricReaders" | "logRecordProcessors">
-> {
+): Pick<Configuration, "traceExporter" | "metricReaders" | "logRecordProcessors"> {
   const headers = parseOtlpHeaders(process.env.OTEL_EXPORTER_OTLP_HEADERS);
-
-  const [traceExp, metricExp, logExp, sdkMetrics, sdkLogs] = await Promise.all([
-    import("@opentelemetry/exporter-trace-otlp-http"),
-    import("@opentelemetry/exporter-metrics-otlp-http"),
-    import("@opentelemetry/exporter-logs-otlp-http"),
-    import("@opentelemetry/sdk-metrics"),
-    import("@opentelemetry/sdk-logs"),
-  ]);
 
   const traceConfig = { url: buildOtlpUrl(baseUrl, "traces"), headers };
   const metricConfig = { url: buildOtlpUrl(baseUrl, "metrics"), headers };
   const logConfig = { url: buildOtlpUrl(baseUrl, "logs"), headers };
 
   return {
-    traceExporter: new traceExp.OTLPTraceExporter(traceConfig),
+    traceExporter: new OTLPTraceExporter(traceConfig),
     metricReaders: [
-      new sdkMetrics.PeriodicExportingMetricReader({
-        exporter: new metricExp.OTLPMetricExporter(metricConfig),
+      new PeriodicExportingMetricReader({
+        exporter: new OTLPMetricExporter(metricConfig),
         exportIntervalMillis: 5000,
         exportTimeoutMillis: 3000,
       }),
     ],
     logRecordProcessors: [
-      new sdkLogs.BatchLogRecordProcessor(
-        new logExp.OTLPLogExporter(logConfig),
+      new BatchLogRecordProcessor(
+        new OTLPLogExporter(logConfig),
         { scheduledDelayMillis: 1000, exportTimeoutMillis: 3000 }
       ),
     ],
-  } as Pick<
-    Configuration,
-    "traceExporter" | "metricReaders" | "logRecordProcessors"
-  >;
+  };
 }
 
-export async function register() {
+function createInstrumentations(): NonNullable<Configuration["instrumentations"]> {
+  return [
+    ...getNodeAutoInstrumentations({
+      "@opentelemetry/instrumentation-pino": { enabled: false },
+      "@opentelemetry/instrumentation-winston": { enabled: false },
+      "@opentelemetry/instrumentation-bunyan": { enabled: false },
+    }),
+    new PinoInstrumentation(),
+    new WinstonInstrumentation({ logSeverity: SeverityNumber.WARN }),
+    new BunyanInstrumentation({ logSeverity: SeverityNumber.WARN }),
+  ];
+}
+
+export function register() {
   if (process.env.NEXT_RUNTIME !== "nodejs") return;
   if (globalThis.__otelAllSignalsRegistered) return;
 
@@ -84,17 +94,14 @@ export async function register() {
   globalThis.__otelAllSignalsRegistered = true;
 
   try {
-    const [pipeline, { getNodeAutoInstrumentations }] = await Promise.all([
-      createSignalPipeline(otlpBaseUrl),
-      import("@opentelemetry/auto-instrumentations-node"),
-    ]);
+    const pipeline = createSignalPipeline(otlpBaseUrl);
     registerOTel({
       serviceName: process.env.OTEL_SERVICE_NAME || "my-app",
       attributes: {
         "deployment.environment.name":
           process.env.VERCEL_ENV || process.env.NODE_ENV || "development",
       },
-      instrumentations: [getNodeAutoInstrumentations()],
+      instrumentations: createInstrumentations(),
       ...pipeline,
     });
   } catch (error) {

@@ -25,16 +25,84 @@ const OTEL_DEPS = [
 const VERCEL_OTEL_DEPS = [
   "@vercel/otel",
   "@opentelemetry/api",
+  "@opentelemetry/api-logs",
   "@opentelemetry/auto-instrumentations-node",
   "@opentelemetry/exporter-trace-otlp-http",
   "@opentelemetry/exporter-metrics-otlp-http",
   "@opentelemetry/exporter-logs-otlp-http",
+  "@opentelemetry/instrumentation-bunyan",
+  "@opentelemetry/instrumentation-pino",
+  "@opentelemetry/instrumentation-winston",
   "@opentelemetry/sdk-metrics",
   "@opentelemetry/sdk-logs",
+  "@opentelemetry/winston-transport",
+];
+
+const VERCEL_SERVER_EXTERNAL_PACKAGES = [
+  "pino",
+  "winston",
+  "bunyan",
+  "@opentelemetry/auto-instrumentations-node",
+  "@opentelemetry/instrumentation-pino",
+  "@opentelemetry/instrumentation-winston",
+  "@opentelemetry/instrumentation-bunyan",
+  "require-in-the-middle",
 ];
 
 function isDirectory(p: string): boolean {
   try { return statSync(p).isDirectory(); } catch { return false; }
+}
+
+function findNextConfigPath(cwd: string): string | null {
+  for (const name of ["next.config.ts", "next.config.mjs", "next.config.js"]) {
+    const p = join(cwd, name);
+    if (existsSync(p)) return p;
+  }
+  return null;
+}
+
+/**
+ * Add serverExternalPackages to next.config for OTel compatibility.
+ * Webpack bundling breaks require-in-the-middle monkey-patching unless
+ * these packages are externalized.
+ */
+function patchNextConfig(cwd: string): boolean {
+  const configPath = findNextConfigPath(cwd);
+  if (!configPath) return false;
+
+  let content = readFileSync(configPath, "utf-8");
+  if (content.includes("serverExternalPackages")) return false;
+
+  const packageList = VERCEL_SERVER_EXTERNAL_PACKAGES
+    .map((p) => `    "${p}",`)
+    .join("\n");
+  const property = `\n  serverExternalPackages: [\n${packageList}\n  ],`;
+
+  // Match the opening brace of the config object
+  const configObjectPattern = /(?:NextConfig\s*=|nextConfig\s*=|module\.exports\s*=)\s*\{/;
+  const match = configObjectPattern.exec(content);
+  if (!match) return false;
+
+  const insertPos = match.index + match[0].length;
+  content = content.slice(0, insertPos) + property + content.slice(insertPos);
+  writeFileSync(configPath, content, "utf-8");
+  return true;
+}
+
+/**
+ * Change `next build` to `next build --webpack` in package.json.
+ * Turbopack renames module identifiers, breaking require-in-the-middle
+ * monkey-patching used by OTel auto-instrumentations.
+ */
+function patchBuildScript(pkgPath: string): boolean {
+  const pkg = JSON.parse(readFileSync(pkgPath, "utf-8")) as PackageJson;
+  const buildScript = pkg.scripts?.build;
+  if (!buildScript || !buildScript.includes("next build") || buildScript.includes("--webpack")) {
+    return false;
+  }
+  pkg.scripts!.build = buildScript.replace("next build", "next build --webpack");
+  writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + "\n", "utf-8");
+  return true;
 }
 
 function getInstallCommand(pm: string, deps: string[]): string {
@@ -228,6 +296,17 @@ export async function runInit(_argv: string[], options: InitOptions = {}): Promi
       writeFileSync(instrumentationPath, template, "utf-8");
       const relPath = hasSrcDir ? `src/${instrumentationFile}` : instrumentationFile;
       process.stdout.write(`Created ${relPath}\n`);
+    }
+
+    // --- 2b. Vercel/Next.js: patch next.config + build script ---
+    if (useVercelOtel) {
+      if (patchNextConfig(cwd)) {
+        const configName = findNextConfigPath(cwd)?.split("/").pop();
+        process.stdout.write(`Added serverExternalPackages to ${configName}\n`);
+      }
+      if (patchBuildScript(pkgPath)) {
+        process.stdout.write(`Changed build script to use --webpack (required for OTel)\n`);
+      }
     }
 
     // --- 3. Patch package.json scripts ---
