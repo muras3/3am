@@ -465,18 +465,14 @@ export function createIngestRouter(
       await telemetryStore.ingestMetrics(telemetryMetrics);
     }
 
-    // Use TelemetryMetric results for incident matching via shouldAttachEvidence.
-    // TelemetryMetric has { service, environment, startTimeMs } — structurally compatible.
+    // Mark matching open incidents as having new activity (staleness signal).
+    // Snapshot rebuild is deferred to the read path (ensureIncidentMaterialized).
     if (telemetryMetrics.length > 0) {
       const page = await storage.listIncidents({ limit: 100 });
       await Promise.all(
-        page.items.flatMap((incident) => {
-          if (!telemetryMetrics.some((m) => shouldAttachEvidence(m, incident))) return [];
-          return [(async () => {
-            await storage.touchIncidentActivity(incident.incidentId);
-            await rebuildAndNotify(incident.incidentId, telemetryStore, storage, diagnosisConfig, diagnosisRunner, enqueueDiagnosis);
-          })()];
-        }),
+        page.items
+          .filter((incident) => telemetryMetrics.some((m) => shouldAttachEvidence(m, incident)))
+          .map((incident) => storage.touchIncidentActivity(incident.incidentId)),
       );
     }
 
@@ -498,18 +494,14 @@ export function createIngestRouter(
       await telemetryStore.ingestLogs(telemetryLogs);
     }
 
-    // Use TelemetryLog results for incident matching via shouldAttachEvidence.
-    // TelemetryLog has { service, environment, startTimeMs } — structurally compatible.
+    // Mark matching open incidents as having new activity (staleness signal).
+    // Snapshot rebuild is deferred to the read path (ensureIncidentMaterialized).
     if (telemetryLogs.length > 0) {
       const page = await storage.listIncidents({ limit: 100 });
       await Promise.all(
-        page.items.flatMap((incident) => {
-          if (!telemetryLogs.some((l) => shouldAttachEvidence(l, incident))) return [];
-          return [(async () => {
-            await storage.touchIncidentActivity(incident.incidentId);
-            await rebuildAndNotify(incident.incidentId, telemetryStore, storage, diagnosisConfig, diagnosisRunner, enqueueDiagnosis);
-          })()];
-        }),
+        page.items
+          .filter((incident) => telemetryLogs.some((l) => shouldAttachEvidence(l, incident)))
+          .map((incident) => storage.touchIncidentActivity(incident.incidentId)),
       );
     }
 

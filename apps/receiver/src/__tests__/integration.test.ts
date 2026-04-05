@@ -1105,8 +1105,10 @@ describe("Receiver integration tests", () => {
       body: JSON.stringify(stripeMetrics),
     });
 
-    const incidentAfter = await storage.getIncident(incidentId);
-    expect(incidentAfter?.packet.evidence.changedMetrics.length).toBeGreaterThan(0);
+    // On-read materialization: GET triggers snapshot rebuild
+    const packetRes = await app.request(`/api/incidents/${incidentId}/packet`);
+    const packet = await packetRes.json() as { evidence: { changedMetrics: unknown[] } };
+    expect(packet.evidence.changedMetrics.length).toBeGreaterThan(0);
   });
 
   // Test 9: Two POST /v1/traces within 5min for same service/env → only 1 incident (ADR 0034: no ThinEvents)

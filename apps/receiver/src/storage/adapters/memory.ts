@@ -138,6 +138,19 @@ export class MemoryAdapter implements StorageDriver {
     incident.platformEvents.push(...events);
   }
 
+  private materializationClaims = new Map<string, number>();
+
+  async claimMaterializationLease(incidentId: string, leaseMs = 60_000): Promise<boolean> {
+    const existing = this.materializationClaims.get(incidentId);
+    if (existing !== undefined && existing + leaseMs > Date.now()) return false;
+    this.materializationClaims.set(incidentId, Date.now());
+    return true;
+  }
+
+  async releaseMaterializationLease(incidentId: string): Promise<void> {
+    this.materializationClaims.delete(incidentId);
+  }
+
   async claimDiagnosisDispatch(incidentId: string, leaseMs = 15 * 60_000): Promise<boolean> {
     const incident = this.incidents.get(incidentId);
     if (!incident) return false;

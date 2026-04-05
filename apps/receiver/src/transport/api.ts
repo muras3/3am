@@ -23,7 +23,9 @@ import { buildEvidenceQueryAnswer } from "../domain/evidence-query.js";
 import { buildReasoningStructure } from "../domain/reasoning-structure-builder.js";
 import type { DiagnosisRunner } from "../runtime/diagnosis-runner.js";
 import { resolveWaitUntil, runClaimedDiagnosis } from "../runtime/diagnosis-debouncer.js";
+import type { DiagnosisConfig } from "../runtime/diagnosis-debouncer.js";
 import type { EnqueueDiagnosisFn } from "../runtime/diagnosis-dispatch.js";
+import { ensureIncidentMaterialized } from "../runtime/materialization.js";
 import { getReceiverLlmSettings } from "../runtime/llm-settings.js";
 import { maybeCleanup } from "../retention/lazy-cleanup.js";
 
@@ -117,6 +119,7 @@ export function createApiRouter(
   storage: StorageDriver,
   spanBuffer: SpanBuffer | undefined,
   telemetryStore: TelemetryStoreDriver,
+  diagnosisConfig: DiagnosisConfig,
   diagnosisRunner?: DiagnosisRunner,
   enqueueDiagnosis?: EnqueueDiagnosisFn,
 ): Hono {
@@ -154,6 +157,8 @@ export function createApiRouter(
   app.get("/api/incidents/:id", async (c) => {
     await maybeCleanup(storage, telemetryStore);
     const id = c.req.param("id");
+    // Ensure snapshots are fresh before building extended incident
+    await ensureIncidentMaterialized(id, storage, telemetryStore, diagnosisConfig, diagnosisRunner, enqueueDiagnosis);
     const incident = await storage.getIncident(id);
     if (incident === null) {
       return c.json({ error: "not found" }, 404);
@@ -163,6 +168,7 @@ export function createApiRouter(
 
   app.get("/api/incidents/:id/packet", async (c) => {
     const id = c.req.param("id");
+    await ensureIncidentMaterialized(id, storage, telemetryStore, diagnosisConfig, diagnosisRunner, enqueueDiagnosis);
     const incident = await storage.getIncident(id);
     if (incident === null) {
       return c.json({ error: "not found" }, 404);
@@ -360,7 +366,9 @@ export function createApiRouter(
     if (!incident) {
       return c.json({ error: "not found" }, 404);
     }
-    return c.json(incident.packet);
+    await ensureIncidentMaterialized(incident.incidentId, storage, telemetryStore, diagnosisConfig, diagnosisRunner, enqueueDiagnosis);
+    const refreshed = await storage.getIncident(incident.incidentId);
+    return c.json(refreshed?.packet ?? incident.packet);
   });
 
   app.post("/api/diagnosis/:id", apiBodyLimit(512 * 1024), async (c) => {

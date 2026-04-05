@@ -179,6 +179,20 @@ export interface StorageDriver {
   releaseDiagnosisDispatch(incidentId: string): Promise<void>;
 
   /**
+   * Atomically claim materialization lease for an incident.
+   * Prevents duplicate concurrent rebuildSnapshots calls.
+   * Returns true if this call won the claim (rebuild should proceed).
+   * Returns false if another reader already claimed (skip rebuild).
+   */
+  claimMaterializationLease(incidentId: string, leaseMs?: number): Promise<boolean>;
+
+  /**
+   * Release a previously claimed materialization lease.
+   * Sets materialization_claimed_at back to NULL.
+   */
+  releaseMaterializationLease(incidentId: string): Promise<void>;
+
+  /**
    * Mark that a diagnosis has been scheduled/enqueued for an incident.
    * Only sets the timestamp if diagnosisScheduledAt is not already set (idempotent).
    * Used to distinguish "pending" from "unavailable" in the diagnosis state machine.

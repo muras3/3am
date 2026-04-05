@@ -65,6 +65,7 @@ export class SQLiteAdapter implements StorageDriver {
         platform_events   TEXT,
         diagnosis_scheduled_at TEXT,
         diagnosis_dispatched_at TEXT,
+        materialization_claimed_at TEXT,
         created_at        TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
         updated_at        TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
       )
@@ -77,6 +78,7 @@ export class SQLiteAdapter implements StorageDriver {
       "platform_events TEXT",
       "diagnosis_scheduled_at TEXT",
       "diagnosis_dispatched_at TEXT",
+      "materialization_claimed_at TEXT",
       "console_narrative TEXT",
       "last_activity_at TEXT",
     ]) {
@@ -347,6 +349,31 @@ export class SQLiteAdapter implements StorageDriver {
         .where(eq(incidents.incidentId, incidentId))
         .run();
     });
+  }
+
+  async claimMaterializationLease(incidentId: string, leaseMs = 60_000): Promise<boolean> {
+    const now = new Date().toISOString();
+    const staleBefore = new Date(Date.now() - leaseMs).toISOString();
+    const result = this.db
+      .update(incidents)
+      .set({ materializationClaimedAt: now, updatedAt: now })
+      .where(
+        and(
+          eq(incidents.incidentId, incidentId),
+          sql`(${incidents.materializationClaimedAt} IS NULL OR ${incidents.materializationClaimedAt} < ${staleBefore})`,
+        ),
+      )
+      .run();
+    return result.changes > 0;
+  }
+
+  async releaseMaterializationLease(incidentId: string): Promise<void> {
+    const now = new Date().toISOString();
+    this.db
+      .update(incidents)
+      .set({ materializationClaimedAt: null, updatedAt: now })
+      .where(eq(incidents.incidentId, incidentId))
+      .run();
   }
 
   async claimDiagnosisDispatch(incidentId: string, leaseMs = 15 * 60_000): Promise<boolean> {
