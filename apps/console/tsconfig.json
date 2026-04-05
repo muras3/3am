@@ -7,7 +7,6 @@
     "jsx": "react-jsx",
     "noEmit": true,
     "types": ["vite/client", "vitest/globals", "node"],
-    "baseUrl": ".",
     "paths": {
       "@/*": ["./src/*"],
       "@3am/core": ["../../packages/core/src/index.ts"],
