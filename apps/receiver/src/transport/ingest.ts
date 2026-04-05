@@ -24,10 +24,9 @@ import {
 } from "../domain/evidence-extractor.js";
 import { buildAnomalousSignals, createPacket } from "../domain/packetizer.js";
 import { extractTelemetryMetrics, extractTelemetryLogs } from "../telemetry/otlp-extractors.js";
-import { rebuildSnapshots } from "../telemetry/snapshot-builder.js";
 import { maybeCleanup } from "../retention/lazy-cleanup.js";
 import type { DiagnosisRunner } from "../runtime/diagnosis-runner.js";
-import { type DiagnosisConfig, scheduleDelayedDiagnosis, checkGenerationThreshold, resolveWaitUntil, runIfNeeded } from "../runtime/diagnosis-debouncer.js";
+import { type DiagnosisConfig, scheduleDelayedDiagnosis, resolveWaitUntil, runIfNeeded } from "../runtime/diagnosis-debouncer.js";
 import type { EnqueueDiagnosisFn } from "../runtime/diagnosis-dispatch.js";
 import { decodeTraces, decodeMetrics, decodeLogs } from "./otlp-protobuf.js";
 import { notifyIncidentCreated } from "../notification/index.js";
@@ -151,7 +150,9 @@ async function listAllIncidents(storage: StorageDriver): Promise<Incident[]> {
 function isPlatformEventCandidate(event: PlatformEvent, incident: Incident): boolean {
   if (incident.status !== "open") return false;
   if (incident.packet.scope.environment !== event.environment) return false;
-  if (event.service && !incident.packet.scope.affectedServices.includes(event.service)) return false;
+  // Use telemetryScope.memberServices for up-to-date service list (packet.scope
+  // is only refreshed on-read via materialization).
+  if (event.service && !incident.telemetryScope.memberServices.includes(event.service)) return false;
 
   const eventTimeMs = new Date(event.timestamp).getTime();
   const windowStartMs = new Date(incident.packet.window.start).getTime();
@@ -197,65 +198,6 @@ function computeScopeExpansion(spans: Array<{ traceId: string; spanId: string; s
   return { spanIds, memberServices, dependencyServices, windowStartMs, windowEndMs };
 }
 
-/** Rebuild snapshots and check generation threshold for diagnosis trigger. */
-type WaitUntilFn = (p: Promise<unknown>) => void;
-
-/**
- * Rebuild snapshots and check generation threshold.
- * #256: When waitUntilFn is provided, rebuildSnapshots runs asynchronously
- * after the HTTP response is sent (deferred via ctx.waitUntil on CF Workers).
- * Generation threshold is checked using predicted next generation (current + 1)
- * so that threshold-based diagnosis fires even when rebuild is deferred.
- */
-async function rebuildAndNotify(
-  incidentId: string,
-  telemetryStore: TelemetryStoreDriver,
-  storage: StorageDriver,
-  diagnosisConfig: DiagnosisConfig,
-  runner?: DiagnosisRunner,
-  enqueueDiagnosis?: EnqueueDiagnosisFn,
-  waitUntilFn?: WaitUntilFn,
-): Promise<void> {
-  if (waitUntilFn) {
-    // #256: CF Workers path — defer snapshot rebuild to after HTTP response.
-    // Check generation threshold using predicted next generation so diagnosis
-    // can be enqueued (with Queue delay) while rebuild runs in waitUntil.
-    if (diagnosisConfig.generationThreshold > 0 && enqueueDiagnosis) {
-      const current = await storage.getIncident(incidentId);
-      if (current) {
-        const nextGeneration = (current.packet.generation ?? 1) + 1;
-        checkGenerationThreshold(
-          incidentId,
-          nextGeneration,
-          storage,
-          runner,
-          { generationThreshold: diagnosisConfig.generationThreshold },
-          enqueueDiagnosis,
-        );
-      }
-    }
-    waitUntilFn(rebuildSnapshots(incidentId, telemetryStore, storage).catch((err) => {
-      console.error(`[ingest] deferred rebuildSnapshots failed for ${incidentId}:`, err);
-    }));
-  } else {
-    // Non-CF path (Vercel/Node): rebuild synchronously, then check threshold
-    await rebuildSnapshots(incidentId, telemetryStore, storage);
-    if (diagnosisConfig.generationThreshold > 0) {
-      const updated = await storage.getIncident(incidentId);
-      if (updated) {
-        checkGenerationThreshold(
-          incidentId,
-          updated.packet.generation ?? 1,
-          storage,
-          runner,
-          { generationThreshold: diagnosisConfig.generationThreshold },
-          enqueueDiagnosis,
-        );
-      }
-    }
-  }
-}
-
 export function createIngestRouter(
   storage: StorageDriver,
   spanBuffer: SpanBuffer | undefined,
@@ -279,10 +221,6 @@ export function createIngestRouter(
   );
 
   app.post("/v1/traces", async (c) => {
-    // #256: Defer snapshot rebuild only on CF Workers (where enqueueDiagnosis exists
-    // and Queue delay guarantees rebuild completes before diagnosis reads the packet).
-    // On Vercel/Node, rebuild stays synchronous for consistent read-after-write.
-    const waitUntilFn = enqueueDiagnosis ? await resolveWaitUntil() : undefined;
     await maybeCleanup(storage, telemetryStore);
 
     const result = await decodeOtlpBody(c, decodeTraces);
@@ -360,7 +298,7 @@ export function createIngestRouter(
         // Expand telemetry scope and membership for existing incident
         const expansion = computeScopeExpansion(spans);
         await expandAndAppendFallback(storage, existing.incidentId, expansion, buildAnomalousSignals(signalSpans));
-        await rebuildAndNotify(existing.incidentId, telemetryStore, storage, diagnosisConfig, diagnosisRunner, enqueueDiagnosis, waitUntilFn);
+        await storage.touchIncidentActivity(existing.incidentId);
       }
       return c.json({ status: "ok" });
     }
@@ -389,7 +327,7 @@ export function createIngestRouter(
         // Another request won the race — attach our spans to the existing incident
         const expansion = computeScopeExpansion(spans);
         await expandAndAppendFallback(storage, incidentId, expansion, buildAnomalousSignals(signalSpans));
-        await rebuildAndNotify(incidentId, telemetryStore, storage, diagnosisConfig, diagnosisRunner, enqueueDiagnosis, waitUntilFn);
+        await storage.touchIncidentActivity(incidentId);
 
         // Fix #254: Schedule diagnosis for race-loser path too.
         // The winner may have already scheduled, but markDiagnosisScheduled is
@@ -414,13 +352,13 @@ export function createIngestRouter(
         return c.json({ status: "ok", incidentId, packetId: created.packet.packetId });
       }
 
-      // ADR 0032: Rebuild snapshots for new incident
-      await rebuildAndNotify(incidentId, telemetryStore, storage, diagnosisConfig, diagnosisRunner, enqueueDiagnosis, waitUntilFn);
+      // Mark activity so on-read materialization will rebuild snapshots
+      await storage.touchIncidentActivity(incidentId);
 
       // Fire-and-forget notification to Slack/Discord (if configured)
       void notifyIncidentCreated(packet, incidentId);
 
-      // Schedule delayed diagnosis. Generation threshold is checked in rebuildAndNotify above.
+      // Schedule delayed diagnosis. Generation threshold is checked via on-read materialization.
       if (enqueueDiagnosis) {
         // CF Workers: use Queue native delay (no waitUntil+sleep needed)
         await storage.markDiagnosisScheduled(incidentId);
@@ -443,10 +381,10 @@ export function createIngestRouter(
       return c.json({ status: "ok", incidentId, packetId: packet.packetId });
     }
 
-    // Existing incident attach — expand scope and membership, then rebuild.
+    // Existing incident attach — expand scope and membership, mark stale.
     const expansion = computeScopeExpansion(spans);
     await expandAndAppendFallback(storage, incidentId, expansion, buildAnomalousSignals(signalSpans));
-    await rebuildAndNotify(incidentId, telemetryStore, storage, diagnosisConfig, diagnosisRunner, enqueueDiagnosis, waitUntilFn);
+    await storage.touchIncidentActivity(incidentId);
     return c.json({ status: "ok", incidentId, packetId: existing.packet.packetId });
   });
 
@@ -549,9 +487,8 @@ export function createIngestRouter(
     }
 
     for (const [incidentId, events] of eventsByIncidentId) {
-      await storage.touchIncidentActivity(incidentId);
       await storage.appendPlatformEvents(incidentId, events);
-      await rebuildAndNotify(incidentId, telemetryStore, storage, diagnosisConfig, diagnosisRunner, enqueueDiagnosis);
+      await storage.touchIncidentActivity(incidentId);
     }
 
     return c.json({ status: "ok" });

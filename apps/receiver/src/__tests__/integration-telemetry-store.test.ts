@@ -743,13 +743,16 @@ describe("TelemetryStore integration tests (ADR 0032 Step 4+5)", () => {
       const { body } = await postJson(app, "/v1/traces", secondBatch);
       expect(body.incidentId).toBe(incidentId);
 
-      const incident = (await storage.getIncident(incidentId))!;
+      // On-read materialization: GET /api/incidents/:id/packet triggers snapshot rebuild
+      const pktRes = await app.request(`/api/incidents/${incidentId}/packet`);
+      const packet = await pktRes.json() as { scope: { affectedServices: string[] } };
 
       // affectedServices should come from memberServices, not all services
-      expect(incident.packet.scope.affectedServices).toContain("web");
-      expect(incident.packet.scope.affectedServices).toContain("checkout-api");
+      expect(packet.scope.affectedServices).toContain("web");
+      expect(packet.scope.affectedServices).toContain("checkout-api");
 
       // Verify memberServices in telemetryScope matches
+      const incident = (await storage.getIncident(incidentId))!;
       expect(incident.telemetryScope.memberServices).toContain("web");
       expect(incident.telemetryScope.memberServices).toContain("checkout-api");
     });
@@ -804,9 +807,12 @@ describe("TelemetryStore integration tests (ADR 0032 Step 4+5)", () => {
         serviceName: "web",
       });
 
+      // Trigger on-read materialization via API — this rebuilds snapshots
+      await app.request(`/api/incidents/${incidentId}/packet`);
+
       // Check that snapshots were created in TelemetryStore
       const snapshots = await telemetryStore.getSnapshots(incidentId);
-      // At minimum, a traces snapshot should exist after incident creation + rebuild
+      // At minimum, a traces snapshot should exist after materialization
       const traceSnapshot = snapshots.find((s) => s.snapshotType === "traces");
       expect(traceSnapshot).toBeDefined();
       expect(Array.isArray(traceSnapshot!.data)).toBe(true);
@@ -910,16 +916,20 @@ describe("TelemetryStore integration tests (ADR 0032 Step 4+5)", () => {
 
       await postJson(app, "/v1/platform-events", { events: [event] });
 
-      // rebuildSnapshots is called as part of platform event ingest
-      const incident = (await storage.getIncident(incidentId))!;
-      expect(incident.packet.evidence.platformEvents.length).toBe(1);
-      expect(incident.packet.evidence.platformEvents[0]!.eventType).toBe(
+      // On-read materialization: GET /api/incidents/:id/packet triggers snapshot rebuild
+      const pktRes = await app.request(`/api/incidents/${incidentId}/packet`);
+      const packet = await pktRes.json() as {
+        evidence: { platformEvents: Array<{ eventType: string }> };
+        pointers: { platformLogRefs: unknown[] };
+      };
+      expect(packet.evidence.platformEvents.length).toBe(1);
+      expect(packet.evidence.platformEvents[0]!.eventType).toBe(
         "config_change",
       );
 
       // platformLogRefs should also be populated
       expect(
-        incident.packet.pointers.platformLogRefs.length,
+        packet.pointers.platformLogRefs.length,
       ).toBeGreaterThanOrEqual(1);
     });
   });
