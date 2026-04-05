@@ -121,7 +121,7 @@ describe("POST /api/incidents/:id/close", () => {
       ...minimalDiagnosis,
       metadata: { ...minimalDiagnosis.metadata, incident_id: incidentId, packet_id: `pkt_${incidentId}` },
     });
-    const app = createApiRouter(storage, undefined, makeTelemetryStore());
+    const app = createApiRouter(storage, undefined, makeTelemetryStore(), { generationThreshold: 0 });
 
     const res = await app.request(`/api/incidents/${incidentId}/close`, {
       method: "POST",
@@ -142,7 +142,7 @@ describe("POST /api/incidents/:id/close", () => {
     await storage.createIncident(makePacket(incidentId), makeMembership());
     await storage.updateIncidentStatus(incidentId, "closed");
     const closedAt = (await storage.getIncident(incidentId))?.closedAt;
-    const app = createApiRouter(storage, undefined, makeTelemetryStore());
+    const app = createApiRouter(storage, undefined, makeTelemetryStore(), { generationThreshold: 0 });
 
     const res = await app.request(`/api/incidents/${incidentId}/close`, {
       method: "POST",

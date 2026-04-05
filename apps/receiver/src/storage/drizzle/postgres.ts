@@ -45,6 +45,7 @@ const pgIncidents = pgTable("incidents", {
   platformEvents: jsonb("platform_events"),
   diagnosisScheduledAt: timestamp("diagnosis_scheduled_at", { withTimezone: true }),
   diagnosisDispatchedAt: timestamp("diagnosis_dispatched_at", { withTimezone: true }),
+  materializationClaimedAt: timestamp("materialization_claimed_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 });
@@ -126,6 +127,9 @@ export class PostgresAdapter implements StorageDriver {
     `);
     await this.db.execute(drizzleSql`
       ALTER TABLE incidents ADD COLUMN IF NOT EXISTS diagnosis_dispatched_at TIMESTAMPTZ
+    `);
+    await this.db.execute(drizzleSql`
+      ALTER TABLE incidents ADD COLUMN IF NOT EXISTS materialization_claimed_at TIMESTAMPTZ
     `);
     await this.db.execute(drizzleSql`
       CREATE TABLE IF NOT EXISTS thin_events (
@@ -377,6 +381,28 @@ export class PostgresAdapter implements StorageDriver {
         .set({ platformEvents: updated, lastActivityAt: new Date().toISOString(), updatedAt: new Date() })
         .where(eq(pgIncidents.incidentId, incidentId));
     });
+  }
+
+  async claimMaterializationLease(incidentId: string, leaseMs = 60_000): Promise<boolean> {
+    const staleBefore = new Date(Date.now() - leaseMs).toISOString();
+    const rows = await this.db
+      .update(pgIncidents)
+      .set({ materializationClaimedAt: new Date(), updatedAt: new Date() })
+      .where(
+        and(
+          eq(pgIncidents.incidentId, incidentId),
+          drizzleSql`(${pgIncidents.materializationClaimedAt} IS NULL OR ${pgIncidents.materializationClaimedAt} < ${staleBefore})`,
+        ),
+      )
+      .returning({ incidentId: pgIncidents.incidentId });
+    return rows.length > 0;
+  }
+
+  async releaseMaterializationLease(incidentId: string): Promise<void> {
+    await this.db
+      .update(pgIncidents)
+      .set({ materializationClaimedAt: null, updatedAt: new Date() })
+      .where(eq(pgIncidents.incidentId, incidentId));
   }
 
   async claimDiagnosisDispatch(incidentId: string, leaseMs = 15 * 60_000): Promise<boolean> {

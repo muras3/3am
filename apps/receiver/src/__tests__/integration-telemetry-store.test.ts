@@ -651,7 +651,7 @@ describe("TelemetryStore integration tests (ADR 0032 Step 4+5)", () => {
       const membershipBefore = [...before.spanMembership];
       const signalsBefore = [...before.anomalousSignals];
 
-      // Trigger rebuildSnapshots (which calls updatePacket) via metrics ingest
+      // Ingest metrics (marks incident as stale via touchIncidentActivity)
       const metricsPayload = makeMetricsPayload(
         "web",
         "http.server.request.error_rate",
@@ -659,6 +659,9 @@ describe("TelemetryStore integration tests (ADR 0032 Step 4+5)", () => {
         0.95,
       );
       await postJson(app, "/v1/metrics", metricsPayload);
+
+      // On-read materialization: GET triggers snapshot rebuild (which calls updatePacket)
+      await app.request(`/api/incidents/${incidentId}/packet`);
 
       // Verify compact fields are preserved
       const after = (await storage.getIncident(incidentId))!;
@@ -767,8 +770,10 @@ describe("TelemetryStore integration tests (ADR 0032 Step 4+5)", () => {
       );
       await postJson(app, "/v1/metrics", metricsPayload);
 
-      const incident = (await storage.getIncident(incidentId))!;
-      expect(incident.packet.evidence.changedMetrics.length).toBeGreaterThan(0);
+      // On-read materialization: GET triggers snapshot rebuild
+      const packetRes = await app.request(`/api/incidents/${incidentId}/packet`);
+      const packet = await packetRes.json() as { evidence: { changedMetrics: unknown[] } };
+      expect(packet.evidence.changedMetrics.length).toBeGreaterThan(0);
     });
 
     it("packet.evidence.relevantLogs populated after logs ingest + rebuildSnapshots", async () => {
@@ -786,8 +791,10 @@ describe("TelemetryStore integration tests (ADR 0032 Step 4+5)", () => {
       );
       await postJson(app, "/v1/logs", logsPayload);
 
-      const incident = (await storage.getIncident(incidentId))!;
-      expect(incident.packet.evidence.relevantLogs.length).toBeGreaterThan(0);
+      // On-read materialization: GET triggers snapshot rebuild
+      const packetRes = await app.request(`/api/incidents/${incidentId}/packet`);
+      const packet = await packetRes.json() as { evidence: { relevantLogs: unknown[] } };
+      expect(packet.evidence.relevantLogs.length).toBeGreaterThan(0);
     });
 
     it("snapshots are stored in TelemetryStore after rebuild", async () => {

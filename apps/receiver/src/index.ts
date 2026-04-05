@@ -336,7 +336,7 @@ export function createApp(storage?: StorageDriver, options?: AppOptions): Hono {
   });
 
   app.route("/", createIngestRouter(store, spanBuffer, telemetryStore, diagnosisConfig, runner, options?.enqueueDiagnosis));
-  app.route("/", createApiRouter(store, spanBuffer, telemetryStore, runner, options?.enqueueDiagnosis));
+  app.route("/", createApiRouter(store, spanBuffer, telemetryStore, diagnosisConfig, runner, options?.enqueueDiagnosis));
 
   return app;
 }

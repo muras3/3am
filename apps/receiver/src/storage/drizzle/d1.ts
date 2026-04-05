@@ -75,6 +75,7 @@ export class D1StorageAdapter implements StorageDriver {
         platform_events   TEXT,
         diagnosis_scheduled_at TEXT,
         diagnosis_dispatched_at TEXT,
+        materialization_claimed_at TEXT,
         created_at        TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
         updated_at        TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
       )
@@ -86,6 +87,7 @@ export class D1StorageAdapter implements StorageDriver {
       "platform_events TEXT",
       "diagnosis_scheduled_at TEXT",
       "diagnosis_dispatched_at TEXT",
+      "materialization_claimed_at TEXT",
       "console_narrative TEXT",
       "last_activity_at TEXT",
     ]) {
@@ -408,6 +410,32 @@ export class D1StorageAdapter implements StorageDriver {
         lastActivityAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       })
+      .where(eq(incidents.incidentId, incidentId));
+  }
+
+  async claimMaterializationLease(incidentId: string, leaseMs = 60_000): Promise<boolean> {
+    const now = new Date().toISOString();
+    const staleBefore = new Date(Date.now() - leaseMs).toISOString();
+    const result = await this.rawDb
+      .prepare(`
+        UPDATE incidents
+        SET materialization_claimed_at = ?, updated_at = ?
+        WHERE incident_id = ?
+          AND (
+            materialization_claimed_at IS NULL
+            OR materialization_claimed_at < ?
+          )
+      `)
+      .bind(now, now, incidentId, staleBefore)
+      .run();
+    return (result.meta?.changes ?? 0) > 0;
+  }
+
+  async releaseMaterializationLease(incidentId: string): Promise<void> {
+    const now = new Date().toISOString();
+    await this.db
+      .update(incidents)
+      .set({ materializationClaimedAt: null, updatedAt: now })
       .where(eq(incidents.incidentId, incidentId));
   }
 

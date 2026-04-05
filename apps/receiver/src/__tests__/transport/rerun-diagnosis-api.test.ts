@@ -194,6 +194,7 @@ describe("POST /api/incidents/:id/rerun-diagnosis", () => {
       storage,
       undefined,
       makeTelemetryStore(),
+      { generationThreshold: 0 },
       { run } as unknown as DiagnosisRunner,
     );
     const cookie = extractSessionCookie(await app.request("/api/incidents", { headers: authHeader() }));
@@ -220,6 +221,7 @@ describe("POST /api/incidents/:id/rerun-diagnosis", () => {
       storage,
       undefined,
       makeTelemetryStore(),
+      { generationThreshold: 0 },
       { run: vi.fn().mockResolvedValue(true) } as unknown as DiagnosisRunner,
       enqueueDiagnosis,
     );
@@ -243,6 +245,7 @@ describe("POST /api/incidents/:id/rerun-diagnosis", () => {
       storage,
       undefined,
       makeTelemetryStore(),
+      { generationThreshold: 0 },
       { run: vi.fn().mockResolvedValue(true) } as unknown as DiagnosisRunner,
       enqueueDiagnosis,
     );
@@ -265,6 +268,7 @@ describe("POST /api/incidents/:id/rerun-diagnosis", () => {
       storage,
       undefined,
       makeTelemetryStore(),
+      { generationThreshold: 0 },
       { run: vi.fn() } as unknown as DiagnosisRunner,
     );
     const cookie = extractSessionCookie(await app.request("/api/incidents", { headers: authHeader() }));
@@ -284,6 +288,7 @@ describe("POST /api/incidents/:id/rerun-diagnosis", () => {
       storage,
       undefined,
       makeTelemetryStore(),
+      { generationThreshold: 0 },
       { run: vi.fn().mockResolvedValue(true) } as unknown as DiagnosisRunner,
     );
     const cookie = extractSessionCookie(await app.request("/api/incidents", { headers: authHeader() }));
@@ -309,6 +314,7 @@ describe("POST /api/incidents/:id/rerun-diagnosis", () => {
       storage,
       undefined,
       makeTelemetryStore(),
+      { generationThreshold: 0 },
       { run } as unknown as DiagnosisRunner,
     );
     const cookie = extractSessionCookie(await app.request("/api/incidents", { headers: authHeader() }));
