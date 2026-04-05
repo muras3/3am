@@ -80,7 +80,7 @@ function patchNextConfig(cwd: string): boolean {
 
   // Match the opening brace of the config object.
   // Covers: `const nextConfig: NextConfig = {`, `module.exports = {`, `export default {`
-  const configObjectPattern = /(?:NextConfig\s*=|nextConfig\s*=|module\.exports\s*=|export\s+default\s+)\{/;
+  const configObjectPattern = /(?:NextConfig\s*=|nextConfig\s*=|module\.exports\s*=|export\s+default\s*)\s*\{/;
   const match = configObjectPattern.exec(content);
   if (!match) {
     // Wrapper functions like withSentryConfig({...}) need manual patching
