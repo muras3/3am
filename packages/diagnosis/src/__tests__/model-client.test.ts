@@ -3,9 +3,9 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 const mockCreate = vi.fn();
 
 vi.mock("@anthropic-ai/sdk", () => ({
-  default: vi.fn().mockImplementation(() => ({
-    messages: { create: mockCreate },
-  })),
+  default: vi.fn().mockImplementation(function (this: Record<string, unknown>) {
+    this.messages = { create: mockCreate };
+  }),
 }));
 
 import { callModel } from "../model-client.js";

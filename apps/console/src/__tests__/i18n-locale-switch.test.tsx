@@ -104,8 +104,8 @@ describe("LevelHeader", () => {
   it("formats the header clock in local time with a timezone label", async () => {
     const { formatTime } = await import("../components/lens/LevelHeader.js");
     const dateTimeFormatSpy = vi.spyOn(Intl, "DateTimeFormat").mockImplementation(
-      () =>
-        ({
+      function () {
+        return {
           format: () => "ignored",
           formatToParts: () => ([
             { type: "hour", value: "14" },
@@ -116,7 +116,8 @@ describe("LevelHeader", () => {
             { type: "literal", value: " " },
             { type: "timeZoneName", value: "JST" },
           ]),
-        }) as Intl.DateTimeFormat,
+        } as unknown as Intl.DateTimeFormat;
+      },
     );
 
     expect(formatTime(new Date("2026-03-29T05:30:05.000Z"))).toBe("14:30:05 JST");

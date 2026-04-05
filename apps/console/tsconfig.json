@@ -6,8 +6,7 @@
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "jsx": "react-jsx",
     "noEmit": true,
-    "types": ["vite/client", "vitest/globals"],
-    "baseUrl": ".",
+    "types": ["vite/client", "vitest/globals", "node"],
     "paths": {
       "@/*": ["./src/*"],
       "@3am/core": ["../../packages/core/src/index.ts"],

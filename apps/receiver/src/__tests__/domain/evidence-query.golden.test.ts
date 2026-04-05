@@ -3,13 +3,14 @@ import type { DiagnosisResult, IncidentPacket } from '@3am/core'
 import type { Incident } from '../../storage/interface.js'
 import type { TelemetryLog, TelemetryMetric, TelemetrySpan, TelemetryStoreDriver } from '../../telemetry/interface.js'
 
-vi.mock('@anthropic-ai/sdk', () => ({
-  default: class MockAnthropic {
-    messages = {
-      create: vi.fn().mockRejectedValue(new Error('LLM not available in test')),
-    }
-  },
-}))
+vi.mock('@3am/diagnosis', async (importOriginal) => {
+  const original = await importOriginal() as Record<string, unknown>
+  return {
+    ...original,
+    generateEvidencePlan: vi.fn().mockRejectedValue(new Error('LLM not available in golden test')),
+    generateEvidenceQuery: vi.fn().mockRejectedValue(new Error('LLM not available in golden test')),
+  }
+})
 
 import { buildEvidenceQueryAnswer } from '../../domain/evidence-query.js'
 
