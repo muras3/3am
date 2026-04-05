@@ -5,7 +5,7 @@
   "outputDirectory": "apps/console/dist",
   "functions": {
     "api/index.ts": {
-      "maxDuration": 60,
+      "maxDuration": 300,
       "includeFiles": "apps/receiver/src/transport/proto/**"
     }
   },
