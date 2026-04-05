@@ -40,7 +40,7 @@
     "hono": "^4.0.0",
     "jose": "^6.2.2",
     "postgres": "^3.4.8",
-    "zod": "^3.25.76"
+    "zod": "^4.3.6"
   },
   "optionalDependencies": {
     "@vercel/functions": "^2.0.0"

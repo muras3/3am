@@ -34,7 +34,7 @@
     "lint": "eslint src --max-warnings 0"
   },
   "dependencies": {
-    "zod": "^3.x"
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@3am/config-eslint": "workspace:*",

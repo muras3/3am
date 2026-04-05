@@ -20,7 +20,7 @@
   "dependencies": {
     "@3am/core": "workspace:*",
     "@anthropic-ai/sdk": "^0.82.0",
-    "zod": "^3.0.0"
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@3am/config-eslint": "workspace:*",
