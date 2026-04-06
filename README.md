@@ -34,6 +34,10 @@
 - **Slack & Discord notifications** — webhook-based alerts when incidents are detected
 - **One-command deploy** — `npx 3am deploy vercel` or `npx 3am deploy cloudflare`
 
+<p align="center">
+  <img src="assets/demo.gif" alt="3am Console — incident diagnosis demo" width="720"/>
+</p>
+
 ---
 
 ## Quick Start
