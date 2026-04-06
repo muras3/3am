@@ -45,6 +45,22 @@ type IncidentPageResponse = {
   nextCursor?: string;
 };
 
+type TelemetryPageResponse<T> = {
+  items: T[];
+  nextCursor?: string;
+};
+
+type TelemetryLogsPageResponse<T> = {
+  correlated: TelemetryPageResponse<T>;
+  contextual: TelemetryPageResponse<T>;
+};
+
+const TELEMETRY_SPANS_DEFAULT_LIMIT = 100;
+const TELEMETRY_METRICS_DEFAULT_LIMIT = 50;
+const TELEMETRY_LOGS_CORRELATED_DEFAULT_LIMIT = 100;
+const TELEMETRY_LOGS_CONTEXTUAL_DEFAULT_LIMIT = 50;
+const TELEMETRY_MAX_LIMIT = 200;
+
 function toIncidentResponse(incident: Incident): IncidentResponse {
   const { telemetryScope: _ts, spanMembership: _sm, anomalousSignals: _as, platformEvents: _pe, ...response } = incident;
   return response;
@@ -54,6 +70,33 @@ function toIncidentPageResponse(page: IncidentPage): IncidentPageResponse {
   return {
     items: page.items.map(toIncidentResponse),
     nextCursor: page.nextCursor,
+  };
+}
+
+function parseCursor(raw: string | undefined): number {
+  if (raw === undefined) return 0;
+  const parsed = parseInt(raw, 10);
+  return Number.isNaN(parsed) || parsed < 0 ? 0 : parsed;
+}
+
+function parseLimit(raw: string | undefined, defaultLimit: number): number {
+  if (raw === undefined) return defaultLimit;
+  const parsed = parseInt(raw, 10);
+  if (Number.isNaN(parsed)) return defaultLimit;
+  return Math.min(Math.max(parsed, 1), TELEMETRY_MAX_LIMIT);
+}
+
+function paginateItems<T>(
+  items: T[],
+  limit: number,
+  cursor?: string,
+): TelemetryPageResponse<T> {
+  const offset = parseCursor(cursor);
+  const pagedItems = items.slice(offset, offset + limit);
+  const nextOffset = offset + pagedItems.length;
+  return {
+    items: pagedItems,
+    nextCursor: nextOffset < items.length ? String(nextOffset) : undefined,
   };
 }
 
@@ -500,15 +543,24 @@ export function createApiRouter(
 
     const { telemetryScope, spanMembership } = incident;
     if (telemetryScope.windowStartMs >= telemetryScope.windowEndMs) {
-      return c.json([]);
+      return c.json({ items: [] });
     }
 
     const filter = buildIncidentQueryFilter(telemetryScope);
     const spans = await telemetryStore.querySpans(filter);
     // Filter by spanMembership — only return incident-bound spans
     const membershipSet = new Set(spanMembership);
-    const memberSpans = spans.filter(s => membershipSet.has(spanMembershipKey(s.traceId, s.spanId)));
-    return c.json(memberSpans);
+    const memberSpans = spans
+      .filter((s) => membershipSet.has(spanMembershipKey(s.traceId, s.spanId)))
+      .sort((a, b) =>
+        b.startTimeMs - a.startTimeMs
+        || b.durationMs - a.durationMs
+        || a.serviceName.localeCompare(b.serviceName)
+        || a.traceId.localeCompare(b.traceId)
+        || a.spanId.localeCompare(b.spanId),
+      );
+    const limit = parseLimit(c.req.query("limit"), TELEMETRY_SPANS_DEFAULT_LIMIT);
+    return c.json(paginateItems(memberSpans, limit, c.req.query("cursor")));
   });
 
   app.get("/api/incidents/:id/telemetry/metrics", async (c) => {
@@ -520,12 +572,18 @@ export function createApiRouter(
 
     const { telemetryScope } = incident;
     if (telemetryScope.windowStartMs >= telemetryScope.windowEndMs) {
-      return c.json([]);
+      return c.json({ items: [] });
     }
 
     const filter = buildIncidentQueryFilter(telemetryScope);
-    const metrics = await telemetryStore.queryMetrics(filter);
-    return c.json(metrics);
+    const metrics = (await telemetryStore.queryMetrics(filter))
+      .sort((a, b) =>
+        b.startTimeMs - a.startTimeMs
+        || a.service.localeCompare(b.service)
+        || a.name.localeCompare(b.name),
+      );
+    const limit = parseLimit(c.req.query("limit"), TELEMETRY_METRICS_DEFAULT_LIMIT);
+    return c.json(paginateItems(metrics, limit, c.req.query("cursor")));
   });
 
   app.get("/api/incidents/:id/telemetry/logs", async (c) => {
@@ -537,7 +595,10 @@ export function createApiRouter(
 
     const { telemetryScope, spanMembership } = incident;
     if (telemetryScope.windowStartMs >= telemetryScope.windowEndMs) {
-      return c.json({ correlated: [], contextual: [] });
+      return c.json({
+        correlated: { items: [] },
+        contextual: { items: [] },
+      } satisfies TelemetryLogsPageResponse<unknown>);
     }
 
     const filter = buildIncidentQueryFilter(telemetryScope);
@@ -547,10 +608,36 @@ export function createApiRouter(
     const memberTraceIds = new Set(spanMembership.map(ref => ref.split(":")[0]));
 
     // Split logs into correlated (traceId matches spanMembership traces) and contextual
-    const correlated = logs.filter(l => l.traceId !== undefined && memberTraceIds.has(l.traceId));
-    const contextual = logs.filter(l => l.traceId === undefined || !memberTraceIds.has(l.traceId));
+    const correlated = logs
+      .filter((l) => l.traceId !== undefined && memberTraceIds.has(l.traceId))
+      .sort((a, b) =>
+        b.startTimeMs - a.startTimeMs
+        || b.severityNumber - a.severityNumber
+        || a.service.localeCompare(b.service)
+        || a.bodyHash.localeCompare(b.bodyHash),
+      );
+    const contextual = logs
+      .filter((l) => l.traceId === undefined || !memberTraceIds.has(l.traceId))
+      .sort((a, b) =>
+        b.startTimeMs - a.startTimeMs
+        || b.severityNumber - a.severityNumber
+        || a.service.localeCompare(b.service)
+        || a.bodyHash.localeCompare(b.bodyHash),
+      );
 
-    return c.json({ correlated, contextual });
+    const correlatedLimit = parseLimit(
+      c.req.query("correlatedLimit"),
+      TELEMETRY_LOGS_CORRELATED_DEFAULT_LIMIT,
+    );
+    const contextualLimit = parseLimit(
+      c.req.query("contextualLimit"),
+      TELEMETRY_LOGS_CONTEXTUAL_DEFAULT_LIMIT,
+    );
+
+    return c.json({
+      correlated: paginateItems(correlated, correlatedLimit, c.req.query("correlatedCursor")),
+      contextual: paginateItems(contextual, contextualLimit, c.req.query("contextualCursor")),
+    });
   });
 
   // ── Internal ops endpoint: regenerate stage 2 narrative ───────────────
