@@ -49,7 +49,7 @@ function useSerpentineRows(
   steps: CausalStep[],
 ): { rows: CausalStep[][]; containerRef: React.RefObject<HTMLDivElement | null> } {
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const [perRow, setPerRow] = useState(steps.length);
+  const [perRow, setPerRow] = useState(Math.max(1, steps.length));
 
   const measure = useCallback(() => {
     const el = containerRef.current;
@@ -72,8 +72,9 @@ function useSerpentineRows(
 
   const rows = useMemo(() => {
     const result: CausalStep[][] = [];
-    for (let i = 0; i < steps.length; i += perRow) {
-      result.push(steps.slice(i, i + perRow));
+    const cols = Math.max(1, perRow);
+    for (let i = 0; i < steps.length; i += cols) {
+      result.push(steps.slice(i, i + cols));
     }
     return result;
   }, [steps, perRow]);
