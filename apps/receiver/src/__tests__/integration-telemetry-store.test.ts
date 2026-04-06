@@ -290,7 +290,11 @@ describe("TelemetryStore integration tests (ADR 0032 Step 4+5)", () => {
       );
       expect(status).toBe(200);
 
-      const spans = body as Array<{ traceId: string; spanId: string }>;
+      const result = body as {
+        items: Array<{ traceId: string; spanId: string }>;
+        nextCursor?: string;
+      };
+      const spans = result.items;
       // Should only contain the incident-bound span, not the normal one
       expect(spans.length).toBeGreaterThanOrEqual(1);
       const spanKeys = spans.map((s) => spanMembershipKey(s.traceId, s.spanId));
@@ -311,6 +315,59 @@ describe("TelemetryStore integration tests (ADR 0032 Step 4+5)", () => {
           ),
         ),
       ).toBe(false);
+      expect(result.nextCursor).toBeUndefined();
+    });
+
+    it("supports limit/cursor pagination for spans", async () => {
+      const incidentId = await ingestErrorSpan(app, {
+        traceId: "span_page_trace_0001",
+        spanId: "span_page_0001",
+        serviceName: "web",
+      });
+
+      for (let i = 2; i <= 4; i++) {
+        const payload = makeTracePayload([
+          makeResourceSpans("web", [
+            makeTraceSpan({
+              traceId: `span_page_trace_${String(i).padStart(4, "0")}`,
+              spanId: `span_page_${String(i).padStart(4, "0")}`,
+              startTimeUnixNano: String(BigInt(BASE_TIME_NS) + BigInt(i * 1_000_000_000)),
+              endTimeUnixNano: String(BigInt(BASE_TIME_NS) + BigInt(i * 1_000_000_000 + 500_000_000)),
+              spanStatusCode: 2,
+              httpStatusCode: 500,
+              route: `/checkout/${i}`,
+            }),
+          ]),
+        ]);
+        const { body: ingestBody } = await postJson(app, "/v1/traces", payload);
+        expect(ingestBody.incidentId).toBe(incidentId);
+      }
+
+      const page1 = await getJson(app, `/api/incidents/${incidentId}/telemetry/spans?limit=2`);
+      expect(page1.status).toBe(200);
+      const body1 = page1.body as {
+        items: Array<{ spanId: string }>;
+        nextCursor?: string;
+      };
+      expect(body1.items).toHaveLength(2);
+      expect(body1.nextCursor).toBeDefined();
+
+      const page2 = await getJson(
+        app,
+        `/api/incidents/${incidentId}/telemetry/spans?limit=2&cursor=${body1.nextCursor}`,
+      );
+      expect(page2.status).toBe(200);
+      const body2 = page2.body as {
+        items: Array<{ spanId: string }>;
+        nextCursor?: string;
+      };
+      expect(body2.items).toHaveLength(2);
+      expect(body2.nextCursor).toBeUndefined();
+
+      const page1Ids = new Set(body1.items.map((item) => item.spanId));
+      for (const item of body2.items) {
+        expect(page1Ids.has(item.spanId)).toBe(false);
+      }
     });
 
     it("returns 404 for non-existent incident", async () => {
@@ -346,9 +403,53 @@ describe("TelemetryStore integration tests (ADR 0032 Step 4+5)", () => {
       );
       expect(status).toBe(200);
 
-      const metrics = body as Array<{ name: string; service: string }>;
+      const result = body as {
+        items: Array<{ name: string; service: string }>;
+        nextCursor?: string;
+      };
+      const metrics = result.items;
       expect(metrics.length).toBeGreaterThan(0);
       expect(metrics.some((m) => m.name === "http.server.request.error_rate")).toBe(true);
+      expect(result.nextCursor).toBeUndefined();
+    });
+
+    it("supports limit/cursor pagination for metrics", async () => {
+      const incidentId = await ingestErrorSpan(app, {
+        traceId: "metrics_page_trace_0001",
+        spanId: "metrics_page_span_0001",
+        serviceName: "web",
+      });
+
+      for (let i = 0; i < 4; i++) {
+        const payload = makeMetricsPayload(
+          "web",
+          `metric_${i}`,
+          BASE_TIME_NS,
+          i + 1,
+        );
+        await postJson(app, "/v1/metrics", payload);
+      }
+
+      const page1 = await getJson(app, `/api/incidents/${incidentId}/telemetry/metrics?limit=2`);
+      expect(page1.status).toBe(200);
+      const body1 = page1.body as {
+        items: Array<{ name: string }>;
+        nextCursor?: string;
+      };
+      expect(body1.items).toHaveLength(2);
+      expect(body1.nextCursor).toBeDefined();
+
+      const page2 = await getJson(
+        app,
+        `/api/incidents/${incidentId}/telemetry/metrics?limit=2&cursor=${body1.nextCursor}`,
+      );
+      expect(page2.status).toBe(200);
+      const body2 = page2.body as {
+        items: Array<{ name: string }>;
+        nextCursor?: string;
+      };
+      expect(body2.items).toHaveLength(2);
+      expect(body2.nextCursor).toBeUndefined();
     });
 
     it("returns 404 for non-existent incident", async () => {
@@ -399,22 +500,92 @@ describe("TelemetryStore integration tests (ADR 0032 Step 4+5)", () => {
       expect(status).toBe(200);
 
       const result = body as {
-        correlated: Array<{ body: string; traceId?: string }>;
-        contextual: Array<{ body: string; traceId?: string }>;
+        correlated: {
+          items: Array<{ body: string; traceId?: string }>;
+          nextCursor?: string;
+        };
+        contextual: {
+          items: Array<{ body: string; traceId?: string }>;
+          nextCursor?: string;
+        };
       };
 
-      expect(result.correlated.length).toBeGreaterThanOrEqual(1);
-      expect(result.contextual.length).toBeGreaterThanOrEqual(1);
+      expect(result.correlated.items.length).toBeGreaterThanOrEqual(1);
+      expect(result.contextual.items.length).toBeGreaterThanOrEqual(1);
 
       // Correlated logs should have traceIds matching incident spans
-      for (const log of result.correlated) {
+      for (const log of result.correlated.items) {
         expect(log.traceId).toBe(traceId);
       }
 
       // Contextual logs should not have matching traceId
-      for (const log of result.contextual) {
+      for (const log of result.contextual.items) {
         expect(log.traceId).toBeUndefined();
       }
+    });
+
+    it("supports per-section pagination metadata for logs", async () => {
+      const traceId = "eeee1111eeee1111eeee1111eeee1111";
+      const spanId = "ffff2222ffff2222";
+      const incidentId = await ingestErrorSpan(app, {
+        traceId,
+        spanId,
+        serviceName: "web",
+      });
+
+      await postJson(
+        app,
+        "/v1/logs",
+        makeLogsPayload(
+          "web",
+          "correlated-0",
+          BASE_TIME_NS,
+          { text: "ERROR", number: 17 },
+          traceId,
+          spanId,
+        ),
+      );
+
+      for (let i = 0; i < 3; i++) {
+        await postJson(
+          app,
+          "/v1/logs",
+          makeLogsPayload(
+            "web",
+            `contextual-${i}`,
+            String(BigInt(BASE_TIME_NS) + BigInt(i * 100_000_000)),
+            { text: "WARN", number: 13 },
+          ),
+        );
+      }
+
+      const page1 = await getJson(
+        app,
+        `/api/incidents/${incidentId}/telemetry/logs?correlatedLimit=2&contextualLimit=2`,
+      );
+      expect(page1.status).toBe(200);
+      const body1 = page1.body as {
+        correlated: { items: Array<{ body: string }>; nextCursor?: string };
+        contextual: { items: Array<{ body: string }>; nextCursor?: string };
+      };
+      expect(body1.correlated.items).toHaveLength(1);
+      expect(body1.contextual.items).toHaveLength(2);
+      expect(body1.correlated.nextCursor).toBeUndefined();
+      expect(body1.contextual.nextCursor).toBeDefined();
+
+      const page2 = await getJson(
+        app,
+        `/api/incidents/${incidentId}/telemetry/logs?correlatedLimit=2&contextualLimit=2&contextualCursor=${body1.contextual.nextCursor}`,
+      );
+      expect(page2.status).toBe(200);
+      const body2 = page2.body as {
+        correlated: { items: Array<{ body: string }>; nextCursor?: string };
+        contextual: { items: Array<{ body: string }>; nextCursor?: string };
+      };
+      expect(body2.correlated.items).toHaveLength(1);
+      expect(body2.contextual.items).toHaveLength(1);
+      expect(body2.correlated.nextCursor).toBeUndefined();
+      expect(body2.contextual.nextCursor).toBeUndefined();
     });
 
     it("returns { correlated: [], contextual: [] } for non-existent incident", async () => {
@@ -861,7 +1032,7 @@ describe("TelemetryStore integration tests (ADR 0032 Step 4+5)", () => {
         `/api/incidents/${incidentId}/telemetry/spans`,
       );
       expect(spansRes.status).toBe(200);
-      const spans = spansRes.body as unknown[];
+      const spans = (spansRes.body as { items: unknown[] }).items;
       expect(spans.length).toBeGreaterThanOrEqual(1);
     });
   });
