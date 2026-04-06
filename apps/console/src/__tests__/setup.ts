@@ -18,3 +18,17 @@ globalThis.ResizeObserver ??= class ResizeObserver {
   unobserve() {}
   disconnect() {}
 } as unknown as typeof globalThis.ResizeObserver;
+
+const originalConsoleError = console.error.bind(console);
+
+console.error = (...args: unknown[]) => {
+  const message = args
+    .map((arg) => (typeof arg === "string" ? arg : String(arg)))
+    .join(" ");
+
+  if (message.includes("An update to") && message.includes("not wrapped in act")) {
+    throw new Error(`Detected React act warning: ${message}`);
+  }
+
+  originalConsoleError(...args);
+};
