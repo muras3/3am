@@ -1,6 +1,6 @@
 <p align="center">
   <a href="https://github.com/muras3/3am">
-    <img src="assets/banner.svg" alt="3am — Incident diagnosis for serverless apps" width="800"/>
+    <img src="assets/banner.png" alt="3am — Incident diagnosis for serverless apps" width="800"/>
   </a>
 </p>
 

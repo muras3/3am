@@ -14,7 +14,7 @@
   </circle>
   <!-- tagline -->
   <text x="180" y="95" font-family="'DM Sans',system-ui,sans-serif" font-size="22" font-weight="600" fill="#FAFAF8">Incident diagnosis for serverless apps</text>
-  <text x="180" y="125" font-family="'JetBrains Mono','SF Mono',monospace" font-size="14" fill="#6F6F68">OTel data in &rarr; root cause out &rarr; under 5 minutes</text>
+  <text x="180" y="125" font-family="'JetBrains Mono','SF Mono',monospace" font-size="14" fill="#6F6F68">OTel data in &#x2192; root cause out &#x2192; under 5 minutes</text>
   <!-- decorative pipeline -->
   <line x1="180" y1="145" x2="620" y2="145" stroke="#E85D3A" stroke-width="1.5" stroke-dasharray="6,4" opacity="0.4"/>
   <g font-family="'JetBrains Mono','SF Mono',monospace" font-size="11" fill="#4A4A48">
