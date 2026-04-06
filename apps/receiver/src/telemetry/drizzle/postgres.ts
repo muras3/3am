@@ -4,7 +4,6 @@
  * Requires DATABASE_URL env var (postgres://user:pass@host:port/dbname).
  * Used for Vercel Postgres in production and Docker Postgres in development / CI.
  */
-import postgres from "postgres";
 import { drizzle } from "drizzle-orm/postgres-js";
 import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import { and, gte, lte, lt, inArray, eq, sql as drizzleSql } from "drizzle-orm";
@@ -18,6 +17,8 @@ import type {
   SnapshotType,
   EvidenceSnapshot,
 } from "../interface.js";
+import type { SharedPostgresClient } from "../../storage/drizzle/postgres-client.js";
+import { createPostgresClient } from "../../storage/drizzle/postgres-client.js";
 
 // ── Postgres-specific table definitions (JSONB, bigint as integer) ───────────
 
@@ -93,12 +94,17 @@ type PgSchema = {
 
 export class PostgresTelemetryAdapter implements TelemetryStoreDriver {
   private db: PostgresJsDatabase<PgSchema>;
-  private client: ReturnType<typeof postgres>;
+  private client: SharedPostgresClient;
+  private ownsClient: boolean;
 
-  constructor(connectionString?: string) {
-    const url = connectionString ?? process.env["DATABASE_URL"];
-    if (!url) throw new Error("DATABASE_URL is required for PostgresTelemetryAdapter");
-    this.client = postgres(url, { max: 10, prepare: false, connect_timeout: 10 });
+  constructor(connectionStringOrClient?: string | SharedPostgresClient) {
+    if (typeof connectionStringOrClient === "string" || connectionStringOrClient === undefined) {
+      this.client = createPostgresClient(connectionStringOrClient);
+      this.ownsClient = true;
+    } else {
+      this.client = connectionStringOrClient;
+      this.ownsClient = false;
+    }
     this.db = drizzle(this.client, {
       schema: { pgTelemetrySpans, pgTelemetryMetrics, pgTelemetryLogs, pgIncidentEvidenceSnapshots },
     });
@@ -212,7 +218,9 @@ export class PostgresTelemetryAdapter implements TelemetryStoreDriver {
 
   /** Close the underlying postgres.js connection pool. */
   async close(): Promise<void> {
-    await this.client.end();
+    if (this.ownsClient) {
+      await this.client.end();
+    }
   }
 
   // ── Ingest ──────────────────────────────────────────────────────────────────
