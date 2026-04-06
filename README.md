@@ -5,7 +5,8 @@
 </p>
 
 <p align="center">
-  <strong>Diagnose serverless app incidents in under 5 minutes using OTel data + LLM.</strong>
+  <strong>Diagnose serverless app incidents in under 5 minutes using OTel data + LLM.</strong><br/>
+  <sub><a href="llms-full.txt">AI agents: read llms-full.txt for machine-readable setup instructions</a></sub>
 </p>
 
 <p align="center">
