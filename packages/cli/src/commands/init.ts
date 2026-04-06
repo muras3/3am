@@ -198,6 +198,8 @@ export interface InitOptions {
   model?: string;
   bridgeUrl?: string;
   noInteractive?: boolean;
+  /** Pre-supply a webhook URL (skips interactive prompt; used in tests and CI) */
+  webhookUrl?: string;
 }
 
 function isProviderName(value: string | undefined): value is ProviderName {
@@ -445,7 +447,88 @@ export async function runInit(_argv: string[], options: InitOptions = {}): Promi
   const ja = locale === "ja";
 
   // --- 6c. Notification webhook URL ---
-  if (!options.noInteractive && process.stdin.isTTY) {
+  // Helper: validate, persist, and test a webhook URL
+  async function processWebhookUrl(webhookAnswer: string): Promise<void> {
+    if (!webhookAnswer) return;
+    try {
+      const parsed = new URL(webhookAnswer);
+      const hostname = parsed.hostname;
+      if (
+        hostname === "hooks.slack.com" ||
+        hostname === "discord.com" ||
+        hostname === "discordapp.com"
+      ) {
+        const envPath2 = join(cwd, ".env");
+        const envContent2 = existsSync(envPath2) ? readFileSync(envPath2, "utf-8") : "";
+        const updatedEnv2 = updateEnvFile(envContent2, {
+          NOTIFICATION_WEBHOOK_URL: webhookAnswer,
+        });
+        writeFileSync(envPath2, updatedEnv2, "utf-8");
+        process.stdout.write(
+          ja
+            ? `通知先: ${hostname} に設定しました\n`
+            : `Notifications: configured for ${hostname}\n`,
+        );
+        // Send a test notification to verify the webhook works
+        try {
+          const isDiscord = hostname === "discord.com" || hostname === "discordapp.com";
+          const testPayload = isDiscord
+            ? { content: "✓ 3am connected! Incident notifications will appear here." }
+            : { text: "✓ 3am connected! Incident notifications will appear here." };
+          const controller = new AbortController();
+          const timer = setTimeout(() => controller.abort(), 10_000);
+          let testOk = false;
+          let testError: string | undefined;
+          try {
+            const res = await fetch(webhookAnswer, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(testPayload),
+              signal: controller.signal,
+            });
+            clearTimeout(timer);
+            testOk = res.ok;
+            if (!res.ok) testError = `HTTP ${res.status}`;
+          } catch (err) {
+            clearTimeout(timer);
+            testError = err instanceof Error ? err.message : String(err);
+          }
+          if (testOk) {
+            process.stdout.write(
+              ja ? "  → テストメッセージ送信 ✓\n" : "  → Test message sent ✓\n",
+            );
+          } else {
+            process.stdout.write(
+              ja
+                ? `  → テストメッセージ送信失敗: ${testError}。URLを確認して再試行してください。\n`
+                : `  → Test message failed: ${testError}. Check the URL and try again.\n`,
+            );
+          }
+        } catch {
+          // Unexpected error during test send — non-fatal, continue
+        }
+      } else {
+        process.stdout.write(
+          ja
+            ? "無効なwebhook URL。Slack または Discord のwebhook URLを使用してください。\n"
+            : "Invalid webhook URL. Use a Slack or Discord webhook URL.\n",
+        );
+      }
+    } catch {
+      if (webhookAnswer.length > 0) {
+        process.stdout.write(
+          ja
+            ? "無効なURL形式です。スキップします。\n"
+            : "Invalid URL format. Skipping.\n",
+        );
+      }
+    }
+  }
+
+  if (options.webhookUrl) {
+    // Pre-supplied URL (non-interactive / CI mode)
+    await processWebhookUrl(options.webhookUrl);
+  } else if (!options.noInteractive && process.stdin.isTTY) {
     const rl2 = createInterface({ input: process.stdin, output: process.stdout });
     const webhookAnswer = await new Promise<string>((resolve) => {
       rl2.question(
@@ -458,45 +541,7 @@ export async function runInit(_argv: string[], options: InitOptions = {}): Promi
         },
       );
     });
-
-    if (webhookAnswer) {
-      // Validate: only accept known Slack/Discord webhook hostnames
-      try {
-        const parsed = new URL(webhookAnswer);
-        const hostname = parsed.hostname;
-        if (
-          hostname === "hooks.slack.com" ||
-          hostname === "discord.com" ||
-          hostname === "discordapp.com"
-        ) {
-          const envPath2 = join(cwd, ".env");
-          const envContent2 = existsSync(envPath2) ? readFileSync(envPath2, "utf-8") : "";
-          const updatedEnv2 = updateEnvFile(envContent2, {
-            NOTIFICATION_WEBHOOK_URL: webhookAnswer,
-          });
-          writeFileSync(envPath2, updatedEnv2, "utf-8");
-          process.stdout.write(
-            ja
-              ? `通知先: ${hostname} に設定しました\n`
-              : `Notifications: configured for ${hostname}\n`,
-          );
-        } else {
-          process.stdout.write(
-            ja
-              ? "無効なwebhook URL。Slack または Discord のwebhook URLを使用してください。\n"
-              : "Invalid webhook URL. Use a Slack or Discord webhook URL.\n",
-          );
-        }
-      } catch {
-        if (webhookAnswer.length > 0) {
-          process.stdout.write(
-            ja
-              ? "無効なURL形式です。スキップします。\n"
-              : "Invalid URL format. Skipping.\n",
-          );
-        }
-      }
-    }
+    await processWebhookUrl(webhookAnswer);
   }
 
   // --- 7. Signal check ---
