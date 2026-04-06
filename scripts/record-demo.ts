@@ -18,6 +18,39 @@ const OUTPUT_GIF = join(ASSETS_DIR, "demo.gif");
 const BASE_URL = "http://localhost:3333";
 const VIEWPORT = { width: 1280, height: 720 };
 
+// Dark mode token overrides — injected via Playwright since the console is light-only.
+// Keeps --accent/#E85D3A unchanged (pops on dark backgrounds).
+const DARK_MODE_CSS = `
+  :root {
+    --bg: #0F0F0E !important;
+    --ink: #E5E5E2 !important;
+    --ink-2: #A8A8A4 !important;
+    --ink-3: #7A7A76 !important;
+    --panel: #1A1A18 !important;
+    --panel-2: #222220 !important;
+    --panel-3: #2C2C28 !important;
+    --line: rgba(255,255,255,0.10) !important;
+    --line-strong: rgba(255,255,255,0.18) !important;
+    --accent-soft: rgba(232,93,58,0.15) !important;
+    --accent-text: #F06A45 !important;
+    --teal: #14A3A8 !important;
+    --teal-soft: rgba(20,163,168,0.15) !important;
+    --amber: #D4A017 !important;
+    --amber-soft: rgba(212,160,23,0.15) !important;
+    --good: #3DA86D !important;
+    --good-soft: rgba(61,168,109,0.15) !important;
+  }
+  /* Tighter padding — no wasted whitespace in recording */
+  .level-content { padding: 12px !important; }
+  .level-header { padding: 0 12px !important; }
+`;
+
+async function injectDarkMode(page: import("playwright").Page) {
+  await page.addStyleTag({ content: DARK_MODE_CSS });
+  // Let repaint settle
+  await page.waitForTimeout(300);
+}
+
 async function main() {
   rmSync(VIDEO_DIR, { recursive: true, force: true });
   mkdirSync(VIDEO_DIR, { recursive: true });
@@ -37,11 +70,13 @@ async function main() {
   // --- Scene 1: Landing page (map view) ---
   console.log("Scene 1: Landing page...");
   await page.goto(BASE_URL, { waitUntil: "networkidle" });
+  await injectDarkMode(page);
   await page.waitForTimeout(2500);
 
   // --- Scene 2: Navigate to incident ---
   console.log("Scene 2: Incident board...");
   await page.goto(`${BASE_URL}/incidents/inc_000002`, { waitUntil: "networkidle" });
+  await injectDarkMode(page);
   await page.waitForTimeout(3000);
 
   // --- Scene 3: Slowly scroll down to reveal diagnosis content ---
