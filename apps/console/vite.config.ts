@@ -30,5 +30,8 @@ export default defineConfig({
     setupFiles: ["./src/__tests__/setup.ts"],
     globals: true,
     exclude: ["**/node_modules/**", "**/e2e/**", "dist/**"],
+    // Console tests share a singleton i18n instance; file-level parallelism can
+    // interleave locale changes and UI effects, producing false act warnings.
+    fileParallelism: false,
   },
 });

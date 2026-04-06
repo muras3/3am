@@ -1,9 +1,24 @@
-import { render, screen, act } from "@testing-library/react";
+import { render, screen, act, cleanup } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import i18n from "i18next";
-import { SetupGate } from "../components/setup-gate.js";
 import { AUTH_FAILURE_EVENT } from "../api/client.js";
+
+vi.mock("../i18n/index.js", async () => {
+  return {
+    detectPreferredContentLanguage: vi.fn(() => "en" as const),
+    setPreferredLocale: vi.fn(async (locale: "en" | "ja") => {
+      Object.assign(i18n, { language: locale });
+    }),
+  };
+});
+
+import { SetupGate } from "../components/setup-gate.js";
+
+async function flushMicrotasks(): Promise<void> {
+  await Promise.resolve();
+  await Promise.resolve();
+}
 
 describe("SetupGate", () => {
   beforeEach(() => {
@@ -24,6 +39,7 @@ describe("SetupGate", () => {
   });
 
   afterEach(async () => {
+    cleanup();
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
     localStorage.clear();
@@ -39,6 +55,7 @@ describe("SetupGate", () => {
           <div>ready</div>
         </SetupGate>,
       );
+      await flushMicrotasks();
     });
 
     expect(await screen.findByText("Content Language")).toBeInTheDocument();
@@ -47,6 +64,7 @@ describe("SetupGate", () => {
     });
     await act(async () => {
       await user.click(screen.getByRole("button", { name: /Continue/i }));
+      await flushMicrotasks();
     });
 
     expect(localStorage.getItem("receiver_auth_token")).toBe("secret-token");
@@ -64,6 +82,7 @@ describe("SetupGate", () => {
           <div>app content</div>
         </SetupGate>,
       );
+      await flushMicrotasks();
     });
 
     // App should be showing content
@@ -72,6 +91,7 @@ describe("SetupGate", () => {
     // Simulate auth failure (e.g. token became invalid after D1 re-creation)
     await act(async () => {
       window.dispatchEvent(new CustomEvent(AUTH_FAILURE_EVENT));
+      await flushMicrotasks();
     });
 
     // Should show recovery screen (Enter Auth Token)
@@ -91,6 +111,7 @@ describe("SetupGate", () => {
           <div>app content</div>
         </SetupGate>,
       );
+      await flushMicrotasks();
     });
 
     expect(await screen.findByText("app content")).toBeInTheDocument();
@@ -98,6 +119,7 @@ describe("SetupGate", () => {
     // Auth failure
     await act(async () => {
       window.dispatchEvent(new CustomEvent(AUTH_FAILURE_EVENT));
+      await flushMicrotasks();
     });
 
     expect(await screen.findByText("Enter Auth Token")).toBeInTheDocument();
@@ -109,6 +131,7 @@ describe("SetupGate", () => {
     });
     await act(async () => {
       await user.click(screen.getByRole("button", { name: /Save and Continue/i }));
+      await flushMicrotasks();
     });
 
     // Should be back to ready state
