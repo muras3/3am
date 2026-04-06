@@ -5,6 +5,7 @@ import { serve } from "@hono/node-server";
 import { serveStatic } from "@hono/node-server/serve-static";
 import { createApp, resolveAuthToken } from "./index.js";
 import { MemoryAdapter } from "./storage/adapters/memory.js";
+import { createPostgresClient } from "./storage/drizzle/postgres-client.js";
 import { PostgresAdapter } from "./storage/drizzle/postgres.js";
 import { PostgresTelemetryAdapter } from "./telemetry/drizzle/postgres.js";
 import { emitSelfTelemetryLog } from "./self-telemetry/log.js";
@@ -26,10 +27,11 @@ async function main() {
       severity: "INFO",
       body: "[receiver] DATABASE_URL detected — using PostgresAdapter",
     });
-    storage = new PostgresAdapter();
+    const sharedClient = createPostgresClient();
+    storage = new PostgresAdapter(sharedClient);
     await storage.migrate();
 
-    telemetryStore = new PostgresTelemetryAdapter();
+    telemetryStore = new PostgresTelemetryAdapter(sharedClient);
     await telemetryStore.migrate();
     emitSelfTelemetryLog({
       severity: "INFO",

@@ -13,6 +13,7 @@
  */
 import type { Hono } from "hono";
 import { createApp, resolveAuthToken } from "./index.js";
+import { createPostgresClient } from "./storage/drizzle/postgres-client.js";
 import { PostgresAdapter } from "./storage/drizzle/postgres.js";
 import { PostgresTelemetryAdapter } from "./telemetry/drizzle/postgres.js";
 
@@ -25,9 +26,10 @@ async function getApp(): Promise<Hono> {
       let telemetryStore: PostgresTelemetryAdapter | undefined;
 
       if (process.env["DATABASE_URL"]) {
-        storage = new PostgresAdapter();
+        const sharedClient = createPostgresClient();
+        storage = new PostgresAdapter(sharedClient);
         await storage.migrate();
-        telemetryStore = new PostgresTelemetryAdapter();
+        telemetryStore = new PostgresTelemetryAdapter(sharedClient);
         await telemetryStore.migrate();
       }
 
