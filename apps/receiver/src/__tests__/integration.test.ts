@@ -1006,12 +1006,15 @@ describe("Receiver integration tests", () => {
     });
     expect(platformRes.status).toBe(200);
 
-    const incident1 = await storage.getIncident(incident1Id);
-    const incident2 = await storage.getIncident(incident2Id);
+    // On-read materialization: GET /api/incidents/:id/packet triggers snapshot rebuild
+    const pkt1Res = await app.request(`/api/incidents/${incident1Id}/packet`);
+    const pkt1 = await pkt1Res.json() as { evidence: { platformEvents: Array<{ timestamp: string }> } };
+    const pkt2Res = await app.request(`/api/incidents/${incident2Id}/packet`);
+    const pkt2 = await pkt2Res.json() as { evidence: { platformEvents: Array<{ timestamp: string }> } };
 
-    expect(incident1?.packet.evidence.platformEvents).toEqual([]);
-    expect(incident2?.packet.evidence.platformEvents).toHaveLength(1);
-    expect(incident2?.packet.evidence.platformEvents[0]?.timestamp).toBe("2025-03-08T00:07:00.000Z");
+    expect(pkt1.evidence.platformEvents).toEqual([]);
+    expect(pkt2.evidence.platformEvents).toHaveLength(1);
+    expect(pkt2.evidence.platformEvents[0]?.timestamp).toBe("2025-03-08T00:07:00.000Z");
   });
 
   // POST /v1/metrics with no matching incident → 200 ok, no-op
@@ -1278,9 +1281,11 @@ describe("Receiver integration tests", () => {
     const attachBody = await attachRes.json() as { incidentId: string };
     expect(attachBody.incidentId).toBe(incidentId);
 
-    const incident = await storage.getIncident(incidentId);
-    expect(incident?.packet.scope.primaryService).toBe("checkout-api");
-    expect(incident?.packet.triggerSignals.some((signal) => signal.entity === "billing-worker")).toBe(true);
+    // On-read materialization: GET /api/incidents/:id/packet triggers snapshot rebuild
+    const pktRes = await app.request(`/api/incidents/${incidentId}/packet`);
+    const packet = await pktRes.json() as { scope: { primaryService: string }; triggerSignals: Array<{ entity: string }> };
+    expect(packet.scope.primaryService).toBe("checkout-api");
+    expect(packet.triggerSignals.some((signal) => signal.entity === "billing-worker")).toBe(true);
   });
 });
 
@@ -1454,11 +1459,12 @@ describe("Formation: dependency-based incident grouping (OC-1 to OC-6)", () => {
     // Both requests should return the same incidentId
     expect(r2.incidentId).toBe(r1.incidentId);
 
-    // Packet composition checks
-    const incident = items[0]!;
-    expect(incident.packet.scope.affectedServices).toContain("api-service");
-    expect(incident.packet.scope.affectedServices).toContain("checkout-service");
-    expect(incident.packet.scope.affectedDependencies).toContain("stripe");
+    // Packet composition checks — read via API to trigger on-read materialization
+    const pktRes = await app.request(`/api/incidents/${items[0]!.incidentId}/packet`);
+    const packet = await pktRes.json() as { scope: { affectedServices: string[]; affectedDependencies: string[] } };
+    expect(packet.scope.affectedServices).toContain("api-service");
+    expect(packet.scope.affectedServices).toContain("checkout-service");
+    expect(packet.scope.affectedDependencies).toContain("stripe");
   });
 
   // OC-3: no peerService → classic service matching → 1 incident

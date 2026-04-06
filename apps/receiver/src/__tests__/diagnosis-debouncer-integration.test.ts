@@ -114,23 +114,32 @@ describe("Diagnosis debouncer integration", () => {
     const storage = new MemoryAdapter();
     const app = createApp(storage);
 
-    // First batch — creates incident
-    await app.request("/v1/traces", {
+    // First batch — creates incident (generation 1)
+    const r1 = await app.request("/v1/traces", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(errorSpanPayload("t1", "s1")),
     });
+    const { incidentId } = await r1.json() as { incidentId: string };
 
     // Flush async work so delayed diagnosis schedules but doesn't fire yet
     await vi.advanceTimersByTimeAsync(0);
     expect(mockRun).not.toHaveBeenCalled();
 
-    // Second batch — attaches to same incident → rebuild → generation threshold checked
+    // On-read materialization: rebuild -> generation 2, threshold not yet met
+    await app.request(`/api/incidents/${incidentId}/packet`);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(mockRun).not.toHaveBeenCalled();
+
+    // Second batch — attaches to same incident, marks stale
     await app.request("/v1/traces", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(errorSpanPayload("t1", "s2")),
     });
+
+    // On-read materialization: rebuild -> generation 3 >= threshold -> diagnosis fires
+    await app.request(`/api/incidents/${incidentId}/packet`);
 
     // checkGenerationThreshold fires runIfNeeded asynchronously
     await vi.advanceTimersByTimeAsync(0);

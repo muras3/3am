@@ -132,6 +132,11 @@ export function shouldAttachToIncident(
 
   const scope = incident.packet.scope
 
+  // Use telemetryScope.memberServices for up-to-date service list (packet.scope
+  // is only refreshed on-read via materialization, but telemetryScope is expanded
+  // inline during ingest).
+  const liveServices = incident.telemetryScope.memberServices
+
   if (scope.environment !== key.environment) {
     return false
   }
@@ -151,27 +156,25 @@ export function shouldAttachToIncident(
     // same dependency found in incident scope
     const sameService =
       scope.primaryService === key.primaryService ||
-      scope.affectedServices.includes(key.primaryService)
+      liveServices.includes(key.primaryService)
 
     if (sameService) return true
 
     // cross-service + same dependency: only merge within the conservative guard.
-    // NOTE: scope.affectedServices always includes primaryService (packetizer contract),
-    // so for a fresh single-service incident affectedServices.length === 1.
-    // The guard therefore allows at most MAX_CROSS_SERVICE_MERGE − 1 additional services,
-    // yielding a total of MAX_CROSS_SERVICE_MERGE distinct services per incident.
-    return scope.affectedServices.length < MAX_CROSS_SERVICE_MERGE
+    // liveServices is kept current during ingest via expandTelemetryScope,
+    // so the guard accurately tracks how many services have been merged.
+    return liveServices.length < MAX_CROSS_SERVICE_MERGE
   }
 
   // no dependency info → service matching + trace-based fallback
   if (scope.primaryService === key.primaryService) return true
 
   // ADR 0033 D3: service already pulled into incident (e.g. via prior trace merge)
-  if (scope.affectedServices.includes(key.primaryService)) return true
+  if (liveServices.includes(key.primaryService)) return true
 
   // ADR 0033: trace-based cross-service merge — shared traceId with anomalous spans
   if (sharedTraceCount !== undefined && sharedTraceCount > 0
-    && scope.affectedServices.length < MAX_CROSS_SERVICE_MERGE) {
+    && liveServices.length < MAX_CROSS_SERVICE_MERGE) {
     return true
   }
 

@@ -301,34 +301,34 @@ describe('shouldAttachToIncident: dependency-first logic', () => {
 
   // ── MAX_CROSS_SERVICE_MERGE boundary tests ───────────────────────────────────
 
-  it('MAX boundary: affectedServices.length === MAX-1 (=2) → true (merge allowed)', () => {
+  it('MAX boundary: memberServices.length === MAX-1 (=2) → true (merge allowed)', () => {
     const key = buildFormationKey([{ ...BASE_SPAN, serviceName: 'checkout-service', peerService: 'stripe' }])
-    // incident already has 2 affected services: affectedServices.length = 2 = MAX-1
+    // incident already has 2 member services (primaryService + 1): memberServices.length = 2 = MAX-1
     const incident = makeIncident(
       'production', 'api-service', openedAt, 'open',
       ['stripe'],
-      ['worker-service', 'billing-service'], // length = 2 = MAX-1
+      ['worker-service'], // memberServices = [api-service, worker-service] → length = 2 = MAX-1
     )
     expect(shouldAttachToIncident(key, incident, signalTimeMs)).toBe(true)
   })
 
-  it('MAX boundary: affectedServices.length === MAX (=3) → false (split)', () => {
+  it('MAX boundary: memberServices.length === MAX (=3) → false (split)', () => {
     const key = buildFormationKey([{ ...BASE_SPAN, serviceName: 'checkout-service', peerService: 'stripe' }])
-    // incident already has 3 affected services: affectedServices.length = 3 = MAX
+    // incident already has 3 member services: memberServices.length = 3 = MAX
     const incident = makeIncident(
       'production', 'api-service', openedAt, 'open',
       ['stripe'],
-      ['worker-service', 'billing-service', 'report-service'], // length = 3 = MAX
+      ['worker-service', 'billing-service'], // memberServices = [api-service, worker, billing] → length = 3 = MAX
     )
     expect(shouldAttachToIncident(key, incident, signalTimeMs)).toBe(false)
   })
 
-  it('MAX boundary: affectedServices.length > MAX → false (split continues)', () => {
+  it('MAX boundary: memberServices.length > MAX → false (split continues)', () => {
     const key = buildFormationKey([{ ...BASE_SPAN, serviceName: 'fifth-service', peerService: 'stripe' }])
     const incident = makeIncident(
       'production', 'api-service', openedAt, 'open',
       ['stripe'],
-      ['worker-service', 'billing-service', 'report-service', 'batch-service'], // length = 4 > MAX
+      ['worker-service', 'billing-service', 'report-service'], // memberServices = [api + 3] → length = 4 > MAX
     )
     expect(shouldAttachToIncident(key, incident, signalTimeMs)).toBe(false)
   })
