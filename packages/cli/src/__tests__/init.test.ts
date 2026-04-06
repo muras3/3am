@@ -975,4 +975,142 @@ describe("runInit()", () => {
     expect(combined).toContain("Metrics");
     expect(combined).toContain("not supported");
   });
+
+  it("sends a Slack test notification and reports success when fetch succeeds", async () => {
+    writeFileSync(
+      join(tmpDir, "package.json"),
+      JSON.stringify({ name: "my-app", dependencies: { express: "4.18.0" } }),
+    );
+
+    const mockFetch = vi.fn().mockResolvedValue({ ok: true, status: 200 });
+    vi.stubGlobal("fetch", mockFetch);
+
+    const stdoutChunks: string[] = [];
+    const stdoutSpy = vi.spyOn(process.stdout, "write").mockImplementation((chunk) => {
+      stdoutChunks.push(String(chunk));
+      return true;
+    });
+
+    await runInit([], { noInteractive: true, webhookUrl: "https://hooks.slack.com/services/T/B/x" });
+    stdoutSpy.mockRestore();
+    vi.unstubAllGlobals();
+
+    const combined = stdoutChunks.join("");
+    expect(combined).toContain("hooks.slack.com");
+
+    // Test notification should have been sent with Slack payload format
+    expect(mockFetch).toHaveBeenCalledWith(
+      "https://hooks.slack.com/services/T/B/x",
+      expect.objectContaining({
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: "✓ 3am connected! Incident notifications will appear here." }),
+      }),
+    );
+
+    // Success message should appear
+    expect(combined).toContain("Test message sent ✓");
+  });
+
+  it("sends a Discord test notification with correct payload", async () => {
+    writeFileSync(
+      join(tmpDir, "package.json"),
+      JSON.stringify({ name: "my-app", dependencies: { express: "4.18.0" } }),
+    );
+
+    const mockFetch = vi.fn().mockResolvedValue({ ok: true, status: 204 });
+    vi.stubGlobal("fetch", mockFetch);
+
+    const stdoutChunks: string[] = [];
+    const stdoutSpy = vi.spyOn(process.stdout, "write").mockImplementation((chunk) => {
+      stdoutChunks.push(String(chunk));
+      return true;
+    });
+
+    await runInit([], { noInteractive: true, webhookUrl: "https://discord.com/api/webhooks/123/abc" });
+    stdoutSpy.mockRestore();
+    vi.unstubAllGlobals();
+
+    expect(mockFetch).toHaveBeenCalledWith(
+      "https://discord.com/api/webhooks/123/abc",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ content: "✓ 3am connected! Incident notifications will appear here." }),
+      }),
+    );
+
+    const combined = stdoutChunks.join("");
+    expect(combined).toContain("Test message sent ✓");
+  });
+
+  it("reports failure non-fatally when test notification fetch returns error status", async () => {
+    writeFileSync(
+      join(tmpDir, "package.json"),
+      JSON.stringify({ name: "my-app", dependencies: { express: "4.18.0" } }),
+    );
+
+    const mockFetch = vi.fn().mockResolvedValue({ ok: false, status: 400 });
+    vi.stubGlobal("fetch", mockFetch);
+
+    const stdoutChunks: string[] = [];
+    const stdoutSpy = vi.spyOn(process.stdout, "write").mockImplementation((chunk) => {
+      stdoutChunks.push(String(chunk));
+      return true;
+    });
+
+    await runInit([], { noInteractive: true, webhookUrl: "https://hooks.slack.com/services/T/B/bad" });
+    stdoutSpy.mockRestore();
+    vi.unstubAllGlobals();
+
+    const combined = stdoutChunks.join("");
+    // Should show failure message but not throw
+    expect(combined).toContain("Test message failed");
+    expect(combined).toContain("HTTP 400");
+    // Init should still complete
+    expect(combined).toContain("init complete");
+  });
+
+  it("reports failure non-fatally when test notification fetch throws (network error)", async () => {
+    writeFileSync(
+      join(tmpDir, "package.json"),
+      JSON.stringify({ name: "my-app", dependencies: { express: "4.18.0" } }),
+    );
+
+    const mockFetch = vi.fn().mockRejectedValue(new Error("ECONNREFUSED"));
+    vi.stubGlobal("fetch", mockFetch);
+
+    const stdoutChunks: string[] = [];
+    const stdoutSpy = vi.spyOn(process.stdout, "write").mockImplementation((chunk) => {
+      stdoutChunks.push(String(chunk));
+      return true;
+    });
+
+    await runInit([], { noInteractive: true, webhookUrl: "https://hooks.slack.com/services/T/B/net" });
+    stdoutSpy.mockRestore();
+    vi.unstubAllGlobals();
+
+    const combined = stdoutChunks.join("");
+    expect(combined).toContain("Test message failed");
+    expect(combined).toContain("ECONNREFUSED");
+    // Init should still complete
+    expect(combined).toContain("init complete");
+  });
+
+  it("writes webhook URL to .env even when test notification fails", async () => {
+    writeFileSync(
+      join(tmpDir, "package.json"),
+      JSON.stringify({ name: "my-app", dependencies: { express: "4.18.0" } }),
+    );
+
+    const mockFetch = vi.fn().mockResolvedValue({ ok: false, status: 403 });
+    vi.stubGlobal("fetch", mockFetch);
+
+    const stdoutSpy = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    await runInit([], { noInteractive: true, webhookUrl: "https://hooks.slack.com/services/T/B/z" });
+    stdoutSpy.mockRestore();
+    vi.unstubAllGlobals();
+
+    const envContent = readFileSync(join(tmpDir, ".env"), "utf-8");
+    expect(envContent).toContain("NOTIFICATION_WEBHOOK_URL=https://hooks.slack.com/services/T/B/z");
+  });
 });
