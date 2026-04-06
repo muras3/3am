@@ -1,13 +1,14 @@
 import { z } from "zod";
 
 // Evidence binding — links a claim in the Q&A answer to concrete evidence.
-// Each binding must have ≥1 concrete ref (span|log|metric|log_cluster|metric_group).
+// Prompt requests ≥1 ref per claim, but smaller models may return empty arrays.
+// Accept gracefully to avoid retries that waste LLM budget and block the UI.
 export const EvidenceBindingSchema = z.object({
   claim: z.string(),
   evidenceRefs: z.array(z.object({
     kind: z.enum(["span", "log", "metric", "log_cluster", "metric_group"]),
     id: z.string(),
-  }).strict()).min(1),
+  }).strict()),
 }).strict();
 
 // Follow-up question — diagnosis proposes the question and target surfaces.

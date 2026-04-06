@@ -96,7 +96,7 @@ describe("ConsoleNarrativeSchema", () => {
     expect(() => ConsoleNarrativeSchema.parse(noAnswerRefs)).toThrow(ZodError);
   });
 
-  it("requires ≥1 evidence ref per binding (concrete ref constraint)", () => {
+  it("accepts empty evidenceRefs per binding (smaller models may omit refs)", () => {
     const emptyRefs = {
       ...minimalValid,
       qa: {
@@ -104,7 +104,7 @@ describe("ConsoleNarrativeSchema", () => {
         evidenceBindings: [{ claim: "some claim", evidenceRefs: [] }],
       },
     };
-    expect(() => ConsoleNarrativeSchema.parse(emptyRefs)).toThrow(ZodError);
+    expect(() => ConsoleNarrativeSchema.parse(emptyRefs)).not.toThrow();
   });
 
   it("rejects 'proof_card' kind in evidence refs (concrete ref only)", () => {
