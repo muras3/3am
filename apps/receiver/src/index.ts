@@ -210,6 +210,7 @@ export function createApp(storage?: StorageDriver, options?: AppOptions): Hono {
       if (
         c.req.path === "/api/setup-status" ||
         c.req.path === "/api/setup-token" ||
+        c.req.path === "/api/settings/locale" ||
         c.req.path.startsWith("/api/chat/")
       ) {
         return next();
