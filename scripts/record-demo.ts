@@ -20,9 +20,15 @@ const VIDEO_DIR = join(ASSETS_DIR, "video-tmp");
 const OUTPUT_GIF = join(ASSETS_DIR, "demo.gif");
 const BASE_URL = "http://localhost:3333";
 
-// 960px fits board max-width (860px) + padding with minimal dead space.
-// 640px height keeps aspect ratio tight.
-const VIEWPORT = { width: 960, height: 640 };
+// 920px stays above 900px responsive breakpoint (2-column layout) while
+// fitting the 860px board max-width with minimal side margin.
+// 400px height: tight crop that forces content to fill the frame.
+const VIEWPORT = { width: 920, height: 400 };
+
+// Hide non-essential chrome during recording to maximize content density.
+const RECORDING_CSS = `
+  .zoom-nav { display: none !important; }
+`;
 
 async function smoothScroll(page: Page, distance: number, steps: number, interval: number) {
   const step = Math.round(distance / steps);
@@ -50,6 +56,7 @@ async function main() {
   // --- Scene 1: Map view (2.5s) ---
   console.log("Scene 1: Map view...");
   await page.goto(BASE_URL, { waitUntil: "networkidle" });
+  await page.addStyleTag({ content: RECORDING_CSS });
   await page.waitForTimeout(2500);
 
   // --- Scene 2: Click into incident → Board (zoom transition) ---
@@ -147,13 +154,28 @@ async function main() {
   const videoPath = videoFiles[0]!;
   console.log(`\nVideo recorded: ${videoPath}`);
 
+  // --- Auto-crop uniform bottom/right whitespace ---
+  console.log("Detecting crop bounds...");
+  const cropLines = execSync(
+    `ffmpeg -i "${videoPath}" -vf "cropdetect=30:2:0" -f null - 2>&1 | grep -oE "crop=[0-9:]+$" | sort | uniq -c | sort -rn | head -1`,
+    { encoding: "utf-8" },
+  ).trim();
+  const cropMatch = cropLines.match(/crop=(\d+:\d+:\d+:\d+)/);
+
+  let cropFilter = "";
+  if (cropMatch) {
+    console.log(`  Auto-crop: ${cropMatch[1]}`);
+    cropFilter = `crop=${cropMatch[1]},`;
+  }
+
   // --- GIF encoding (high quality, proper loop) ---
   console.log("Converting to GIF...");
 
-  // Step 1: Generate full-frame palette (better color accuracy than diff mode)
+  // Step 1: Generate palette — includes border pad for edge definition on dark backgrounds
+  const filters = `fps=15,${cropFilter}scale=920:-1:flags=lanczos,pad=iw+4:ih+4:2:2:color=#24292e`;
   execSync(
     `ffmpeg -y -i "${videoPath}" ` +
-    `-vf "fps=15,scale=960:-1:flags=lanczos,palettegen=max_colors=256:stats_mode=full" ` +
+    `-vf "${filters},palettegen=max_colors=256:stats_mode=full" ` +
     `-update 1 "${VIDEO_DIR}/palette.png"`,
     { stdio: "inherit" },
   );
@@ -161,7 +183,7 @@ async function main() {
   // Step 2: Create GIF with palette, explicit infinite loop
   execSync(
     `ffmpeg -y -i "${videoPath}" -i "${VIDEO_DIR}/palette.png" ` +
-    `-lavfi "fps=15,scale=960:-1:flags=lanczos [x]; [x][1:v] paletteuse=dither=sierra2_4a" ` +
+    `-lavfi "${filters} [x]; [x][1:v] paletteuse=dither=sierra2_4a" ` +
     `-loop 0 "${OUTPUT_GIF}"`,
     { stdio: "inherit" },
   );
@@ -174,15 +196,16 @@ async function main() {
   // If too large (>5MB), reduce quality
   if (sizeKB > 5000) {
     console.log("GIF too large, reducing fps and scale...");
+    const fallback = "fps=10,scale=760:-1:flags=lanczos,pad=iw+4:ih+4:2:2:color=#24292e";
     execSync(
       `ffmpeg -y -i "${videoPath}" ` +
-      `-vf "fps=10,scale=800:-1:flags=lanczos,palettegen=max_colors=192" ` +
+      `-vf "${fallback},palettegen=max_colors=192" ` +
       `-update 1 "${VIDEO_DIR}/palette2.png"`,
       { stdio: "inherit" },
     );
     execSync(
       `ffmpeg -y -i "${videoPath}" -i "${VIDEO_DIR}/palette2.png" ` +
-      `-lavfi "fps=10,scale=800:-1:flags=lanczos [x]; [x][1:v] paletteuse=dither=bayer:bayer_scale=4" ` +
+      `-lavfi "${fallback} [x]; [x][1:v] paletteuse=dither=bayer:bayer_scale=4" ` +
       `-loop 0 "${OUTPUT_GIF}"`,
       { stdio: "inherit" },
     );
