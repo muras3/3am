@@ -43,9 +43,6 @@ AVOID ASSUMING
   ✗ Recent deploy caused this — unrelated to concurrency config
   ✗ Scaling the DB will help — confirm bottleneck first
 ```
-
-<sup>Output from a <a href="validation/scenarios/third_party_api_rate_limit_cascade/">validated scenario</a> — tested against <a href="validation/scenarios/">5 incident types</a>.</sup>
-
 <p align="center">
   <img src="assets/frames/frame_0002.png" alt="3am Console — incident diagnosis" width="720"/>
 </p>
