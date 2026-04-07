@@ -62,7 +62,7 @@ export type ResolvedProvider = {
   source: "explicit" | "autodetect";
 };
 
-const DEFAULT_TIMEOUT_MS = 120_000;
+const DEFAULT_TIMEOUT_MS = 300_000;
 
 export function defaultModelForProvider(
   provider: ProviderName | undefined,
@@ -246,6 +246,7 @@ class OllamaProvider implements LLMProvider {
       body: JSON.stringify({
         model: options.model,
         stream: false,
+        think: false,
         options: {
           temperature: options.temperature ?? 0,
           num_predict: options.maxTokens,
