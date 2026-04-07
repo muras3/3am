@@ -12,11 +12,7 @@
 
 ---
 
-It's 3am. Your checkout is returning 504s. PagerDuty is screaming.
-
-You open Datadog. Error rate spiking. Latency through the roof. DB connections look fine. There was a deploy 2 hours ago — maybe that? The payment provider status page says "all systems operational." You're 10 minutes in and still guessing.
-
-**3am reads your OpenTelemetry data and tells you this in under 60 seconds:**
+OTel data in → root cause + action plan out. No thresholds. No runbooks. Under 60 seconds.
 
 ```
 ROOT CAUSE
@@ -43,12 +39,10 @@ DO NOT
   ✗ Scale the DB — confirm it's the issue first
 ```
 
-This is from a [real validation scenario](validation/scenarios/third_party_api_rate_limit_cascade/), not a cherry-picked demo. Tested against [5 incident types](validation/scenarios/) — from rate-limit cascades to partial secret rotation failures.
-
-No dashboards to interpret. No runbooks to follow. Just the answer.
+<sup>Output from a <a href="validation/scenarios/third_party_api_rate_limit_cascade/">validated scenario</a> — tested against <a href="validation/scenarios/">5 incident types</a>.</sup>
 
 <p align="center">
-  <img src="assets/frames/frame_0002.png" alt="3am Console — incident diagnosis with next operator steps" width="720"/>
+  <img src="assets/frames/frame_0002.png" alt="3am Console — incident diagnosis" width="720"/>
 </p>
 
 ---
