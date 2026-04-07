@@ -23,7 +23,7 @@ const FRAMES_DIR = join(ASSETS_DIR, "frames-tmp");
 const OUTPUT_GIF = join(ASSETS_DIR, "demo.gif");
 const BASE_URL = "http://localhost:3333";
 const VIEWPORT = { width: 920, height: 600 };
-const FPS = 12;
+const FPS = 15;
 const FRAME_MS = Math.round(1000 / FPS);
 
 let frameCount = 0;
@@ -60,43 +60,43 @@ async function main() {
   const browser = await chromium.launch({ headless: true });
   const page = await browser.newPage({ viewport: VIEWPORT, deviceScaleFactor: 2 });
 
-  // ── Scene 1: Map (2s) ──
+  // ── Scene 1: Map (1.5s) ──
   console.log("Scene 1: Map");
   await page.goto(BASE_URL, { waitUntil: "networkidle" });
-  await hold(page, 2000);
+  await hold(page, 1500);
 
-  // ── Scene 2: Click incident → Board (2.5s) ──
+  // ── Scene 2: Click incident → Board ──
   console.log("Scene 2: Board");
   const row = page.locator("[data-incident-id], .incident-strip-row, .lens-map-incident-row").first();
   if (await row.isVisible().catch(() => false)) {
     await row.click({ force: true });
-    await hold(page, 1000); // capture zoom transition
+    await hold(page, 800); // zoom transition
   } else {
     await page.goto(`${BASE_URL}/incidents/inc_000002`, { waitUntil: "networkidle" });
   }
-  await hold(page, 2500);
+  await hold(page, 1800);
 
-  // ── Scene 3: Scroll diagnosis (3s) ──
+  // ── Scene 3: Scroll diagnosis (2s) ──
   console.log("Scene 3: Scroll");
-  await scroll(page, 600, 2500);
-  await hold(page, 800);
+  await scroll(page, 600, 2000);
+  await hold(page, 500);
 
-  // ── Scene 4: Scroll back (0.5s) ──
+  // ── Scene 4: Scroll back ──
   await page.evaluate(() => window.scrollTo({ top: 0, behavior: "smooth" }));
-  await hold(page, 800);
+  await hold(page, 600);
 
-  // ── Scene 5: Evidence Studio (2s) ──
+  // ── Scene 5: Evidence Studio ──
   console.log("Scene 4: Evidence Studio");
   await page.evaluate(() =>
     document.querySelector(".lens-board-btn-evidence")
       ?.scrollIntoView({ behavior: "smooth", block: "center" }),
   );
-  await hold(page, 500); // capture scroll-into-view
+  await hold(page, 400);
   const evBtn = page.locator("button:has-text('Open Evidence Studio')").first();
   if (await evBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
     await evBtn.click();
-    await hold(page, 1500); // capture zoom transition
-    await hold(page, 1500);
+    await hold(page, 1000); // zoom transition
+    await hold(page, 1200);
   }
 
   // ── Scene 6: Copilot Q&A (real LLM) ──
@@ -126,13 +126,13 @@ async function main() {
         }
         return false;
       });
-      if (done) { console.log("  Response received"); await hold(page, 2500); break; }
+      if (done) { console.log("  Response received"); await hold(page, 2000); break; }
     }
   } else {
     await hold(page, 3000);
   }
 
-  await hold(page, 1000);
+  await hold(page, 600);
   await browser.close();
   console.log(`${frameCount} frames captured`);
 
