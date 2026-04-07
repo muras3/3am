@@ -189,7 +189,7 @@ describe("LensIncidentBoard — rerun diagnosis", () => {
     });
     localStorage.setItem("receiver_auth_token", "browser-token");
 
-    const fetchMock = vi.fn().mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
+    const fetchMock = vi.fn().mockImplementation((input: RequestInfo | URL) => {
       const url = String(input);
       if (url === "http://127.0.0.1:4269/api/manual/diagnose") {
         return Promise.resolve({
