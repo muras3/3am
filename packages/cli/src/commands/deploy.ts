@@ -213,6 +213,9 @@ export async function runDeploy(
   // Persist to CLI credentials (idempotent)
   const existingCreds = loadCredentials();
   saveCredentials({ ...existingCreds, receiverAuthToken: authToken });
+  const llmMode = existingCreds.llmMode;
+  const llmProvider = existingCreds.llmProvider;
+  const llmBridgeUrl = existingCreds.llmBridgeUrl;
 
   // -------------------------------------------------------------------------
   // Step 8: Provision and deploy Receiver
@@ -228,6 +231,18 @@ export async function runDeploy(
     await provider.setEnvVar("ANTHROPIC_API_KEY", apiKey);
     info("Setting RECEIVER_AUTH_TOKEN on platform...\n", json);
     await provider.setEnvVar("RECEIVER_AUTH_TOKEN", authToken);
+    if (llmMode) {
+      info("Setting LLM_MODE on platform...\n", json);
+      await provider.setEnvVar("LLM_MODE", llmMode);
+    }
+    if (llmProvider) {
+      info("Setting LLM_PROVIDER on platform...\n", json);
+      await provider.setEnvVar("LLM_PROVIDER", llmProvider);
+    }
+    if (llmBridgeUrl) {
+      info("Setting LLM_BRIDGE_URL on platform...\n", json);
+      await provider.setEnvVar("LLM_BRIDGE_URL", llmBridgeUrl);
+    }
 
     const result = await provider.deploy();
     deployedUrl = result.url;
