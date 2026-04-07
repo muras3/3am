@@ -83,6 +83,14 @@ npx 3am diagnose \
   --provider claude-code
 ```
 
+**Manual mode workflow (local or hosted Receiver):**
+- `npx 3am init --mode manual --provider claude-code|codex|ollama`
+- start the bridge: `npx 3am bridge`
+- start the Receiver without a server-side provider env var taking precedence over manual mode
+  remove `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` from the Receiver process if you want provider selection to come only from the bridge side
+- for local Receiver, `npx 3am local` already sets `ALLOW_INSECURE_DEV_MODE=true`
+- for a separately started dev Receiver, set `ALLOW_INSECURE_DEV_MODE=true` yourself if you want token-free Console access
+
 **Console dev proxy and auth:**
 - if you run the Console separately in dev, its Vite proxy expects the Receiver at `http://localhost:3333` by default
 - override with `VITE_RECEIVER_BASE_URL` only when your Receiver is on a different port
