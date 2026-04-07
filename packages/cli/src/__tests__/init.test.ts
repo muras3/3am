@@ -726,6 +726,20 @@ describe("runInit()", () => {
     expect(creds.anthropicApiKey).toBe("sk-test-key-123");
   });
 
+  it("saves locale from --lang in non-interactive mode", async () => {
+    writeFileSync(
+      join(tmpDir, "package.json"),
+      JSON.stringify({ name: "my-app", dependencies: {} }),
+    );
+
+    const stdoutSpy = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    await runInit([], { lang: "ja", noInteractive: true });
+    stdoutSpy.mockRestore();
+
+    const creds = loadCredentials();
+    expect(creds.locale).toBe("ja");
+  });
+
   it("warns when no API key in non-interactive mode", async () => {
     writeFileSync(
       join(tmpDir, "package.json"),
