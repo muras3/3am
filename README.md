@@ -2,7 +2,7 @@
   <a href="https://github.com/muras3/3am">
     <picture>
       <source media="(prefers-color-scheme: dark)" srcset="assets/logo-horizontal-dark.svg"/>
-      <img src="assets/logo-horizontal.svg" alt="3am" height="48"/>
+      <img src="assets/logo-horizontal.svg" alt="3am" height="72"/>
     </picture>
   </a>
 </p>
