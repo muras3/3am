@@ -39,6 +39,14 @@ open http://localhost:3333
 
 `3am local` pulls and runs the Receiver image via Docker. In manual mode, also start `npx 3am bridge` so Console-triggered local diagnosis can reach your local provider.
 
+If you run the Console separately in dev, its Vite proxy expects the Receiver at `http://localhost:3333` by default. Override with `VITE_RECEIVER_BASE_URL` only when your Receiver is on a different port.
+
+Auth behavior in dev depends on how you start the Receiver:
+
+- `npx 3am local` sets `ALLOW_INSECURE_DEV_MODE=true`, so Console API requests do not require a token
+- if you run the Receiver without `ALLOW_INSECURE_DEV_MODE=true`, API routes require `RECEIVER_AUTH_TOKEN` and the Console will prompt for that token through Setup Gate
+- `manual` mode still requires the local bridge (`npx 3am bridge`) for Console reruns and chat, even when the Receiver itself is hosted elsewhere
+
 You can also run manual diagnosis directly from the CLI:
 
 ```bash
