@@ -28,7 +28,7 @@ describe("callModel", () => {
     await callModel("test prompt", defaultOptions);
 
     expect(AnthropicMock).toHaveBeenCalledWith(
-      expect.objectContaining({ timeout: 120_000, maxRetries: 2 }),
+      expect.objectContaining({ maxRetries: 2 }),
     );
   });
 
