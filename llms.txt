@@ -1,0 +1,11 @@
+# 3am
+
+> Diagnose serverless app incidents in under 5 minutes using OTel data + LLM.
+
+3am is an open-source incident diagnosis tool. It collects OpenTelemetry spans, logs, and metrics from your app, detects anomalies, forms incident packets, and runs LLM-powered root cause analysis automatically.
+
+## Docs
+
+- [Full setup guide for AI agents](llms-full.txt): Complete installation, configuration, and deployment instructions in a single file
+- [README](https://github.com/muras3/3am#readme): Human-readable project overview
+- [CLAUDE.md](https://github.com/muras3/3am/blob/develop/CLAUDE.md): Monorepo structure, commands, and conventions
