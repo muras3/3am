@@ -1,8 +1,11 @@
 <p align="center">
   <a href="https://github.com/muras3/3am">
-    <img src="assets/banner.png" alt="3am" width="800"/>
+    <img src="assets/logo-horizontal.svg#gh-light-mode-only" alt="3am" height="48"/>
+    <img src="assets/logo-horizontal-dark.svg#gh-dark-mode-only" alt="3am" height="48"/>
   </a>
 </p>
+
+<p align="center">Incident diagnosis for serverless apps</p>
 
 <p align="center">
   <a href="https://github.com/muras3/3am/actions/workflows/ci.yml"><img src="https://github.com/muras3/3am/actions/workflows/ci.yml/badge.svg?branch=develop" alt="CI"/></a>
