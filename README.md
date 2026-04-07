@@ -1,12 +1,7 @@
 <p align="center">
   <a href="https://github.com/muras3/3am">
-    <img src="assets/banner.png" alt="3am — Incident diagnosis for serverless apps" width="800"/>
+    <img src="assets/banner.png" alt="3am" width="800"/>
   </a>
-</p>
-
-<p align="center">
-  <strong>Diagnose serverless app incidents in under 5 minutes using OTel data + LLM.</strong><br/>
-  <sub><a href="llms-full.txt">AI agents: read llms-full.txt for machine-readable setup instructions</a></sub>
 </p>
 
 <p align="center">
@@ -15,77 +10,71 @@
   <a href="#license"><img src="https://img.shields.io/badge/license-Apache--2.0-blue.svg" alt="License"/></a>
 </p>
 
-<p align="center">
-  <a href="#quick-start">Quick Start</a> ·
-  <a href="#features">Features</a> ·
-  <a href="#deploy">Deploy</a> ·
-  <a href="#how-it-works">How It Works</a> ·
-  <a href="CONTRIBUTING.md">Contributing</a>
-</p>
-
 ---
 
-## Features
+It's 3am. Your checkout is returning 504s. PagerDuty is screaming.
 
-- **Automatic incident detection** — anomaly detection on OTel spans, logs, and metrics; no manual threshold config
-- **LLM-powered root cause analysis** — forms an incident packet and feeds it to an LLM for structured diagnosis
-- **Pluggable LLM providers** — Anthropic, OpenAI, Ollama, Claude Code, Codex; auto-detects what's available
-- **Real-time console** — incident board, causal chain, evidence explorer, AI copilot
-- **Slack & Discord notifications** — webhook-based alerts when incidents are detected
-- **One-command deploy** — `npx 3am deploy vercel` or `npx 3am deploy cloudflare`
+You open Datadog. Error rate spiking. Latency through the roof. DB connections look fine. There was a deploy 2 hours ago — maybe that? The payment provider status page says "all systems operational." You're 10 minutes in and still guessing.
+
+**3am reads your OpenTelemetry data and tells you this in under 60 seconds:**
+
+```
+ROOT CAUSE
+  Checkout-orchestrator retries payment 429s at fixed 100ms intervals
+  without backoff → saturates the 16-worker pool → 504s cascade to
+  all routes behind it.
+
+CAUSAL CHAIN
+  1. Flash sale spike increases checkout demand
+  2. Payment provider returns 429 (rate limited)
+  3. App retries immediately — fixed interval, no backoff
+  4. Worker pool saturates → queue depth hits 216
+  5. All routes behind the pool start timing out
+  6. 504s cascade to /checkout and /orders/:id
+
+DO NOW
+  ✓ Disable retries to the payment dependency
+  ✓ Add exponential backoff or circuit breaker
+  ✓ Shed non-critical checkout work to free workers
+
+DO NOT
+  ✗ Restart the database — not the bottleneck
+  ✗ Roll back the deploy — unrelated to concurrency
+  ✗ Scale the DB — confirm it's the issue first
+```
+
+This is from a [real validation scenario](validation/scenarios/third_party_api_rate_limit_cascade/), not a cherry-picked demo. Tested against [5 incident types](validation/scenarios/) — from rate-limit cascades to partial secret rotation failures.
+
+No dashboards to interpret. No runbooks to follow. Just the answer.
 
 <p align="center">
-  <img src="assets/demo.gif" alt="3am Console — incident diagnosis demo" width="720"/>
+  <img src="assets/frames/frame_0002.png" alt="3am Console — incident diagnosis with next operator steps" width="720"/>
 </p>
 
 ---
 
 ## Quick Start
 
-**Prerequisites:** Docker Desktop, Node.js 18+
-
 ```bash
-npx 3am init          # set up OTel SDK in your app
-npx 3am local         # start local Receiver (Docker)
-npx 3am local demo    # inject a demo incident & see diagnosis
+npx 3am init          # instrument your app with OTel
+npx 3am local         # start local receiver (Docker)
+npx 3am local demo    # inject a demo incident → see diagnosis
 ```
 
-Then open **http://localhost:3333** to view the console.
+Open **http://localhost:3333**. Requires Docker Desktop and Node.js 18+.
 
 <details>
-<summary><strong>More details</strong></summary>
+<summary>What each command does</summary>
 
-`3am local demo` injects a synthetic downstream-timeout scenario and runs a real LLM diagnosis (~¥10/run). Demo data uses `service.name=3am-demo` and won't mix with your app's telemetry.
+**`3am init`** detects your runtime and sets up OTel automatically:
+- **Node.js / Vercel** — installs OTel deps, creates `instrumentation.ts`, writes OTLP endpoint to `.env`
+- **Cloudflare Workers** — updates `wrangler.toml` to enable Workers Observability
 
-`3am init` is runtime-aware. For Node.js and Vercel it installs OTel dependencies, creates `instrumentation.ts/js`, and writes `OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:3333` to `.env`. For Cloudflare Workers it updates `wrangler.toml` or `wrangler.jsonc` to enable Workers Observability.
+**`3am local demo`** injects a synthetic incident and runs a real LLM diagnosis (~¥10/run). Demo data uses `service.name=3am-demo` — won't mix with your telemetry.
 
-`3am init` captures a diagnosis mode and provider choice:
-
-- **automatic** — Receiver runs diagnosis server-side
-- **manual** — Console and CLI route diagnosis through a local bridge (`npx 3am bridge`), so you can use Claude Code, Codex, Ollama, or another provider without an API key
-
-You can also run manual diagnosis directly from the CLI:
-
-```bash
-npx 3am diagnose \
-  --incident-id inc_000001 \
-  --receiver-url http://localhost:3333 \
-  --provider claude-code
-```
-
-For your own app telemetry, start your app with instrumentation loaded:
-
-```bash
-node --require ./instrumentation.js your-app.js
-```
-
-**LLM provider auto-detection** (when no `--provider` flag is given):
-
-1. `ANTHROPIC_API_KEY` in env → Anthropic
-2. `claude` CLI in PATH → Claude Code (uses subscription)
-3. `codex` CLI in PATH → Codex (uses subscription)
-4. `OPENAI_API_KEY` in env → OpenAI
-5. Ollama running on localhost:11434 → Ollama (free, local)
+**Diagnosis modes:**
+- **automatic** — receiver runs diagnosis server-side (needs API key)
+- **manual** — route diagnosis through Claude Code, Codex, or Ollama locally (no API key needed)
 
 </details>
 
@@ -93,166 +82,87 @@ node --require ./instrumentation.js your-app.js
 
 ## Deploy
 
-### Vercel
-
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/muras3/3am&env=ANTHROPIC_API_KEY&envDescription=Anthropic%20API%20key%20for%20LLM%20diagnosis&envLink=https://console.anthropic.com/settings/keys&products=%5B%7B%22type%22%3A%22integration%22%2C%22group%22%3A%22postgres%22%7D%5D&project-name=3am&repository-name=3am)
-
-```bash
-npx 3am deploy vercel
-```
-
-Neon Postgres is auto-provisioned. After deploy, open Console — the first-access screen displays your `AUTH_TOKEN`.
-
-<details>
-<summary><strong>Vercel deploy details</strong></summary>
-
-1. Click the button above or run `npx 3am deploy vercel`
-2. Choose `automatic` or `manual` diagnosis mode
-3. If automatic, set `ANTHROPIC_API_KEY` or another server-side provider credential
-4. Set `RETENTION_HOURS` if you need a window other than 48 hours
-5. Point your app at the production Receiver
-
-For CI / non-interactive:
-
-```bash
-npx 3am deploy vercel --yes --no-interactive --json
-```
-
-</details>
-
-### Cloudflare Workers
-
-```bash
-export CLOUDFLARE_API_TOKEN=your-cloudflare-api-token
-npx 3am deploy cloudflare --yes
-```
-
-<details>
-<summary><strong>Cloudflare deploy details</strong></summary>
-
-The CLI needs a Cloudflare API Token with these account-level permissions:
-
-- `Workers Scripts:Edit`
-- `Logs:Edit`
-
-What `deploy cloudflare` does:
-
-1. Deploys the 3am receiver to Cloudflare
-2. Creates or updates OTLP destinations for traces and logs
-3. Updates the current directory's `wrangler.toml` or `wrangler.jsonc`
-4. Deploys the current Cloudflare Worker so telemetry starts flowing
-
-If `CLOUDFLARE_API_TOKEN` is missing, the CLI falls back to prompting for a Global API Key in interactive mode only.
-
-</details>
+| | Command | What you get |
+|---|---|---|
+| [![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/muras3/3am&env=ANTHROPIC_API_KEY&products=%5B%7B%22type%22%3A%22integration%22%2C%22group%22%3A%22postgres%22%7D%5D&project-name=3am) | `npx 3am deploy vercel` | Neon Postgres auto-provisioned, `AUTH_TOKEN` on first access |
+| **Cloudflare** | `npx 3am deploy cloudflare` | D1 storage, Workers Observability integration |
 
 ---
 
 ## How It Works
 
 ```
-Your App (OTel SDK)
-  → Receiver (OTLP ingest, anomaly detection, incident packet formation)
-  → LLM diagnosis
-    → automatic mode: inline in Receiver
-    → manual mode: local bridge / CLI, then persisted back to Receiver
-  → Console (incident board, evidence explorer, AI copilot)
+Your App ──OTel──→ Receiver ──→ LLM ──→ Console
+              spans, logs,    anomaly     root cause,    incident board,
+              metrics         detection   action plan    evidence explorer
 ```
 
-The Receiver collects spans, metrics, and logs via OTLP/HTTP. When anomaly thresholds are crossed, it forms an incident packet. In `automatic` mode, it resolves a server-side provider and runs diagnosis inline. In `manual` mode, Console and CLI actions trigger local execution through the bridge and post the results back.
+The receiver ingests OTLP/HTTP telemetry. When anomalies cross thresholds, it forms an **incident packet** — a structured snapshot of what's wrong — and feeds it to an LLM. No thresholds to configure. No rules to write.
+
+**LLM provider auto-detection** — uses whatever's available, no config needed:
+
+| Priority | Provider | Detection |
+|----------|----------|-----------|
+| 1 | Anthropic | `ANTHROPIC_API_KEY` in env |
+| 2 | Claude Code | `claude` CLI in PATH |
+| 3 | Codex | `codex` CLI in PATH |
+| 4 | OpenAI | `OPENAI_API_KEY` in env |
+| 5 | Ollama | Running on localhost:11434 (free, local) |
 
 ---
 
-## Configuration
+## More
+
+<details>
+<summary><strong>Configuration</strong> — retention, notifications, logging</summary>
 
 ### Retention
 
-Set `RETENTION_HOURS` to control how long telemetry data and closed incidents are kept. Default: `1` hour. Cleanup is lazy, triggered by incoming requests at most once every 5 minutes.
+`RETENTION_HOURS` controls how long telemetry and closed incidents are kept. Default: `1` hour.
 
-| `RETENTION_HOURS` | Retention |
-|-------------------|-----------|
-| `1` (default)     | 1 hour    |
-| `24`              | 24 hours  |
-| `72`              | 72 hours  |
-
-Open incidents are never deleted by cleanup regardless of retention.
+Open incidents are never deleted regardless of retention setting.
 
 ### Notifications
 
-3am posts to Slack or Discord when an incident is detected.
-
 ```bash
 export NOTIFICATION_WEBHOOK_URL="https://hooks.slack.com/services/..."
-# or
-npx 3am init   # configure interactively
 ```
 
-<details>
-<summary><strong>Webhook setup</strong></summary>
-
-**Slack:** https://api.slack.com/apps → Create New App → From Scratch → Incoming Webhooks → toggle ON → Add New Webhook → copy URL.
-
-**Discord:** Server Settings → Integrations → Webhooks → New Webhook → copy URL.
-
-Notifications include incident ID, severity, affected service, trigger signals, and a console link. Fire-and-forget — never blocks incident processing.
-
-</details>
+Posts to Slack or Discord when an incident is detected. Fire-and-forget — never blocks incident processing.
 
 ### Logs
 
-Logs require a structured logger (pino, winston, or bunyan) wired through `@opentelemetry/auto-instrumentations-node`. `console.log` is not captured.
-
----
-
-## Self-Instrumentation
-
-3am can emit OpenTelemetry about the receiver itself.
-
-| Platform | Traces | Logs | How |
-|----------|--------|------|-----|
-| Vercel / Node.js | Yes | Yes | Node OTel SDK exports receiver HTTP activity |
-| Cloudflare Workers | Yes (experimental) | Yes | Workers Observability automatic tracing |
-
-<details>
-<summary><strong>Setup details</strong></summary>
-
-### Vercel / Node.js
-
-```bash
-SELF_OTEL_ENABLED=true
-SELF_OTEL_EXPORTER_OTLP_ENDPOINT=https://your-otel-backend.example.com
-SELF_OTEL_SERVICE_NAME=3am-receiver
-SELF_OTEL_SERVICE_NAMESPACE=3am
-SELF_OTEL_DEPLOYMENT_ENVIRONMENT=production
-```
-
-Optional:
-
-```bash
-SELF_OTEL_EXPORTER_OTLP_HEADERS=Authorization=Bearer your-token,x-tenant=dogfood
-SELF_OTEL_CONSOLE_LOGS=true
-```
-
-### Cloudflare Workers
-
-Experimental. Workers Observability is enabled in `wrangler.toml`. Traces and logs are supported; metrics and custom spans are not.
-
-### User Telemetry vs Self Telemetry
-
-Use separate destinations so dogfooding data does not pollute your application's incident stream.
+Requires a structured logger (pino, winston, bunyan) wired through `@opentelemetry/auto-instrumentations-node`. `console.log` is not captured.
 
 </details>
 
----
+<details>
+<summary><strong>Security</strong></summary>
 
-## Security
+- Set an [Anthropic spending limit](https://console.anthropic.com/settings/billing) before deploying — diagnosis runs on every incident
+- `AUTH_TOKEN` is stored in `localStorage` after first access. Recover from `RECEIVER_AUTH_TOKEN` in your deployment env vars
+- API keys are server-side only, never exposed to the browser
 
-- **Anthropic spending limit:** Set a monthly spend cap at [console.anthropic.com](https://console.anthropic.com/settings/billing) before deploying. Diagnosis runs on every incident.
-- **AUTH_TOKEN:** Stored in `localStorage` after first access. To recover, check `RECEIVER_AUTH_TOKEN` in your deployment environment variables.
-- **API keys:** Stored as deployment environment variables (server-side only, never exposed to the browser).
+</details>
+
+<details>
+<summary><strong>CLI reference</strong></summary>
+
+```bash
+npx 3am init                                    # set up OTel in your app
+npx 3am local                                   # start local receiver
+npx 3am local demo                              # run demo incident
+npx 3am deploy vercel|cloudflare                # deploy to platform
+npx 3am diagnose --incident-id inc_000001       # manual diagnosis
+npx 3am bridge                                  # start local diagnosis bridge
+```
+
+</details>
+
+<sub><a href="llms-full.txt">AI agents: read llms-full.txt for machine-readable setup instructions</a></sub>
 
 ---
 
 ## License
 
-Apache-2.0 — see [LICENSE](LICENSE) for details.
+Apache-2.0 — see [LICENSE](LICENSE).
