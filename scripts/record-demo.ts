@@ -42,13 +42,14 @@ async function hold(page: Page, ms: number) {
   }
 }
 
-async function scroll(page: Page, distance: number, steps: number) {
-  const step = Math.round(distance / steps);
-  for (let i = 0; i < steps; i++) {
+async function scroll(page: Page, distance: number, durationMs: number) {
+  const frames = Math.round(durationMs / FRAME_MS);
+  const step = Math.round(distance / frames);
+  for (let i = 0; i < frames; i++) {
     await page.evaluate((s) => window.scrollBy({ top: s, behavior: "instant" }), step);
-    await page.waitForTimeout(60);
+    await page.waitForTimeout(30);
     await snap(page);
-    await page.waitForTimeout(FRAME_MS - 60);
+    await page.waitForTimeout(FRAME_MS - 30);
   }
 }
 
@@ -69,7 +70,7 @@ async function main() {
   const row = page.locator("[data-incident-id], .incident-strip-row, .lens-map-incident-row").first();
   if (await row.isVisible().catch(() => false)) {
     await row.click({ force: true });
-    await page.waitForTimeout(800);
+    await hold(page, 1000); // capture zoom transition
   } else {
     await page.goto(`${BASE_URL}/incidents/inc_000002`, { waitUntil: "networkidle" });
   }
@@ -77,26 +78,25 @@ async function main() {
 
   // ── Scene 3: Scroll diagnosis (3s) ──
   console.log("Scene 3: Scroll");
-  await scroll(page, 600, 8);
+  await scroll(page, 600, 2500);
   await hold(page, 800);
 
   // ── Scene 4: Scroll back (0.5s) ──
-  await page.evaluate(() => window.scrollTo({ top: 0, behavior: "instant" }));
-  await page.waitForTimeout(80);
-  await hold(page, 500);
+  await page.evaluate(() => window.scrollTo({ top: 0, behavior: "smooth" }));
+  await hold(page, 800);
 
   // ── Scene 5: Evidence Studio (2s) ──
   console.log("Scene 4: Evidence Studio");
   await page.evaluate(() =>
     document.querySelector(".lens-board-btn-evidence")
-      ?.scrollIntoView({ behavior: "instant", block: "center" }),
+      ?.scrollIntoView({ behavior: "smooth", block: "center" }),
   );
-  await page.waitForTimeout(200);
+  await hold(page, 500); // capture scroll-into-view
   const evBtn = page.locator("button:has-text('Open Evidence Studio')").first();
   if (await evBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
     await evBtn.click();
-    await page.waitForTimeout(1200);
-    await hold(page, 2000);
+    await hold(page, 1500); // capture zoom transition
+    await hold(page, 1500);
   }
 
   // ── Scene 6: Copilot Q&A (real LLM) ──
