@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="120" height="120">
+  <defs>
+    <linearGradient id="glow" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#E85D3A"/>
+      <stop offset="100%" stop-color="#B8860B"/>
+    </linearGradient>
+  </defs>
+  <rect width="120" height="120" rx="24" fill="#1A1A1A"/>
+  <text x="60" y="72" font-family="'JetBrains Mono','SF Mono',monospace" font-size="48" font-weight="700" fill="url(#glow)" text-anchor="middle">3am</text>
+  <circle cx="96" cy="28" r="6" fill="#E85D3A" opacity="0.9">
+    <animate attributeName="opacity" values="0.9;0.4;0.9" dur="2s" repeatCount="indefinite"/>
+  </circle>
+</svg>

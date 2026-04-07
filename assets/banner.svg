@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 200" width="800" height="200">
+  <defs>
+    <linearGradient id="accent-grad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#E85D3A"/>
+      <stop offset="100%" stop-color="#B8860B"/>
+    </linearGradient>
+  </defs>
+  <rect width="800" height="200" rx="12" fill="#1A1A1A"/>
+  <!-- logo mark -->
+  <rect x="40" y="50" width="100" height="100" rx="20" fill="#232323"/>
+  <text x="90" y="113" font-family="'JetBrains Mono','SF Mono',monospace" font-size="40" font-weight="700" fill="url(#accent-grad)" text-anchor="middle">3am</text>
+  <circle cx="128" cy="62" r="5" fill="#E85D3A" opacity="0.9">
+    <animate attributeName="opacity" values="0.9;0.4;0.9" dur="2s" repeatCount="indefinite"/>
+  </circle>
+  <!-- tagline -->
+  <text x="180" y="95" font-family="'DM Sans',system-ui,sans-serif" font-size="22" font-weight="600" fill="#FAFAF8">Incident diagnosis for serverless apps</text>
+  <text x="180" y="125" font-family="'JetBrains Mono','SF Mono',monospace" font-size="14" fill="#6F6F68">OTel data in &#x2192; root cause out &#x2192; under 5 minutes</text>
+  <!-- decorative pipeline -->
+  <line x1="180" y1="145" x2="620" y2="145" stroke="#E85D3A" stroke-width="1.5" stroke-dasharray="6,4" opacity="0.4"/>
+  <g font-family="'JetBrains Mono','SF Mono',monospace" font-size="11" fill="#4A4A48">
+    <text x="180" y="165">spans + logs</text>
+    <text x="310" y="165">anomaly detect</text>
+    <text x="450" y="165">LLM diagnosis</text>
+    <text x="580" y="165">action plan</text>
+  </g>
+  <g fill="#E85D3A" opacity="0.5">
+    <polygon points="290,162 296,165 290,168"/>
+    <polygon points="435,162 441,165 435,168"/>
+    <polygon points="570,162 576,165 570,168"/>
+  </g>
+</svg>
