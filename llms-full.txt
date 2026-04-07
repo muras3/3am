@@ -13,7 +13,7 @@ Diagnose serverless app incidents in under 5 minutes using OTel data + LLM.
 
 ## Install & Run (Local)
 
-Prerequisites: Docker Desktop running, Node.js 18+
+Prerequisites: Docker running, Node.js 20+
 
 ```bash
 # Step 1: Set up OTel SDK in the user's app (interactive — detects framework, installs deps)
@@ -63,6 +63,28 @@ open http://localhost:3333
 
 - **automatic**: Receiver runs diagnosis server-side when an incident is detected. Requires a server-side API key.
 - **manual**: Diagnosis is triggered from the Console UI or CLI. Routes through a local bridge (`npx 3am bridge`). Supports Claude Code, Codex, Ollama, or any provider without a server-side API key.
+
+### Manual mode workflow
+
+For end-to-end manual mode, document these requirements explicitly:
+
+1. Configure manual mode during init:
+   ```bash
+   npx 3am init --mode manual --provider claude-code
+   ```
+2. Start the local bridge:
+   ```bash
+   npx 3am bridge
+   ```
+3. Start the Receiver in a way that does not let a server-side API key take precedence over manual execution.
+   - For local dev, `npx 3am local` already sets `ALLOW_INSECURE_DEV_MODE=true`.
+   - If you run the Receiver separately, set `ALLOW_INSECURE_DEV_MODE=true` yourself for token-free Console access.
+   - Remove `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` from the Receiver process if you want provider resolution to happen only through the bridge-side manual workflow.
+4. If the Console runs separately in dev, point it at the Receiver:
+   ```bash
+   VITE_RECEIVER_BASE_URL=http://localhost:3333 pnpm --filter @3am/console dev
+   ```
+5. Trigger reruns or chat from the Console, or run manual diagnosis directly from the CLI.
 
 ### Manual diagnosis via CLI
 
