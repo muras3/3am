@@ -170,7 +170,7 @@ describe('POST /api/incidents/:id/evidence/query', () => {
 
   it('returns 200 with valid question', async () => {
     const cookie = await getSessionCookie(app)
-    const incidentId = await seedIncident(app)
+    const incidentId = await seedIncident(app, true)
 
     const res = await app.request(`/api/incidents/${incidentId}/evidence/query`, {
       method: 'POST',
@@ -182,6 +182,20 @@ describe('POST /api/incidents/:id/evidence/query', () => {
     const body = (await res.json()) as Record<string, unknown>
     expect(body['question']).toBe('What happened?')
     expect(body['status']).toBeTruthy()
+    expect(generateEvidencePlanMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        allowSubprocessProviders: false,
+        allowLocalHttpProviders: false,
+      }),
+    )
+    expect(generateEvidenceQueryMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        allowSubprocessProviders: false,
+        allowLocalHttpProviders: false,
+      }),
+    )
   })
 
   it('returns 400 when question is missing', async () => {

@@ -72,6 +72,23 @@ Open **http://localhost:3333**. Requires Docker and Node.js 20+.
 - **automatic** — receiver runs diagnosis server-side (needs API key)
 - **manual** — route diagnosis through Claude Code, Codex, or Ollama locally (no API key needed)
 
+**Manual mode notes:**
+- start `npx 3am bridge` when using manual mode so Console reruns and chat can reach your local provider
+- you can also run manual diagnosis directly:
+
+```bash
+npx 3am diagnose \
+  --incident-id inc_000001 \
+  --receiver-url http://localhost:3333 \
+  --provider claude-code
+```
+
+**Console dev proxy and auth:**
+- if you run the Console separately in dev, its Vite proxy expects the Receiver at `http://localhost:3333` by default
+- override with `VITE_RECEIVER_BASE_URL` only when your Receiver is on a different port
+- `npx 3am local` sets `ALLOW_INSECURE_DEV_MODE=true`, so Console API requests do not require a token
+- if you run the Receiver without `ALLOW_INSECURE_DEV_MODE=true`, API routes require `RECEIVER_AUTH_TOKEN` and the Console will prompt for that token through Setup Gate
+
 </details>
 
 ---

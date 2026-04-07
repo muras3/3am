@@ -763,7 +763,12 @@ export async function buildEvidenceQueryAnswer(
           : null,
         evidence: planningCandidates.map(({ ref, surface, summary }) => ({ ref, surface, summary })),
       },
-      { model: EVIDENCE_QUERY_MODEL, locale },
+      {
+        model: EVIDENCE_QUERY_MODEL,
+        locale,
+        allowSubprocessProviders: false,
+        allowLocalHttpProviders: false,
+      },
     );
 
     if (plan.mode === "clarification") {
@@ -818,7 +823,12 @@ export async function buildEvidenceQueryAnswer(
           : null,
         evidence: retrieved.map(({ ref, surface, summary }) => ({ ref, surface, summary })),
       },
-      { model: EVIDENCE_QUERY_MODEL, locale },
+      {
+        model: EVIDENCE_QUERY_MODEL,
+        locale,
+        allowSubprocessProviders: false,
+        allowLocalHttpProviders: false,
+      },
     );
 
     return {

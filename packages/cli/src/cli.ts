@@ -28,14 +28,16 @@ program
   .command("init")
   .description("Set up OpenTelemetry SDK in your project")
   .option("--api-key <key>", "Anthropic API key (saved to ~/.config/3am/credentials)")
+  .option("--lang <lang>", "Preferred language (en or ja)")
   .option("--mode <mode>", "Diagnosis mode (automatic or manual)")
   .option("--provider <provider>", "LLM provider (anthropic, openai, ollama, claude-code, codex)")
   .option("--model <model>", "Default provider model override")
   .option("--bridge-url <url>", "Local bridge URL for console-triggered manual runs")
   .option("--no-interactive", "Skip interactive prompts (for CI/Claude Code)")
-  .action(async (options: { apiKey?: string; mode?: string; provider?: string; model?: string; bridgeUrl?: string; interactive?: boolean }) => {
+  .action(async (options: { apiKey?: string; lang?: string; mode?: string; provider?: string; model?: string; bridgeUrl?: string; interactive?: boolean }) => {
     await runInit(process.argv.slice(3), {
       apiKey: options.apiKey,
+      lang: options.lang,
       mode: options.mode,
       provider: options.provider,
       model: options.model,

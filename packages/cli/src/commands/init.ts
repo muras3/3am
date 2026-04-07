@@ -193,6 +193,7 @@ export function ensureGitignore(cwd: string): void {
 
 export interface InitOptions {
   apiKey?: string;
+  lang?: string;
   mode?: string;
   provider?: string;
   model?: string;
@@ -204,6 +205,13 @@ export interface InitOptions {
 
 function isProviderName(value: string | undefined): value is ProviderName {
   return (PROVIDER_NAMES as readonly string[]).includes(value ?? "");
+}
+
+function resolveLocale(value: string | undefined): "en" | "ja" | undefined {
+  if (value === "en" || value === "ja") {
+    return value;
+  }
+  return undefined;
 }
 
 type PackageJson = {
@@ -394,7 +402,8 @@ export async function runInit(_argv: string[], options: InitOptions = {}): Promi
 
   // --- 6b. Language + diagnosis settings ---
   const storedCreds = loadCredentials();
-  let locale: "en" | "ja" = storedCreds.locale === "ja" ? "ja" : "en";
+  let locale: "en" | "ja" = resolveLocale(options.lang)
+    ?? (storedCreds.locale === "ja" ? "ja" : "en");
   let mode: "automatic" | "manual" = options.mode === "manual"
     ? "manual"
     : storedCreds.llmMode === "manual"

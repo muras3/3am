@@ -288,6 +288,25 @@ describe("runDeploy()", () => {
     }
   });
 
+  it("syncs stored LLM settings to platform env before deploying", async () => {
+    setupHappyPathMocks();
+    vi.mocked(loadCredentials).mockReturnValue({
+      llmMode: "manual",
+      llmProvider: "codex",
+      llmBridgeUrl: "http://127.0.0.1:4269",
+    });
+
+    await runDeploy([], {
+      yes: true,
+      noInteractive: true,
+      platform: "vercel",
+    });
+
+    expect(mockProvider.setEnvVar).toHaveBeenCalledWith("LLM_MODE", "manual");
+    expect(mockProvider.setEnvVar).toHaveBeenCalledWith("LLM_PROVIDER", "codex");
+    expect(mockProvider.setEnvVar).toHaveBeenCalledWith("LLM_BRIDGE_URL", "http://127.0.0.1:4269");
+  });
+
   it("passes projectName to the provider factory", async () => {
     setupHappyPathMocks();
     const { createProvider } = await import("../commands/deploy/provider.js");

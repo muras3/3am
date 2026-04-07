@@ -168,6 +168,64 @@ describe("LensIncidentBoard — rerun diagnosis", () => {
       expect(screen.getByText(/Diagnosis re-run requested/i)).toBeInTheDocument();
     });
   });
+
+  it("routes manual rerun requests through the local bridge", async () => {
+    const qc = makeClient();
+    const unavailableIncident = {
+      ...extendedIncidentPending,
+      state: {
+        ...extendedIncidentPending.state,
+        diagnosis: "unavailable" as const,
+      },
+    };
+    qc.setQueryData(
+      curatedQueries.extendedIncident("inc_0892").queryKey,
+      unavailableIncident,
+    );
+    qc.setQueryData(curatedQueries.diagnosisSettings().queryKey, {
+      mode: "manual" as const,
+      provider: "codex" as const,
+      bridgeUrl: "http://127.0.0.1:4269",
+    });
+    localStorage.setItem("receiver_auth_token", "browser-token");
+
+    const fetchMock = vi.fn().mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === "http://127.0.0.1:4269/api/manual/diagnose") {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ status: "accepted" }),
+        });
+      }
+      if (url.includes("/api/incidents/inc_0892")) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve(unavailableIncident),
+        });
+      }
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderBoard("inc_0892", vi.fn(), qc);
+
+    fireEvent.click(screen.getByRole("button", { name: /Re-run diagnosis/i }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "http://127.0.0.1:4269/api/manual/diagnose",
+        expect.objectContaining({
+          method: "POST",
+          body: JSON.stringify({
+            incidentId: "inc_0892",
+            receiverUrl: "http://localhost:3000",
+            authToken: "browser-token",
+            provider: "codex",
+          }),
+        }),
+      );
+    });
+  });
 });
 
 describe("LensIncidentBoard — diagnosis ready", () => {
