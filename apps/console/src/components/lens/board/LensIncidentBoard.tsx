@@ -27,10 +27,12 @@ export function LensIncidentBoard({ incidentId, zoomTo }: Props) {
   const [closeFeedback, setCloseFeedback] = useState<string | null>(null);
   const [closeConfirm, setCloseConfirm] = useState(false);
   const diagnosisSettings = useQuery(curatedQueries.diagnosisSettings());
+  const effectiveDiagnosisSettings = diagnosisSettings.data ?? {
+    mode: "automatic" as const,
+    bridgeUrl: "http://127.0.0.1:4269",
+  };
   const rerunDiagnosis = useMutation(
-    diagnosisSettings.data?.mode === "manual"
-      ? curatedMutations.manualRerunDiagnosis(incidentId, diagnosisSettings.data)
-      : curatedMutations.rerunDiagnosis(incidentId),
+    curatedMutations.rerunDiagnosis(incidentId, effectiveDiagnosisSettings),
   );
   const closeIncident = useMutation(curatedMutations.closeIncident(incidentId));
   const incidentQuery = useQuery({

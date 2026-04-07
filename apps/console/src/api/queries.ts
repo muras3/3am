@@ -100,6 +100,31 @@ export interface CloseIncidentResponse {
   closedAt: string;
 }
 
+async function triggerRerunDiagnosis(
+  id: string,
+  settings: DiagnosisSettingsResponse,
+): Promise<RerunDiagnosisResponse> {
+  if (settings.mode === "manual") {
+    const response = await fetch(`${settings.bridgeUrl}/api/manual/diagnose`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        incidentId: id,
+        receiverUrl: window.location.origin,
+        authToken: getStoredAuthToken() ?? undefined,
+        provider: settings.provider,
+      }),
+    });
+    if (!response.ok) {
+      throw new ApiError(response.status, await response.text());
+    }
+    await response.json();
+    return { status: "accepted" };
+  }
+
+  return apiFetchPost<RerunDiagnosisResponse>(`/api/incidents/${encodeIncidentId(id)}/rerun-diagnosis`, {});
+}
+
 export const curatedMutations = {
   evidenceQuery: (id: string) =>
     mutationOptions({
@@ -108,33 +133,10 @@ export const curatedMutations = {
         apiFetchPost<EvidenceQueryResponse>(`/api/incidents/${encodeIncidentId(id)}/evidence/query`, body),
     }),
 
-  rerunDiagnosis: (id: string) =>
+  rerunDiagnosis: (id: string, settings: DiagnosisSettingsResponse) =>
     mutationOptions({
-      mutationKey: ["curated", "incidents", id, "rerun-diagnosis"],
-      mutationFn: () =>
-        apiFetchPost<RerunDiagnosisResponse>(`/api/incidents/${encodeIncidentId(id)}/rerun-diagnosis`, {}),
-    }),
-
-  manualRerunDiagnosis: (id: string, settings: DiagnosisSettingsResponse) =>
-    mutationOptions({
-      mutationKey: ["curated", "incidents", id, "manual-rerun-diagnosis", settings.bridgeUrl],
-      mutationFn: async () => {
-        const response = await fetch(`${settings.bridgeUrl}/api/manual/diagnose`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            incidentId: id,
-            receiverUrl: window.location.origin,
-            authToken: getStoredAuthToken() ?? undefined,
-            provider: settings.provider,
-          }),
-        });
-        if (!response.ok) {
-          throw new ApiError(response.status, await response.text());
-        }
-        await response.json();
-        return { status: "accepted" as const };
-      },
+      mutationKey: ["curated", "incidents", id, "rerun-diagnosis", settings.mode, settings.bridgeUrl],
+      mutationFn: () => triggerRerunDiagnosis(id, settings),
     }),
 
   closeIncident: (id: string) =>
