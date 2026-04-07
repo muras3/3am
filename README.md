@@ -57,7 +57,7 @@ npx 3am local         # start local receiver (Docker)
 npx 3am local demo    # inject a demo incident → see diagnosis
 ```
 
-Open **http://localhost:3333**. Requires Docker Desktop and Node.js 18+.
+Open **http://localhost:3333**. Requires Docker and Node.js 20+.
 
 <details>
 <summary>What each command does</summary>
