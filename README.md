@@ -15,12 +15,12 @@
 OTel data in → diagnosis + action plan out. No thresholds. No runbooks. Under 60 seconds.
 
 ```
-MOST LIKELY CAUSE
+ROOT CAUSE HYPOTHESIS
   Checkout-orchestrator retries payment 429s at fixed 100ms intervals
   without backoff → saturates the 16-worker pool → 504s cascade to
   all routes behind it.
 
-WHAT THE DATA SHOWS
+CAUSAL CHAIN
   1. Flash sale spike increases checkout demand
   2. Payment provider returns 429 (rate limited)
   3. App retries immediately — fixed interval, no backoff
@@ -28,15 +28,15 @@ WHAT THE DATA SHOWS
   5. All routes behind the pool start timing out
   6. 504s cascade to /checkout and /orders/:id
 
-TRY FIRST
+NEXT OPERATOR STEP
   ✓ Disable retries to the payment dependency
   ✓ Add exponential backoff or circuit breaker
   ✓ Shed non-critical checkout work to free workers
 
-PROBABLY NOT THE ISSUE
-  ✗ Database — connections stable, no latency spike
-  ✗ Recent deploy — unrelated to concurrency config
-  ✗ DB scaling — confirm bottleneck before scaling
+AVOID ASSUMING
+  ✗ Database is the bottleneck — connections stable, no latency spike
+  ✗ Recent deploy caused this — unrelated to concurrency config
+  ✗ Scaling the DB will help — confirm bottleneck first
 ```
 
 <sup>Output from a <a href="validation/scenarios/third_party_api_rate_limit_cascade/">validated scenario</a> — tested against <a href="validation/scenarios/">5 incident types</a>.</sup>
