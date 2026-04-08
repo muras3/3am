@@ -18,6 +18,7 @@ import {
   normalizeIdToHex,
   resolveResourceServiceName,
   resolveResourceEnvironment,
+  resolveEffectiveBody,
 } from '../domain/otlp-utils.js'
 
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -211,6 +212,9 @@ export async function extractTelemetryLogs(body: unknown): Promise<TelemetryLog[
           }
         }
 
+        // Synthesize body from attributes when body is empty or trivial (pino structured logs)
+        const effectiveBody = resolveEffectiveBody(bodyStr, attrMap)
+
         // traceId/spanId: normalize to hex (handles both JSON hex and protobuf base64)
         const traceId = normalizeIdToHex(lr['traceId']) || undefined
         const spanId = normalizeIdToHex(lr['spanId']) || undefined
@@ -222,12 +226,12 @@ export async function extractTelemetryLogs(body: unknown): Promise<TelemetryLog[
           startTimeMs,
           severity,
           severityNumber: sevNum,
-          body: bodyStr,
+          body: effectiveBody,
           attributes: attrMap,
           traceId,
           spanId,
           ingestedAt: now,
-          rawBody: bodyStr,
+          rawBody: effectiveBody,
         })
       }
     }

@@ -151,6 +151,60 @@ export function flattenOtlpAttributes(attrs: unknown): Record<string, unknown> {
 }
 
 /**
+ * Extract a primitive value from an OTLP AnyValue object.
+ * OTLP attributes store values as { stringValue: ... } | { intValue: ... } etc.
+ * Returns the primitive, or null for complex / missing values.
+ */
+function extractOtlpPrimitive(anyValue: unknown): string | number | boolean | null {
+  if (!isRecord(anyValue)) return null
+  if (typeof anyValue['stringValue'] === 'string') return anyValue['stringValue']
+  if (typeof anyValue['intValue'] === 'number') return anyValue['intValue']
+  if (typeof anyValue['intValue'] === 'string') return anyValue['intValue']
+  if (typeof anyValue['doubleValue'] === 'number') return anyValue['doubleValue']
+  if (typeof anyValue['boolValue'] === 'boolean') return anyValue['boolValue']
+  return null
+}
+
+/**
+ * Resolve the effective log body for display.
+ *
+ * When pino (or another structured-logging library) sends logs via
+ * @opentelemetry/instrumentation-pino, the log message lands in
+ * LogRecord.body.stringValue while the structured fields (event, order_id,
+ * etc.) are emitted as LogRecord.attributes.  If the log has no free-text
+ * message (e.g. pure structured emit), body ends up as "" or "{}".
+ *
+ * This function synthesises a human-readable body from the attribute map
+ * whenever body is empty or the trivial JSON placeholder "{}".  It extracts
+ * only primitive scalar values from the OTLP AnyValue wrappers so the result
+ * is a compact, readable JSON string rather than raw OTLP wire format.
+ *
+ * @param bodyStr  The raw body string extracted from LogRecord.body.stringValue.
+ * @param attrs    The attribute map keyed by attribute name with OTLP AnyValue values.
+ * @returns        bodyStr if it is non-empty and non-trivial; otherwise a JSON
+ *                 string built from the scalar attribute values.
+ */
+export function resolveEffectiveBody(
+  bodyStr: string,
+  attrs: Record<string, unknown>,
+): string {
+  const trimmed = bodyStr.trim()
+  if (trimmed !== '' && trimmed !== '{}') return bodyStr
+
+  // Build a flat record of scalar attribute values
+  const scalars: Record<string, string | number | boolean> = {}
+  for (const [key, rawValue] of Object.entries(attrs)) {
+    const primitive = extractOtlpPrimitive(rawValue)
+    if (primitive !== null) {
+      scalars[key] = primitive
+    }
+  }
+
+  if (Object.keys(scalars).length === 0) return bodyStr
+  return JSON.stringify(scalars)
+}
+
+/**
  * Normalize a traceId/spanId value to lowercase hex.
  *
  * OTLP JSON transport uses lowercase hex strings. OTLP protobuf transport

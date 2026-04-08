@@ -375,6 +375,79 @@ describe('extractLogEvidence', () => {
     }
     expect(extractLogEvidence(body)).toHaveLength(0)
   })
+
+  // ── Pino structured log: empty body synthesised from attributes ────────
+
+  it('synthesises body from attributes when pino emits empty body string', () => {
+    const body = {
+      resourceLogs: [{
+        resource: {
+          attributes: [
+            { key: 'service.name', value: { stringValue: 'order-svc' } },
+            { key: 'deployment.environment.name', value: { stringValue: 'production' } },
+          ],
+        },
+        scopeLogs: [{
+          logRecords: [{
+            timeUnixNano: BASE_TIME_NS,
+            severityNumber: 17,
+            body: { stringValue: '' },
+            attributes: [
+              { key: 'event', value: { stringValue: 'order.payment_failed' } },
+              { key: 'order_id', value: { stringValue: 'ord_789' } },
+              { key: 'amount', value: { intValue: 4999 } },
+            ],
+          }],
+        }],
+      }],
+    }
+    const result = extractLogEvidence(body)
+    expect(result).toHaveLength(1)
+    expect(result[0]!.body).not.toBe('')
+    expect(result[0]!.body).not.toBe('{}')
+    const parsed = JSON.parse(result[0]!.body) as Record<string, unknown>
+    expect(parsed['event']).toBe('order.payment_failed')
+    expect(parsed['order_id']).toBe('ord_789')
+    expect(result[0]!.attributes).toMatchObject({
+      event: expect.anything(),
+      order_id: expect.anything(),
+    })
+  })
+
+  it('synthesises body from attributes when pino emits "{}" body', () => {
+    const body = {
+      resourceLogs: [{
+        resource: {
+          attributes: [
+            { key: 'service.name', value: { stringValue: 'payment-svc' } },
+            { key: 'deployment.environment.name', value: { stringValue: 'production' } },
+          ],
+        },
+        scopeLogs: [{
+          logRecords: [{
+            timeUnixNano: BASE_TIME_NS,
+            severityNumber: 17,
+            body: { stringValue: '{}' },
+            attributes: [
+              { key: 'event', value: { stringValue: 'stripe.rate_limit' } },
+            ],
+          }],
+        }],
+      }],
+    }
+    const result = extractLogEvidence(body)
+    expect(result).toHaveLength(1)
+    expect(result[0]!.body).not.toBe('{}')
+    const parsed = JSON.parse(result[0]!.body) as Record<string, unknown>
+    expect(parsed['event']).toBe('stripe.rate_limit')
+  })
+
+  it('preserves non-empty body unchanged (no pino synthesis regression)', () => {
+    const body = makeResourceLogs({ severityNumber: 17, bodyString: 'database connection refused' })
+    const result = extractLogEvidence(body)
+    expect(result).toHaveLength(1)
+    expect(result[0]!.body).toBe('database connection refused')
+  })
 })
 
 // ── shouldAttachEvidence ───────────────────────────────────────────────────

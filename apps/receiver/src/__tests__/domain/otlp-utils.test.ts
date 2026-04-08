@@ -6,6 +6,7 @@ import {
   getStringAttr,
   resolveResourceServiceName,
   resolveResourceEnvironment,
+  resolveEffectiveBody,
 } from '../../domain/otlp-utils.js'
 
 describe('isRecord', () => {
@@ -140,5 +141,103 @@ describe('resolveResourceEnvironment', () => {
 
   it('defaults to production when no resource environment attribute is present', () => {
     expect(resolveResourceEnvironment([])).toBe('production')
+  })
+})
+
+describe('resolveEffectiveBody', () => {
+  // ── Non-trivial body → returned as-is ──────────────────────────────────
+
+  it('returns non-empty body unchanged', () => {
+    const attrs = { event: { stringValue: 'order.created' } }
+    expect(resolveEffectiveBody('checkout failed', attrs)).toBe('checkout failed')
+  })
+
+  it('returns body with whitespace unchanged (non-trivial content)', () => {
+    const attrs = { event: { stringValue: 'ignored' } }
+    expect(resolveEffectiveBody('  hello  ', attrs)).toBe('  hello  ')
+  })
+
+  it('returns non-trivial body even when attributes are empty', () => {
+    expect(resolveEffectiveBody('something happened', {})).toBe('something happened')
+  })
+
+  // ── Empty body → synthesise from attributes ────────────────────────────
+
+  it('synthesises body from string attributes when body is empty string', () => {
+    const attrs = {
+      event: { stringValue: 'order.created' },
+      'order_id': { stringValue: 'ord_123' },
+    }
+    const result = resolveEffectiveBody('', attrs)
+    const parsed = JSON.parse(result) as Record<string, unknown>
+    expect(parsed['event']).toBe('order.created')
+    expect(parsed['order_id']).toBe('ord_123')
+  })
+
+  it('synthesises body from mixed-type attributes when body is empty', () => {
+    const attrs = {
+      event: { stringValue: 'payment.failed' },
+      amount: { intValue: 500 },
+      retried: { boolValue: true },
+    }
+    const result = resolveEffectiveBody('', attrs)
+    const parsed = JSON.parse(result) as Record<string, unknown>
+    expect(parsed['event']).toBe('payment.failed')
+    expect(parsed['amount']).toBe(500)
+    expect(parsed['retried']).toBe(true)
+  })
+
+  it('synthesises body from attributes when body is "{}"', () => {
+    const attrs = { event: { stringValue: 'stripe.rate_limit' } }
+    const result = resolveEffectiveBody('{}', attrs)
+    const parsed = JSON.parse(result) as Record<string, unknown>
+    expect(parsed['event']).toBe('stripe.rate_limit')
+  })
+
+  it('synthesises body from attributes when body is "{}" with surrounding whitespace', () => {
+    const attrs = { event: { stringValue: 'test' } }
+    const result = resolveEffectiveBody('  {}  ', attrs)
+    const parsed = JSON.parse(result) as Record<string, unknown>
+    expect(parsed['event']).toBe('test')
+  })
+
+  // ── Empty/trivial body with no usable attributes ─────────────────────
+
+  it('returns empty string unchanged when no attributes are present', () => {
+    expect(resolveEffectiveBody('', {})).toBe('')
+  })
+
+  it('returns "{}" unchanged when attributes have no scalar values', () => {
+    // Complex OTLP values (kvlistValue, arrayValue) are not synthesised
+    const attrs = {
+      tags: { kvlistValue: { values: [] } },
+    }
+    expect(resolveEffectiveBody('{}', attrs)).toBe('{}')
+  })
+
+  it('skips non-OTLP-AnyValue attribute entries in synthesis', () => {
+    // Attributes that are plain strings (not OTLP wrappers) are ignored
+    const attrs = {
+      event: 'order.created',  // not wrapped in {stringValue: ...}
+    }
+    expect(resolveEffectiveBody('', attrs)).toBe('')
+  })
+
+  // ── doubleValue support ──────────────────────────────────────────────
+
+  it('synthesises body from doubleValue attributes', () => {
+    const attrs = { ratio: { doubleValue: 0.75 } }
+    const result = resolveEffectiveBody('', attrs)
+    const parsed = JSON.parse(result) as Record<string, unknown>
+    expect(parsed['ratio']).toBe(0.75)
+  })
+
+  // ── intValue as string (protobuf transport) ──────────────────────────
+
+  it('handles intValue encoded as string (protobuf JSON transport)', () => {
+    const attrs = { count: { intValue: '42' } }
+    const result = resolveEffectiveBody('', attrs)
+    const parsed = JSON.parse(result) as Record<string, unknown>
+    expect(parsed['count']).toBe('42')
   })
 })

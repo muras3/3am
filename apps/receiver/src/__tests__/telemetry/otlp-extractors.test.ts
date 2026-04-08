@@ -499,4 +499,69 @@ describe('extractTelemetryLogs', () => {
     expect(typeof result[0]!.body).toBe('string')
     expect(result[0]!.body).toContain('kvlistValue')
   })
+
+  // ── Pino structured log: empty body synthesised from attributes ────────
+
+  it('synthesises body from attributes when pino emits empty body string', async () => {
+    const body = makeResourceLogs({
+      bodyString: '',
+      attributes: [
+        { key: 'event', value: { stringValue: 'order.payment_failed' } },
+        { key: 'order_id', value: { stringValue: 'ord_789' } },
+        { key: 'amount', value: { intValue: 4999 } },
+      ],
+    })
+    const result = await extractTelemetryLogs(body)
+    expect(result).toHaveLength(1)
+    expect(result[0]!.body).not.toBe('')
+    expect(result[0]!.body).not.toBe('{}')
+    const parsed = JSON.parse(result[0]!.body) as Record<string, unknown>
+    expect(parsed['event']).toBe('order.payment_failed')
+    expect(parsed['order_id']).toBe('ord_789')
+    expect(result[0]!.attributes).toMatchObject({
+      event: expect.anything(),
+      order_id: expect.anything(),
+    })
+  })
+
+  it('synthesises body from attributes when pino emits "{}" body', async () => {
+    const body = makeResourceLogs({
+      bodyString: '{}',
+      attributes: [
+        { key: 'event', value: { stringValue: 'stripe.rate_limit' } },
+      ],
+    })
+    const result = await extractTelemetryLogs(body)
+    expect(result).toHaveLength(1)
+    expect(result[0]!.body).not.toBe('{}')
+    const parsed = JSON.parse(result[0]!.body) as Record<string, unknown>
+    expect(parsed['event']).toBe('stripe.rate_limit')
+  })
+
+  it('preserves non-empty body unchanged (no pino synthesis regression)', async () => {
+    const body = makeResourceLogs({ bodyString: 'database connection refused' })
+    const result = await extractTelemetryLogs(body)
+    expect(result).toHaveLength(1)
+    expect(result[0]!.body).toBe('database connection refused')
+  })
+
+  it('uses synthesised body for bodyHash computation', async () => {
+    const body1 = makeResourceLogs({
+      bodyString: '',
+      attributes: [{ key: 'event', value: { stringValue: 'order.created' } }],
+    })
+    const body2 = makeResourceLogs({
+      bodyString: '',
+      attributes: [{ key: 'event', value: { stringValue: 'order.created' } }],
+    })
+    const result1 = await extractTelemetryLogs(body1)
+    const result2 = await extractTelemetryLogs(body2)
+    expect(result1[0]!.bodyHash).toBe(result2[0]!.bodyHash)
+    expect(result1[0]!.bodyHash).toHaveLength(16)
+    expect(result1[0]!.bodyHash).toMatch(/^[0-9a-f]{16}$/)
+
+    // bodyHash must differ from a log with identical bodyString but no attributes
+    const emptyResult = await extractTelemetryLogs(makeResourceLogs({ bodyString: '' }))
+    expect(result1[0]!.bodyHash).not.toBe(emptyResult[0]!.bodyHash)
+  })
 })

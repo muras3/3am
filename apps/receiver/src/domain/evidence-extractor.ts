@@ -21,6 +21,7 @@ import {
   nanoToMs,
   resolveResourceServiceName,
   resolveResourceEnvironment,
+  resolveEffectiveBody,
 } from './otlp-utils.js'
 
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -188,7 +189,10 @@ export function extractLogEvidence(body: unknown): RelevantLog[] {
           }
         }
 
-        results.push({ service, environment, timestamp, startTimeMs, severity, body: bodyStr, attributes: attrMap })
+        // Synthesize body from attributes when body is empty or trivial (pino structured logs)
+        const effectiveBody = resolveEffectiveBody(bodyStr, attrMap)
+
+        results.push({ service, environment, timestamp, startTimeMs, severity, body: effectiveBody, attributes: attrMap })
       }
     }
   }
