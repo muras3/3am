@@ -50,6 +50,11 @@ export function LensEvidenceStudio({ incidentId }: Props) {
   const nextHistoryId = useRef(0);
 
   const incidentQuery = useQuery(curatedQueries.extendedIncident(incidentId));
+  const diagnosisSettings = useQuery(curatedQueries.diagnosisSettings());
+  const effectiveDiagnosisSettings = diagnosisSettings.data ?? {
+    mode: "automatic" as const,
+    bridgeUrl: "http://127.0.0.1:4269",
+  };
   const evidenceQuery = useQuery({
     ...curatedQueries.evidence(incidentId),
     refetchInterval: (query) =>
@@ -59,7 +64,9 @@ export function LensEvidenceStudio({ incidentId }: Props) {
         ? NARRATIVE_POLL_INTERVAL_MS
         : false,
   });
-  const groundedQueryMutation = useMutation(curatedMutations.evidenceQuery(incidentId));
+  const groundedQueryMutation = useMutation(
+    curatedMutations.evidenceQuery(incidentId, effectiveDiagnosisSettings),
+  );
 
   const [showGuide, setShowGuide] = useState(() => {
     try { return localStorage.getItem("3am:ev-guide-dismissed") !== "1"; } catch { return true; }
