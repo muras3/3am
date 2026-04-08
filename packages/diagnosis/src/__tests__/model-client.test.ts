@@ -83,7 +83,44 @@ describe("callModel", () => {
     expect(spawnMock).toHaveBeenCalledWith(
       "claude",
       ["-p", "--model", "claude-sonnet-4-6"],
-      expect.any(Object),
+      expect.objectContaining({
+        env: expect.not.objectContaining({ ANTHROPIC_API_KEY: expect.anything() }),
+      }),
+    );
+  });
+
+  it("strips ANTHROPIC_API_KEY when claude-code is explicitly selected", async () => {
+    spawnSyncMock.mockReturnValueOnce({ status: 0 });
+    spawnMock.mockImplementation(() => {
+      const child = new EventEmitter() as EventEmitter & {
+        stdout: EventEmitter;
+        stderr: EventEmitter;
+        stdin: { write: ReturnType<typeof vi.fn>; end: ReturnType<typeof vi.fn> };
+      };
+      child.stdout = new EventEmitter();
+      child.stderr = new EventEmitter();
+      child.stdin = { write: vi.fn(), end: vi.fn() };
+      queueMicrotask(() => {
+        child.stdout.emit("data", Buffer.from("explicit subscription response"));
+        child.emit("close", 0);
+      });
+      return child;
+    });
+
+    const result = await callModel("test prompt", {
+      provider: "claude-code",
+      model: "claude-sonnet-4-6",
+      maxTokens: 4096,
+      env: { ...process.env, ANTHROPIC_API_KEY: "invalid-key" },
+    });
+
+    expect(result).toBe("explicit subscription response");
+    expect(spawnMock).toHaveBeenCalledWith(
+      "claude",
+      ["-p", "--model", "claude-sonnet-4-6"],
+      expect.objectContaining({
+        env: expect.not.objectContaining({ ANTHROPIC_API_KEY: expect.anything() }),
+      }),
     );
   });
 });
