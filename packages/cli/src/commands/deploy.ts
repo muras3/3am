@@ -31,7 +31,13 @@ import {
 import { createProvider } from "./deploy/provider.js";
 import { updateAppEnv } from "./deploy/env-writer.js";
 import { waitForReceiver, fetchSetupTokenWithRetry } from "./shared/health.js";
-import { resolveApiKey, loadCredentials, saveCredentials } from "./init/credentials.js";
+import {
+  resolveApiKey,
+  loadCredentials,
+  saveCredentials,
+  getReceiverCredential,
+  setReceiverCredential,
+} from "./init/credentials.js";
 import { connectCloudflareWorkerToReceiver } from "./cloudflare-workers.js";
 import { randomUUID } from "node:crypto";
 
@@ -201,8 +207,9 @@ export async function runDeploy(
   } else {
     // Load from CLI credentials or generate new
     const creds = loadCredentials();
-    if (creds.receiverAuthToken) {
-      authToken = creds.receiverAuthToken;
+    const existingReceiver = getReceiverCredential(creds, platform);
+    if (existingReceiver?.authToken) {
+      authToken = existingReceiver.authToken;
       info("Using existing auth token from CLI credentials.\n", json);
     } else {
       authToken = randomUUID();
@@ -212,7 +219,6 @@ export async function runDeploy(
 
   // Persist to CLI credentials (idempotent)
   const existingCreds = loadCredentials();
-  saveCredentials({ ...existingCreds, receiverAuthToken: authToken });
   const llmMode = existingCreds.llmMode;
   const llmProvider = existingCreds.llmProvider;
   const llmBridgeUrl = existingCreds.llmBridgeUrl;
@@ -260,7 +266,10 @@ export async function runDeploy(
   }
 
   info(`\nReceiver deployed: ${deployedUrl}\n`, json);
-  saveCredentials({ ...loadCredentials(), receiverAuthToken: authToken, receiverUrl: deployedUrl });
+  saveCredentials(setReceiverCredential(loadCredentials(), platform, {
+    url: deployedUrl,
+    authToken,
+  }));
 
   // -------------------------------------------------------------------------
   // Step 9: Wait for Receiver readiness

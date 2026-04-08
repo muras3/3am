@@ -13,8 +13,9 @@ import { rateLimiter } from "../middleware/rate-limit.js";
 import type { Incident, IncidentPage, StorageDriver } from "../storage/interface.js";
 import { spanMembershipKey } from "../storage/interface.js";
 import type { SpanBuffer } from "../ambient/span-buffer.js";
+import type { BufferedSpan } from "../ambient/types.js";
 import type { TelemetryStoreDriver } from "../telemetry/interface.js";
-import { buildIncidentQueryFilter } from "../telemetry/interface.js";
+import { buildIncidentQueryFilter, type TelemetrySpan } from "../telemetry/interface.js";
 import { computeServices, computeActivity } from "../ambient/service-aggregator.js";
 import { buildRuntimeMap } from "../ambient/runtime-map.js";
 import { buildExtendedIncident } from "../domain/incident-detail-extension.js";
@@ -64,6 +65,8 @@ const TELEMETRY_METRICS_DEFAULT_LIMIT = 50;
 const TELEMETRY_LOGS_CORRELATED_DEFAULT_LIMIT = 100;
 const TELEMETRY_LOGS_CONTEXTUAL_DEFAULT_LIMIT = 50;
 const TELEMETRY_MAX_LIMIT = 200;
+const AMBIENT_LIVE_WINDOW_MS = 5 * 60 * 1000;
+const AMBIENT_INCIDENT_FALLBACK_LIMIT = 50;
 
 function toIncidentResponse(incident: Incident): IncidentResponse {
   const { telemetryScope: _ts, spanMembership: _sm, anomalousSignals: _as, platformEvents: _pe, ...response } = incident;
@@ -102,6 +105,67 @@ function paginateItems<T>(
     items: pagedItems,
     nextCursor: nextOffset < items.length ? String(nextOffset) : undefined,
   };
+}
+
+function telemetrySpanToBufferedSpan(span: TelemetrySpan): BufferedSpan {
+  return {
+    traceId: span.traceId,
+    spanId: span.spanId,
+    parentSpanId: span.parentSpanId,
+    serviceName: span.serviceName,
+    environment: span.environment,
+    httpRoute: span.httpRoute,
+    httpStatusCode: span.httpStatusCode,
+    spanStatusCode: span.spanStatusCode,
+    spanKind: span.spanKind,
+    durationMs: span.durationMs,
+    startTimeMs: span.startTimeMs,
+    exceptionCount: span.exceptionCount,
+    peerService: span.peerService,
+    spanName: span.spanName,
+    httpMethod: span.httpMethod,
+    attributes: span.attributes,
+    ingestedAt: span.ingestedAt,
+  };
+}
+
+async function loadAmbientSpans(
+  spanBuffer: SpanBuffer | undefined,
+  telemetryStore: TelemetryStoreDriver,
+  storage: StorageDriver,
+): Promise<BufferedSpan[]> {
+  const liveSpans = spanBuffer?.getAll() ?? [];
+  if (liveSpans.length > 0) return liveSpans;
+
+  const now = Date.now();
+  const recentSpans = await telemetryStore.querySpans({
+    startMs: now - AMBIENT_LIVE_WINDOW_MS,
+    endMs: now,
+  });
+  if (recentSpans.length > 0) {
+    return recentSpans.map(telemetrySpanToBufferedSpan);
+  }
+
+  const openIncidents = (await storage.listIncidents({ limit: AMBIENT_INCIDENT_FALLBACK_LIMIT })).items
+    .filter((incident) => incident.status === "open");
+  if (openIncidents.length === 0) return [];
+
+  const preservedSpans = new Map<string, BufferedSpan>();
+  for (const incident of openIncidents) {
+    if (incident.telemetryScope.windowStartMs >= incident.telemetryScope.windowEndMs) continue;
+
+    const scopedSpans = await telemetryStore.querySpans(buildIncidentQueryFilter(incident.telemetryScope));
+    const membership = new Set(incident.spanMembership);
+    const matchedSpans = membership.size > 0
+      ? scopedSpans.filter((span) => membership.has(spanMembershipKey(span.traceId, span.spanId)))
+      : scopedSpans;
+
+    for (const span of matchedSpans) {
+      preservedSpans.set(`${span.traceId}:${span.spanId}`, telemetrySpanToBufferedSpan(span));
+    }
+  }
+
+  return Array.from(preservedSpans.values());
 }
 
 function buildChatSystemPrompt(dr: DiagnosisResult, locale?: "en" | "ja"): string {
@@ -553,17 +617,17 @@ export function createApiRouter(
     return c.json(await buildRuntimeMap(telemetryStore, storage, validWindow));
   });
 
-  app.get("/api/services", (c) => {
-    if (!spanBuffer) return c.json([]);
-    return c.json(computeServices(spanBuffer.getAll(), Date.now()));
+  app.get("/api/services", async (c) => {
+    const spans = await loadAmbientSpans(spanBuffer, telemetryStore, storage);
+    return c.json(computeServices(spans, Date.now()));
   });
 
-  app.get("/api/activity", (c) => {
-    if (!spanBuffer) return c.json([]);
+  app.get("/api/activity", async (c) => {
     const limitStr = c.req.query("limit");
     const rawLimit = limitStr !== undefined ? parseInt(limitStr, 10) : 20;
     const limit = Number.isNaN(rawLimit) ? 20 : Math.min(Math.max(rawLimit, 1), 100);
-    return c.json(computeActivity(spanBuffer.getAll(), limit));
+    const spans = await loadAmbientSpans(spanBuffer, telemetryStore, storage);
+    return c.json(computeActivity(spans, limit));
   });
 
   // ── Telemetry API endpoints (ADR 0032 Step F) ────────────────────────────────

@@ -12,6 +12,13 @@ import { createInterface } from "node:readline";
 import type { ProviderName } from "@3am/diagnosis";
 
 export type DiagnosisMode = "automatic" | "manual";
+export type ReceiverPlatform = "vercel" | "cloudflare";
+
+export interface ReceiverCredential {
+  url: string;
+  authToken: string;
+  updatedAt: string;
+}
 
 export interface Credentials {
   anthropicApiKey?: string;
@@ -24,6 +31,8 @@ export interface Credentials {
   receiverUrl?: string;
   /** Auth token for the deployed Receiver — CLI-managed, synced to platform secret on deploy. */
   receiverAuthToken?: string;
+  /** Platform-scoped receiver credentials for multi-platform deploys. */
+  receivers?: Partial<Record<ReceiverPlatform, ReceiverCredential>>;
 }
 
 function getCredentialsDir(): string {
@@ -32,6 +41,18 @@ function getCredentialsDir(): string {
 
 function getCredentialsPath(): string {
   return join(getCredentialsDir(), "credentials");
+}
+
+function inferPlatformFromReceiverUrl(url: string | undefined): ReceiverPlatform | undefined {
+  if (!url) return undefined;
+  try {
+    const hostname = new URL(url).hostname;
+    if (hostname.includes("workers.dev")) return "cloudflare";
+    if (hostname.includes("vercel.app")) return "vercel";
+  } catch {
+    return undefined;
+  }
+  return undefined;
 }
 
 export function loadCredentials(): Credentials {
@@ -51,6 +72,67 @@ export function saveCredentials(creds: Credentials): void {
   writeFileSync(path, JSON.stringify(creds, null, 2) + "\n", { mode: 0o600 });
   // Ensure permissions even if file existed with different mode
   chmodSync(path, 0o600);
+}
+
+export function getReceiverCredential(
+  creds: Credentials,
+  platform: ReceiverPlatform,
+): ReceiverCredential | undefined {
+  const scoped = creds.receivers?.[platform];
+  if (scoped?.url && scoped.authToken) return scoped;
+
+  if (
+    creds.receiverUrl &&
+    creds.receiverAuthToken &&
+    inferPlatformFromReceiverUrl(creds.receiverUrl) === platform
+  ) {
+    return {
+      url: creds.receiverUrl,
+      authToken: creds.receiverAuthToken,
+      updatedAt: new Date(0).toISOString(),
+    };
+  }
+
+  return undefined;
+}
+
+export function setReceiverCredential(
+  creds: Credentials,
+  platform: ReceiverPlatform,
+  receiver: { url: string; authToken: string },
+): Credentials {
+  return {
+    ...creds,
+    receiverUrl: receiver.url,
+    receiverAuthToken: receiver.authToken,
+    receivers: {
+      ...(creds.receivers ?? {}),
+      [platform]: {
+        url: receiver.url,
+        authToken: receiver.authToken,
+        updatedAt: new Date().toISOString(),
+      },
+    },
+  };
+}
+
+export function findReceiverCredentialByUrl(
+  creds: Credentials,
+  url: string,
+): ReceiverCredential | undefined {
+  for (const receiver of Object.values(creds.receivers ?? {})) {
+    if (receiver?.url === url && receiver.authToken) return receiver;
+  }
+
+  if (creds.receiverUrl === url && creds.receiverAuthToken) {
+    return {
+      url: creds.receiverUrl,
+      authToken: creds.receiverAuthToken,
+      updatedAt: new Date(0).toISOString(),
+    };
+  }
+
+  return undefined;
 }
 
 export async function promptApiKey(): Promise<string> {

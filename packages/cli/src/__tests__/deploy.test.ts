@@ -63,6 +63,20 @@ vi.mock("../commands/init/credentials.js", () => ({
   resolveApiKey: vi.fn(),
   loadCredentials: vi.fn(),
   saveCredentials: vi.fn(),
+  getReceiverCredential: vi.fn((creds, platform) => creds.receivers?.[platform]),
+  setReceiverCredential: vi.fn((creds, platform, receiver) => ({
+    ...creds,
+    receiverUrl: receiver.url,
+    receiverAuthToken: receiver.authToken,
+    receivers: {
+      ...(creds.receivers ?? {}),
+      [platform]: {
+        url: receiver.url,
+        authToken: receiver.authToken,
+        updatedAt: "2026-04-08T00:00:00.000Z",
+      },
+    },
+  })),
 }));
 
 vi.mock("node:crypto", () => ({
@@ -425,7 +439,15 @@ describe("runDeploy()", () => {
 
   it("happy path: re-deploy uses stored token from credentials", async () => {
     setupHappyPathMocks();
-    vi.mocked(loadCredentials).mockReturnValue({ receiverAuthToken: "stored-token" });
+    vi.mocked(loadCredentials).mockReturnValue({
+      receivers: {
+        vercel: {
+          url: "https://test.vercel.app",
+          authToken: "stored-token",
+          updatedAt: "2026-04-08T00:00:00.000Z",
+        },
+      },
+    });
 
     await runDeploy([], {
       yes: true,
@@ -442,6 +464,75 @@ describe("runDeploy()", () => {
     const calls = vi.mocked(updateAppEnv).mock.calls;
     const writeCall = calls.find((c) => !c[0].dryRun);
     expect(writeCall![0].authToken).toBe("stored-token");
+  });
+
+  it("uses a platform-specific token instead of reusing another platform receiver token", async () => {
+    setupHappyPathMocks();
+    mockProvider.deploy.mockResolvedValue({ url: "https://test.workers.dev" });
+    vi.mocked(connectCloudflareWorkerToReceiver).mockResolvedValue({
+      changed: true,
+      workerName: "edge-app",
+      configPath: "/repo/wrangler.jsonc",
+    });
+    vi.mocked(loadCredentials).mockReturnValue({
+      receiverUrl: "https://test.vercel.app",
+      receiverAuthToken: "vercel-token",
+      receivers: {
+        vercel: {
+          url: "https://test.vercel.app",
+          authToken: "vercel-token",
+          updatedAt: "2026-04-08T00:00:00.000Z",
+        },
+        cloudflare: {
+          url: "https://old.workers.dev",
+          authToken: "cloudflare-token",
+          updatedAt: "2026-04-08T00:00:00.000Z",
+        },
+      },
+    });
+
+    await runDeploy([], {
+      yes: true,
+      noInteractive: true,
+      platform: "cloudflare",
+    });
+
+    expect(mockProvider.setEnvVar).toHaveBeenCalledWith("RECEIVER_AUTH_TOKEN", "cloudflare-token");
+    expect(saveCredentials).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        receiverUrl: "https://test.workers.dev",
+        receiverAuthToken: "cloudflare-token",
+        receivers: expect.objectContaining({
+          vercel: expect.objectContaining({ authToken: "vercel-token" }),
+          cloudflare: expect.objectContaining({
+            url: "https://test.workers.dev",
+            authToken: "cloudflare-token",
+          }),
+        }),
+      }),
+    );
+  });
+
+  it("does not reuse a legacy Vercel token for a first Cloudflare deploy", async () => {
+    setupHappyPathMocks();
+    mockProvider.deploy.mockResolvedValue({ url: "https://test.workers.dev" });
+    vi.mocked(connectCloudflareWorkerToReceiver).mockResolvedValue({
+      changed: true,
+      workerName: "edge-app",
+      configPath: "/repo/wrangler.jsonc",
+    });
+    vi.mocked(loadCredentials).mockReturnValue({
+      receiverUrl: "https://test.vercel.app",
+      receiverAuthToken: "vercel-token",
+    });
+
+    await runDeploy([], {
+      yes: true,
+      noInteractive: true,
+      platform: "cloudflare",
+    });
+
+    expect(mockProvider.setEnvVar).toHaveBeenCalledWith("RECEIVER_AUTH_TOKEN", "generated-uuid-token");
   });
 
   it("--auth-token flag overrides stored token", async () => {

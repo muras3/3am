@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { IncidentPacketSchema } from "@3am/core";
 import { PROVIDER_NAMES, diagnose, type ProviderName } from "@3am/diagnosis";
-import { loadCredentials } from "./init/credentials.js";
+import { loadCredentials, findReceiverCredentialByUrl } from "./init/credentials.js";
 import { runManualDiagnosis } from "./manual-execution.js";
 import { resolveProviderModel } from "./provider-model.js";
 
@@ -82,7 +82,10 @@ export async function runDiagnose(argv: string[]): Promise<void> {
   const resolvedProvider = parseProvider(provider, creds.llmProvider);
   const resolvedModel = resolveProviderModel(resolvedProvider, model, creds.llmModel);
   const resolvedReceiverUrl = receiverUrl ?? creds.receiverUrl;
-  const resolvedAuthToken = authToken ?? creds.receiverAuthToken;
+  const matchedReceiver = resolvedReceiverUrl
+    ? findReceiverCredentialByUrl(creds, resolvedReceiverUrl)
+    : undefined;
+  const resolvedAuthToken = authToken ?? matchedReceiver?.authToken ?? creds.receiverAuthToken;
 
   if (incidentId && resolvedReceiverUrl) {
     try {
