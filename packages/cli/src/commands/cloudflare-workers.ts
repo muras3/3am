@@ -1,6 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { homedir } from "node:os";
 import { createInterface } from "node:readline";
 
 type JsonMap = Record<string, unknown>;
@@ -239,6 +240,22 @@ export function resolveCloudflareWorker(path: string): { workerName: string } {
   return { workerName };
 }
 
+function getCloudflareLegacyConfigPath(): string | null {
+  const candidates = [
+    join(homedir(), ".cloudflare", "config"),
+    join(homedir(), ".cloudflare", "config.json"),
+  ];
+  return candidates.find((candidate) => existsSync(candidate)) ?? null;
+}
+
+function getCloudflareApiKeyFromEnv(env: NodeJS.ProcessEnv): string | undefined {
+  return env["CLOUDFLARE_API_KEY"] ?? env["CF_API_KEY"];
+}
+
+function getCloudflareEmailFromEnv(env: NodeJS.ProcessEnv): string | undefined {
+  return env["CLOUDFLARE_EMAIL"] ?? env["CF_EMAIL"];
+}
+
 async function cloudflareApiFetch<T>(
   auth: CloudflareApiAuth,
   accountId: string,
@@ -325,8 +342,24 @@ async function promptSecret(prompt: string): Promise<string> {
   });
 }
 
+function readLegacyGlobalApiKey(): string | undefined {
+  const path = getCloudflareLegacyConfigPath();
+  if (!path) return undefined;
+  const content = readFileSync(path, "utf-8");
+  const tomlMatch = content.match(/^api_key\s*=\s*"(.*)"$/m)?.[1];
+  if (tomlMatch) return tomlMatch;
+
+  try {
+    const parsed = JSON.parse(content) as { api_key?: string };
+    return parsed.api_key;
+  } catch {
+    return undefined;
+  }
+}
+
 export async function resolveCloudflareApiAuth(options: {
   env?: NodeJS.ProcessEnv;
+  account?: { email?: string };
   noInteractive?: boolean;
 }): Promise<CloudflareApiAuth> {
   const env = options.env ?? process.env;
@@ -338,10 +371,18 @@ export async function resolveCloudflareApiAuth(options: {
     };
   }
 
-  // NOTE: The CF Workers Observability destinations API (/workers/observability/destinations)
-  // only accepts Bearer token (API Token) auth. Global API Key (X-Auth-Key + X-Auth-Email)
-  // is rejected by this API with HTTP 400 "Bad Request". We therefore never fall back to
-  // Global API Key for this function — always require an API Token.
+  const email = getCloudflareEmailFromEnv(env) ?? options.account?.email;
+  const apiKey = getCloudflareApiKeyFromEnv(env) ?? readLegacyGlobalApiKey();
+
+  if (email && apiKey) {
+    return {
+      source: "global-key",
+      headers: {
+        "X-Auth-Email": email,
+        "X-Auth-Key": apiKey,
+      },
+    };
+  }
 
   if (options.noInteractive) {
     throw new Error(
@@ -350,24 +391,27 @@ export async function resolveCloudflareApiAuth(options: {
     );
   }
 
-  process.stdout.write(
-    "CLOUDFLARE_API_TOKEN is not set.\n" +
-    "The Cloudflare Workers Observability API requires a scoped API Token (Bearer auth).\n" +
-    "Global API Keys are not accepted and will return 'Bad Request'.\n\n" +
-    "Create a token at https://dash.cloudflare.com/profile/api-tokens with permissions:\n" +
-    "  Account Settings:Read, Workers Scripts:Edit, D1:Edit, Cloudflare Queues:Edit, Workers Observability:Edit\n\n",
-  );
-  const promptedToken = await promptSecret("Enter your Cloudflare API Token: ");
-  if (!promptedToken) {
+  if (!email) {
     throw new Error(
-      "Cloudflare API Token is required to configure Observability destinations. " +
-      "Export it as CLOUDFLARE_API_TOKEN and re-run `3am deploy cloudflare`.",
+      "Could not determine Cloudflare email. Set CLOUDFLARE_EMAIL or re-run `wrangler whoami` successfully.",
     );
   }
 
+  process.stdout.write(
+    "Cloudflare OTLP destination setup works best with CLOUDFLARE_API_TOKEN. " +
+    "Falling back to Global API Key for this interactive run.\n",
+  );
+  const promptedApiKey = await promptSecret("Enter your Cloudflare Global API Key: ");
+  if (!promptedApiKey) {
+    throw new Error("Cloudflare Global API Key is required to configure Observability destinations.");
+  }
+
   return {
-    source: "api-token",
-    headers: { Authorization: `Bearer ${promptedToken}` },
+    source: "global-key",
+    headers: {
+      "X-Auth-Email": email,
+      "X-Auth-Key": promptedApiKey,
+    },
   };
 }
 
@@ -481,8 +525,23 @@ export async function connectCloudflareWorkerToReceiver(
   const { workerName } = resolveCloudflareWorker(configPath);
   const account = getCloudflareAccountInfo();
   const cloudflareAuth = await resolveCloudflareApiAuth({
+    account,
     noInteractive: options.noInteractive,
   });
+
+  // The CF Workers Observability destinations API only accepts Bearer token
+  // (API Token) auth. Global API Key (X-Auth-Key + X-Auth-Email) returns
+  // HTTP 400 "Bad Request" on this endpoint.
+  if (cloudflareAuth.source !== "api-token") {
+    throw new Error(
+      "Cloudflare OTLP destination setup requires an API Token (Bearer auth). " +
+      "Global API Keys are not accepted by the Workers Observability API.\n" +
+      "Create a token at https://dash.cloudflare.com/profile/api-tokens with permissions:\n" +
+      "  Account Settings:Read, Workers Scripts:Edit, D1:Edit, Cloudflare Queues:Edit, Workers Observability:Edit\n" +
+      "Then export CLOUDFLARE_API_TOKEN and re-run `3am deploy cloudflare`.",
+    );
+  }
+
   const traceDestination = await ensureDestination(
     cloudflareAuth,
     account.accountId,
