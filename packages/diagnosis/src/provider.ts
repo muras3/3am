@@ -99,6 +99,31 @@ function resolveEnv(options: ModelCallOptions): NodeJS.ProcessEnv {
   return options.env ?? process.env;
 }
 
+function authFailureError(provider: ProviderName, detail?: string): ProviderResolutionError {
+  const suffix = detail ? `: ${detail}` : "";
+  return new ProviderResolutionError(
+    "PROVIDER_AUTH_MISSING",
+    `${provider} provider authentication failed${suffix}`,
+  );
+}
+
+function invocationFailureError(provider: ProviderName, detail: string): ProviderResolutionError {
+  return new ProviderResolutionError(
+    "PROVIDER_INVOCATION_FAILED",
+    `${provider} provider failed: ${detail}`,
+  );
+}
+
+function isAuthFailureStatus(status: number | undefined): boolean {
+  return status === 401 || status === 403;
+}
+
+function extractErrorStatus(error: unknown): number | undefined {
+  if (typeof error !== "object" || error === null) return undefined;
+  const status = Reflect.get(error, "status");
+  return typeof status === "number" ? status : undefined;
+}
+
 async function checkBinary(binary: string): Promise<boolean> {
   const { spawnSync } = await import("node:child_process");
   const command = process.platform === "win32" ? "where" : "which";
@@ -148,20 +173,29 @@ class AnthropicProvider implements LLMProvider {
       timeout: options.timeoutMs ?? DEFAULT_TIMEOUT_MS,
       maxRetries: 2,
     });
-    const response = await client.messages.create({
-      model: options.model,
-      max_tokens: options.maxTokens,
-      temperature: options.temperature ?? 0,
-      ...(system ? { system } : {}),
-      messages: dialogue.length > 0 ? dialogue : [{ role: "user", content: "" }],
-    });
-    return extractText(
-      response.content
-        .filter((block): block is Anthropic.TextBlock => block.type === "text")
-        .map((block) => block.text)
-        .join(""),
-      this.name,
-    );
+    try {
+      const response = await client.messages.create({
+        model: options.model,
+        max_tokens: options.maxTokens,
+        temperature: options.temperature ?? 0,
+        ...(system ? { system } : {}),
+        messages: dialogue.length > 0 ? dialogue : [{ role: "user", content: "" }],
+      });
+      return extractText(
+        response.content
+          .filter((block): block is Anthropic.TextBlock => block.type === "text")
+          .map((block) => block.text)
+          .join(""),
+        this.name,
+      );
+    } catch (error) {
+      const status = extractErrorStatus(error);
+      if (isAuthFailureStatus(status)) {
+        throw authFailureError(this.name, `HTTP ${status}`);
+      }
+      const message = error instanceof Error ? error.message : String(error);
+      throw invocationFailureError(this.name, message);
+    }
   }
 }
 
@@ -201,6 +235,9 @@ class OpenAIProvider implements LLMProvider {
       },
     );
     if (!response.ok) {
+      if (isAuthFailureStatus(response.status)) {
+        throw authFailureError(this.name, `HTTP ${response.status}`);
+      }
       throw new ProviderResolutionError(
         "PROVIDER_INVOCATION_FAILED",
         `openai provider failed with HTTP ${response.status}`,
@@ -379,33 +416,49 @@ function resolved(name: ProviderName, source: ResolvedProvider["source"], option
   return { provider: PROVIDERS[name], source };
 }
 
-export async function resolveProvider(options: ModelCallOptions): Promise<ResolvedProvider> {
+export async function resolveProviderCandidates(options: ModelCallOptions): Promise<ResolvedProvider[]> {
   const env = resolveEnv(options);
   if (options.provider) {
-    return resolved(options.provider, "explicit", options);
+    return [resolved(options.provider, "explicit", options)];
   }
 
+  const candidates: ResolvedProvider[] = [];
   if (env["ANTHROPIC_API_KEY"]) {
-    return resolved("anthropic", "autodetect", options);
+    candidates.push(resolved("anthropic", "autodetect", options));
   }
   if ((options.allowSubprocessProviders ?? true) && await checkBinary("claude")) {
-    return resolved("claude-code", "autodetect", options);
+    candidates.push(resolved("claude-code", "autodetect", options));
   }
   if ((options.allowSubprocessProviders ?? true) && await checkBinary("codex")) {
-    return resolved("codex", "autodetect", options);
+    candidates.push(resolved("codex", "autodetect", options));
   }
   if (env["OPENAI_API_KEY"]) {
-    return resolved("openai", "autodetect", options);
+    candidates.push(resolved("openai", "autodetect", options));
   }
   if ((options.allowLocalHttpProviders ?? true)) {
     const baseUrl = options.baseUrl ?? env["OLLAMA_HOST"] ?? "http://127.0.0.1:11434";
     if (await checkOllamaHealth(baseUrl)) {
-      return resolved("ollama", "autodetect", options);
+      candidates.push(resolved("ollama", "autodetect", options));
     }
+  }
+
+  if (candidates.length > 0) {
+    return candidates;
   }
 
   throw new ProviderResolutionError(
     "NO_PROVIDER_AVAILABLE",
     "No LLM provider is available. Configure ANTHROPIC_API_KEY / OPENAI_API_KEY, install claude or codex, or start Ollama.",
   );
+}
+
+export async function resolveProvider(options: ModelCallOptions): Promise<ResolvedProvider> {
+  const [provider] = await resolveProviderCandidates(options);
+  if (!provider) {
+    throw new ProviderResolutionError(
+      "NO_PROVIDER_AVAILABLE",
+      "No LLM provider is available. Configure ANTHROPIC_API_KEY / OPENAI_API_KEY, install claude or codex, or start Ollama.",
+    );
+  }
+  return provider;
 }

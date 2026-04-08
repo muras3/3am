@@ -1,11 +1,19 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { EventEmitter } from "node:events";
 
 const mockCreate = vi.fn();
+const spawnSyncMock = vi.fn();
+const spawnMock = vi.fn();
 
 vi.mock("@anthropic-ai/sdk", () => ({
   default: vi.fn().mockImplementation(function (this: Record<string, unknown>) {
     this.messages = { create: mockCreate };
   }),
+}));
+
+vi.mock("node:child_process", () => ({
+  spawnSync: spawnSyncMock,
+  spawn: spawnMock,
 }));
 
 import { callModel } from "../model-client.js";
@@ -21,6 +29,8 @@ beforeEach(() => {
   mockCreate.mockResolvedValue({
     content: [{ type: "text", text: "response" }],
   });
+  spawnSyncMock.mockReturnValue({ status: 1 });
+  spawnMock.mockReset();
 });
 
 describe("callModel", () => {
@@ -37,6 +47,43 @@ describe("callModel", () => {
 
     await expect(callModel("test prompt", defaultOptions)).rejects.toThrow(
       /(anthropic returned an empty response|No text content in model response)/,
+    );
+  });
+
+  it("falls back to claude-code on autodetect when ANTHROPIC_API_KEY is unauthorized", async () => {
+    mockCreate.mockRejectedValue({ status: 401 });
+    spawnSyncMock
+      .mockReturnValueOnce({ status: 0 })
+      .mockReturnValueOnce({ status: 1 })
+      .mockReturnValueOnce({ status: 0 });
+
+    spawnMock.mockImplementation(() => {
+      const child = new EventEmitter() as EventEmitter & {
+        stdout: EventEmitter;
+        stderr: EventEmitter;
+        stdin: { write: ReturnType<typeof vi.fn>; end: ReturnType<typeof vi.fn> };
+      };
+      child.stdout = new EventEmitter();
+      child.stderr = new EventEmitter();
+      child.stdin = { write: vi.fn(), end: vi.fn() };
+      queueMicrotask(() => {
+        child.stdout.emit("data", Buffer.from("subscription response"));
+        child.emit("close", 0);
+      });
+      return child;
+    });
+
+    const result = await callModel("test prompt", {
+      model: "claude-sonnet-4-6",
+      maxTokens: 4096,
+      env: { ANTHROPIC_API_KEY: "invalid-key" },
+    });
+
+    expect(result).toBe("subscription response");
+    expect(spawnMock).toHaveBeenCalledWith(
+      "claude",
+      ["-p", "--model", "claude-sonnet-4-6"],
+      expect.any(Object),
     );
   });
 });
