@@ -165,6 +165,8 @@ function updateWranglerToml(content: string, targets: CloudflareObservabilityTar
     head_sampling_rate: "1.0",
     ...(targets.traceDestination ? { destinations: `["${targets.traceDestination}"]` } : {}),
   });
+  // persist = false blocks Cloudflare from pushing data to destinations — remove it
+  updated = updated.replace(/^persist\s*=\s*false\s*\n?/gm, "");
   return updated;
 }
 
@@ -174,21 +176,29 @@ function updateWranglerJsonc(content: string, targets: CloudflareObservabilityTa
   const logs = ((observability["logs"] as JsonMap | undefined) ?? {});
   const traces = ((observability["traces"] as JsonMap | undefined) ?? {});
 
+  const logsConfig: JsonMap = {
+    ...logs,
+    enabled: true,
+    invocation_logs: true,
+    ...(targets.logDestination ? { destinations: mergeDestinationList(logs["destinations"], targets.logDestination) } : {}),
+  };
+  // persist: false blocks Cloudflare from pushing logs to destinations — remove it
+  delete logsConfig["persist"];
+
+  const tracesConfig: JsonMap = {
+    ...traces,
+    enabled: true,
+    head_sampling_rate: 1,
+    ...(targets.traceDestination ? { destinations: mergeDestinationList(traces["destinations"], targets.traceDestination) } : {}),
+  };
+  // persist: false blocks Cloudflare from pushing traces to destinations — remove it
+  delete tracesConfig["persist"];
+
   parsed["observability"] = {
     ...observability,
     enabled: true,
-    logs: {
-      ...logs,
-      enabled: true,
-      invocation_logs: true,
-      ...(targets.logDestination ? { destinations: mergeDestinationList(logs["destinations"], targets.logDestination) } : {}),
-    },
-    traces: {
-      ...traces,
-      enabled: true,
-      head_sampling_rate: 1,
-      ...(targets.traceDestination ? { destinations: mergeDestinationList(traces["destinations"], targets.traceDestination) } : {}),
-    },
+    logs: logsConfig,
+    traces: tracesConfig,
   };
 
   return stringifyJsoncObject(parsed);
