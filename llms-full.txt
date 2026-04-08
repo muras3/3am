@@ -112,7 +112,9 @@ npx 3am deploy vercel --yes --no-interactive --json
 ### Cloudflare Workers
 
 ```bash
-# Requires a Cloudflare API Token with Workers Scripts:Edit and Logs:Edit permissions
+# Requires a Cloudflare API Token with these permissions:
+#   Account Settings:Read, Workers Scripts:Edit, D1:Edit,
+#   Cloudflare Queues:Edit, Workers Observability:Edit
 export CLOUDFLARE_API_TOKEN=your-cloudflare-api-token
 npx 3am deploy cloudflare --yes
 ```

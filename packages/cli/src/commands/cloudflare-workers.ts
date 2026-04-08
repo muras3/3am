@@ -377,7 +377,7 @@ export async function resolveCloudflareApiAuth(options: {
   if (options.noInteractive) {
     throw new Error(
       "Cloudflare Observability destination setup requires CLOUDFLARE_API_TOKEN. " +
-      "For initial OSS setup, create a Cloudflare API Token with Workers Scripts:Edit and Logs:Edit, then export CLOUDFLARE_API_TOKEN before running `3am deploy cloudflare`.",
+      "For initial OSS setup, create a Cloudflare API Token with Account Settings:Read, Workers Scripts:Edit, D1:Edit, Cloudflare Queues:Edit, and Workers Observability:Edit, then export CLOUDFLARE_API_TOKEN before running `3am deploy cloudflare`.",
     );
   }
 
