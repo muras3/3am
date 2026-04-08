@@ -528,6 +528,20 @@ export async function connectCloudflareWorkerToReceiver(
     account,
     noInteractive: options.noInteractive,
   });
+
+  // The CF Workers Observability destinations API only accepts Bearer token
+  // (API Token) auth. Global API Key (X-Auth-Key + X-Auth-Email) returns
+  // HTTP 400 "Bad Request" on this endpoint.
+  if (cloudflareAuth.source !== "api-token") {
+    throw new Error(
+      "Cloudflare OTLP destination setup requires an API Token (Bearer auth). " +
+      "Global API Keys are not accepted by the Workers Observability API.\n" +
+      "Create a token at https://dash.cloudflare.com/profile/api-tokens with permissions:\n" +
+      "  Account Settings:Read, Workers Scripts:Edit, D1:Edit, Cloudflare Queues:Edit, Workers Observability:Edit\n" +
+      "Then export CLOUDFLARE_API_TOKEN and re-run `3am deploy cloudflare`.",
+    );
+  }
+
   const traceDestination = await ensureDestination(
     cloudflareAuth,
     account.accountId,
