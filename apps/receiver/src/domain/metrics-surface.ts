@@ -237,6 +237,14 @@ export async function buildMetricsSurface(
     const expectedValue: number | string =
       stats.baselineMean !== null ? stats.baselineMean : 'N/A'
 
+    // Filter out metrics that are unavailable in this environment (e.g. V8 heap
+    // stats on Vercel serverless). A metric is considered unavailable when its
+    // observed value is 0 AND the expected reference is also 0 or absent.
+    // If observed=0 but expected!=0 the drop is a real anomaly and must be kept.
+    const expectedIsZeroOrAbsent =
+      expectedValue === 'N/A' || (typeof expectedValue === 'number' && expectedValue === 0)
+    if (observedValue === 0 && expectedIsZeroOrAbsent) continue
+
     const deviation: number | null =
       typeof expectedValue === 'number' && expectedValue !== 0
         ? (observedValue - expectedValue) / expectedValue
