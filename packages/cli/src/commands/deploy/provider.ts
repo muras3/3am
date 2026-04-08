@@ -18,6 +18,7 @@ import { spawn, execFileSync } from "node:child_process";
 import { mkdtempSync, rmSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
+import { getCloudflareAccountInfo } from "../cloudflare-workers.js";
 
 export interface DeployProvider {
   /** Clone Receiver repo and deploy to platform. Returns deployment URL. */
@@ -59,11 +60,13 @@ function spawnAndCapture(
   cmd: string,
   args: string[],
   cwd: string,
+  env?: NodeJS.ProcessEnv,
 ): Promise<{ stdout: string; exitCode: number }> {
   return new Promise((resolve, reject) => {
     const child = spawn(cmd, args, {
       cwd,
       stdio: ["inherit", "pipe", "inherit"],
+      ...(env ? { env } : {}),
     });
 
     const chunks: Buffer[] = [];
@@ -93,11 +96,13 @@ function spawnWithStdin(
   args: string[],
   cwd: string,
   stdinValue: string,
+  env?: NodeJS.ProcessEnv,
 ): Promise<void> {
   return new Promise((resolve, reject) => {
     const child = spawn(cmd, args, {
       cwd,
       stdio: ["pipe", "pipe", "inherit"],
+      ...(env ? { env } : {}),
     });
     child.stdin!.write(stdinValue);
     child.stdin!.end();
@@ -230,10 +235,11 @@ function extractWranglerUrl(output: string): string | undefined {
  * Find an existing D1 database by name, or return undefined.
  * `wrangler d1 list` outputs TOML-like blocks per database.
  */
-function findD1Database(name: string, cwd: string): string | undefined {
+function findD1Database(name: string, cwd: string, env?: NodeJS.ProcessEnv): string | undefined {
   const output = execFileSync("wrangler", ["d1", "list"], {
     cwd,
     stdio: "pipe",
+    ...(env ? { env } : {}),
   }).toString();
 
   // Match the line with our database name and extract the UUID from the same row.
@@ -254,10 +260,11 @@ function findD1Database(name: string, cwd: string): string | undefined {
  *   ...
  *   database_id = "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
  */
-function createD1Database(name: string, cwd: string): string {
+function createD1Database(name: string, cwd: string, env?: NodeJS.ProcessEnv): string {
   const output = execFileSync("wrangler", ["d1", "create", name], {
     cwd,
     stdio: "pipe",
+    ...(env ? { env } : {}),
   }).toString();
 
   const match = output.match(/database_id\s*=\s*"([0-9a-f-]+)"/);
@@ -272,13 +279,13 @@ function createD1Database(name: string, cwd: string): string {
 /**
  * Get or create a D1 database. Reuses existing if found by name.
  */
-function ensureD1Database(name: string, cwd: string): string {
-  const existing = findD1Database(name, cwd);
+function ensureD1Database(name: string, cwd: string, env?: NodeJS.ProcessEnv): string {
+  const existing = findD1Database(name, cwd, env);
   if (existing) {
     process.stderr.write(`Reusing existing D1 database: ${existing}\n`);
     return existing;
   }
-  return createD1Database(name, cwd);
+  return createD1Database(name, cwd, env);
 }
 
 /**
@@ -294,11 +301,12 @@ function patchWranglerToml(receiverDir: string, newDbId: string): void {
   writeFileSync(tomlPath, patched, "utf8");
 }
 
-function ensureQueue(name: string, cwd: string): void {
+function ensureQueue(name: string, cwd: string, env?: NodeJS.ProcessEnv): void {
   try {
     execFileSync("wrangler", ["queues", "create", name], {
       cwd,
       stdio: "pipe",
+      ...(env ? { env } : {}),
     });
   } catch (error) {
     const output = [
@@ -316,6 +324,13 @@ function ensureQueue(name: string, cwd: string): void {
 }
 
 export function createCloudflareProvider(): DeployProvider {
+  // Resolve account ID from the user's cwd (where OAuth cache exists) BEFORE
+  // switching to the temp directory.  Passing CLOUDFLARE_ACCOUNT_ID to every
+  // wrangler invocation tells wrangler which account to use, avoiding the
+  // /memberships API call that fails with scoped API tokens.
+  const { accountId } = getCloudflareAccountInfo();
+  const wranglerEnv: NodeJS.ProcessEnv = { ...process.env, CLOUDFLARE_ACCOUNT_ID: accountId };
+
   let tempDir: string | undefined = cloneReceiver();
   const receiverDir = join(tempDir, "apps", "receiver");
   process.stderr.write(`Cloned Receiver to ${tempDir}\n`);
@@ -336,13 +351,13 @@ export function createCloudflareProvider(): DeployProvider {
 
   // Get or create D1 database (reuses existing on re-deploy)
   process.stderr.write("Provisioning D1 database...\n");
-  const dbId = ensureD1Database("3am-db", receiverDir);
+  const dbId = ensureD1Database("3am-db", receiverDir, wranglerEnv);
   patchWranglerToml(receiverDir, dbId);
   process.stderr.write(`D1 database ready: ${dbId}\n`);
 
   process.stderr.write("Provisioning Cloudflare Queues...\n");
-  ensureQueue(CLOUDFLARE_DIAGNOSIS_DLQ, receiverDir);
-  ensureQueue(CLOUDFLARE_DIAGNOSIS_QUEUE, receiverDir);
+  ensureQueue(CLOUDFLARE_DIAGNOSIS_DLQ, receiverDir, wranglerEnv);
+  ensureQueue(CLOUDFLARE_DIAGNOSIS_QUEUE, receiverDir, wranglerEnv);
 
   return {
     async deploy() {
@@ -352,6 +367,7 @@ export function createCloudflareProvider(): DeployProvider {
         "wrangler",
         ["deploy"],
         receiverDir,
+        wranglerEnv,
       );
 
       if (result.exitCode !== 0) {
@@ -376,6 +392,7 @@ export function createCloudflareProvider(): DeployProvider {
         ["secret", "put", key],
         receiverDir,
         value,
+        wranglerEnv,
       );
     },
 

@@ -406,9 +406,11 @@ export async function runInit(_argv: string[], options: InitOptions = {}): Promi
     ?? (storedCreds.locale === "ja" ? "ja" : "en");
   let mode: "automatic" | "manual" = options.mode === "manual"
     ? "manual"
-    : storedCreds.llmMode === "manual"
-      ? "manual"
-      : "automatic";
+    : options.mode === "automatic"
+      ? "automatic"
+      : storedCreds.llmMode === "manual"
+        ? "manual"
+        : "automatic";
   let provider: ProviderName = isProviderName(options.provider)
     ? options.provider
     : isProviderName(storedCreds.llmProvider)

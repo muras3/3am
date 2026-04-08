@@ -165,6 +165,8 @@ function updateWranglerToml(content: string, targets: CloudflareObservabilityTar
     head_sampling_rate: "1.0",
     ...(targets.traceDestination ? { destinations: `["${targets.traceDestination}"]` } : {}),
   });
+  // persist = false blocks Cloudflare from pushing data to destinations — remove it
+  updated = updated.replace(/^persist\s*=\s*false\s*\n?/gm, "");
   return updated;
 }
 
@@ -174,21 +176,29 @@ function updateWranglerJsonc(content: string, targets: CloudflareObservabilityTa
   const logs = ((observability["logs"] as JsonMap | undefined) ?? {});
   const traces = ((observability["traces"] as JsonMap | undefined) ?? {});
 
+  const logsConfig: JsonMap = {
+    ...logs,
+    enabled: true,
+    invocation_logs: true,
+    ...(targets.logDestination ? { destinations: mergeDestinationList(logs["destinations"], targets.logDestination) } : {}),
+  };
+  // persist: false blocks Cloudflare from pushing logs to destinations — remove it
+  delete logsConfig["persist"];
+
+  const tracesConfig: JsonMap = {
+    ...traces,
+    enabled: true,
+    head_sampling_rate: 1,
+    ...(targets.traceDestination ? { destinations: mergeDestinationList(traces["destinations"], targets.traceDestination) } : {}),
+  };
+  // persist: false blocks Cloudflare from pushing traces to destinations — remove it
+  delete tracesConfig["persist"];
+
   parsed["observability"] = {
     ...observability,
     enabled: true,
-    logs: {
-      ...logs,
-      enabled: true,
-      invocation_logs: true,
-      ...(targets.logDestination ? { destinations: mergeDestinationList(logs["destinations"], targets.logDestination) } : {}),
-    },
-    traces: {
-      ...traces,
-      enabled: true,
-      head_sampling_rate: 1,
-      ...(targets.traceDestination ? { destinations: mergeDestinationList(traces["destinations"], targets.traceDestination) } : {}),
-    },
+    logs: logsConfig,
+    traces: tracesConfig,
   };
 
   return stringifyJsoncObject(parsed);
@@ -377,7 +387,7 @@ export async function resolveCloudflareApiAuth(options: {
   if (options.noInteractive) {
     throw new Error(
       "Cloudflare Observability destination setup requires CLOUDFLARE_API_TOKEN. " +
-      "For initial OSS setup, create a Cloudflare API Token with Workers Scripts:Edit and Logs:Edit, then export CLOUDFLARE_API_TOKEN before running `3am deploy cloudflare`.",
+      "For initial OSS setup, create a Cloudflare API Token with Account Settings:Read, Workers Scripts:Edit, D1:Edit, Cloudflare Queues:Edit, and Workers Observability:Edit, then export CLOUDFLARE_API_TOKEN before running `3am deploy cloudflare`.",
     );
   }
 
@@ -534,6 +544,39 @@ export async function connectCloudflareWorkerToReceiver(
     `${receiverUrl}/v1/logs`,
     authToken,
   );
+
+  // Best-effort cleanup: update any other destinations pointing at the same
+  // receiver base URL but carrying a stale auth token (e.g. destinations
+  // created under a different naming scheme like *-dashboard).
+  const expectedAuthHeader = `Bearer ${authToken}`;
+  const managedNames = new Set([traceDestination, logDestination]);
+  try {
+    const allDestinations = await listDestinations(cloudflareAuth, account.accountId);
+    for (const dest of allDestinations) {
+      if (managedNames.has(dest.name)) continue;
+      const destUrl = dest.configuration.url ?? "";
+      if (!destUrl.startsWith(receiverUrl)) continue;
+      const currentAuth = dest.configuration.headers?.["Authorization"] ?? "";
+      if (currentAuth === expectedAuthHeader) continue;
+      // This destination points at our receiver but has a stale token — update it
+      try {
+        await updateDestination(
+          cloudflareAuth,
+          account.accountId,
+          dest.slug,
+          destUrl,
+          { Authorization: expectedAuthHeader },
+        );
+        process.stderr.write(`Updated stale destination: ${dest.name}\n`);
+      } catch {
+        // Best-effort — don't fail the deploy for cleanup issues
+        process.stderr.write(`Warning: could not update stale destination ${dest.name}\n`);
+      }
+    }
+  } catch {
+    // Best-effort — don't fail the deploy if listing fails
+  }
+
   const changed = updateCloudflareObservabilityConfig(configPath, {
     traceDestination,
     logDestination,

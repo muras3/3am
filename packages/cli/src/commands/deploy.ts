@@ -325,7 +325,7 @@ export async function runDeploy(
       process.stderr.write(
         `Error: failed to configure Cloudflare telemetry export: ${String(err)}\n\n` +
           "Fix:\n" +
-          "  1. Create a Cloudflare API Token with account-level Workers Scripts:Edit and Logs:Edit.\n" +
+          "  1. Create a Cloudflare API Token with Account Settings:Read, Workers Scripts:Edit, D1:Edit, Cloudflare Queues:Edit, and Workers Observability:Edit.\n" +
           "  2. Export it as CLOUDFLARE_API_TOKEN.\n" +
           "  3. Re-run: npx 3am deploy cloudflare --yes\n\n" +
           "  Re-running deploy will use the same token from CLI credentials.\n",
