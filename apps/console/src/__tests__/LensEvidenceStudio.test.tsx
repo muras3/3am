@@ -60,6 +60,12 @@ const groundedAnswer: EvidenceQueryResponse = {
   ],
 };
 
+const automaticSettings = {
+  mode: "automatic" as const,
+  provider: "anthropic" as const,
+  bridgeUrl: "http://127.0.0.1:4269",
+};
+
 vi.mock("@tanstack/react-router", async (importOriginal) => ({
   ...((await importOriginal()) as Record<string, unknown>),
   useSearch: () => mockSearch,
@@ -90,6 +96,10 @@ function getStatusBanner() {
 function setupReady() {
   const qc = makeClient();
   qc.setQueryData(
+    curatedQueries.diagnosisSettings().queryKey,
+    automaticSettings,
+  );
+  qc.setQueryData(
     curatedQueries.extendedIncident("inc_0892").queryKey,
     extendedIncidentReady,
   );
@@ -102,6 +112,10 @@ function setupReady() {
 
 function setupSparse() {
   const qc = makeClient();
+  qc.setQueryData(
+    curatedQueries.diagnosisSettings().queryKey,
+    automaticSettings,
+  );
   qc.setQueryData(
     curatedQueries.extendedIncident("inc_0892").queryKey,
     extendedIncidentSparse,
@@ -862,6 +876,10 @@ describe("LensEvidenceStudio — degraded states", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
     qc.setQueryData(
+      curatedQueries.diagnosisSettings().queryKey,
+      automaticSettings,
+    );
+    qc.setQueryData(
       curatedQueries.extendedIncident("inc_0892").queryKey,
       extendedIncidentReady,
     );
@@ -1096,6 +1114,49 @@ describe("LensEvidenceStudio — Q&A mutation integration", () => {
           question: "Is there retry logic?",
           isFollowup: false,
           history: [],
+        }),
+      }),
+    );
+  });
+
+  it("routes Q&A through the local bridge in manual mode", async () => {
+    const user = userEvent.setup();
+    const qc = setupReady();
+    qc.setQueryData(curatedQueries.diagnosisSettings().queryKey, {
+      mode: "manual" as const,
+      provider: "codex" as const,
+      bridgeUrl: "http://127.0.0.1:4269",
+    });
+    localStorage.setItem("receiver_auth_token", "browser-token");
+
+    fetchSpy.mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === "http://127.0.0.1:4269/api/manual/evidence-query") {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: () => Promise.resolve(groundedAnswer),
+        });
+      }
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+
+    renderStudio("inc_0892", qc);
+
+    await user.type(screen.getByLabelText("Ask a grounded question about this incident"), "Test question");
+    await user.click(screen.getByRole("button", { name: "Ask" }));
+
+    expect(fetchSpy).toHaveBeenCalledWith(
+      "http://127.0.0.1:4269/api/manual/evidence-query",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          incidentId: "inc_0892",
+          receiverUrl: "http://localhost:3000",
+          authToken: "browser-token",
+          question: "Test question",
+          history: [],
+          provider: "codex",
         }),
       }),
     );

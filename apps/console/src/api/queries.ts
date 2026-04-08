@@ -125,12 +125,38 @@ async function triggerRerunDiagnosis(
   return apiFetchPost<RerunDiagnosisResponse>(`/api/incidents/${encodeIncidentId(id)}/rerun-diagnosis`, {});
 }
 
+async function triggerEvidenceQuery(
+  id: string,
+  body: EvidenceQueryRequest,
+  settings: DiagnosisSettingsResponse,
+): Promise<EvidenceQueryResponse> {
+  if (settings.mode === "manual") {
+    const response = await fetch(`${settings.bridgeUrl}/api/manual/evidence-query`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        incidentId: id,
+        receiverUrl: window.location.origin,
+        authToken: getStoredAuthToken() ?? undefined,
+        question: body.question,
+        history: body.history ?? [],
+        provider: settings.provider,
+      }),
+    });
+    if (!response.ok) {
+      throw new ApiError(response.status, await response.text());
+    }
+    return response.json() as Promise<EvidenceQueryResponse>;
+  }
+
+  return apiFetchPost<EvidenceQueryResponse>(`/api/incidents/${encodeIncidentId(id)}/evidence/query`, body);
+}
+
 export const curatedMutations = {
-  evidenceQuery: (id: string) =>
+  evidenceQuery: (id: string, settings: DiagnosisSettingsResponse) =>
     mutationOptions({
-      mutationKey: ["curated", "incidents", id, "evidence-query"],
-      mutationFn: (body: EvidenceQueryRequest) =>
-        apiFetchPost<EvidenceQueryResponse>(`/api/incidents/${encodeIncidentId(id)}/evidence/query`, body),
+      mutationKey: ["curated", "incidents", id, "evidence-query", settings.mode, settings.bridgeUrl],
+      mutationFn: (body: EvidenceQueryRequest) => triggerEvidenceQuery(id, body, settings),
     }),
 
   rerunDiagnosis: (id: string, settings: DiagnosisSettingsResponse) =>

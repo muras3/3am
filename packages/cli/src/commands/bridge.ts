@@ -1,6 +1,6 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { loadCredentials } from "./init/credentials.js";
-import { runManualChat, runManualDiagnosis } from "./manual-execution.js";
+import { runManualChat, runManualDiagnosis, runManualEvidenceQuery } from "./manual-execution.js";
 import { resolveProviderModel } from "./provider-model.js";
 
 export interface BridgeOptions {
@@ -85,6 +85,33 @@ export function runBridge(options: BridgeOptions = {}): void {
           incidentId: payload.incidentId,
           authToken: payload.authToken,
           message: payload.message,
+          history: payload.history ?? [],
+          provider,
+          model: resolveProviderModel(provider, payload.model, creds.llmModel),
+          locale: creds.locale === "ja" ? "ja" : "en",
+        });
+        sendJson(res, 200, result);
+        return;
+      }
+
+      if (req.method === "POST" && req.url === "/api/manual/evidence-query") {
+        const body = await readBody(req);
+        const payload = body as {
+          receiverUrl: string;
+          incidentId: string;
+          authToken?: string;
+          question: string;
+          history?: Array<{ role: "user" | "assistant"; content: string }>;
+          provider?: ReturnType<typeof loadCredentials>["llmProvider"];
+          model?: string;
+        };
+        const creds = loadCredentials();
+        const provider = payload.provider ?? creds.llmProvider;
+        const result = await runManualEvidenceQuery({
+          receiverUrl: payload.receiverUrl,
+          incidentId: payload.incidentId,
+          authToken: payload.authToken,
+          question: payload.question,
           history: payload.history ?? [],
           provider,
           model: resolveProviderModel(provider, payload.model, creds.llmModel),
