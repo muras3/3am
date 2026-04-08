@@ -12,6 +12,9 @@ vi.mock("@3am/core", () => ({
 
 vi.mock("../commands/init/credentials.js", () => ({
   loadCredentials: vi.fn(),
+  findReceiverCredentialByUrl: vi.fn((creds, url) =>
+    Object.values(creds.receivers ?? {}).find((receiver) => receiver?.url === url),
+  ),
 }));
 
 vi.mock("../commands/manual-execution.js", () => ({
@@ -104,6 +107,43 @@ describe("runDiagnose()", () => {
       expect.objectContaining({
         receiverUrl: "https://explicit.vercel.app",
         authToken: "explicit-token",
+      }),
+    );
+  });
+
+  it("matches the auth token to the explicit receiver URL from platform-scoped credentials", async () => {
+    vi.mocked(loadCredentials).mockReturnValue({
+      receiverUrl: "https://3am-receiver.vercel.app",
+      receiverAuthToken: "vercel-token",
+      receivers: {
+        vercel: {
+          url: "https://3am-receiver.vercel.app",
+          authToken: "vercel-token",
+          updatedAt: "2026-04-08T00:00:00.000Z",
+        },
+        cloudflare: {
+          url: "https://3amoncall.workers.dev",
+          authToken: "cloudflare-token",
+          updatedAt: "2026-04-08T00:00:00.000Z",
+        },
+      },
+    });
+    vi.mocked(runManualDiagnosis).mockResolvedValue({
+      diagnosis: { id: "diag_123" },
+      narrative: { title: "narrative" },
+    } as never);
+
+    await runDiagnose([
+      "--incident-id",
+      "inc_000001",
+      "--receiver-url",
+      "https://3amoncall.workers.dev",
+    ]);
+
+    expect(runManualDiagnosis).toHaveBeenCalledWith(
+      expect.objectContaining({
+        receiverUrl: "https://3amoncall.workers.dev",
+        authToken: "cloudflare-token",
       }),
     );
   });
