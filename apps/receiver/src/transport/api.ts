@@ -55,6 +55,10 @@ type TelemetryLogsPageResponse<T> = {
   contextual: TelemetryPageResponse<T>;
 };
 
+type ManualChatBridgeResponse = {
+  reply: string;
+};
+
 const TELEMETRY_SPANS_DEFAULT_LIMIT = 100;
 const TELEMETRY_METRICS_DEFAULT_LIMIT = 50;
 const TELEMETRY_LOGS_CORRELATED_DEFAULT_LIMIT = 100;
@@ -490,6 +494,36 @@ export function createApiRouter(
     const sandboxedMessage = `<user_message>${message}</user_message>`;
 
     const llmSettings = await getReceiverLlmSettings(storage);
+    if (llmSettings.mode === "manual") {
+      try {
+        const bridgeResponse = await fetch(`${llmSettings.bridgeUrl}/api/manual/chat`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            receiverUrl: new URL(c.req.url).origin,
+            incidentId: id,
+            authToken,
+            message,
+            history,
+            provider: llmSettings.provider,
+          }),
+        });
+        if (!bridgeResponse.ok) {
+          const bodyText = await bridgeResponse.text();
+          return c.json({
+            error: "manual chat bridge failed",
+            details: bodyText || `bridge returned HTTP ${bridgeResponse.status}`,
+          }, 502);
+        }
+        return c.json(await bridgeResponse.json() as ManualChatBridgeResponse);
+      } catch (error) {
+        return c.json({
+          error: "manual chat bridge unavailable",
+          details: error instanceof Error ? error.message : String(error),
+        }, 502);
+      }
+    }
+
     const reply = await callModelMessages(
       [
         { role: "system", content: systemPrompt },

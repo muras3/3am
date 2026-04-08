@@ -29,6 +29,9 @@ const TOKEN = "test-token";
 function makeApp() {
   process.env["RECEIVER_AUTH_TOKEN"] = TOKEN;
   process.env["ANTHROPIC_API_KEY"] = "test-key";
+  delete process.env["LLM_MODE"];
+  delete process.env["LLM_PROVIDER"];
+  delete process.env["LLM_BRIDGE_URL"];
   return createApp(new MemoryAdapter());
 }
 
@@ -311,6 +314,89 @@ describe("POST /api/chat/:incidentId", () => {
         temperature: 0.3,
       }),
     );
+  });
+
+  it("routes manual mode chat through the bridge instead of the direct provider layer", async () => {
+    await app.request("/api/settings/diagnosis", {
+      method: "PUT",
+      headers: { ...authHeader(), "Content-Type": "application/json" },
+      body: JSON.stringify({
+        mode: "manual",
+        provider: "codex",
+        bridgeUrl: "http://127.0.0.1:4269",
+      }),
+    });
+
+    const originalFetch = globalThis.fetch;
+    const bridgeFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ reply: "Bridge reply." }),
+    });
+    globalThis.fetch = bridgeFetch as typeof fetch;
+
+    const cookie = await getSessionCookie(app);
+    const incidentId = await seedIncidentWithDiagnosis(app);
+    const res = await app.request(`/api/chat/${incidentId}`, {
+      method: "POST",
+      headers: chatHeaders(cookie),
+      body: JSON.stringify({
+        message: "What should I do first?",
+        history: [{ role: "user", content: "Start with the safest action." }],
+      }),
+    });
+
+    globalThis.fetch = originalFetch;
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ reply: "Bridge reply." });
+    expect(bridgeFetch).toHaveBeenCalledWith(
+      "http://127.0.0.1:4269/api/manual/chat",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          receiverUrl: "http://localhost",
+          incidentId,
+          authToken: TOKEN,
+          message: "What should I do first?",
+          history: [{ role: "user", content: "Start with the safest action." }],
+          provider: "codex",
+        }),
+      }),
+    );
+    expect(mockCallModelMessages).not.toHaveBeenCalled();
+  });
+
+  it("returns 502 with an actionable error when the manual chat bridge is unavailable", async () => {
+    await app.request("/api/settings/diagnosis", {
+      method: "PUT",
+      headers: { ...authHeader(), "Content-Type": "application/json" },
+      body: JSON.stringify({
+        mode: "manual",
+        provider: "codex",
+        bridgeUrl: "http://127.0.0.1:4269",
+      }),
+    });
+
+    const originalFetch = globalThis.fetch;
+    const bridgeFetch = vi.fn().mockRejectedValue(new Error("connect ECONNREFUSED 127.0.0.1:4269"));
+    globalThis.fetch = bridgeFetch as typeof fetch;
+
+    const cookie = await getSessionCookie(app);
+    const incidentId = await seedIncidentWithDiagnosis(app);
+    const res = await app.request(`/api/chat/${incidentId}`, {
+      method: "POST",
+      headers: chatHeaders(cookie),
+      body: JSON.stringify({ message: "What happened?", history: [] }),
+    });
+
+    globalThis.fetch = originalFetch;
+
+    expect(res.status).toBe(502);
+    expect(await res.json()).toEqual({
+      error: "manual chat bridge unavailable",
+      details: "connect ECONNREFUSED 127.0.0.1:4269",
+    });
+    expect(mockCallModelMessages).not.toHaveBeenCalled();
   });
 
   it("passes conversation history to the model", async () => {
