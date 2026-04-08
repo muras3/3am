@@ -20,6 +20,8 @@ export interface Credentials {
   llmProvider?: ProviderName;
   llmBridgeUrl?: string;
   llmModel?: string;
+  /** Last deployed Receiver URL managed by the CLI. */
+  receiverUrl?: string;
   /** Auth token for the deployed Receiver — CLI-managed, synced to platform secret on deploy. */
   receiverAuthToken?: string;
 }
