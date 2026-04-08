@@ -36,7 +36,7 @@
     "@opentelemetry/sdk-node": "^0.214.0",
     "@opentelemetry/semantic-conventions": "^1.37.0",
     "better-sqlite3": "^12.6.2",
-    "drizzle-orm": "^0.45.1",
+    "drizzle-orm": "^0.45.2",
     "hono": "^4.0.0",
     "jose": "^6.2.2",
     "postgres": "^3.4.8",
