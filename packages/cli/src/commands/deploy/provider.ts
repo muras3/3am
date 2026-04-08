@@ -15,7 +15,7 @@
  *   wrangler deploy
  */
 import { spawn, execFileSync } from "node:child_process";
-import { mkdtempSync, rmSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { getCloudflareAccountInfo } from "../cloudflare-workers.js";
@@ -185,8 +185,25 @@ function collectUrlStrings(value: unknown, urls: Set<string>): void {
   }
 }
 
+function readLinkedVercelProjectName(cwd: string): string | undefined {
+  const projectPath = join(cwd, ".vercel", "project.json");
+  if (!existsSync(projectPath)) return undefined;
+
+  try {
+    const raw = readFileSync(projectPath, "utf-8");
+    const parsed = JSON.parse(raw) as { projectName?: string; name?: string };
+    const projectName = parsed.projectName ?? parsed.name;
+    return typeof projectName === "string" && projectName.trim().length > 0
+      ? projectName.trim()
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export function resolveVercelProductionUrl(cwd: string, deploymentUrl: string): string {
   const normalizedDeploymentUrl = normalizeUrlCandidate(deploymentUrl) ?? deploymentUrl;
+  const linkedProjectName = readLinkedVercelProjectName(cwd);
 
   try {
     const raw = execFileSync(
@@ -210,10 +227,18 @@ export function resolveVercelProductionUrl(cwd: string, deploymentUrl: string): 
     const preferred = (vercelAliases.length > 0 ? vercelAliases : candidates)
       .sort((a, b) => a.length - b.length)[0];
 
-    return preferred ?? normalizedDeploymentUrl;
+    if (preferred) {
+      return preferred;
+    }
   } catch {
-    return normalizedDeploymentUrl;
+    // Fall through to linked-project fallback below.
   }
+
+  if (linkedProjectName) {
+    return `https://${linkedProjectName}.vercel.app`;
+  }
+
+  return normalizedDeploymentUrl;
 }
 
 export function createVercelProvider(options: ProviderOptions = {}): DeployProvider {
