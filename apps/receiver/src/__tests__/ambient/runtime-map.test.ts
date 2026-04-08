@@ -290,6 +290,41 @@ describe('buildRuntimeMap', () => {
     expect(result.summary.activeIncidents).toBe(1)
   })
 
+  it('projects open incidents into services when no spans are available', async () => {
+    const store = makeMockTelemetryStore([])
+    const storage = makeMockStorage([
+      makeIncident({
+        incidentId: 'inc-projected',
+        packet: {
+          ...makeIncident().packet,
+          incidentId: 'inc-projected',
+          scope: {
+            ...makeIncident().packet.scope,
+            primaryService: 'edge-worker',
+            affectedServices: ['edge-worker', 'checkout-api'],
+            affectedRoutes: ['/checkout'],
+            affectedDependencies: ['stripe'],
+          },
+          signalSeverity: 'critical',
+        },
+      }),
+    ])
+
+    const result = await buildRuntimeMap(store, storage)
+
+    expect(result.state.source).toBe('no_telemetry')
+    expect(result.services.map((service) => service.serviceName)).toEqual(['checkout-api', 'edge-worker'])
+    expect(result.services.find((service) => service.serviceName === 'edge-worker')?.routes).toEqual([
+      expect.objectContaining({ label: '/checkout', incidentId: 'inc-projected', status: 'critical' }),
+    ])
+    expect(result.dependencies).toEqual([
+      expect.objectContaining({ name: 'stripe', incidentId: 'inc-projected', status: 'critical' }),
+    ])
+    expect(result.edges).toEqual([
+      expect.objectContaining({ fromService: 'edge-worker', toDependency: 'stripe', status: 'critical' }),
+    ])
+  })
+
   it('creates entry_point route inside a service from SERVER span with httpRoute', async () => {
     const span = makeSpan({
       spanId: 's1',

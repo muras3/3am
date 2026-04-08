@@ -263,6 +263,11 @@ export async function buildRuntimeMap(
       })
     }
 
+    const projected = projectOpenIncidents(openIncidents, minutes)
+    if (projected !== null) {
+      return projected
+    }
+
     return emptyRuntimeMap(openIncidents, minutes)
   }
 
@@ -533,6 +538,165 @@ function emptyRuntimeMap(openIncidents: Incident[], windowMinutes: number): Runt
       emptyReason,
     },
   }
+}
+
+function projectOpenIncidents(
+  incidents: Incident[],
+  windowMinutes: number,
+): RuntimeMapResponse | null {
+  if (incidents.length === 0) return null
+
+  const serviceMap = new Map<string, RuntimeMapService>()
+  const dependencyMap = new Map<string, RuntimeMapDependency>()
+  const edgeMap = new Map<string, RuntimeMapServiceEdge>()
+
+  for (const incident of incidents) {
+    const incidentStatus = severityToStatus(incident.packet.signalSeverity)
+    const primaryService = incident.packet.scope.primaryService
+    const routeLabels = incident.packet.scope.affectedRoutes
+
+    upsertProjectedService(serviceMap, primaryService, incidentStatus, incident.incidentId)
+    const primary = serviceMap.get(primaryService)
+    if (primary) {
+      primary.routes = mergeProjectedRoutes(
+        primary.routes,
+        primaryService,
+        routeLabels,
+        incidentStatus,
+        incident.incidentId,
+      )
+      primary.status = worstStatus(primary.status, incidentStatus)
+    }
+
+    for (const serviceName of incident.packet.scope.affectedServices) {
+      upsertProjectedService(serviceMap, serviceName, incidentStatus, incident.incidentId)
+    }
+
+    for (const dependencyName of incident.packet.scope.affectedDependencies) {
+      const depId = `dep:${dependencyName.toLowerCase()}`
+      const existingDep = dependencyMap.get(depId)
+      if (existingDep) {
+        existingDep.status = worstStatus(existingDep.status, incidentStatus)
+        if (!existingDep.incidentId) existingDep.incidentId = incident.incidentId
+      } else {
+        dependencyMap.set(depId, {
+          id: depId,
+          name: dependencyName,
+          status: incidentStatus,
+          errorRate: 0,
+          reqPerSec: 0,
+          incidentId: incident.incidentId,
+        })
+      }
+
+      const edgeKey = `${primaryService}→${dependencyName}`
+      const existingEdge = edgeMap.get(edgeKey)
+      if (existingEdge) {
+        existingEdge.status = worstStatus(existingEdge.status, incidentStatus)
+      } else {
+        edgeMap.set(edgeKey, {
+          fromService: primaryService,
+          toDependency: dependencyName,
+          status: incidentStatus,
+        })
+      }
+    }
+  }
+
+  const services = Array.from(serviceMap.values()).sort((a, b) => a.serviceName.localeCompare(b.serviceName))
+  const dependencies = Array.from(dependencyMap.values()).sort((a, b) => a.name.localeCompare(b.name))
+  const edges = Array.from(edgeMap.values()).sort((a, b) =>
+    a.fromService.localeCompare(b.fromService) || a.toDependency.localeCompare(b.toDependency),
+  )
+
+  if (services.length === 0 && dependencies.length === 0) {
+    return null
+  }
+
+  const incidentRows = incidents.map((incident) => ({
+    incidentId: incident.incidentId,
+    label: incident.consoleNarrative?.headline
+      ?? incident.diagnosisResult?.summary.what_happened
+      ?? incident.packet.scope.primaryService,
+    severity: incident.packet.signalSeverity ?? 'medium',
+    openedAgo: formatOpenedAgo(incident.openedAt),
+  }))
+
+  return {
+    summary: {
+      activeIncidents: incidents.length,
+      degradedServices: services.filter((service) => service.status !== 'healthy').length,
+      clusterReqPerSec: 0,
+      clusterP95Ms: 0,
+    },
+    services,
+    dependencies,
+    edges,
+    incidents: incidentRows,
+    state: {
+      diagnosis: 'ready',
+      source: 'no_telemetry',
+      windowLabel: `last ${windowMinutes}m`,
+    },
+  }
+}
+
+function upsertProjectedService(
+  serviceMap: Map<string, RuntimeMapService>,
+  serviceName: string,
+  status: 'healthy' | 'degraded' | 'critical',
+  incidentId: string,
+): void {
+  const existing = serviceMap.get(serviceName)
+  if (existing) {
+    existing.status = worstStatus(existing.status, status)
+    if (!existing.incidentId) existing.incidentId = incidentId
+    return
+  }
+
+  serviceMap.set(serviceName, {
+    serviceName,
+    status,
+    routes: [],
+    metrics: { errorRate: 0, p95Ms: 0, reqPerSec: 0 },
+    incidentId,
+  })
+}
+
+function mergeProjectedRoutes(
+  routes: RuntimeMapRoute[],
+  serviceName: string,
+  routeLabels: string[],
+  status: 'healthy' | 'degraded' | 'critical',
+  incidentId: string,
+): RuntimeMapRoute[] {
+  const routeMap = new Map(routes.map((route) => [route.label, route]))
+  for (const routeLabel of routeLabels) {
+    const normalizedLabel = routeLabel.startsWith('/') ? routeLabel : `/${routeLabel}`
+    const existing = routeMap.get(normalizedLabel)
+    if (existing) {
+      existing.status = worstStatus(existing.status, status)
+      if (!existing.incidentId) existing.incidentId = incidentId
+      continue
+    }
+    routeMap.set(normalizedLabel, {
+      id: `route:${serviceName}:${normalizedLabel.toLowerCase()}`,
+      label: normalizedLabel,
+      status,
+      errorRate: 0,
+      reqPerSec: 0,
+      incidentId,
+    })
+  }
+  return Array.from(routeMap.values()).sort((a, b) => a.label.localeCompare(b.label))
+}
+
+function severityToStatus(
+  severity: string | undefined,
+): 'healthy' | 'degraded' | 'critical' {
+  if (severity === 'critical' || severity === 'high') return 'critical'
+  if (severity === 'medium' || severity === 'low') return 'degraded'
+  return 'degraded'
 }
 
 function computeWindowSeconds(spans: TelemetrySpan[]): number {
