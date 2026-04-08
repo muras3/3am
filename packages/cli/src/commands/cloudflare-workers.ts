@@ -544,6 +544,39 @@ export async function connectCloudflareWorkerToReceiver(
     `${receiverUrl}/v1/logs`,
     authToken,
   );
+
+  // Best-effort cleanup: update any other destinations pointing at the same
+  // receiver base URL but carrying a stale auth token (e.g. destinations
+  // created under a different naming scheme like *-dashboard).
+  const expectedAuthHeader = `Bearer ${authToken}`;
+  const managedNames = new Set([traceDestination, logDestination]);
+  try {
+    const allDestinations = await listDestinations(cloudflareAuth, account.accountId);
+    for (const dest of allDestinations) {
+      if (managedNames.has(dest.name)) continue;
+      const destUrl = dest.configuration.url ?? "";
+      if (!destUrl.startsWith(receiverUrl)) continue;
+      const currentAuth = dest.configuration.headers?.["Authorization"] ?? "";
+      if (currentAuth === expectedAuthHeader) continue;
+      // This destination points at our receiver but has a stale token — update it
+      try {
+        await updateDestination(
+          cloudflareAuth,
+          account.accountId,
+          dest.slug,
+          destUrl,
+          { Authorization: expectedAuthHeader },
+        );
+        process.stderr.write(`Updated stale destination: ${dest.name}\n`);
+      } catch {
+        // Best-effort — don't fail the deploy for cleanup issues
+        process.stderr.write(`Warning: could not update stale destination ${dest.name}\n`);
+      }
+    }
+  } catch {
+    // Best-effort — don't fail the deploy if listing fails
+  }
+
   const changed = updateCloudflareObservabilityConfig(configPath, {
     traceDestination,
     logDestination,
