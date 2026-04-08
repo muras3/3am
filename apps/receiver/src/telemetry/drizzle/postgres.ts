@@ -99,7 +99,8 @@ export class PostgresTelemetryAdapter implements TelemetryStoreDriver {
 
   constructor(connectionStringOrClient?: string | SharedPostgresClient) {
     if (typeof connectionStringOrClient === "string" || connectionStringOrClient === undefined) {
-      this.client = createPostgresClient(connectionStringOrClient);
+      const connStr = typeof connectionStringOrClient === "string" ? connectionStringOrClient : undefined;
+      this.client = createPostgresClient(connStr);
       this.ownsClient = true;
     } else {
       this.client = connectionStringOrClient;
