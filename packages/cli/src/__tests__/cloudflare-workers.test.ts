@@ -6,7 +6,7 @@ vi.mock("node:fs", () => ({
   writeFileSync: vi.fn(),
 }));
 
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { resolveCloudflareApiAuth, updateCloudflareObservabilityConfig } from "../commands/cloudflare-workers.js";
 
 describe("updateCloudflareObservabilityConfig() — wrangler.jsonc", () => {
@@ -150,11 +150,6 @@ describe("updateCloudflareObservabilityConfig() — wrangler.toml", () => {
 });
 
 describe("resolveCloudflareApiAuth()", () => {
-  beforeEach(() => {
-    vi.mocked(existsSync).mockReturnValue(false);
-    vi.mocked(readFileSync).mockReset();
-  });
-
   it("returns api-token auth when CLOUDFLARE_API_TOKEN is present", async () => {
     const auth = await resolveCloudflareApiAuth({
       env: { CLOUDFLARE_API_TOKEN: "token-123" },
@@ -175,27 +170,16 @@ describe("resolveCloudflareApiAuth()", () => {
     expect(auth.headers).toEqual({ Authorization: "Bearer token-via-alias" });
   });
 
-  it("errors in non-interactive mode when Global API Key is present but no API Token — CF Observability API only accepts Bearer token", async () => {
-    // CLOUDFLARE_API_KEY without CLOUDFLARE_API_TOKEN must throw:
-    // the CF Observability destinations API rejects X-Auth-Key with HTTP 400 "Bad Request"
+  it("errors in non-interactive mode when only Global API Key is set — CF Observability API rejects X-Auth-Key with 400", async () => {
     await expect(resolveCloudflareApiAuth({
       env: { CLOUDFLARE_API_KEY: "global-key", CLOUDFLARE_EMAIL: "user@example.com" },
       noInteractive: true,
     })).rejects.toThrow("CLOUDFLARE_API_TOKEN");
   });
 
-  it("errors in non-interactive mode when wrangler whoami email is present but no API Token", async () => {
-    await expect(resolveCloudflareApiAuth({
-      env: { CLOUDFLARE_API_KEY: "global-key" },
-      account: { email: "whoami@example.com" },
-      noInteractive: true,
-    })).rejects.toThrow("CLOUDFLARE_API_TOKEN");
-  });
-
-  it("errors in non-interactive mode when no auth credentials are configured", async () => {
+  it("errors in non-interactive mode when no API Token is configured", async () => {
     await expect(resolveCloudflareApiAuth({
       env: {},
-      account: { email: "user@example.com" },
       noInteractive: true,
     })).rejects.toThrow("Workers Scripts:Edit");
   });

@@ -327,7 +327,6 @@ async function promptSecret(prompt: string): Promise<string> {
 
 export async function resolveCloudflareApiAuth(options: {
   env?: NodeJS.ProcessEnv;
-  account?: { email?: string };
   noInteractive?: boolean;
 }): Promise<CloudflareApiAuth> {
   const env = options.env ?? process.env;
@@ -482,7 +481,6 @@ export async function connectCloudflareWorkerToReceiver(
   const { workerName } = resolveCloudflareWorker(configPath);
   const account = getCloudflareAccountInfo();
   const cloudflareAuth = await resolveCloudflareApiAuth({
-    account,
     noInteractive: options.noInteractive,
   });
   const traceDestination = await ensureDestination(
