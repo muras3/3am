@@ -341,4 +341,96 @@ describe('buildMetricsSurface', () => {
     expect(row.service).toBe('my-svc')
     expect(row.name).toBe('req.latency')
   })
+
+  // ── V8 heap / all-zero metric filtering (Issue #319) ─────────────────────
+
+  it('excludes a metric group where all observed values are 0 and no baseline exists', async () => {
+    // V8 heap metrics on Vercel: all zero, no baseline → should be excluded
+    const incident = [
+      makeMetric({ name: 'v8js.memory.heap.limit', summary: { asDouble: 0 } }),
+      makeMetric({ name: 'v8js.memory.heap.used', summary: { asDouble: 0 } }),
+    ]
+    const baseline: TelemetryMetric[] = []
+
+    const store = makeMockStore(incident, baseline)
+    const { surface } = await buildMetricsSurface(store, makeScope(), [])
+
+    const v8Names = surface.groups
+      .flatMap(g => g.rows)
+      .map(r => r.name)
+      .filter(n => n.startsWith('v8js'))
+
+    expect(v8Names).toHaveLength(0)
+  })
+
+  it('excludes a metric group where all observed values are 0 and baseline mean is also 0', async () => {
+    // Both incident and baseline are consistently zero → not a real signal
+    const incident = [
+      makeMetric({ name: 'v8js.memory.heap.used', summary: { asDouble: 0 } }),
+    ]
+    const baseline = [
+      makeMetric({ name: 'v8js.memory.heap.used', startTimeMs: 1699999900000, summary: { asDouble: 0 } }),
+      makeMetric({ name: 'v8js.memory.heap.used', startTimeMs: 1699999910000, summary: { asDouble: 0 } }),
+      makeMetric({ name: 'v8js.memory.heap.used', startTimeMs: 1699999920000, summary: { asDouble: 0 } }),
+    ]
+
+    const store = makeMockStore(incident, baseline)
+    const { surface } = await buildMetricsSurface(store, makeScope(), [])
+
+    const rows = surface.groups.flatMap(g => g.rows)
+    expect(rows.every(r => r.name !== 'v8js.memory.heap.used')).toBe(true)
+  })
+
+  it('keeps a metric where observed value is 0 but expected is non-zero (real signal)', async () => {
+    // A metric that dropped to 0 while baseline was non-zero is a real anomaly
+    const incident = [
+      makeMetric({ name: 'http.server.request.count', summary: { asDouble: 0 } }),
+    ]
+    const baseline = [
+      makeMetric({ name: 'http.server.request.count', startTimeMs: 1699999900000, summary: { asDouble: 100 } }),
+      makeMetric({ name: 'http.server.request.count', startTimeMs: 1699999910000, summary: { asDouble: 120 } }),
+      makeMetric({ name: 'http.server.request.count', startTimeMs: 1699999920000, summary: { asDouble: 110 } }),
+    ]
+
+    const store = makeMockStore(incident, baseline)
+    const { surface } = await buildMetricsSurface(store, makeScope(), [])
+
+    const rows = surface.groups.flatMap(g => g.rows)
+    const found = rows.find(r => r.name === 'http.server.request.count')
+    expect(found).toBeDefined()
+    expect(found!.observedValue).toBe(0)
+    expect(found!.expectedValue).not.toBe(0)
+    expect(found!.expectedValue).not.toBe('N/A')
+  })
+
+  it('keeps non-zero metrics when mixed with zero-only metrics', async () => {
+    // Non-zero metrics stay; only all-zero groups are removed
+    const incident = [
+      makeMetric({ name: 'v8js.memory.heap.used', summary: { asDouble: 0 } }),
+      makeMetric({ name: 'http.server.request.duration', summary: { asDouble: 250 } }),
+    ]
+    const baseline: TelemetryMetric[] = []
+
+    const store = makeMockStore(incident, baseline)
+    const { surface } = await buildMetricsSurface(store, makeScope(), [])
+
+    const names = surface.groups.flatMap(g => g.rows).map(r => r.name)
+    expect(names).not.toContain('v8js.memory.heap.used')
+    expect(names).toContain('http.server.request.duration')
+  })
+
+  it('excludes an entire group when all its rows have zero observed value and zero expected', async () => {
+    // Multiple v8 metrics in one group — whole group should be dropped
+    const incident = [
+      makeMetric({ name: 'v8js.memory.heap.limit', summary: { asDouble: 0 }, startTimeMs: 1700000010000 }),
+      makeMetric({ name: 'v8js.memory.heap.limit', summary: { asDouble: 0 }, startTimeMs: 1700000020000 }),
+    ]
+    const baseline: TelemetryMetric[] = []
+
+    const store = makeMockStore(incident, baseline)
+    const { surface, evidenceRefs } = await buildMetricsSurface(store, makeScope(), [])
+
+    expect(surface.groups).toHaveLength(0)
+    expect(evidenceRefs.size).toBe(0)
+  })
 })
