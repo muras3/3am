@@ -81,13 +81,15 @@ export async function runDiagnose(argv: string[]): Promise<void> {
   const creds = loadCredentials();
   const resolvedProvider = parseProvider(provider, creds.llmProvider);
   const resolvedModel = resolveProviderModel(resolvedProvider, model, creds.llmModel);
+  const resolvedReceiverUrl = receiverUrl ?? creds.receiverUrl;
+  const resolvedAuthToken = authToken ?? creds.receiverAuthToken;
 
-  if (incidentId && receiverUrl) {
+  if (incidentId && resolvedReceiverUrl) {
     try {
       const result = await runManualDiagnosis({
         incidentId,
-        receiverUrl,
-        authToken,
+        receiverUrl: resolvedReceiverUrl,
+        authToken: resolvedAuthToken,
         provider: resolvedProvider,
         model: resolvedModel,
         locale: creds.locale === "ja" ? "ja" : "en",
@@ -99,6 +101,14 @@ export async function runDiagnose(argv: string[]): Promise<void> {
       process.exit(1);
       return;
     }
+  }
+
+  if (incidentId && !resolvedReceiverUrl) {
+    process.stderr.write(
+      "Error: --incident-id requires --receiver-url, or a previously deployed receiver saved in ~/.config/3am/credentials\n",
+    );
+    process.exit(1);
+    return;
   }
 
   if (!packetPath) {

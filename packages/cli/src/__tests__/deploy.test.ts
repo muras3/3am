@@ -405,6 +405,12 @@ describe("runDeploy()", () => {
     expect(saveCredentials).toHaveBeenCalledWith(
       expect.objectContaining({ receiverAuthToken: "generated-uuid-token" }),
     );
+    expect(saveCredentials).toHaveBeenCalledWith(
+      expect.objectContaining({
+        receiverAuthToken: "generated-uuid-token",
+        receiverUrl: "https://test.vercel.app",
+      }),
+    );
 
     const calls = vi.mocked(updateAppEnv).mock.calls;
     const writeCall = calls.find((c) => !c[0].dryRun);
@@ -456,6 +462,9 @@ describe("runDeploy()", () => {
     );
     expect(saveCredentials).toHaveBeenCalledWith(
       expect.objectContaining({ receiverAuthToken: "provided-token" }),
+    );
+    expect(saveCredentials).toHaveBeenCalledWith(
+      expect.objectContaining({ receiverAuthToken: "provided-token", receiverUrl: "https://test.vercel.app" }),
     );
   });
 

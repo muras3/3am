@@ -149,6 +149,73 @@ function extractVercelUrl(output: string): string | undefined {
   return match?.[0];
 }
 
+function normalizeUrlCandidate(value: string): string | undefined {
+  const trimmed = value.trim();
+  if (!trimmed) return undefined;
+
+  const withProtocol = /^https?:\/\//.test(trimmed) ? trimmed : `https://${trimmed}`;
+  try {
+    const url = new URL(withProtocol);
+    return url.toString().replace(/\/$/, "");
+  } catch {
+    return undefined;
+  }
+}
+
+function collectUrlStrings(value: unknown, urls: Set<string>): void {
+  if (typeof value === "string") {
+    const normalized = normalizeUrlCandidate(value);
+    if (normalized) {
+      urls.add(normalized);
+    }
+    return;
+  }
+
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      collectUrlStrings(item, urls);
+    }
+    return;
+  }
+
+  if (value && typeof value === "object") {
+    for (const nested of Object.values(value)) {
+      collectUrlStrings(nested, urls);
+    }
+  }
+}
+
+export function resolveVercelProductionUrl(cwd: string, deploymentUrl: string): string {
+  const normalizedDeploymentUrl = normalizeUrlCandidate(deploymentUrl) ?? deploymentUrl;
+
+  try {
+    const raw = execFileSync(
+      "vercel",
+      ["inspect", deploymentUrl, "--format=json"],
+      { cwd, stdio: "pipe" },
+    ).toString();
+    const parsed = JSON.parse(raw) as unknown;
+    const collected = new Set<string>();
+    collectUrlStrings(parsed, collected);
+
+    const candidates = [...collected].filter((url) => {
+      try {
+        return new URL(url).hostname !== new URL(normalizedDeploymentUrl).hostname;
+      } catch {
+        return false;
+      }
+    });
+
+    const vercelAliases = candidates.filter((url) => url.endsWith(".vercel.app"));
+    const preferred = (vercelAliases.length > 0 ? vercelAliases : candidates)
+      .sort((a, b) => a.length - b.length)[0];
+
+    return preferred ?? normalizedDeploymentUrl;
+  } catch {
+    return normalizedDeploymentUrl;
+  }
+}
+
 export function createVercelProvider(options: ProviderOptions = {}): DeployProvider {
   let tempDir: string | undefined = cloneReceiver();
   const projectName = options.projectName ?? "3am-receiver";
@@ -200,7 +267,7 @@ export function createVercelProvider(options: ProviderOptions = {}): DeployProvi
         );
       }
 
-      return { url };
+      return { url: resolveVercelProductionUrl(tempDir, url) };
     },
 
     async setEnvVar(key, value) {

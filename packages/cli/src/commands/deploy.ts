@@ -260,6 +260,7 @@ export async function runDeploy(
   }
 
   info(`\nReceiver deployed: ${deployedUrl}\n`, json);
+  saveCredentials({ ...loadCredentials(), receiverAuthToken: authToken, receiverUrl: deployedUrl });
 
   // -------------------------------------------------------------------------
   // Step 9: Wait for Receiver readiness
