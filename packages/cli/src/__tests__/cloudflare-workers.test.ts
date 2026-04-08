@@ -155,7 +155,7 @@ describe("resolveCloudflareApiAuth()", () => {
     vi.mocked(readFileSync).mockReset();
   });
 
-  it("prefers CLOUDFLARE_API_TOKEN when present", async () => {
+  it("returns api-token auth when CLOUDFLARE_API_TOKEN is present", async () => {
     const auth = await resolveCloudflareApiAuth({
       env: { CLOUDFLARE_API_TOKEN: "token-123" },
       noInteractive: true,
@@ -165,33 +165,34 @@ describe("resolveCloudflareApiAuth()", () => {
     expect(auth.headers).toEqual({ Authorization: "Bearer token-123" });
   });
 
-  it("falls back to global api key plus email", async () => {
+  it("accepts CF_API_TOKEN alias", async () => {
     const auth = await resolveCloudflareApiAuth({
-      env: { CLOUDFLARE_API_KEY: "global-key", CLOUDFLARE_EMAIL: "user@example.com" },
+      env: { CF_API_TOKEN: "token-via-alias" },
       noInteractive: true,
     });
 
-    expect(auth.source).toBe("global-key");
-    expect(auth.headers).toEqual({
-      "X-Auth-Email": "user@example.com",
-      "X-Auth-Key": "global-key",
-    });
+    expect(auth.source).toBe("api-token");
+    expect(auth.headers).toEqual({ Authorization: "Bearer token-via-alias" });
   });
 
-  it("uses wrangler whoami email when CLOUDFLARE_EMAIL is absent", async () => {
-    const auth = await resolveCloudflareApiAuth({
+  it("errors in non-interactive mode when Global API Key is present but no API Token — CF Observability API only accepts Bearer token", async () => {
+    // CLOUDFLARE_API_KEY without CLOUDFLARE_API_TOKEN must throw:
+    // the CF Observability destinations API rejects X-Auth-Key with HTTP 400 "Bad Request"
+    await expect(resolveCloudflareApiAuth({
+      env: { CLOUDFLARE_API_KEY: "global-key", CLOUDFLARE_EMAIL: "user@example.com" },
+      noInteractive: true,
+    })).rejects.toThrow("CLOUDFLARE_API_TOKEN");
+  });
+
+  it("errors in non-interactive mode when wrangler whoami email is present but no API Token", async () => {
+    await expect(resolveCloudflareApiAuth({
       env: { CLOUDFLARE_API_KEY: "global-key" },
       account: { email: "whoami@example.com" },
       noInteractive: true,
-    });
-
-    expect(auth.headers).toEqual({
-      "X-Auth-Email": "whoami@example.com",
-      "X-Auth-Key": "global-key",
-    });
+    })).rejects.toThrow("CLOUDFLARE_API_TOKEN");
   });
 
-  it("errors in non-interactive mode when no supported auth is configured", async () => {
+  it("errors in non-interactive mode when no auth credentials are configured", async () => {
     await expect(resolveCloudflareApiAuth({
       env: {},
       account: { email: "user@example.com" },

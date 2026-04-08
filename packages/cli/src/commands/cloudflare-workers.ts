@@ -1,7 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { homedir } from "node:os";
 import { createInterface } from "node:readline";
 
 type JsonMap = Record<string, unknown>;
@@ -240,22 +239,6 @@ export function resolveCloudflareWorker(path: string): { workerName: string } {
   return { workerName };
 }
 
-function getCloudflareLegacyConfigPath(): string | null {
-  const candidates = [
-    join(homedir(), ".cloudflare", "config"),
-    join(homedir(), ".cloudflare", "config.json"),
-  ];
-  return candidates.find((candidate) => existsSync(candidate)) ?? null;
-}
-
-function getCloudflareApiKeyFromEnv(env: NodeJS.ProcessEnv): string | undefined {
-  return env["CLOUDFLARE_API_KEY"] ?? env["CF_API_KEY"];
-}
-
-function getCloudflareEmailFromEnv(env: NodeJS.ProcessEnv): string | undefined {
-  return env["CLOUDFLARE_EMAIL"] ?? env["CF_EMAIL"];
-}
-
 async function cloudflareApiFetch<T>(
   auth: CloudflareApiAuth,
   accountId: string,
@@ -342,21 +325,6 @@ async function promptSecret(prompt: string): Promise<string> {
   });
 }
 
-function readLegacyGlobalApiKey(): string | undefined {
-  const path = getCloudflareLegacyConfigPath();
-  if (!path) return undefined;
-  const content = readFileSync(path, "utf-8");
-  const tomlMatch = content.match(/^api_key\s*=\s*"(.*)"$/m)?.[1];
-  if (tomlMatch) return tomlMatch;
-
-  try {
-    const parsed = JSON.parse(content) as { api_key?: string };
-    return parsed.api_key;
-  } catch {
-    return undefined;
-  }
-}
-
 export async function resolveCloudflareApiAuth(options: {
   env?: NodeJS.ProcessEnv;
   account?: { email?: string };
@@ -371,18 +339,10 @@ export async function resolveCloudflareApiAuth(options: {
     };
   }
 
-  const email = getCloudflareEmailFromEnv(env) ?? options.account?.email;
-  const apiKey = getCloudflareApiKeyFromEnv(env) ?? readLegacyGlobalApiKey();
-
-  if (email && apiKey) {
-    return {
-      source: "global-key",
-      headers: {
-        "X-Auth-Email": email,
-        "X-Auth-Key": apiKey,
-      },
-    };
-  }
+  // NOTE: The CF Workers Observability destinations API (/workers/observability/destinations)
+  // only accepts Bearer token (API Token) auth. Global API Key (X-Auth-Key + X-Auth-Email)
+  // is rejected by this API with HTTP 400 "Bad Request". We therefore never fall back to
+  // Global API Key for this function — always require an API Token.
 
   if (options.noInteractive) {
     throw new Error(
@@ -391,27 +351,24 @@ export async function resolveCloudflareApiAuth(options: {
     );
   }
 
-  if (!email) {
+  process.stdout.write(
+    "CLOUDFLARE_API_TOKEN is not set.\n" +
+    "The Cloudflare Workers Observability API requires a scoped API Token (Bearer auth).\n" +
+    "Global API Keys are not accepted and will return 'Bad Request'.\n\n" +
+    "Create a token at https://dash.cloudflare.com/profile/api-tokens with permissions:\n" +
+    "  Account Settings:Read, Workers Scripts:Edit, D1:Edit, Cloudflare Queues:Edit, Workers Observability:Edit\n\n",
+  );
+  const promptedToken = await promptSecret("Enter your Cloudflare API Token: ");
+  if (!promptedToken) {
     throw new Error(
-      "Could not determine Cloudflare email. Set CLOUDFLARE_EMAIL or re-run `wrangler whoami` successfully.",
+      "Cloudflare API Token is required to configure Observability destinations. " +
+      "Export it as CLOUDFLARE_API_TOKEN and re-run `3am deploy cloudflare`.",
     );
   }
 
-  process.stdout.write(
-    "Cloudflare OTLP destination setup works best with CLOUDFLARE_API_TOKEN. " +
-    "Falling back to Global API Key for this interactive run.\n",
-  );
-  const promptedApiKey = await promptSecret("Enter your Cloudflare Global API Key: ");
-  if (!promptedApiKey) {
-    throw new Error("Cloudflare Global API Key is required to configure Observability destinations.");
-  }
-
   return {
-    source: "global-key",
-    headers: {
-      "X-Auth-Email": email,
-      "X-Auth-Key": promptedApiKey,
-    },
+    source: "api-token",
+    headers: { Authorization: `Bearer ${promptedToken}` },
   };
 }
 
