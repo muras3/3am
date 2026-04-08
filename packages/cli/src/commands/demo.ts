@@ -13,10 +13,17 @@
 import { createInterface } from "node:readline";
 import { resolveApiKey } from "./init/credentials.js";
 import { checkReceiver } from "./shared/health.js";
+import type { ProviderName } from "@3am/diagnosis";
 
 const DEFAULT_RECEIVER_URL = "http://localhost:3333";
 const POLL_INTERVAL_MS = 3_000;
 const POLL_TIMEOUT_MS = 120_000;
+
+type DiagnosisSettings = {
+  mode: "automatic" | "manual";
+  provider?: ProviderName;
+  bridgeUrl: string;
+};
 
 export interface DemoOptions {
   yes?: boolean;
@@ -161,30 +168,60 @@ async function pollDiagnosis(
   return false;
 }
 
+async function fetchDiagnosisSettings(baseUrl: string): Promise<DiagnosisSettings> {
+  try {
+    const res = await fetch(`${baseUrl}/api/settings/diagnosis`, {
+      signal: AbortSignal.timeout(5_000),
+    });
+    if (!res.ok) {
+      throw new Error(`settings returned HTTP ${res.status}`);
+    }
+    const data = await res.json() as Partial<DiagnosisSettings>;
+    if (data.mode !== "manual" && data.mode !== "automatic") {
+      throw new Error("settings response missing mode");
+    }
+    return {
+      mode: data.mode,
+      provider: data.provider,
+      bridgeUrl: data.bridgeUrl ?? "http://127.0.0.1:4269",
+    };
+  } catch {
+    return {
+      mode: "automatic",
+      bridgeUrl: "http://127.0.0.1:4269",
+    };
+  }
+}
+
+async function runManualDiagnosis(
+  settings: DiagnosisSettings,
+  baseUrl: string,
+  incidentId: string,
+): Promise<void> {
+  const res = await fetch(`${settings.bridgeUrl}/api/manual/diagnose`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      incidentId,
+      receiverUrl: baseUrl,
+      provider: settings.provider,
+    }),
+    signal: AbortSignal.timeout(POLL_TIMEOUT_MS),
+  });
+  if (!res.ok) {
+    const detail = await res.text();
+    throw new Error(detail || `manual diagnosis bridge returned HTTP ${res.status}`);
+  }
+  await res.json();
+}
+
 export async function runDemo(
   _argv: string[],
   options: DemoOptions = {},
 ): Promise<void> {
   const baseUrl = options.receiverUrl ?? DEFAULT_RECEIVER_URL;
 
-  // 1. Resolve API key (required for demo — real LLM diagnosis)
-  const apiKey = await resolveApiKey({
-    noInteractive: options.noInteractive,
-  });
-
-  if (!apiKey) {
-    process.stderr.write(
-      "Error: ANTHROPIC_API_KEY is required to run the demo.\n" +
-        "The demo runs a real LLM diagnosis — an API key must be configured.\n\n" +
-        "Fix:\n" +
-        "  npx 3am init --api-key <your-key>\n" +
-        "  npx 3am local demo\n",
-    );
-    process.exit(1);
-    return;
-  }
-
-  // 2. Check Receiver is running
+  // 1. Check Receiver is running
   process.stdout.write(`Checking Receiver at ${baseUrl}...\n`);
   const receiverUp = await checkReceiver(baseUrl);
   if (!receiverUp) {
@@ -199,23 +236,50 @@ export async function runDemo(
     return;
   }
 
-  // 3. Cost consent
+  const diagnosisSettings = await fetchDiagnosisSettings(baseUrl);
+
+  let apiKey: string | undefined;
+  if (diagnosisSettings.mode === "automatic") {
+    apiKey = await resolveApiKey({
+      noInteractive: options.noInteractive,
+    });
+
+    if (!apiKey) {
+      process.stderr.write(
+        "Error: ANTHROPIC_API_KEY is required to run the demo in automatic mode.\n" +
+          "The demo runs a real server-side LLM diagnosis when the receiver is set to automatic mode.\n\n" +
+          "Fix:\n" +
+          "  npx 3am init --api-key <your-key>\n" +
+          "  npx 3am local demo\n",
+      );
+      process.exit(1);
+      return;
+    }
+  }
+
+  // 2. Consent / mode notice
   process.stdout.write("\n");
   process.stdout.write("  scenario:    downstream timeout cascade\n");
   process.stdout.write("  service:     3am-demo\n");
   process.stdout.write("  environment: demo\n\n");
 
   if (!options.yes) {
-    process.stdout.write(
-      "This demo will use your ANTHROPIC_API_KEY to run a real LLM diagnosis.\n" +
-        "Estimated cost: ~¥10 (~$0.05) per run.\n\n",
-    );
-    if (options.noInteractive) {
-      process.stderr.write(
-        "Error: cost consent required. Use --yes to skip in non-interactive mode.\n",
+    if (diagnosisSettings.mode === "automatic") {
+      process.stdout.write(
+        "This demo will use your ANTHROPIC_API_KEY to run a real LLM diagnosis.\n" +
+          "Estimated cost: ~¥10 (~$0.05) per run.\n\n",
       );
-      process.exit(1);
-      return;
+      if (options.noInteractive) {
+        process.stderr.write(
+          "Error: cost consent required. Use --yes to skip in non-interactive mode.\n",
+        );
+        process.exit(1);
+        return;
+      }
+    } else {
+      process.stdout.write(
+        `Manual mode detected. Diagnosis will be requested through the local bridge at ${diagnosisSettings.bridgeUrl}.\n\n`,
+      );
     }
     const confirmed = await promptConfirm("Proceed? [Y/n] ");
     if (!confirmed) {
@@ -260,23 +324,40 @@ export async function runDemo(
 
   process.stdout.write(`✓ Incident created (${incidentId})\n`);
 
-  // 5. Poll for diagnosis completion
-  const spinner = createSpinner("Running LLM diagnosis... (15-30s)");
-  const diagnosed = await pollDiagnosis(baseUrl, incidentId);
-
-  if (diagnosed) {
-    spinner.stop("✓ Diagnosis complete!");
+  // 4. Run diagnosis in the configured mode
+  if (diagnosisSettings.mode === "manual") {
+    const spinner = createSpinner("Requesting manual diagnosis through the local bridge...");
+    try {
+      await runManualDiagnosis(diagnosisSettings, baseUrl, incidentId);
+      spinner.stop("✓ Manual diagnosis complete!");
+    } catch (error) {
+      spinner.stop("✗ Manual diagnosis failed.");
+      process.stderr.write(
+        `Error: ${error instanceof Error ? error.message : String(error)}\n` +
+          "Start the bridge in another terminal and try again:\n" +
+          "  npx 3am bridge\n",
+      );
+      process.exit(1);
+      return;
+    }
   } else {
-    spinner.stop("⏳ Diagnosis is taking longer than expected.");
-    process.stdout.write(
-      "  The Receiver may still be running the diagnosis.\n" +
-        "  Check the Console in a moment.\n" +
-        "  If diagnosis doesn't appear, make sure the Receiver was started\n" +
-        "  with ANTHROPIC_API_KEY (re-run `npx 3am local`).\n",
-    );
+    const spinner = createSpinner("Running LLM diagnosis... (15-30s)");
+    const diagnosed = await pollDiagnosis(baseUrl, incidentId);
+
+    if (diagnosed) {
+      spinner.stop("✓ Diagnosis complete!");
+    } else {
+      spinner.stop("⏳ Diagnosis is taking longer than expected.");
+      process.stdout.write(
+        "  The Receiver may still be running the diagnosis.\n" +
+          "  Check the Console in a moment.\n" +
+          "  If diagnosis doesn't appear, make sure the Receiver was started\n" +
+          "  with ANTHROPIC_API_KEY (re-run `npx 3am local`).\n",
+      );
+    }
   }
 
-  // 6. Next steps
+  // 5. Next steps
   process.stdout.write("\nNext steps:\n");
   process.stdout.write(`  1. Open ${baseUrl}\n`);
   process.stdout.write("  2. Click the demo incident to see the diagnosis\n");

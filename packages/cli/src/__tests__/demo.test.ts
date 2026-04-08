@@ -129,6 +129,13 @@ describe("runDemo()", () => {
 
   it("exits with error when no API key", async () => {
     vi.mocked(resolveApiKey).mockResolvedValue(undefined);
+    globalThis.fetch = vi.fn().mockImplementation(async (url: string) => {
+      const urlStr = String(url);
+      if (urlStr.includes("/healthz")) {
+        return new Response(JSON.stringify({ status: "ok" }), { status: 200 });
+      }
+      return new Response("not configured", { status: 404 });
+    });
 
     await runDemo([], { noInteractive: true });
 
@@ -169,6 +176,9 @@ describe("runDemo()", () => {
         if (urlStr.includes("/healthz")) {
           return new Response(JSON.stringify({ items: [] }), { status: 200 });
         }
+        if (urlStr.includes("/api/settings/diagnosis")) {
+          return new Response("not configured", { status: 404 });
+        }
         // Trace ingest
         if (urlStr.includes("/v1/traces") && init?.method === "POST") {
           return new Response(
@@ -201,6 +211,54 @@ describe("runDemo()", () => {
     expect(stdout).toContain("Diagnosis complete");
     expect(stdout).toContain("http://localhost:3333");
     expect(process.exit).not.toHaveBeenCalled();
+  });
+
+  it("uses the local bridge in manual mode without requiring ANTHROPIC_API_KEY", async () => {
+    vi.mocked(resolveApiKey).mockResolvedValue(undefined);
+
+    globalThis.fetch = vi
+      .fn()
+      .mockImplementation(async (url: string, init?: RequestInit) => {
+        const urlStr = String(url);
+        if (urlStr.includes("/healthz")) {
+          return new Response(JSON.stringify({ status: "ok" }), { status: 200 });
+        }
+        if (urlStr.includes("/api/settings/diagnosis")) {
+          return new Response(
+            JSON.stringify({
+              mode: "manual",
+              provider: "claude-code",
+              bridgeUrl: "http://127.0.0.1:4269",
+            }),
+            { status: 200 },
+          );
+        }
+        if (urlStr.includes("/v1/traces") && init?.method === "POST") {
+          return new Response(
+            JSON.stringify({
+              status: "ok",
+              incidentId: "inc_manual_123",
+            }),
+            { status: 200 },
+          );
+        }
+        if (urlStr === "http://127.0.0.1:4269/api/manual/diagnose") {
+          return new Response(JSON.stringify({ status: "accepted" }), { status: 200 });
+        }
+        return new Response("not found", { status: 404 });
+      });
+
+    await runDemo([], { noInteractive: true, yes: true });
+
+    const stdout = stdoutChunks.join("");
+    expect(stdout).toContain("Manual diagnosis complete");
+    expect(process.exit).not.toHaveBeenCalled();
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      "http://127.0.0.1:4269/api/manual/diagnose",
+      expect.objectContaining({
+        method: "POST",
+      }),
+    );
   });
 
   it("handles ingest failure gracefully", async () => {
