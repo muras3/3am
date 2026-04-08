@@ -306,6 +306,9 @@ abstract class CliProvider implements LLMProvider {
   abstract readonly name: ProviderName;
   abstract readonly binary: string;
   protected abstract buildArgs(options: ModelCallOptions): string[];
+  protected buildSpawnEnv(options: ModelCallOptions): NodeJS.ProcessEnv {
+    return { ...resolveEnv(options) };
+  }
 
   async generate(messages: ModelMessage[], options: ModelCallOptions): Promise<string> {
     if (!await checkBinary(this.binary)) {
@@ -319,6 +322,7 @@ abstract class CliProvider implements LLMProvider {
       const { spawn } = await import("node:child_process");
       const child = spawn(this.binary, this.buildArgs(options), {
         stdio: ["pipe", "pipe", "pipe"],
+        env: this.buildSpawnEnv(options),
       });
       const stdoutChunks: Buffer[] = [];
       const stderrChunks: Buffer[] = [];
@@ -369,6 +373,12 @@ class ClaudeCodeProvider extends CliProvider {
       args.push("--model", options.model);
     }
     return args;
+  }
+
+  protected buildSpawnEnv(options: ModelCallOptions): NodeJS.ProcessEnv {
+    const env = super.buildSpawnEnv(options);
+    delete env["ANTHROPIC_API_KEY"];
+    return env;
   }
 }
 
