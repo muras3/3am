@@ -270,12 +270,53 @@ describe("runDev", () => {
     );
   });
 
-  it("builds a local receiver image when running inside the repo", async () => {
+  it("starts the local receiver from source when running inside the repo", async () => {
     mockExecSync.mockImplementation((cmd) => {
-      if (String(cmd) === "docker --version") return Buffer.from("Docker version 24.0.0");
+      if (String(cmd) === "pnpm --version") return Buffer.from("10.31.0");
       return Buffer.from("");
     });
-    mockExistsSync.mockReturnValue(true);
+    mockExistsSync.mockImplementation((path) => {
+      const value = String(path);
+      return (
+        value.endsWith("package.json")
+        || value.endsWith("apps/receiver/package.json")
+        || value.endsWith("node_modules")
+        || value.endsWith("packages/core/dist/index.js")
+        || value.endsWith("packages/diagnosis/dist/index.js")
+        || value.endsWith("apps/console/dist/index.html")
+      );
+    });
+    mockReadFileSync.mockImplementation(makeReadFileMock("0.1.0"));
+    mockSpawnSync.mockReturnValue({ status: 0 } as ReturnType<typeof childProcess.spawnSync>);
+
+    const { runDev } = await import("../commands/dev.js");
+    runDev();
+
+    expect(mockSpawnSync).toHaveBeenCalledWith(
+      "pnpm",
+      ["--filter", "@3am/receiver", "dev"],
+      expect.objectContaining({
+        stdio: "inherit",
+        env: expect.objectContaining({
+          PORT: "3333",
+          ALLOW_INSECURE_DEV_MODE: "true",
+        }),
+      }),
+    );
+  });
+
+  it("builds missing workspace artifacts before starting from source", async () => {
+    mockExecSync.mockImplementation((cmd) => {
+      if (String(cmd) === "pnpm --version") return Buffer.from("10.31.0");
+      return Buffer.from("");
+    });
+    mockExistsSync.mockImplementation((path) => {
+      const value = String(path);
+      if (value.endsWith("package.json") || value.endsWith("apps/receiver/package.json") || value.endsWith("node_modules")) {
+        return true;
+      }
+      return false;
+    });
     mockReadFileSync.mockImplementation(makeReadFileMock("0.1.0"));
     mockSpawnSync.mockReturnValue({ status: 0 } as ReturnType<typeof childProcess.spawnSync>);
 
@@ -283,13 +324,49 @@ describe("runDev", () => {
     runDev();
 
     expect(mockExecSync).toHaveBeenCalledWith(
-      "docker build -t 3am-receiver:local .",
+      "pnpm --filter @3am/core build",
       expect.objectContaining({ stdio: "inherit" }),
     );
-    expect(mockSpawnSync).toHaveBeenCalledWith(
-      "docker",
-      expect.arrayContaining(["3am-receiver:local"]),
-      expect.any(Object),
+    expect(mockExecSync).toHaveBeenCalledWith(
+      "pnpm --filter @3am/diagnosis build",
+      expect.objectContaining({ stdio: "inherit" }),
     );
+    expect(mockExecSync).toHaveBeenCalledWith(
+      "pnpm --filter @3am/console build",
+      expect.objectContaining({ stdio: "inherit" }),
+    );
+  });
+
+  it("prints a contributor-focused error when repo dependencies are missing", async () => {
+    mockExecSync.mockImplementation((cmd) => {
+      if (String(cmd) === "pnpm --version") return Buffer.from("10.31.0");
+      return Buffer.from("");
+    });
+    mockExistsSync.mockImplementation((path) => {
+      const value = String(path);
+      return value.endsWith("package.json") || value.endsWith("apps/receiver/package.json");
+    });
+    mockReadFileSync.mockImplementation(makeReadFileMock("0.1.0"));
+
+    const { runDev } = await import("../commands/dev.js");
+    runDev();
+
+    expect(process.exit).toHaveBeenCalledWith(1);
+    expect(stderrOutput).toContain("dependencies are not installed");
+    expect(stderrOutput).toContain("pnpm install");
+  });
+
+  it("prints guidance when the published Docker image fails to start", async () => {
+    mockExecSync.mockReturnValue(Buffer.from("Docker version 24.0.0"));
+    mockNoLocalRepo();
+    mockReadFileSync.mockImplementation(makeReadFileMock("0.1.0"));
+    mockSpawnSync.mockReturnValue({ status: 125 } as ReturnType<typeof childProcess.spawnSync>);
+
+    const { runDev } = await import("../commands/dev.js");
+    runDev();
+
+    expect(process.exit).toHaveBeenCalledWith(125);
+    expect(stderrOutput).toContain("Docker image ghcr.io/3am/receiver:v0.1.0 failed to start");
+    expect(stderrOutput).toContain("run `npx 3am local` from that repo");
   });
 });
