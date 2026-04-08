@@ -305,6 +305,40 @@ describe("runDev", () => {
     );
   });
 
+  it("does not require Docker when running inside the repo", async () => {
+    mockExecSync.mockImplementation((cmd) => {
+      const command = String(cmd);
+      if (command === "docker --version") {
+        throw new Error("docker missing");
+      }
+      if (command === "pnpm --version") return Buffer.from("10.31.0");
+      return Buffer.from("");
+    });
+    mockExistsSync.mockImplementation((path) => {
+      const value = String(path);
+      return (
+        value.endsWith("package.json")
+        || value.endsWith("apps/receiver/package.json")
+        || value.endsWith("node_modules")
+        || value.endsWith("packages/core/dist/index.js")
+        || value.endsWith("packages/diagnosis/dist/index.js")
+        || value.endsWith("apps/console/dist/index.html")
+      );
+    });
+    mockReadFileSync.mockImplementation(makeReadFileMock("0.1.0"));
+    mockSpawnSync.mockReturnValue({ status: 0 } as ReturnType<typeof childProcess.spawnSync>);
+
+    const { runDev } = await import("../commands/dev.js");
+    runDev();
+
+    expect(mockSpawnSync).toHaveBeenCalledWith(
+      "pnpm",
+      ["--filter", "@3am/receiver", "dev"],
+      expect.any(Object),
+    );
+    expect(stderrOutput).not.toContain("Docker is a product prerequisite");
+  });
+
   it("builds missing workspace artifacts before starting from source", async () => {
     mockExecSync.mockImplementation((cmd) => {
       if (String(cmd) === "pnpm --version") return Buffer.from("10.31.0");
