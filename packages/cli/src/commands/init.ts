@@ -49,6 +49,18 @@ const VERCEL_SERVER_EXTERNAL_PACKAGES = [
   "require-in-the-middle",
 ];
 
+/**
+ * Packages that must be externalized from webpack for plain (non-Vercel) Next.js.
+ * @opentelemetry/auto-instrumentations-node uses require-in-the-middle for monkey-patching,
+ * which breaks when webpack bundles the module graph. All @opentelemetry/* packages that
+ * include Node.js-only modules (net, dns, fs) must be excluded from the webpack bundle.
+ */
+export const NEXTJS_SERVER_EXTERNAL_PACKAGES = [
+  "@opentelemetry/sdk-node",
+  "@opentelemetry/auto-instrumentations-node",
+  "require-in-the-middle",
+];
+
 function isDirectory(p: string): boolean {
   try { return statSync(p).isDirectory(); } catch { return false; }
 }
@@ -66,14 +78,14 @@ function findNextConfigPath(cwd: string): string | null {
  * Webpack bundling breaks require-in-the-middle monkey-patching unless
  * these packages are externalized.
  */
-function patchNextConfig(cwd: string): boolean {
+export function patchNextConfig(cwd: string, packages: string[] = VERCEL_SERVER_EXTERNAL_PACKAGES): boolean {
   const configPath = findNextConfigPath(cwd);
   if (!configPath) return false;
 
   let content = readFileSync(configPath, "utf-8");
   if (content.includes("serverExternalPackages")) return false;
 
-  const packageList = VERCEL_SERVER_EXTERNAL_PACKAGES
+  const packageList = packages
     .map((p) => `    "${p}",`)
     .join("\n");
   const property = `\n  serverExternalPackages: [\n${packageList}\n  ],`;
@@ -316,33 +328,39 @@ export async function runInit(_argv: string[], options: InitOptions = {}): Promi
       process.stdout.write(`Created ${relPath}\n`);
     }
 
-    // --- 2b. Vercel/Next.js: patch next.config + build script ---
-    if (useVercelOtel) {
+    // --- 2b. Next.js: patch next.config (all Next.js projects) + build script (Vercel only) ---
+    if (isNextjs) {
       const nextConfigPath = findNextConfigPath(cwd);
+      // Choose the right package list: Vercel OTel adds logger packages; plain Next.js uses the base set.
+      const externalPackages = useVercelOtel
+        ? VERCEL_SERVER_EXTERNAL_PACKAGES
+        : NEXTJS_SERVER_EXTERNAL_PACKAGES;
       if (nextConfigPath) {
-        if (patchNextConfig(cwd)) {
+        if (patchNextConfig(cwd, externalPackages)) {
           process.stdout.write(`Added serverExternalPackages to ${nextConfigPath.split("/").pop()}\n`);
         }
       } else {
         process.stdout.write(
           "  Warning: no next.config found — create one and add serverExternalPackages.\n" +
-          `  Required packages: ${VERCEL_SERVER_EXTERNAL_PACKAGES.join(", ")}\n`,
+          `  Required packages: ${externalPackages.join(", ")}\n`,
         );
       }
-      if (patchBuildScript(pkgPath)) {
-        process.stdout.write(`Changed build script to use --webpack (required for OTel)\n`);
-      } else {
-        // Re-read to check current state
-        const currentPkg = JSON.parse(readFileSync(pkgPath, "utf-8")) as PackageJson;
-        const buildScript = currentPkg.scripts?.build ?? "";
-        if (buildScript.includes("--webpack")) {
-          // Already patched — no warning needed
-        } else if (buildScript.includes("next build")) {
-          // Should have been patched but wasn't — unexpected
-        } else if (buildScript) {
-          process.stdout.write(
-            `  Warning: build script "${buildScript}" does not use \`next build\` — add --webpack manually if needed.\n`,
-          );
+      if (useVercelOtel) {
+        if (patchBuildScript(pkgPath)) {
+          process.stdout.write(`Changed build script to use --webpack (required for OTel)\n`);
+        } else {
+          // Re-read to check current state
+          const currentPkg = JSON.parse(readFileSync(pkgPath, "utf-8")) as PackageJson;
+          const buildScript = currentPkg.scripts?.build ?? "";
+          if (buildScript.includes("--webpack")) {
+            // Already patched — no warning needed
+          } else if (buildScript.includes("next build")) {
+            // Should have been patched but wasn't — unexpected
+          } else if (buildScript) {
+            process.stdout.write(
+              `  Warning: build script "${buildScript}" does not use \`next build\` — add --webpack manually if needed.\n`,
+            );
+          }
         }
       }
     }
