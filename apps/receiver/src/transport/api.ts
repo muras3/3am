@@ -459,7 +459,7 @@ export function createApiRouter(
     }
 
     const storedLocale = await storage.getSettings("locale");
-    const locale: "en" | "ja" = storedLocale === "ja" ? "ja" : "en";
+    const locale: "en" | "ja" = parsed.data.locale ?? (storedLocale === "ja" ? "ja" : "en");
     const result = await buildEvidenceQueryAnswer(
       incident,
       telemetryStore,
