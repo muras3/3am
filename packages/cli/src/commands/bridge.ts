@@ -1,6 +1,6 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import type { ProviderName } from "@3am/diagnosis";
-import { loadCredentials } from "./init/credentials.js";
+import { loadCredentials, findReceiverCredentialByUrl } from "./init/credentials.js";
 import { runManualChat, runManualDiagnosis, runManualEvidenceQuery } from "./manual-execution.js";
 import { resolveProviderModel } from "./provider-model.js";
 
@@ -334,7 +334,11 @@ export function runBridge(options: BridgeOptions = {}): void {
   // ── WebSocket client (for remote receivers) ─────────────────────────
   const creds = loadCredentials();
   const receiverUrl = options.receiverUrl ?? creds.receiverUrl;
-  const authToken = creds.receiverAuthToken;
+  // Use URL-scoped credential lookup (matches diagnose.ts pattern)
+  const matchedReceiver = receiverUrl
+    ? findReceiverCredentialByUrl(creds, receiverUrl)
+    : undefined;
+  const authToken = matchedReceiver?.authToken ?? creds.receiverAuthToken;
 
   if (receiverUrl && isRemoteUrl(receiverUrl)) {
     const wsUrl = `${httpToWs(receiverUrl)}/bridge/ws${authToken ? `?token=${encodeURIComponent(authToken)}` : ""}`;
