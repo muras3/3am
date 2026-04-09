@@ -194,6 +194,16 @@ describe('resolveEffectiveBody', () => {
     expect(parsed['event']).toBe('stripe.rate_limit')
   })
 
+  it('synthesises body from attributes when body is \'"\\"\\""\' (CF body:null → JSON-encoded empty string)', () => {
+    // CF Workers sends body:null; extractor does JSON.stringify(null ?? '') = '""'
+    // This '""' must be treated as trivial and synthesised from attributes (#326)
+    const attrs = { event: { stringValue: 'payment_failed' }, level: { stringValue: 'error' } }
+    const result = resolveEffectiveBody('""', attrs)
+    const parsed = JSON.parse(result) as Record<string, unknown>
+    expect(parsed['event']).toBe('payment_failed')
+    expect(parsed['level']).toBe('error')
+  })
+
   it('synthesises body from attributes when body is "{}" with surrounding whitespace', () => {
     const attrs = { event: { stringValue: 'test' } }
     const result = resolveEffectiveBody('  {}  ', attrs)

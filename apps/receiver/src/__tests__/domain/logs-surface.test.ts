@@ -344,4 +344,72 @@ describe('buildLogsSurface', () => {
     const cluster = result.surface.clusters[0]!
     expect(cluster.clusterKey.hasTraceCorrelation).toBe(false)
   })
+
+  // ── #326 regression: empty/trivial body logs still produce clusters ──────
+
+  it('#326: ERROR log with empty body still produces a non-empty cluster', async () => {
+    // Simulates logs ingested before #316 fix: body stored as ''
+    const logs = [
+      makeLog({ service: 'web', severity: 'ERROR', body: '', attributes: {} }),
+      makeLog({ service: 'web', severity: 'ERROR', body: '', attributes: {}, bodyHash: 'hash-2' }),
+    ]
+    const store = makeMockStore(logs)
+    const scope = makeScope()
+
+    const result = await buildLogsSurface(store, scope, [], [])
+
+    expect(result.surface.clusters.length).toBeGreaterThan(0)
+    const cluster = result.surface.clusters[0]!
+    expect(cluster.entries.length).toBe(2)
+    expect(cluster.signalCount).toBe(2)
+  })
+
+  it('#326: log with body "\\"\\"" (JSON-encoded empty string from CF body:null) is synthesised from attributes', async () => {
+    // CF Workers sends body:null → JSON.stringify('') = '""' is stored as body
+    // attributes have OTLP AnyValue-wrapped values (raw wire format)
+    const logs = [
+      makeLog({
+        service: 'web',
+        severity: 'ERROR',
+        body: '""',
+        attributes: {
+          event: { stringValue: 'payment_failed' },
+          'level': { stringValue: 'error' },
+        },
+      }),
+    ]
+    const store = makeMockStore(logs)
+    const scope = makeScope()
+
+    const result = await buildLogsSurface(store, scope, [], [])
+
+    expect(result.surface.clusters.length).toBe(1)
+    const entry = result.surface.clusters[0]!.entries[0]!
+    // Body should be synthesised from attributes, not left as '""'
+    expect(entry.body).not.toBe('""')
+    expect(entry.body).toContain('payment_failed')
+  })
+
+  it('#326: WARN log with trivial body and keyword in attributes surfaces as signal', async () => {
+    // WARN log with empty body + 'timeout' in attributes → isSignal should be true
+    const logs = [
+      makeLog({
+        service: 'web',
+        severity: 'WARN',
+        body: '""',
+        attributes: {
+          error_message: { stringValue: 'connection timeout exceeded' },
+        },
+      }),
+    ]
+    const store = makeMockStore(logs)
+    const scope = makeScope()
+
+    const result = await buildLogsSurface(store, scope, [], [])
+
+    expect(result.surface.clusters.length).toBe(1)
+    const entry = result.surface.clusters[0]!.entries[0]!
+    // After body synthesis, 'timeout' keyword hit → isSignal = true
+    expect(entry.isSignal).toBe(true)
+  })
 })
