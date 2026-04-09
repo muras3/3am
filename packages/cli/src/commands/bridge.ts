@@ -1,5 +1,6 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import type { ProviderName } from "@3am/diagnosis";
+import type { DiagnosisResult, EvidenceResponse } from "@3am/core";
 import { loadCredentials, findReceiverCredentialByUrl } from "./init/credentials.js";
 import { runManualChat, runManualDiagnosis, runManualEvidenceQuery } from "./manual-execution.js";
 import { resolveProviderModel } from "./provider-model.js";
@@ -199,7 +200,9 @@ async function handleWsMessage(msg: WsMessage, sendResponse: (response: unknown)
         history: (msg["history"] as Array<{ role: "user" | "assistant"; content: string }>) ?? [],
         provider,
         model: resolveProviderModel(provider, undefined, creds.llmModel),
-        locale: creds.locale === "ja" ? "ja" : "en",
+        locale: (msg["locale"] as "en" | "ja") ?? (creds.locale === "ja" ? "ja" : "en"),
+        diagnosisResult: msg["diagnosisResult"] as DiagnosisResult | undefined,
+        evidence: msg["evidence"] as EvidenceResponse | undefined,
       });
       sendResponse({ type: "evidence_query_response", id: msg.id, result });
       return;
@@ -302,6 +305,9 @@ export function runBridge(options: BridgeOptions = {}): void {
           history?: Array<{ role: "user" | "assistant"; content: string }>;
           provider?: ReturnType<typeof loadCredentials>["llmProvider"];
           model?: string;
+          diagnosisResult?: DiagnosisResult;
+          evidence?: EvidenceResponse;
+          locale?: "en" | "ja";
         };
         const creds = loadCredentials();
         const provider = payload.provider ?? creds.llmProvider;
@@ -313,7 +319,9 @@ export function runBridge(options: BridgeOptions = {}): void {
           history: payload.history ?? [],
           provider,
           model: resolveProviderModel(provider, payload.model, creds.llmModel),
-          locale: creds.locale === "ja" ? "ja" : "en",
+          locale: payload.locale ?? (creds.locale === "ja" ? "ja" : "en"),
+          diagnosisResult: payload.diagnosisResult,
+          evidence: payload.evidence,
         });
         sendJson(res, 200, result);
         return;

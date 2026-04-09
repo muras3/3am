@@ -62,6 +62,9 @@ export interface EvidenceQueryRequest {
   question: string;
   history: Array<{ role: "user" | "assistant"; content: string }>;
   provider?: string;
+  diagnosisResult?: unknown;
+  evidence?: unknown;
+  locale?: string;
 }
 
 export type BridgeRequest = ChatRequest | DiagnoseRequest | EvidenceQueryRequest;
@@ -253,6 +256,9 @@ export class WsBridgeManager {
     question: string;
     history: Array<{ role: "user" | "assistant"; content: string }>;
     provider?: string;
+    diagnosisResult?: unknown;
+    evidence?: unknown;
+    locale?: string;
   }): Promise<{ result: unknown }> {
     const response = await this.sendRequest({
       type: "evidence_query_request",
