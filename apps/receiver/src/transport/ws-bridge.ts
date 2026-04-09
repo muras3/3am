@@ -1,11 +1,16 @@
 /**
  * WebSocket bridge for remote manual mode.
  *
- * When the 3am receiver is deployed to Vercel/CF Workers, the bridge (CLI)
- * cannot be reached at localhost. Instead, the bridge initiates an outbound
- * WebSocket connection to the receiver's /bridge/ws endpoint. The receiver
- * pushes chat/diagnose/evidence-query requests through that WebSocket and
- * the bridge responds through it.
+ * When the 3am receiver is deployed to a remote platform (e.g. CF Workers),
+ * the bridge (CLI) cannot be reached at localhost. Instead, the bridge
+ * initiates an outbound WebSocket connection to the receiver's /bridge/ws
+ * endpoint. The receiver pushes chat/diagnose/evidence-query requests
+ * through that WebSocket and the bridge responds through it.
+ *
+ * Platform support:
+ * - CF Workers: WebSocket upgrade handled natively via WebSocketPair in cf-entry.ts
+ * - Vercel: serverless functions are ephemeral; WS not supported. Use HTTP proxy fallback.
+ * - Node.js (local dev): HTTP proxy works on localhost; no WS upgrade needed.
  *
  * Message protocol (JSON over WebSocket):
  *
@@ -106,12 +111,18 @@ export class WsBridgeManager {
 
   /** Register an active WebSocket connection from a bridge client. */
   setConnection(ws: BridgeWsConnection): void {
-    // Close any existing connection
+    // Close any existing connection and reject its pending requests
     if (this.connection) {
       try {
         this.connection.close(1000, "replaced by new connection");
       } catch {
         // ignore close errors on stale connections
+      }
+      // Reject all pending requests tied to the old connection
+      for (const [id, pending] of this.pending) {
+        clearTimeout(pending.timer);
+        pending.reject(new Error("bridge connection replaced"));
+        this.pending.delete(id);
       }
     }
     this.connection = ws;

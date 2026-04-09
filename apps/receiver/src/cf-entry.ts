@@ -171,7 +171,11 @@ export default {
     // Handle WebSocket upgrade for /bridge/ws (#331)
     const url = new URL(request.url);
     if (url.pathname === "/bridge/ws" && request.headers.get("Upgrade") === "websocket") {
-      // Auth: validate token from query param
+      // Auth: validate token from query param.
+      // Note: query params can appear in proxy/platform logs. This is a known
+      // tradeoff — WebSocket upgrade requests don't reliably support custom
+      // headers across all environments. A future improvement could use a
+      // short-lived ticket obtained via an authenticated HTTP endpoint.
       const queryToken = url.searchParams.get("token");
       if (runtime.authToken && queryToken !== runtime.authToken) {
         return new Response("unauthorized", { status: 401 });

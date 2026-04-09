@@ -66,6 +66,24 @@ describe("WsBridgeManager", () => {
     expect(bridge.isConnected()).toBe(true);
   });
 
+  it("rejects pending requests when connection is replaced", async () => {
+    const ws1 = createMockWs();
+    bridge.setConnection(ws1);
+
+    const promise = bridge.chat({
+      incidentId: "inc_replace",
+      receiverUrl: "https://example.com",
+      message: "hi",
+      history: [],
+    });
+
+    // Replace connection before responding
+    const ws2 = createMockWs();
+    bridge.setConnection(ws2);
+
+    await expect(promise).rejects.toThrow("bridge connection replaced");
+  });
+
   // ── Request-response correlation ────────────────────────────────────
 
   it("sends a chat request and resolves on matching response", async () => {

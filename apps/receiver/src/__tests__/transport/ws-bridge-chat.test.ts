@@ -289,15 +289,21 @@ describe("Chat endpoint with WebSocket bridge (#331)", () => {
     wsBridge.setConnection(ws);
 
     const app = makeApp(wsBridge);
-    const res = await app.request("/bridge/status");
+    const res = await app.request("/api/bridge/status", { headers: authHeader() });
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ connected: true });
   });
 
   it("bridge status reports disconnected when no WS", async () => {
     const app = makeApp();
-    const res = await app.request("/bridge/status");
+    const res = await app.request("/api/bridge/status", { headers: authHeader() });
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ connected: false });
+  });
+
+  it("bridge status requires auth", async () => {
+    const app = makeApp();
+    const res = await app.request("/api/bridge/status");
+    expect(res.status).toBe(401);
   });
 });

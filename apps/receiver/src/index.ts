@@ -346,8 +346,8 @@ export function createApp(storage?: StorageDriver, options?: AppOptions): Hono {
   app.route("/", createIngestRouter(store, spanBuffer, telemetryStore, diagnosisConfig, runner, options?.enqueueDiagnosis));
   app.route("/", createApiRouter(store, spanBuffer, telemetryStore, diagnosisConfig, runner, options?.enqueueDiagnosis, wsBridge));
 
-  // Bridge status endpoint — always available, no WebSocket needed
-  app.get("/bridge/status", (c) => {
+  // Bridge status endpoint — protected by Bearer auth (under /api/*)
+  app.get("/api/bridge/status", (c) => {
     return c.json({ connected: wsBridge?.isConnected() ?? false });
   });
 
