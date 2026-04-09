@@ -11,7 +11,7 @@
  */
 import type { Hono } from "hono";
 import { createApp, resolveAuthToken, WsBridgeManager } from "./index.js";
-import type { BridgeWsConnection } from "./transport/ws-bridge.js";
+import type { BridgeRequest, BridgeResponse } from "./transport/ws-bridge.js";
 import { runIfNeeded, setRequestWaitUntil } from "./runtime/diagnosis-debouncer.js";
 import type { DiagnosisQueueMessage } from "./runtime/diagnosis-dispatch.js";
 import { DiagnosisRunner } from "./runtime/diagnosis-runner.js";
@@ -45,18 +45,16 @@ interface QueueMessage<T> {
 interface MessageBatch<T> {
   messages: Array<QueueMessage<T>>;
 }
-// CF Workers WebSocket types (#331)
-interface CfWebSocket {
-  accept(): void;
-  send(data: string | ArrayBuffer): void;
-  close(code?: number, reason?: string): void;
-  addEventListener(type: "message", handler: (event: MessageEvent) => void): void;
-  addEventListener(type: "close", handler: (event: CloseEvent) => void): void;
-  addEventListener(type: "error", handler: (event: Event) => void): void;
+// Durable Object namespace binding type
+interface DurableObjectId {
+  toString(): string;
 }
-declare class WebSocketPair {
-  0: CfWebSocket;
-  1: CfWebSocket;
+interface DurableObjectStub {
+  fetch(request: Request | string, init?: RequestInit): Promise<Response>;
+}
+interface DurableObjectNamespace {
+  idFromName(name: string): DurableObjectId;
+  get(id: DurableObjectId): DurableObjectStub;
 }
 
 interface AssetsBinding {
@@ -66,6 +64,7 @@ interface AssetsBinding {
 interface Env {
   DB: D1Database;
   ASSETS?: AssetsBinding;
+  BRIDGE_DO?: DurableObjectNamespace;
   DIAGNOSIS_QUEUE?: QueueBinding<DiagnosisQueueMessage>;
   RECEIVER_AUTH_TOKEN?: string;
   ALLOW_INSECURE_DEV_MODE?: string;
@@ -148,12 +147,33 @@ async function getRuntime(env: Env): Promise<RuntimeServices> {
         }
       : undefined;
 
+    // Build a bridge DO forwarder if the Durable Object binding is available.
+    // This function forwards bridge requests (chat, diagnose, evidence-query)
+    // to the BridgeDO singleton via its /request endpoint.
+    const bridgeDoForwarder = env.BRIDGE_DO
+      ? async (request: BridgeRequest) => {
+          const doId = env.BRIDGE_DO!.idFromName("singleton");
+          const stub = env.BRIDGE_DO!.get(doId);
+          const doResponse = await stub.fetch("https://do.internal/request", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(request),
+          });
+          if (!doResponse.ok) {
+            const errBody = await doResponse.text();
+            throw new Error(errBody || `DO returned HTTP ${doResponse.status}`);
+          }
+          return await doResponse.json() as BridgeResponse;
+        }
+      : undefined;
+
     return {
       app: createApp(storage, {
         telemetryStore,
         resolvedAuthToken,
         enqueueDiagnosis,
         wsBridge,
+        bridgeDoForwarder,
       }),
       storage,
       diagnosisRunner,
@@ -173,53 +193,23 @@ export default {
     setRequestWaitUntil((p) => ctx.waitUntil(p));
     const runtime = await getRuntime(env);
 
-    // Handle WebSocket upgrade for /bridge/ws (#331)
+    // Handle WebSocket upgrade for /bridge/ws — route to Durable Object (#331)
     const url = new URL(request.url);
     if (url.pathname === "/bridge/ws" && request.headers.get("Upgrade") === "websocket") {
-      // Auth: validate token from query param.
-      // Note: query params can appear in proxy/platform logs. This is a known
-      // tradeoff — WebSocket upgrade requests don't reliably support custom
-      // headers across all environments. A future improvement could use a
-      // short-lived ticket obtained via an authenticated HTTP endpoint.
-      const queryToken = url.searchParams.get("token");
-      if (runtime.authToken && queryToken !== runtime.authToken) {
-        return new Response("unauthorized", { status: 401 });
+      if (env.BRIDGE_DO) {
+        const doId = env.BRIDGE_DO.idFromName("singleton");
+        const stub = env.BRIDGE_DO.get(doId);
+        return stub.fetch(request);
       }
+      // Fallback: no DO binding (shouldn't happen in production CF Workers)
+      return new Response("bridge DO not configured", { status: 503 });
+    }
 
-      // Create WebSocket pair (CF Workers native API)
-      const pair = new WebSocketPair();
-      const [client, server] = [pair[0], pair[1]];
-
-      // Accept the server side
-      server.accept();
-
-      // Create a WSContext-compatible wrapper for the bridge manager
-      const wsContext = {
-        send: (data: string | ArrayBuffer) => {
-          try { server.send(data); } catch { /* connection may have closed */ }
-        },
-        close: (code?: number, reason?: string) => {
-          try { server.close(code, reason); } catch { /* already closed */ }
-        },
-      };
-
-      runtime.wsBridge.setConnection(wsContext as BridgeWsConnection);
-
-      server.addEventListener("message", (event: MessageEvent) => {
-        const data = typeof event.data === "string" ? event.data : event.data as ArrayBuffer;
-        runtime.wsBridge.handleMessage(data);
-      });
-
-      server.addEventListener("close", () => {
-        runtime.wsBridge.removeConnection(wsContext as BridgeWsConnection);
-      });
-
-      server.addEventListener("error", () => {
-        runtime.wsBridge.removeConnection(wsContext as BridgeWsConnection);
-      });
-
-      // CF Workers-specific Response init with webSocket property
-      return new Response(null, { status: 101, webSocket: client } as ResponseInit & { webSocket: CfWebSocket });
+    // Bridge status — route to Durable Object when available
+    if (url.pathname === "/api/bridge/status" && env.BRIDGE_DO) {
+      const doId = env.BRIDGE_DO.idFromName("singleton");
+      const stub = env.BRIDGE_DO.get(doId);
+      return stub.fetch(new Request(new URL("/status", request.url).toString()));
     }
 
     const response = await runtime.app.fetch(request, env, ctx);
@@ -278,3 +268,7 @@ export default {
     }
   },
 };
+
+// Re-export Durable Object class — CF Workers requires DO classes to be
+// exported from the entry point module.
+export { BridgeDO } from "./transport/ws-bridge-do.js";

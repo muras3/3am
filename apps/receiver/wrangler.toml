@@ -25,6 +25,15 @@ directory = "../console/dist"
 not_found_handling = "none"
 run_worker_first = ["/api/*", "/v1/*", "/healthz", "/bridge/*"]
 
+[durable_objects]
+bindings = [
+  { name = "BRIDGE_DO", class_name = "BridgeDO" }
+]
+
+[[migrations]]
+tag = "v1"
+new_classes = ["BridgeDO"]
+
 [[d1_databases]]
 binding = "DB"
 database_name = "3amoncall-db"
