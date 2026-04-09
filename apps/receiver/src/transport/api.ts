@@ -40,7 +40,7 @@ interface ChatTurn {
   content: string;
 }
 
-type IncidentResponse = Omit<Incident, "telemetryScope" | "spanMembership" | "anomalousSignals" | "platformEvents">;
+type IncidentResponse = Omit<Incident, "telemetryScope" | "spanMembership" | "anomalousSignals" | "platformEvents" | "packet" | "consoleNarrative" | "diagnosisResult">;
 type IncidentPageResponse = {
   items: IncidentResponse[];
   nextCursor?: string;
@@ -69,7 +69,7 @@ const AMBIENT_LIVE_WINDOW_MS = 5 * 60 * 1000;
 const AMBIENT_INCIDENT_FALLBACK_LIMIT = 50;
 
 function toIncidentResponse(incident: Incident): IncidentResponse {
-  const { telemetryScope: _ts, spanMembership: _sm, anomalousSignals: _as, platformEvents: _pe, ...response } = incident;
+  const { telemetryScope: _ts, spanMembership: _sm, anomalousSignals: _as, platformEvents: _pe, packet: _pk, consoleNarrative: _cn, diagnosisResult: _dr, ...response } = incident;
   return response;
 }
 

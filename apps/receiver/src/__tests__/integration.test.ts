@@ -348,6 +348,24 @@ describe("Receiver integration tests", () => {
     expect(body.items[0]!.rawState).toBeUndefined();
   });
 
+  // Test 3b: GET /api/incidents does NOT include heavy/unmaterialized fields in list items
+  it("GET /api/incidents list items do not include packet, consoleNarrative, or diagnosisResult", async () => {
+    await app.request("/v1/traces", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(errorSpanPayload),
+    });
+
+    const res = await app.request("/api/incidents");
+    expect(res.status).toBe(200);
+    const body = await res.json() as { items: Array<Record<string, unknown>> };
+    expect(body.items).toHaveLength(1);
+    const item = body.items[0]!;
+    expect(item).not.toHaveProperty("packet");
+    expect(item).not.toHaveProperty("consoleNarrative");
+    expect(item).not.toHaveProperty("diagnosisResult");
+  });
+
   // Test 4: GET /api/incidents/:id → 200, curated incidentId matches
   it("GET /api/incidents/:id returns the curated incident", async () => {
     const traceRes = await app.request("/v1/traces", {
@@ -1410,7 +1428,6 @@ async function postTraces(
 
 type IncidentListItem = {
   incidentId: string;
-  packet: { scope: { primaryService: string; affectedDependencies: string[]; affectedServices: string[] }; triggerSignals: unknown[] };
 };
 
 async function getIncidents(
@@ -1585,7 +1602,7 @@ describe("Formation: dependency-based incident grouping (OC-1 to OC-6)", () => {
     }));
 
     // calling service emits a span showing it received 429 — triggers incident
-    await postTraces(app, makeSpanPayload({
+    const result = await postTraces(app, makeSpanPayload({
       serviceName: "checkout-service",
       httpStatusCode: 429,
       spanKind: 3,  // CLIENT
@@ -1593,7 +1610,9 @@ describe("Formation: dependency-based incident grouping (OC-1 to OC-6)", () => {
 
     const { items } = await getIncidents(app);
     expect(items).toHaveLength(1);
-    expect(items[0]!.packet.scope.primaryService).toBe("checkout-service");
+    // packet is not included in list response; verify via storage
+    const incident = await storage.getIncident(result.incidentId!);
+    expect(incident?.packet.scope.primaryService).toBe("checkout-service");
   });
 
   // OC-11: INTERNAL 429 spans (OTel SDK version quirk: SERVER reported as INTERNAL) do not trigger
@@ -1756,35 +1775,30 @@ describe("Formation: dependency-based incident grouping (OC-1 to OC-6)", () => {
       await postTraces(app, batch);
     }
 
+    // packet is not included in list response; find the incident by id and check via storage
     const { items } = await getIncidents(app);
-    const incident = items.find((item) => item.packet.scope.affectedDependencies.includes("sendgrid")) as
-      | {
-          packet: {
-            scope: { primaryService: string; affectedDependencies: string[] };
-            triggerSignals: Array<{ entity: string; signal: string }>;
-            evidence: {
-              representativeTraces: Array<{
-                serviceName: string
-                httpStatusCode?: number
-                spanStatusCode: number
-              }>
-            };
-          };
-        }
-      | undefined;
+    expect(items.length).toBeGreaterThan(0);
 
-    expect(incident).toBeDefined();
-    expect(incident?.packet.scope.primaryService).toBe("validation-web");
+    // Find the sendgrid-related incident via storage
+    let sendgridIncident: Awaited<ReturnType<typeof storage.getIncident>> | undefined;
+    for (const item of items) {
+      const stored = await storage.getIncident(item.incidentId);
+      if (stored?.packet.scope.affectedDependencies.includes("sendgrid")) {
+        sendgridIncident = stored;
+        break;
+      }
+    }
 
-    expect(incident?.packet.scope.primaryService).toBe("validation-web");
-    expect(incident?.packet.scope.affectedDependencies).toContain("sendgrid");
+    expect(sendgridIncident).toBeDefined();
+    expect(sendgridIncident?.packet.scope.primaryService).toBe("validation-web");
+    expect(sendgridIncident?.packet.scope.affectedDependencies).toContain("sendgrid");
     expect(
-      incident?.packet.triggerSignals.some(
+      sendgridIncident?.packet.triggerSignals.some(
         (signal) => signal.entity === "validation-web" && signal.signal === "http_401",
       ),
     ).toBe(true);
     expect(
-      incident?.packet.evidence.representativeTraces.some(
+      sendgridIncident?.packet.evidence.representativeTraces.some(
         (trace) =>
           trace.serviceName === "validation-web" &&
           trace.httpStatusCode === 401 &&
