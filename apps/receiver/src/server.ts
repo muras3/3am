@@ -3,12 +3,14 @@ import { readFileSync } from "fs";
 import { join } from "path";
 import { serve } from "@hono/node-server";
 import { serveStatic } from "@hono/node-server/serve-static";
-import { createApp, resolveAuthToken } from "./index.js";
+import { createApp, resolveAuthToken, WsBridgeManager } from "./index.js";
+import type { BridgeWsConnection } from "./transport/ws-bridge.js";
 import { MemoryAdapter } from "./storage/adapters/memory.js";
 import { createPostgresClient } from "./storage/drizzle/postgres-client.js";
 import { PostgresAdapter } from "./storage/drizzle/postgres.js";
 import { PostgresTelemetryAdapter } from "./telemetry/drizzle/postgres.js";
 import { emitSelfTelemetryLog } from "./self-telemetry/log.js";
+import { WebSocketServer } from "ws";
 
 const port = Number(process.env.PORT ?? 4318);
 
@@ -48,8 +50,9 @@ async function main() {
   // env-var token is picked up when DATABASE_URL is not set (e.g. E2E tests).
   const storageForAuth = storage ?? new MemoryAdapter();
   const resolvedAuthToken = await resolveAuthToken(storageForAuth);
+  const wsBridge = new WsBridgeManager();
 
-  const app = createApp(storage, { telemetryStore, resolvedAuthToken });
+  const app = createApp(storage, { telemetryStore, resolvedAuthToken, wsBridge });
 
   // Static serving for the Console SPA (ADR 0028) — Node.js only
   const consoleDist = process.env["CONSOLE_DIST_PATH"];
@@ -72,7 +75,7 @@ async function main() {
 
   // Bind to 0.0.0.0 so the server is reachable from outside the process
   // (containers, VMs, any hosted environment).
-  serve({ fetch: app.fetch, port, hostname: "0.0.0.0" }, (info) => {
+  const server = serve({ fetch: app.fetch, port, hostname: "0.0.0.0" }, (info) => {
     emitSelfTelemetryLog({
       severity: "INFO",
       body: "3am receiver listening",
@@ -80,6 +83,39 @@ async function main() {
         "server.address": "0.0.0.0",
         "server.port": info.port,
       },
+    });
+  });
+
+  // WebSocket upgrade for bridge connections (#331)
+  const wss = new WebSocketServer({ noServer: true });
+  (server as import("http").Server).on("upgrade", (req, socket, head) => {
+    const url = new URL(req.url ?? "/", `http://${req.headers.host}`);
+    if (url.pathname !== "/bridge/ws") {
+      socket.destroy();
+      return;
+    }
+    const queryToken = url.searchParams.get("token");
+    if (resolvedAuthToken && queryToken !== resolvedAuthToken) {
+      socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
+      socket.destroy();
+      return;
+    }
+    wss.handleUpgrade(req, socket, head, (ws) => {
+      const conn: BridgeWsConnection = {
+        send: (data) => ws.send(data),
+        close: (code, reason) => ws.close(code, reason),
+      };
+      wsBridge.setConnection(conn);
+      ws.on("message", (raw) => {
+        const data = typeof raw === "string" ? raw : raw.toString("utf-8");
+        wsBridge.handleMessage(data);
+      });
+      ws.on("close", () => wsBridge.removeConnection(conn));
+      ws.on("error", () => wsBridge.removeConnection(conn));
+      emitSelfTelemetryLog({
+        severity: "INFO",
+        body: "[receiver] bridge WebSocket connected",
+      });
     });
   });
 }

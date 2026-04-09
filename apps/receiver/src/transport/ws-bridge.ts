@@ -9,8 +9,8 @@
  *
  * Platform support:
  * - CF Workers: WebSocket upgrade handled natively via WebSocketPair in cf-entry.ts
- * - Vercel: serverless functions are ephemeral; WS not supported. Use HTTP proxy fallback.
- * - Node.js (local dev): HTTP proxy works on localhost; no WS upgrade needed.
+ * - Vercel: WebSocket supported via Fluid Compute. Upgrade handled in server.ts.
+ * - Node.js (local dev): WebSocket upgrade handled in server.ts. HTTP proxy also works on localhost.
  *
  * Message protocol (JSON over WebSocket):
  *
