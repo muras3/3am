@@ -286,6 +286,89 @@ describe('POST /api/incidents/:id/evidence/query', () => {
     })
   })
 
+  it('uses locale from request body, overriding stored locale', async () => {
+    const cookie = await getSessionCookie(app)
+    const incidentId = await seedIncident(app, true)
+
+    // Store locale as 'en' in settings
+    const settingsRes = await app.request('/api/settings/locale', {
+      method: 'PUT',
+      headers: queryHeaders(cookie),
+      body: JSON.stringify({ locale: 'en' }),
+    })
+    expect(settingsRes.status).toBe(200)
+
+    // Send request with locale: 'ja' in the body — should override stored 'en'
+    const res = await app.request(`/api/incidents/${incidentId}/evidence/query`, {
+      method: 'POST',
+      headers: queryHeaders(cookie),
+      body: JSON.stringify({ question: 'Why are payments failing?', locale: 'ja' }),
+    })
+
+    expect(res.status).toBe(200)
+    expect(generateEvidenceQueryMock).toHaveBeenCalled()
+    expect(generateEvidenceQueryMock.mock.calls[0]?.[1]).toMatchObject({
+      locale: 'ja',
+    })
+  })
+
+  it('falls back to stored locale when request body has no locale', async () => {
+    const cookie = await getSessionCookie(app)
+    const incidentId = await seedIncident(app, true)
+
+    // Store locale as 'ja' in settings
+    const settingsRes = await app.request('/api/settings/locale', {
+      method: 'PUT',
+      headers: queryHeaders(cookie),
+      body: JSON.stringify({ locale: 'ja' }),
+    })
+    expect(settingsRes.status).toBe(200)
+
+    // Send request without locale in body — should fall back to stored 'ja'
+    const res = await app.request(`/api/incidents/${incidentId}/evidence/query`, {
+      method: 'POST',
+      headers: queryHeaders(cookie),
+      body: JSON.stringify({ question: 'Why are payments failing?' }),
+    })
+
+    expect(res.status).toBe(200)
+    expect(generateEvidenceQueryMock).toHaveBeenCalled()
+    expect(generateEvidenceQueryMock.mock.calls[0]?.[1]).toMatchObject({
+      locale: 'ja',
+    })
+  })
+
+  it('falls back to "en" when neither request body nor stored locale provides locale', async () => {
+    const cookie = await getSessionCookie(app)
+    const incidentId = await seedIncident(app, true)
+
+    // No stored locale set (fresh app, default 'en')
+    const res = await app.request(`/api/incidents/${incidentId}/evidence/query`, {
+      method: 'POST',
+      headers: queryHeaders(cookie),
+      body: JSON.stringify({ question: 'Why are payments failing?' }),
+    })
+
+    expect(res.status).toBe(200)
+    expect(generateEvidenceQueryMock).toHaveBeenCalled()
+    expect(generateEvidenceQueryMock.mock.calls[0]?.[1]).toMatchObject({
+      locale: 'en',
+    })
+  })
+
+  it('rejects invalid locale values in request body', async () => {
+    const cookie = await getSessionCookie(app)
+    const incidentId = await seedIncident(app)
+
+    const res = await app.request(`/api/incidents/${incidentId}/evidence/query`, {
+      method: 'POST',
+      headers: queryHeaders(cookie),
+      body: JSON.stringify({ question: 'What happened?', locale: 'fr' }),
+    })
+
+    expect(res.status).toBe(400)
+  })
+
   it('passes conversation history through to evidence query generation', async () => {
     const cookie = await getSessionCookie(app)
     const incidentId = await seedIncident(app, true)
