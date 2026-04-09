@@ -73,9 +73,10 @@ program
   .command("bridge")
   .description("Start the local LLM bridge for manual console actions")
   .option("--port <number>", "Port to expose (default: 4269)", parseInt)
-  .action(async (options: { port?: number }) => {
+  .option("--receiver-url <url>", "Remote receiver URL for WebSocket bridge (auto-detected from credentials)")
+  .action(async (options: { port?: number; receiverUrl?: string }) => {
     const { runBridge } = await import("./commands/bridge.js");
-    runBridge(options.port != null ? { port: options.port } : {});
+    runBridge({ port: options.port, receiverUrl: options.receiverUrl });
   });
 
 program

@@ -10,7 +10,8 @@
  * - process.env is populated from bindings for createApp() compatibility
  */
 import type { Hono } from "hono";
-import { createApp, resolveAuthToken } from "./index.js";
+import { createApp, resolveAuthToken, WsBridgeManager } from "./index.js";
+import type { BridgeWsConnection } from "./transport/ws-bridge.js";
 import { runIfNeeded, setRequestWaitUntil } from "./runtime/diagnosis-debouncer.js";
 import type { DiagnosisQueueMessage } from "./runtime/diagnosis-dispatch.js";
 import { DiagnosisRunner } from "./runtime/diagnosis-runner.js";
@@ -44,6 +45,19 @@ interface QueueMessage<T> {
 interface MessageBatch<T> {
   messages: Array<QueueMessage<T>>;
 }
+// CF Workers WebSocket types (#331)
+interface CfWebSocket {
+  accept(): void;
+  send(data: string | ArrayBuffer): void;
+  close(code?: number, reason?: string): void;
+  addEventListener(type: "message", handler: (event: MessageEvent) => void): void;
+  addEventListener(type: "close", handler: (event: CloseEvent) => void): void;
+  addEventListener(type: "error", handler: (event: Event) => void): void;
+}
+declare class WebSocketPair {
+  0: CfWebSocket;
+  1: CfWebSocket;
+}
 
 interface Env {
   DB: D1Database;
@@ -65,6 +79,8 @@ interface RuntimeServices {
   app: Hono;
   storage: D1StorageAdapter;
   diagnosisRunner: DiagnosisRunner;
+  wsBridge: WsBridgeManager;
+  authToken: string | null;
 }
 
 let cachedRuntime: Promise<RuntimeServices> | null = null;
@@ -120,6 +136,7 @@ async function getRuntime(env: Env): Promise<RuntimeServices> {
 
     const resolvedAuthToken = await resolveAuthToken(storage);
     const diagnosisRunner = new DiagnosisRunner(storage, telemetryStore);
+    const wsBridge = new WsBridgeManager();
     const enqueueDiagnosis = env.DIAGNOSIS_QUEUE
       ? async (incidentId: string, mode: DiagnosisQueueMessage["mode"] = "diagnosis", delaySeconds?: number) => {
           await env.DIAGNOSIS_QUEUE!.send({ incidentId, mode }, delaySeconds ? { delaySeconds } : undefined);
@@ -131,9 +148,12 @@ async function getRuntime(env: Env): Promise<RuntimeServices> {
         telemetryStore,
         resolvedAuthToken,
         enqueueDiagnosis,
+        wsBridge,
       }),
       storage,
       diagnosisRunner,
+      wsBridge,
+      authToken: resolvedAuthToken,
     };
   })();
 
@@ -147,6 +167,52 @@ export default {
     // Inject CF Workers ctx.waitUntil so diagnosis-debouncer can extend isolate lifetime
     setRequestWaitUntil((p) => ctx.waitUntil(p));
     const runtime = await getRuntime(env);
+
+    // Handle WebSocket upgrade for /bridge/ws (#331)
+    const url = new URL(request.url);
+    if (url.pathname === "/bridge/ws" && request.headers.get("Upgrade") === "websocket") {
+      // Auth: validate token from query param
+      const queryToken = url.searchParams.get("token");
+      if (runtime.authToken && queryToken !== runtime.authToken) {
+        return new Response("unauthorized", { status: 401 });
+      }
+
+      // Create WebSocket pair (CF Workers native API)
+      const pair = new WebSocketPair();
+      const [client, server] = [pair[0], pair[1]];
+
+      // Accept the server side
+      server.accept();
+
+      // Create a WSContext-compatible wrapper for the bridge manager
+      const wsContext = {
+        send: (data: string | ArrayBuffer) => {
+          try { server.send(data); } catch { /* connection may have closed */ }
+        },
+        close: (code?: number, reason?: string) => {
+          try { server.close(code, reason); } catch { /* already closed */ }
+        },
+      };
+
+      runtime.wsBridge.setConnection(wsContext as BridgeWsConnection);
+
+      server.addEventListener("message", (event: MessageEvent) => {
+        const data = typeof event.data === "string" ? event.data : event.data as ArrayBuffer;
+        runtime.wsBridge.handleMessage(data);
+      });
+
+      server.addEventListener("close", () => {
+        runtime.wsBridge.removeConnection(wsContext as BridgeWsConnection);
+      });
+
+      server.addEventListener("error", () => {
+        runtime.wsBridge.removeConnection(wsContext as BridgeWsConnection);
+      });
+
+      // CF Workers-specific Response init with webSocket property
+      return new Response(null, { status: 101, webSocket: client } as ResponseInit & { webSocket: CfWebSocket });
+    }
+
     return runtime.app.fetch(request, env, ctx);
   },
   async queue(batch: MessageBatch<DiagnosisQueueMessage>, env: Env): Promise<void> {

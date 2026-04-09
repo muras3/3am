@@ -21,11 +21,13 @@ import {
 } from "./runtime/llm-settings.js";
 import { emitSelfTelemetryLog, isSelfTelemetryActive } from "./self-telemetry/log.js";
 import { recordSelfTelemetryMetrics } from "./self-telemetry/metrics.js";
+import type { WsBridgeManager } from "./transport/ws-bridge.js";
 
 export type { StorageDriver } from "./storage/interface.js";
 export type { Incident, IncidentPage } from "./storage/interface.js";
 export { MemoryAdapter } from "./storage/adapters/memory.js";
 export type { TelemetryStoreDriver } from "./telemetry/interface.js";
+export { WsBridgeManager } from "./transport/ws-bridge.js";
 
 const SETTINGS_KEY_AUTH_TOKEN = "receiver_auth_token";
 const SETTINGS_KEY_SETUP_COMPLETE = "setup_complete";
@@ -72,6 +74,8 @@ export interface AppOptions {
    */
   resolvedAuthToken?: string | null | undefined;
   enqueueDiagnosis?: EnqueueDiagnosisFn | undefined;
+  /** WebSocket bridge manager for remote manual mode (#331). */
+  wsBridge?: WsBridgeManager | undefined;
 }
 
 export function createApp(storage?: StorageDriver, options?: AppOptions): Hono {
@@ -336,8 +340,16 @@ export function createApp(storage?: StorageDriver, options?: AppOptions): Hono {
     return c.json(await getReceiverLlmSettings(store));
   });
 
+  // WebSocket bridge manager for remote manual mode (#331)
+  const wsBridge = options?.wsBridge;
+
   app.route("/", createIngestRouter(store, spanBuffer, telemetryStore, diagnosisConfig, runner, options?.enqueueDiagnosis));
-  app.route("/", createApiRouter(store, spanBuffer, telemetryStore, diagnosisConfig, runner, options?.enqueueDiagnosis));
+  app.route("/", createApiRouter(store, spanBuffer, telemetryStore, diagnosisConfig, runner, options?.enqueueDiagnosis, wsBridge));
+
+  // Bridge status endpoint — always available, no WebSocket needed
+  app.get("/bridge/status", (c) => {
+    return c.json({ connected: wsBridge?.isConnected() ?? false });
+  });
 
   return app;
 }
