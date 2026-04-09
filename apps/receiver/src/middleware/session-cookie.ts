@@ -42,20 +42,27 @@ export function jwtCookieSetter(opts: {
   };
 }
 
-/** Reject requests without a valid JWT session cookie. */
+/** Reject requests without a valid JWT session cookie or Bearer token. */
 export function jwtCookieValidator(authToken: string): MiddlewareHandler {
   const secret = new TextEncoder().encode(authToken);
 
   return async (c, next) => {
-    const token = getCookie(c, COOKIE_NAME);
-    if (!token) {
-      return c.json({ error: "unauthorized" }, 401);
+    const cookie = getCookie(c, COOKIE_NAME);
+    if (cookie) {
+      try {
+        await jwtVerify(cookie, secret);
+        return await next();
+      } catch {
+        return c.json({ error: "unauthorized" }, 401);
+      }
     }
-    try {
-      await jwtVerify(token, secret);
-    } catch {
-      return c.json({ error: "unauthorized" }, 401);
+
+    // Fallback: Bearer token (raw string comparison) for API clients (CLI, curl)
+    const authHeader = c.req.header("Authorization");
+    if (authHeader === `Bearer ${authToken}`) {
+      return await next();
     }
-    await next();
+
+    return c.json({ error: "unauthorized" }, 401);
   };
 }
