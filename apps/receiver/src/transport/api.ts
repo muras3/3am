@@ -29,6 +29,7 @@ import type { EnqueueDiagnosisFn } from "../runtime/diagnosis-dispatch.js";
 import { ensureIncidentMaterialized } from "../runtime/materialization.js";
 import { getReceiverLlmSettings } from "../runtime/llm-settings.js";
 import { maybeCleanup } from "../retention/lazy-cleanup.js";
+import type { WsBridgeManager } from "./ws-bridge.js";
 
 const CHAT_MAX_HISTORY = 10;
 const CHAT_MAX_MESSAGE_CHARS = 500;
@@ -233,6 +234,7 @@ export function createApiRouter(
   diagnosisConfig: DiagnosisConfig,
   diagnosisRunner?: DiagnosisRunner,
   enqueueDiagnosis?: EnqueueDiagnosisFn,
+  wsBridge?: WsBridgeManager,
 ): Hono {
   const app = new Hono();
 
@@ -458,6 +460,59 @@ export function createApiRouter(
       return c.json({ error: "not found" }, 404);
     }
 
+    // In manual mode, route evidence query through bridge
+    const llmSettings = await getReceiverLlmSettings(storage);
+    if (llmSettings.mode === "manual") {
+      // Prefer WebSocket bridge if connected
+      if (wsBridge?.isConnected()) {
+        try {
+          const wsResult = await wsBridge.evidenceQuery({
+            incidentId: id,
+            receiverUrl: new URL(c.req.url).origin,
+            authToken,
+            question: parsed.data.question,
+            history: parsed.data.history ?? [],
+            provider: llmSettings.provider,
+          });
+          return c.json(wsResult.result);
+        } catch (error) {
+          return c.json({
+            error: "manual evidence query bridge failed",
+            details: error instanceof Error ? error.message : String(error),
+          }, 502);
+        }
+      }
+
+      // Fall back to HTTP proxy (only works when bridge is on localhost)
+      try {
+        const bridgeResponse = await fetch(`${llmSettings.bridgeUrl}/api/manual/evidence-query`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            receiverUrl: new URL(c.req.url).origin,
+            incidentId: id,
+            authToken,
+            question: parsed.data.question,
+            history: parsed.data.history ?? [],
+            provider: llmSettings.provider,
+          }),
+        });
+        if (!bridgeResponse.ok) {
+          const bodyText = await bridgeResponse.text();
+          return c.json({
+            error: "manual evidence query bridge failed",
+            details: bodyText || `bridge returned HTTP ${bridgeResponse.status}`,
+          }, 502);
+        }
+        return c.json(await bridgeResponse.json());
+      } catch (error) {
+        return c.json({
+          error: "manual evidence query bridge unavailable",
+          details: error instanceof Error ? error.message : String(error),
+        }, 502);
+      }
+    }
+
     const storedLocale = await storage.getSettings("locale");
     const locale: "en" | "ja" = parsed.data.locale ?? (storedLocale === "ja" ? "ja" : "en");
     const result = await buildEvidenceQueryAnswer(
@@ -559,6 +614,27 @@ export function createApiRouter(
 
     const llmSettings = await getReceiverLlmSettings(storage);
     if (llmSettings.mode === "manual") {
+      // Prefer WebSocket bridge if connected
+      if (wsBridge?.isConnected()) {
+        try {
+          const wsResult = await wsBridge.chat({
+            incidentId: id,
+            receiverUrl: new URL(c.req.url).origin,
+            authToken,
+            message,
+            history,
+            provider: llmSettings.provider,
+          });
+          return c.json(wsResult);
+        } catch (error) {
+          return c.json({
+            error: "manual chat bridge failed",
+            details: error instanceof Error ? error.message : String(error),
+          }, 502);
+        }
+      }
+
+      // Fall back to HTTP proxy (only works when bridge is on localhost)
       try {
         const bridgeResponse = await fetch(`${llmSettings.bridgeUrl}/api/manual/chat`, {
           method: "POST",
