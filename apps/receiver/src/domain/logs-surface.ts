@@ -18,6 +18,7 @@ import type {
 } from '@3am/core/schemas/curated-evidence'
 import { LOG_KEYWORDS } from '../telemetry/constants.js'
 import { detectAbsences } from './absence-detector.js'
+import { resolveEffectiveBody } from './otlp-utils.js'
 
 // ── Constants ────────────────────────────────────────────────────────────
 
@@ -99,14 +100,18 @@ export async function buildLogsSurface(
   const logEntries: { entry: CuratedLogEntry; log: TelemetryLog; keywordHits: string[] }[] = []
 
   for (const log of allLogs) {
-    const signal = isSignalLog(log.severity, log.body)
-    const keywords = findKeywordHits(log.body)
+    // Re-resolve at read time: D1 rows ingested before #316 (or when CF Workers
+    // sends body:null → stored as '""') still get keyword detection and display
+    // from attributes, regardless of ingest time.
+    const effectiveBody = resolveEffectiveBody(log.body, log.attributes)
+    const signal = isSignalLog(log.severity, effectiveBody)
+    const keywords = findKeywordHits(effectiveBody)
 
     const entry: CuratedLogEntry = {
       refId: `${log.service}:${log.timestamp}:${log.bodyHash}`,
       timestamp: log.timestamp,
       severity: log.severity,
-      body: log.body,
+      body: effectiveBody,
       isSignal: signal,
       traceId: log.traceId,
       spanId: log.spanId,

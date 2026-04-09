@@ -12,6 +12,7 @@ import type { TelemetryLog, TelemetryStoreDriver } from '../telemetry/interface.
 import { buildIncidentQueryFilter } from '../telemetry/interface.js'
 import type { TelemetryScope, AnomalousSignal } from '../storage/interface.js'
 import type { AbsenceEvidenceEntry, CuratedEvidenceRef } from '@3am/core/schemas/curated-evidence'
+import { resolveEffectiveBody } from './otlp-utils.js'
 
 // ── Pattern Definitions ─────────────────────────────────────────────────
 
@@ -63,7 +64,9 @@ const ABSENCE_PATTERNS: AbsencePattern[] = [
 function logsContainKeyword(logs: TelemetryLog[], keywords: string[]): boolean {
   const lowerKeywords = keywords.map((kw) => kw.toLowerCase())
   for (const log of logs) {
-    const lowerBody = log.body.toLowerCase()
+    // Re-resolve to catch trivial bodies ('' or '""') stored before #316 fix.
+    const body = resolveEffectiveBody(log.body, log.attributes)
+    const lowerBody = body.toLowerCase()
     if (lowerKeywords.some((kw) => lowerBody.includes(kw))) {
       return true
     }

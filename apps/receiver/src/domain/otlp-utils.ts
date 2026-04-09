@@ -175,9 +175,11 @@ function extractOtlpPrimitive(anyValue: unknown): string | number | boolean | nu
  * message (e.g. pure structured emit), body ends up as "" or "{}".
  *
  * This function synthesises a human-readable body from the attribute map
- * whenever body is empty or the trivial JSON placeholder "{}".  It extracts
- * only primitive scalar values from the OTLP AnyValue wrappers so the result
- * is a compact, readable JSON string rather than raw OTLP wire format.
+ * whenever body is empty, the trivial JSON placeholder "{}", or the
+ * JSON-encoded empty string '""' (produced when CF Workers sends body:null
+ * and the extractor does JSON.stringify(null ?? '')).  It extracts only
+ * primitive scalar values from the OTLP AnyValue wrappers so the result is a
+ * compact, readable JSON string rather than raw OTLP wire format.
  *
  * @param bodyStr  The raw body string extracted from LogRecord.body.stringValue.
  * @param attrs    The attribute map keyed by attribute name with OTLP AnyValue values.
@@ -189,7 +191,10 @@ export function resolveEffectiveBody(
   attrs: Record<string, unknown>,
 ): string {
   const trimmed = bodyStr.trim()
-  if (trimmed !== '' && trimmed !== '{}') return bodyStr
+  // Treat as trivial if: empty string, '{}', or JSON-encoded empty string ('"" ')
+  // The last case occurs when CF Workers sends `body: null` which becomes
+  // JSON.stringify('') = '""' in the extractor.
+  if (trimmed !== '' && trimmed !== '{}' && trimmed !== '""') return bodyStr
 
   // Build a flat record of scalar attribute values
   const scalars: Record<string, string | number | boolean> = {}
