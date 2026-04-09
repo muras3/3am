@@ -94,9 +94,11 @@ export class BridgeDO {
 
     // ── WebSocket upgrade (/bridge/ws) ──────────────────────────────────
     if (url.pathname === "/bridge/ws" && request.headers.get("Upgrade") === "websocket") {
-      // Auth: validate token from query param
+      // Auth: validate token from query param.
+      // The resolved auth token is passed from cf-entry.ts via header
+      // (covers both env var and DB-backed tokens).
       const queryToken = url.searchParams.get("token");
-      const authToken = this.env.RECEIVER_AUTH_TOKEN;
+      const authToken = request.headers.get("X-Bridge-Auth-Token") || this.env.RECEIVER_AUTH_TOKEN;
       const allowInsecure = this.env.ALLOW_INSECURE_DEV_MODE === "true";
 
       if (!allowInsecure && authToken && queryToken !== authToken) {
@@ -159,8 +161,8 @@ export class BridgeDO {
 
           this.pending.set(id, { resolve, reject, timer });
 
-          // Send to the first (only) connected WebSocket
-          const ws = sockets[0]!;
+          // Send to the newest connected WebSocket (last in the list)
+          const ws = sockets[sockets.length - 1]!;
           try {
             ws.send(JSON.stringify(requestWithId));
           } catch (err) {
@@ -217,14 +219,17 @@ export class BridgeDO {
    * Called when the bridge WebSocket is closed.
    */
   async webSocketClose(ws: WebSocket, code: number, reason: string, _wasClean: boolean): Promise<void> {
-    // Complete the close handshake
-    ws.close(code, reason);
+    try { ws.close(code, reason); } catch { /* already closed */ }
 
-    // Reject all pending requests
-    for (const [id, pending] of this.pending) {
-      clearTimeout(pending.timer);
-      pending.reject(new Error("bridge connection closed"));
-      this.pending.delete(id);
+    // Only reject pending requests if this was the active connection.
+    // Stale sockets from a replaced connection should not affect the new one.
+    const activeSockets = this.ctx.getWebSockets();
+    if (activeSockets.length === 0) {
+      for (const [id, pending] of this.pending) {
+        clearTimeout(pending.timer);
+        pending.reject(new Error("bridge connection closed"));
+        this.pending.delete(id);
+      }
     }
   }
 
@@ -234,17 +239,15 @@ export class BridgeDO {
    */
   async webSocketError(ws: WebSocket, error: unknown): Promise<void> {
     console.error("[BridgeDO] WebSocket error:", error);
-    try {
-      ws.close(1011, "internal error");
-    } catch {
-      // already closed
-    }
+    try { ws.close(1011, "internal error"); } catch { /* already closed */ }
 
-    // Reject all pending requests
-    for (const [id, pending] of this.pending) {
-      clearTimeout(pending.timer);
-      pending.reject(new Error("bridge WebSocket error"));
-      this.pending.delete(id);
+    const activeSockets = this.ctx.getWebSockets();
+    if (activeSockets.length === 0) {
+      for (const [id, pending] of this.pending) {
+        clearTimeout(pending.timer);
+        pending.reject(new Error("bridge WebSocket error"));
+        this.pending.delete(id);
+      }
     }
   }
 }

@@ -167,6 +167,16 @@ async function getRuntime(env: Env): Promise<RuntimeServices> {
         }
       : undefined;
 
+    const bridgeDoStatus = env.BRIDGE_DO
+      ? async () => {
+          const doId = env.BRIDGE_DO!.idFromName("singleton");
+          const stub = env.BRIDGE_DO!.get(doId);
+          const res = await stub.fetch("https://do.internal/status");
+          const data = await res.json() as { connected: boolean };
+          return data.connected;
+        }
+      : undefined;
+
     return {
       app: createApp(storage, {
         telemetryStore,
@@ -174,6 +184,7 @@ async function getRuntime(env: Env): Promise<RuntimeServices> {
         enqueueDiagnosis,
         wsBridge,
         bridgeDoForwarder,
+        bridgeDoStatus,
       }),
       storage,
       diagnosisRunner,
@@ -197,19 +208,15 @@ export default {
     const url = new URL(request.url);
     if (url.pathname === "/bridge/ws" && request.headers.get("Upgrade") === "websocket") {
       if (env.BRIDGE_DO) {
+        // Pass the resolved auth token to the DO so it can validate
+        // even when the token is DB-backed (not just env var).
         const doId = env.BRIDGE_DO.idFromName("singleton");
         const stub = env.BRIDGE_DO.get(doId);
-        return stub.fetch(request);
+        const doRequest = new Request(request.url, request);
+        doRequest.headers.set("X-Bridge-Auth-Token", runtime.authToken ?? "");
+        return stub.fetch(doRequest);
       }
-      // Fallback: no DO binding (shouldn't happen in production CF Workers)
       return new Response("bridge DO not configured", { status: 503 });
-    }
-
-    // Bridge status — route to Durable Object when available
-    if (url.pathname === "/api/bridge/status" && env.BRIDGE_DO) {
-      const doId = env.BRIDGE_DO.idFromName("singleton");
-      const stub = env.BRIDGE_DO.get(doId);
-      return stub.fetch(new Request(new URL("/status", request.url).toString()));
     }
 
     const response = await runtime.app.fetch(request, env, ctx);

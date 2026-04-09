@@ -79,6 +79,8 @@ export interface AppOptions {
   wsBridge?: WsBridgeManager | undefined;
   /** Durable Object bridge forwarder for CF Workers (#331). */
   bridgeDoForwarder?: BridgeDoForwarder | undefined;
+  /** Returns whether the DO bridge has a connected WebSocket. CF Workers only. */
+  bridgeDoStatus?: () => Promise<boolean>;
 }
 
 export function createApp(storage?: StorageDriver, options?: AppOptions): Hono {
@@ -350,8 +352,16 @@ export function createApp(storage?: StorageDriver, options?: AppOptions): Hono {
   app.route("/", createApiRouter(store, spanBuffer, telemetryStore, diagnosisConfig, runner, options?.enqueueDiagnosis, wsBridge, options?.bridgeDoForwarder));
 
   // Bridge status endpoint — protected by Bearer auth (under /api/*)
-  app.get("/api/bridge/status", (c) => {
-    return c.json({ connected: wsBridge?.isConnected() ?? false });
+  const bridgeDoStatus = options?.bridgeDoStatus;
+  app.get("/api/bridge/status", async (c) => {
+    if (wsBridge?.isConnected()) {
+      return c.json({ connected: true });
+    }
+    if (bridgeDoStatus) {
+      const connected = await bridgeDoStatus();
+      return c.json({ connected });
+    }
+    return c.json({ connected: false });
   });
 
   return app;
