@@ -1,5 +1,7 @@
 import { initializeNodeSelfTelemetry } from "./self-telemetry/node.js";
 import { readFileSync } from "fs";
+import type { IncomingMessage } from "http";
+import type { Duplex } from "stream";
 import { join } from "path";
 import { serve } from "@hono/node-server";
 import { serveStatic } from "@hono/node-server/serve-static";
@@ -88,7 +90,9 @@ async function main() {
 
   // WebSocket upgrade for bridge connections (#331)
   const wss = new WebSocketServer({ noServer: true });
-  (server as import("http").Server).on("upgrade", (req, socket, head) => {
+  // @hono/node-server's serve() returns ServerType which wraps http.Server
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (server as any).on("upgrade", (req: IncomingMessage, socket: Duplex, head: Buffer) => {
     const url = new URL(req.url ?? "/", `http://${req.headers.host}`);
     if (url.pathname !== "/bridge/ws") {
       socket.destroy();
