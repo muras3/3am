@@ -349,20 +349,25 @@ describe("POST /api/chat/:incidentId", () => {
 
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ reply: "Bridge reply." });
+    const bridgeCallBody = JSON.parse(
+      (bridgeFetch.mock.calls[0] as [string, { body: string }])[1].body,
+    ) as Record<string, unknown>;
     expect(bridgeFetch).toHaveBeenCalledWith(
       "http://127.0.0.1:4269/api/manual/chat",
-      expect.objectContaining({
-        method: "POST",
-        body: JSON.stringify({
-          receiverUrl: "http://localhost",
-          incidentId,
-          authToken: TOKEN,
-          message: "What should I do first?",
-          history: [{ role: "user", content: "Start with the safest action." }],
-          provider: "codex",
-        }),
-      }),
+      expect.objectContaining({ method: "POST" }),
     );
+    expect(bridgeCallBody).toMatchObject({
+      receiverUrl: "http://localhost",
+      incidentId,
+      authToken: TOKEN,
+      message: "What should I do first?",
+      history: [{ role: "user", content: "Start with the safest action." }],
+      provider: "codex",
+    });
+    // systemPrompt is pre-built by the receiver so the bridge can use it directly
+    // without re-fetching /api/incidents/:id (the fix for #330)
+    expect(typeof bridgeCallBody["systemPrompt"]).toBe("string");
+    expect(bridgeCallBody["systemPrompt"]).toContain("incident responder assistant");
     expect(mockCallModelMessages).not.toHaveBeenCalled();
   });
 

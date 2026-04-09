@@ -570,6 +570,7 @@ export function createApiRouter(
             message,
             history,
             provider: llmSettings.provider,
+            systemPrompt,
           }),
         });
         if (!bridgeResponse.ok) {

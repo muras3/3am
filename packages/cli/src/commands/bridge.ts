@@ -77,6 +77,7 @@ export function runBridge(options: BridgeOptions = {}): void {
           history?: Array<{ role: "user" | "assistant"; content: string }>;
           provider?: ReturnType<typeof loadCredentials>["llmProvider"];
           model?: string;
+          systemPrompt?: string;
         };
         const creds = loadCredentials();
         const provider = payload.provider ?? creds.llmProvider;
@@ -89,6 +90,7 @@ export function runBridge(options: BridgeOptions = {}): void {
           provider,
           model: resolveProviderModel(provider, payload.model, creds.llmModel),
           locale: creds.locale === "ja" ? "ja" : "en",
+          systemPrompt: payload.systemPrompt,
         });
         sendJson(res, 200, result);
         return;
