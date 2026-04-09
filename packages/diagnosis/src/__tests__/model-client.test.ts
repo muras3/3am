@@ -53,9 +53,9 @@ describe("callModel", () => {
   it("falls back to claude-code on autodetect when ANTHROPIC_API_KEY is unauthorized", async () => {
     mockCreate.mockRejectedValue({ status: 401 });
     spawnSyncMock
-      .mockReturnValueOnce({ status: 0 })
-      .mockReturnValueOnce({ status: 1 })
-      .mockReturnValueOnce({ status: 0 });
+      .mockReturnValueOnce({ status: 0 }) // autodetect: claude found
+      .mockReturnValueOnce({ status: 1 }) // autodetect: codex not found
+      .mockReturnValueOnce({ status: 0 }); // generate(): checkBinary("claude") again
 
     spawnMock.mockImplementation(() => {
       const child = new EventEmitter() as EventEmitter & {
@@ -90,7 +90,8 @@ describe("callModel", () => {
   });
 
   it("strips ANTHROPIC_API_KEY when claude-code is explicitly selected", async () => {
-    spawnSyncMock.mockReturnValueOnce({ status: 0 });
+    // checkBinary is called once in generate() (explicit provider skips resolveProvider binary check)
+    spawnSyncMock.mockReturnValue({ status: 0 });
     spawnMock.mockImplementation(() => {
       const child = new EventEmitter() as EventEmitter & {
         stdout: EventEmitter;
