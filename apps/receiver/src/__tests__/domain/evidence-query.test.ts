@@ -676,4 +676,69 @@ describe('buildEvidenceQueryAnswer', () => {
     expect(traceFirstRef?.kind).toBe('span')
     expect(metricFirstRef?.kind).toBe('metric_group')
   })
+
+  // ── #335: CF Workers — traces-only evidence ─────────────────────────────
+
+  function makeTracesOnlyStore(traceId: string, spanId: string, httpStatusCode = 500): TelemetryStoreDriver {
+    return {
+      querySpans: vi.fn().mockResolvedValue([{
+        traceId,
+        spanId,
+        parentSpanId: undefined,
+        serviceName: 'worker',
+        environment: 'production',
+        spanName: 'fetch /api/checkout',
+        httpRoute: '/api/checkout',
+        httpStatusCode,
+        spanStatusCode: 2,
+        durationMs: 2100,
+        startTimeMs: 1700000001000,
+        exceptionCount: 1,
+        attributes: { 'http.response.status_code': httpStatusCode },
+        ingestedAt: 1700000002000,
+      }]),
+      queryMetrics: vi.fn().mockResolvedValue([]),
+      queryLogs: vi.fn().mockResolvedValue([]),
+      ingestSpans: vi.fn().mockResolvedValue(undefined),
+      ingestMetrics: vi.fn().mockResolvedValue(undefined),
+      ingestLogs: vi.fn().mockResolvedValue(undefined),
+      upsertSnapshot: vi.fn().mockResolvedValue(undefined),
+      getSnapshots: vi.fn().mockResolvedValue([]),
+      deleteSnapshots: vi.fn().mockResolvedValue(undefined),
+      deleteExpired: vi.fn().mockResolvedValue(undefined),
+      deleteExpiredSnapshots: vi.fn().mockResolvedValue(undefined),
+    }
+  }
+
+  it('returns non-empty evidenceRefs when only traces are available (CF Workers scenario)', async () => {
+    const incident = makeIncident({
+      diagnosisResult: makeDiagnosisResult(),
+      spanMembership: ['trace-cf-1:span-cf-1'],
+    })
+
+    const result = await buildEvidenceQueryAnswer(incident, makeTracesOnlyStore('trace-cf-1', 'span-cf-1'), 'What caused the checkout failure?', false)
+
+    expect(result.status).toBe('answered')
+    expect(result.segments.length).toBeGreaterThan(0)
+    for (const segment of result.segments) {
+      expect(segment.evidenceRefs.length).toBeGreaterThan(0)
+    }
+    // No segment should contain only absence refs when traces are available.
+    // Absence-only segments are misleading ("0 entries matching [healthcheck]...")
+    // for general trace-focused questions.
+    for (const segment of result.segments) {
+      const nonAbsenceRefs = segment.evidenceRefs.filter((ref) => ref.kind !== 'absence')
+      expect(nonAbsenceRefs.length).toBeGreaterThan(0)
+    }
+  })
+
+  it('response validates against schema when only traces are available (CF Workers scenario)', async () => {
+    const incident = makeIncident({
+      diagnosisResult: makeDiagnosisResult(),
+      spanMembership: ['trace-cf-2:span-cf-2'],
+    })
+
+    const result = await buildEvidenceQueryAnswer(incident, makeTracesOnlyStore('trace-cf-2', 'span-cf-2', 504), 'Why is checkout failing?', false)
+    EvidenceQueryResponseSchema.strict().parse(result)
+  })
 })
