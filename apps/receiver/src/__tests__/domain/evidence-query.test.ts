@@ -502,4 +502,178 @@ describe('buildEvidenceQueryAnswer', () => {
     expect(result.followups.length).toBeGreaterThan(0)
     expect(result.followups[0]?.question).toContain('メトリクス')
   })
+
+  // ── #333: Evidence query diversity ──────────────────────────────────────
+
+  /**
+   * Store where queryMetrics returns anomalous incident data (asDouble=0.85) for
+   * the incident window and low-value baseline data (asDouble≈0.02) for the
+   * baseline window, so buildMetricsSurface produces metric_group entries.
+   * Uses asDouble because extractMetricValue() only reads asDouble/asInt/sum+count.
+   */
+  function makeMockStoreWithAnomalousMetrics(): TelemetryStoreDriver {
+    // Uses asDouble so extractMetricValue() can parse the value correctly
+    const incidentMetric: TelemetryMetric = {
+      service: 'web',
+      environment: 'production',
+      name: 'checkout.error_rate',
+      startTimeMs: 1700000000000,
+      summary: { asDouble: 0.85 },
+      ingestedAt: 1700000002000,
+    }
+    // Three samples to satisfy MIN_BASELINE_DATAPOINTS so z-score path is used.
+    const baselineMetrics: TelemetryMetric[] = [
+      {
+        service: 'web',
+        environment: 'production',
+        name: 'checkout.error_rate',
+        startTimeMs: 1699998800000,
+        summary: { asDouble: 0.02 },
+        ingestedAt: 1699998802000,
+      },
+      {
+        service: 'web',
+        environment: 'production',
+        name: 'checkout.error_rate',
+        startTimeMs: 1699998900000,
+        summary: { asDouble: 0.03 },
+        ingestedAt: 1699998902000,
+      },
+      {
+        service: 'web',
+        environment: 'production',
+        name: 'checkout.error_rate',
+        startTimeMs: 1699999000000,
+        summary: { asDouble: 0.02 },
+        ingestedAt: 1699999002000,
+      },
+    ]
+    const base = makeMockStore()
+    return {
+      ...base,
+      // incident window startMs >= 1700000000000; baseline window endMs <= 1699999999999
+      queryMetrics: vi.fn().mockImplementation(
+        (filter: { startMs: number }) =>
+          Promise.resolve(filter.startMs >= 1700000000000 ? [incidentMetric] : baselineMetrics),
+      ),
+    }
+  }
+
+  it('trace-focused question returns trace evidence as top segment ref', async () => {
+    generateEvidencePlanMock.mockResolvedValueOnce({
+      mode: 'answer',
+      rewrittenQuestion: 'Which trace spans show the failure path?',
+      preferredSurfaces: ['traces', 'logs', 'metrics'],
+    })
+    const incident = makeIncident({ diagnosisResult: makeDiagnosisResult() })
+    const store = makeMockStoreWithAnomalousMetrics()
+
+    const result = await buildEvidenceQueryAnswer(
+      incident,
+      store,
+      'Which trace spans show the failure path?',
+      false,
+    )
+
+    expect(result.status).toBe('answered')
+    const allRefs = result.segments.flatMap((seg) => seg.evidenceRefs)
+    const traceRefs = allRefs.filter((ref) => ref.kind === 'span')
+    expect(traceRefs.length).toBeGreaterThan(0)
+    // The first segment's refs should include a span (trace evidence)
+    expect(result.segments[0]?.evidenceRefs.some((ref) => ref.kind === 'span')).toBe(true)
+  })
+
+  it('metric-focused question returns metric evidence as top segment ref', async () => {
+    generateEvidencePlanMock.mockResolvedValueOnce({
+      mode: 'answer',
+      rewrittenQuestion: 'What does the error rate metric show?',
+      preferredSurfaces: ['metrics', 'traces', 'logs'],
+    })
+    const incident = makeIncident({ diagnosisResult: makeDiagnosisResult() })
+    const store = makeMockStoreWithAnomalousMetrics()
+
+    const result = await buildEvidenceQueryAnswer(
+      incident,
+      store,
+      'What does the error rate metric show?',
+      false,
+    )
+
+    expect(result.status).toBe('answered')
+    expect(result.evidenceSummary.metrics).toBeGreaterThan(0)
+    const allRefs = result.segments.flatMap((seg) => seg.evidenceRefs)
+    const metricRefs = allRefs.filter((ref) => ref.kind === 'metric_group')
+    expect(metricRefs.length).toBeGreaterThan(0)
+    // The first segment's refs should include a metric_group
+    expect(result.segments[0]?.evidenceRefs.some((ref) => ref.kind === 'metric_group')).toBe(true)
+  })
+
+  it('log-focused question returns log evidence as top segment ref', async () => {
+    generateEvidencePlanMock.mockResolvedValueOnce({
+      mode: 'answer',
+      rewrittenQuestion: 'What do the error logs say?',
+      preferredSurfaces: ['logs', 'traces', 'metrics'],
+    })
+    const incident = makeIncident({ diagnosisResult: makeDiagnosisResult() })
+    const store = makeMockStoreWithAnomalousMetrics()
+
+    const result = await buildEvidenceQueryAnswer(
+      incident,
+      store,
+      'What do the error logs say?',
+      false,
+    )
+
+    expect(result.status).toBe('answered')
+    const allRefs = result.segments.flatMap((seg) => seg.evidenceRefs)
+    const logRefs = allRefs.filter((ref) => ref.kind === 'log_cluster' || ref.kind === 'absence')
+    expect(logRefs.length).toBeGreaterThan(0)
+    // The first segment's refs should include a log ref
+    expect(
+      result.segments[0]?.evidenceRefs.some(
+        (ref) => ref.kind === 'log_cluster' || ref.kind === 'absence',
+      ),
+    ).toBe(true)
+  })
+
+  it('trace question and metric question return different top evidence refs', async () => {
+    const incident = makeIncident({ diagnosisResult: makeDiagnosisResult() })
+    const store = makeMockStoreWithAnomalousMetrics()
+
+    // Turn 2: trace question
+    generateEvidencePlanMock.mockResolvedValueOnce({
+      mode: 'answer',
+      rewrittenQuestion: 'Show me the trace path for this failure',
+      preferredSurfaces: ['traces', 'logs', 'metrics'],
+    })
+
+    const traceResult = await buildEvidenceQueryAnswer(
+      incident,
+      store,
+      'Show me the trace path for this failure',
+      false,
+    )
+
+    // Turn 3: metric question
+    generateEvidencePlanMock.mockResolvedValueOnce({
+      mode: 'answer',
+      rewrittenQuestion: 'What is the error rate metric showing?',
+      preferredSurfaces: ['metrics', 'traces', 'logs'],
+    })
+
+    const metricResult = await buildEvidenceQueryAnswer(
+      incident,
+      store,
+      'What is the error rate metric showing?',
+      true,
+    )
+
+    const traceFirstRef = traceResult.segments[0]?.evidenceRefs[0]
+    const metricFirstRef = metricResult.segments[0]?.evidenceRefs[0]
+
+    // The two questions should produce different first evidence refs (different kinds)
+    expect(traceFirstRef?.kind).not.toBe(metricFirstRef?.kind)
+    expect(traceFirstRef?.kind).toBe('span')
+    expect(metricFirstRef?.kind).toBe('metric_group')
+  })
 })
