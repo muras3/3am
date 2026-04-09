@@ -833,32 +833,43 @@ export async function runManualChat(options: ManualExecutionOptions & {
 export async function runManualEvidenceQuery(options: ManualExecutionOptions & {
   question: string;
   history: EvidenceConversationTurn[];
+  diagnosisResult?: DiagnosisResult;
+  evidence?: EvidenceResponse;
 }): Promise<EvidenceQueryResponse> {
-  const headers = authHeaders(options.authToken);
-  const [incident, evidence, localeResponse] = await Promise.all([
-    fetchJson<ExtendedIncidentPayload>(
-      `${options.receiverUrl}/api/incidents/${encodeURIComponent(options.incidentId)}`,
-      { headers },
-    ),
-    fetchJson<EvidenceResponse>(
-      `${options.receiverUrl}/api/incidents/${encodeURIComponent(options.incidentId)}/evidence`,
-      { headers },
-    ),
-    fetchJson<{ locale?: "en" | "ja" }>(
-      `${options.receiverUrl}/api/settings/locale`,
-      { headers },
-    ).catch(() => ({ locale: "en" as const })),
-  ]);
+  let diagnosisResult = options.diagnosisResult;
+  let evidence = options.evidence;
+  let locale = options.locale ?? "en";
 
-  if (!incident.diagnosisResult) {
-    throw new Error("diagnosis is not available for this incident yet");
+  if (!diagnosisResult || !evidence) {
+    // Fallback: fetch from receiver (CLI direct invocation)
+    const headers = authHeaders(options.authToken);
+    const [incident, fetchedEvidence, localeResponse] = await Promise.all([
+      fetchJson<ExtendedIncidentPayload>(
+        `${options.receiverUrl}/api/incidents/${encodeURIComponent(options.incidentId)}`,
+        { headers },
+      ),
+      fetchJson<EvidenceResponse>(
+        `${options.receiverUrl}/api/incidents/${encodeURIComponent(options.incidentId)}/evidence`,
+        { headers },
+      ),
+      fetchJson<{ locale?: "en" | "ja" }>(
+        `${options.receiverUrl}/api/settings/locale`,
+        { headers },
+      ).catch(() => ({ locale: "en" as const })),
+    ]);
+
+    if (!incident.diagnosisResult) {
+      throw new Error("diagnosis is not available for this incident yet");
+    }
+    diagnosisResult = incident.diagnosisResult;
+    evidence = fetchedEvidence;
+    locale = options.locale ?? localeResponse.locale ?? "en";
   }
 
-  const locale = options.locale ?? localeResponse.locale ?? "en";
   const model = resolveProviderModel(options.provider, options.model, "claude-haiku-4-5-20251001");
 
   return buildManualEvidenceQueryAnswer(
-    incident.diagnosisResult,
+    diagnosisResult,
     evidence,
     options.question,
     options.history,

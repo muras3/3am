@@ -460,10 +460,73 @@ export function createApiRouter(
       return c.json({ error: "not found" }, 404);
     }
 
-    // Evidence query is rule-based (no LLM needed) — always handle on
-    // the receiver side, regardless of manual/automatic mode.
     const storedLocale = await storage.getSettings("locale");
     const locale: "en" | "ja" = parsed.data.locale ?? (storedLocale === "ja" ? "ja" : "en");
+
+    // In manual mode, route evidence query through bridge (LLM-powered).
+    // Pre-build diagnosisResult + evidence so bridge doesn't need to re-fetch.
+    const llmSettings = await getReceiverLlmSettings(storage);
+    if (llmSettings.mode === "manual") {
+      if (!incident.diagnosisResult) {
+        return c.json({ error: "diagnosis not yet available for this incident" }, 404);
+      }
+      const evidence = await buildCuratedEvidence(incident, telemetryStore);
+
+      if (wsBridge?.isConnected()) {
+        try {
+          const wsResult = await wsBridge.evidenceQuery({
+            incidentId: id,
+            receiverUrl: new URL(c.req.url).origin,
+            authToken,
+            question: parsed.data.question,
+            history: parsed.data.history ?? [],
+            provider: llmSettings.provider,
+            diagnosisResult: incident.diagnosisResult,
+            evidence,
+            locale,
+          });
+          return c.json(wsResult.result);
+        } catch (error) {
+          return c.json({
+            error: "manual evidence query bridge failed",
+            details: error instanceof Error ? error.message : String(error),
+          }, 502);
+        }
+      }
+
+      // Fall back to HTTP proxy (only works when bridge is on localhost)
+      try {
+        const bridgeResponse = await fetch(`${llmSettings.bridgeUrl}/api/manual/evidence-query`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            receiverUrl: new URL(c.req.url).origin,
+            incidentId: id,
+            authToken,
+            question: parsed.data.question,
+            history: parsed.data.history ?? [],
+            provider: llmSettings.provider,
+            diagnosisResult: incident.diagnosisResult,
+            evidence,
+            locale,
+          }),
+        });
+        if (!bridgeResponse.ok) {
+          const bodyText = await bridgeResponse.text();
+          return c.json({
+            error: "manual evidence query bridge failed",
+            details: bodyText || `bridge returned HTTP ${bridgeResponse.status}`,
+          }, 502);
+        }
+        return c.json(await bridgeResponse.json());
+      } catch (error) {
+        return c.json({
+          error: "manual evidence query bridge unavailable",
+          details: error instanceof Error ? error.message : String(error),
+        }, 502);
+      }
+    }
+
     const result = await buildEvidenceQueryAnswer(
       incident,
       telemetryStore,
