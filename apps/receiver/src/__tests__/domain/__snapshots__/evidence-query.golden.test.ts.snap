@@ -128,12 +128,12 @@ exports[`evidence query golden responses > keeps the inc_000006 follow-up answer
       {
         "evidenceRefs": [
           {
-            "id": "trace-1:checkout-001",
-            "kind": "span",
-          },
-          {
             "id": "mgroup:0",
             "kind": "metric_group",
+          },
+          {
+            "id": "trace-1:checkout-001",
+            "kind": "span",
           },
         ],
         "id": "seg_answer_1",
@@ -143,22 +143,11 @@ exports[`evidence query golden responses > keeps the inc_000006 follow-up answer
       {
         "evidenceRefs": [
           {
-            "id": "trace-1:checkout-001",
-            "kind": "span",
-          },
-        ],
-        "id": "seg_fact_1",
-        "kind": "fact",
-        "text": "Trace POST /checkout span POST /checkout returned httpStatus=500 with durationMs=2340.",
-      },
-      {
-        "evidenceRefs": [
-          {
             "id": "mgroup:0",
             "kind": "metric_group",
           },
         ],
-        "id": "seg_fact_2",
+        "id": "seg_fact_1",
         "kind": "fact",
         "text": "Metric group mgroup:0 indicates web error_rate Verdict=Inferred.",
       },
@@ -168,9 +157,20 @@ exports[`evidence query golden responses > keeps the inc_000006 follow-up answer
             "id": "trace-1:checkout-001",
             "kind": "span",
           },
+        ],
+        "id": "seg_fact_2",
+        "kind": "fact",
+        "text": "Trace POST /checkout span POST /checkout returned httpStatus=500 with durationMs=2340.",
+      },
+      {
+        "evidenceRefs": [
           {
             "id": "mgroup:0",
             "kind": "metric_group",
+          },
+          {
+            "id": "trace-1:checkout-001",
+            "kind": "span",
           },
         ],
         "id": "seg_inference_1",

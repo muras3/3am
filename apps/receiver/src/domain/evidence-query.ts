@@ -378,6 +378,7 @@ function retrieveEvidence(
   intent: IntentProfile,
 ): RetrievedEvidence[] {
   const tokens = new Set(tokenize(question));
+  const lowerQuestion = question.toLowerCase();
   const boosted = catalog.map((entry, index) => {
     const haystack = `${entry.summary} ${entry.ref.id} ${entry.ref.kind}`.toLowerCase();
     let score = 0;
@@ -388,9 +389,9 @@ function retrieveEvidence(
     if (surfacePriority !== -1) {
       score += 8 - surfacePriority * 2;
     }
-    if (entry.ref.kind === "span" && /trace|span|path|route/.test(question.toLowerCase())) score += 2;
-    if (entry.ref.kind === "metric_group" && /metric|rate|latency|error|throughput|spike/.test(question.toLowerCase())) score += 2;
-    if ((entry.ref.kind === "log_cluster" || entry.ref.kind === "absence") && /log|missing|retry|backoff|error/.test(question.toLowerCase())) score += 2;
+    if (entry.ref.kind === "span" && /trace|span|path|route|トレース|パス/.test(lowerQuestion)) score += 15;
+    if (entry.ref.kind === "metric_group" && /metric|rate|latency|error rate|throughput|spike|メトリクス|レイテンシ/.test(lowerQuestion)) score += 15;
+    if ((entry.ref.kind === "log_cluster" || entry.ref.kind === "absence") && /\blog\b|logs|missing log|retry|backoff|ログ|エラーログ/.test(lowerQuestion)) score += 15;
     if (intent.kind === "root_cause" && entry.surface !== "traces") score += 1;
     return { ...entry, score: score + Math.max(0, 1 - index * 0.01) };
   });
