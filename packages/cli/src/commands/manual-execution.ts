@@ -786,25 +786,36 @@ export async function runManualDiagnosis(options: ManualExecutionOptions): Promi
 export async function runManualChat(options: ManualExecutionOptions & {
   message: string;
   history: Array<{ role: "user" | "assistant"; content: string }>;
+  systemPrompt?: string;
 }): Promise<{ reply: string }> {
   const headers = authHeaders(options.authToken);
-  const incident = await fetchJson<ExtendedIncidentPayload>(
-    `${options.receiverUrl}/api/incidents/${encodeURIComponent(options.incidentId)}`,
-    { headers },
-  );
-  if (!incident.diagnosisResult) {
-    throw new Error("diagnosis is not available for this incident yet");
-  }
-  const localeResponse = await fetchJson<{ locale?: "en" | "ja" }>(
-    `${options.receiverUrl}/api/settings/locale`,
-    { headers },
-  ).catch(() => ({ locale: "en" as const }));
-  const locale = options.locale ?? localeResponse.locale ?? "en";
   const model = resolveProviderModel(options.provider, options.model, "claude-haiku-4-5-20251001");
+
+  let resolvedSystemPrompt: string;
+  if (options.systemPrompt) {
+    resolvedSystemPrompt = options.systemPrompt;
+  } else {
+    // Fallback: fetch the incident to build the system prompt locally.
+    // This path is used when the caller (e.g. CLI direct invocation) does not
+    // pre-build the prompt on the receiver side.
+    const incident = await fetchJson<ExtendedIncidentPayload>(
+      `${options.receiverUrl}/api/incidents/${encodeURIComponent(options.incidentId)}`,
+      { headers },
+    );
+    if (!incident.diagnosisResult) {
+      throw new Error("diagnosis is not available for this incident yet");
+    }
+    const localeResponse = await fetchJson<{ locale?: "en" | "ja" }>(
+      `${options.receiverUrl}/api/settings/locale`,
+      { headers },
+    ).catch(() => ({ locale: "en" as const }));
+    const locale = options.locale ?? localeResponse.locale ?? "en";
+    resolvedSystemPrompt = buildChatSystemPrompt(incident.diagnosisResult, locale);
+  }
 
   const reply = await callModelMessages(
     [
-      { role: "system", content: buildChatSystemPrompt(incident.diagnosisResult, locale) },
+      { role: "system", content: resolvedSystemPrompt },
       ...options.history,
       { role: "user", content: `<user_message>${options.message}</user_message>` },
     ],
