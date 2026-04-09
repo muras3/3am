@@ -22,8 +22,8 @@ RETENTION_HOURS = "48"
 
 [assets]
 directory = "../console/dist"
-not_found_handling = "single-page-application"
-run_worker_first = ["/api/*", "/v1/*", "/healthz"]
+not_found_handling = "none"
+run_worker_first = ["/api/*", "/v1/*", "/healthz", "/bridge/*"]
 
 [[d1_databases]]
 binding = "DB"

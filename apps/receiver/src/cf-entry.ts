@@ -6,7 +6,7 @@
  * - Lazy init: D1StorageAdapter + migrate runs once per isolate lifetime
  * - AUTH_TOKEN: resolved from D1 (auto-generated on first cold start) or env var
  * - Diagnosis: incidents are enqueued to Cloudflare Queues and processed by the queue consumer
- * - Console SPA is NOT served — use CF Pages for static hosting
+ * - Console SPA: static files served by CF Assets; SPA fallback (index.html) handled below
  * - process.env is populated from bindings for createApp() compatibility
  */
 import type { Hono } from "hono";
@@ -59,8 +59,13 @@ declare class WebSocketPair {
   1: CfWebSocket;
 }
 
+interface AssetsBinding {
+  fetch(request: Request): Promise<Response>;
+}
+
 interface Env {
   DB: D1Database;
+  ASSETS?: AssetsBinding;
   DIAGNOSIS_QUEUE?: QueueBinding<DiagnosisQueueMessage>;
   RECEIVER_AUTH_TOKEN?: string;
   ALLOW_INSECURE_DEV_MODE?: string;
@@ -217,7 +222,26 @@ export default {
       return new Response(null, { status: 101, webSocket: client } as ResponseInit & { webSocket: CfWebSocket });
     }
 
-    return runtime.app.fetch(request, env, ctx);
+    const response = await runtime.app.fetch(request, env, ctx);
+
+    // SPA fallback (not_found_handling="none"): serve index.html for client-side routes.
+    // Hashed static assets never reach the worker (CF Assets handles them directly),
+    // so any GET 404 here is a SPA navigation path.
+    if (
+      response.status === 404 &&
+      request.method === "GET" &&
+      env.ASSETS &&
+      !url.pathname.startsWith("/api/") &&
+      !url.pathname.startsWith("/v1/") &&
+      !url.pathname.startsWith("/bridge/") &&
+      url.pathname !== "/healthz"
+    ) {
+      const indexRequest = new Request(new URL("/index.html", request.url).toString(), request);
+      const indexResponse = await env.ASSETS.fetch(indexRequest);
+      if (indexResponse.status === 200) return indexResponse;
+    }
+
+    return response;
   },
   async queue(batch: MessageBatch<DiagnosisQueueMessage>, env: Env): Promise<void> {
     const runtime = await getRuntime(env);
