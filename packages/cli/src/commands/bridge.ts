@@ -1,5 +1,19 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import type { ProviderName } from "@3am/diagnosis";
+// Dynamic import — claude-code-pool uses node:child_process and must not
+// be statically imported (would crash CF Workers bundle via @3am/diagnosis).
+async function warmUpClaudePool(model?: string): Promise<void> {
+  try {
+    const { warmUp } = await import("@3am/diagnosis/claude-code-pool");
+    warmUp(model);
+  } catch { /* non-fatal */ }
+}
+async function shutdownClaudePool(): Promise<void> {
+  try {
+    const { shutdown } = await import("@3am/diagnosis/claude-code-pool");
+    shutdown();
+  } catch { /* non-fatal */ }
+}
 import type { DiagnosisResult, EvidenceResponse } from "@3am/core";
 import { loadCredentials, findReceiverCredentialByUrl } from "./init/credentials.js";
 import { runManualChat, runManualDiagnosis, runManualEvidenceQuery } from "./manual-execution.js";
@@ -224,6 +238,16 @@ async function handleWsMessage(msg: WsMessage, sendResponse: (response: unknown)
 export function runBridge(options: BridgeOptions = {}): void {
   const port = options.port ?? 4269;
 
+  // ── Warm up persistent Claude Code pool ───────────────────────────────
+  const creds = loadCredentials();
+  if (!creds.llmProvider || creds.llmProvider === "claude-code") {
+    try {
+      warmUpClaudePool(creds.llmModel);
+    } catch {
+      // Non-fatal — pool will be lazily initialized on first call
+    }
+  }
+
   // ── HTTP server (always started, for local dev backward compat) ──────
   const server = createServer(async (req, res) => {
     res.setHeader("Access-Control-Allow-Origin", "*");
@@ -341,7 +365,6 @@ export function runBridge(options: BridgeOptions = {}): void {
   });
 
   // ── WebSocket client (for remote receivers) ─────────────────────────
-  const creds = loadCredentials();
   const receiverUrl = options.receiverUrl ?? creds.receiverUrl;
   // Use URL-scoped credential lookup (matches diagnose.ts pattern)
   const matchedReceiver = receiverUrl
@@ -361,7 +384,16 @@ export function runBridge(options: BridgeOptions = {}): void {
 
     // Graceful shutdown
     const shutdown = () => {
+      shutdownClaudePool();
       wsClient.close();
+      server.close();
+    };
+    process.on("SIGINT", shutdown);
+    process.on("SIGTERM", shutdown);
+  } else {
+    // No WS client — still register shutdown for the claude pool
+    const shutdown = () => {
+      shutdownClaudePool();
       server.close();
     };
     process.on("SIGINT", shutdown);
