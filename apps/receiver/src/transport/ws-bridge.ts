@@ -41,6 +41,7 @@ export interface ChatRequest {
   message: string;
   history: Array<{ role: "user" | "assistant"; content: string }>;
   provider?: string;
+  systemPrompt?: string;
 }
 
 export interface DiagnoseRequest {
@@ -209,6 +210,7 @@ export class WsBridgeManager {
     message: string;
     history: Array<{ role: "user" | "assistant"; content: string }>;
     provider?: string;
+    systemPrompt?: string;
   }): Promise<{ reply: string }> {
     const response = await this.sendRequest({
       type: "chat_request",

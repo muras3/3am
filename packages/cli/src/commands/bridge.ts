@@ -171,6 +171,7 @@ async function handleWsMessage(msg: WsMessage, sendResponse: (response: unknown)
         provider,
         model: resolveProviderModel(provider, undefined, creds.llmModel),
         locale: creds.locale === "ja" ? "ja" : "en",
+        systemPrompt: msg["systemPrompt"] as string | undefined,
       });
       sendResponse({ type: "chat_response", id: msg.id, reply: result.reply });
       return;
