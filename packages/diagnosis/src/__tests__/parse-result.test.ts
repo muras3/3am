@@ -58,6 +58,21 @@ describe("parseResult", () => {
     expect(result.summary.what_happened).toBe("Stripe 429s caused checkout 500s.");
   });
 
+  it("parses JSON in code fence preceded by prose (issue #350)", () => {
+    const raw =
+      "Here's the diagnosis:\n```json\n" +
+      JSON.stringify(validBody) +
+      "\n```\nLet me know if you need anything else.";
+    const result = parseResult(raw, meta);
+    expect(result.summary.what_happened).toBe("Stripe 429s caused checkout 500s.");
+  });
+
+  it("parses bare JSON object preceded by prose (no code fence)", () => {
+    const raw = "Here is the result:\n" + JSON.stringify(validBody) + "\nDone.";
+    const result = parseResult(raw, meta);
+    expect(result.summary.what_happened).toBe("Stripe 429s caused checkout 500s.");
+  });
+
   it("throws on invalid JSON", () => {
     expect(() => parseResult("not valid json", meta)).toThrow();
   });
