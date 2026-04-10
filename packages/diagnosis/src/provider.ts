@@ -68,9 +68,8 @@ export function defaultModelForProvider(
   provider: ProviderName | undefined,
   fallback: string,
 ): string | undefined {
-  if (provider === "claude-code" || provider === "codex") {
-    return undefined;
-  }
+  // All providers now respect the caller's fallback model.
+  // For claude-code/codex, this passes --model to the CLI subprocess.
   return fallback;
 }
 
@@ -379,6 +378,29 @@ class ClaudeCodeProvider extends CliProvider {
     const env = super.buildSpawnEnv(options);
     delete env["ANTHROPIC_API_KEY"];
     return env;
+  }
+
+  /**
+   * Override: try the persistent pool first (eliminates ~6s cold start),
+   * fall back to the one-shot spawn approach if the pool fails.
+   */
+  override async generate(messages: ModelMessage[], options: ModelCallOptions): Promise<string> {
+    const prompt = renderMessagesAsPrompt(messages);
+    try {
+      const { generate: poolGenerate, hasProcess, warmUp } = await import("./claude-code-pool.js");
+      // Ensure a process exists (no-op if already warmed)
+      if (!hasProcess(options.model)) {
+        warmUp(options.model, this.buildSpawnEnv(options));
+      }
+      const result = await poolGenerate(prompt, options.model, this.buildSpawnEnv(options));
+      return extractText(result, this.name);
+    } catch (poolError) {
+      // Pool failed — fall back to one-shot spawn
+      process.stderr.write(
+        `[claude-code] pool failed, falling back to spawn: ${poolError instanceof Error ? poolError.message : String(poolError)}\n`,
+      );
+      return super.generate(messages, options);
+    }
   }
 }
 

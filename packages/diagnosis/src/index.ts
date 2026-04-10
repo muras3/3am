@@ -42,3 +42,7 @@ export type {
   ResolvedProvider,
 } from "./provider.js";
 export { callModelMessages } from "./model-client.js";
+export {
+  warmUp as warmUpClaudePool,
+  shutdown as shutdownClaudePool,
+} from "./claude-code-pool.js";
