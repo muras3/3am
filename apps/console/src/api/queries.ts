@@ -128,27 +128,10 @@ async function triggerRerunDiagnosis(
 async function triggerEvidenceQuery(
   id: string,
   body: EvidenceQueryRequest,
-  settings: DiagnosisSettingsResponse,
+  _settings: DiagnosisSettingsResponse,
 ): Promise<EvidenceQueryResponse> {
-  if (settings.mode === "manual") {
-    const response = await fetch(`${settings.bridgeUrl}/api/manual/evidence-query`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        incidentId: id,
-        receiverUrl: window.location.origin,
-        authToken: getStoredAuthToken() ?? undefined,
-        question: body.question,
-        history: body.history ?? [],
-        provider: settings.provider,
-      }),
-    });
-    if (!response.ok) {
-      throw new ApiError(response.status, await response.text());
-    }
-    return response.json() as Promise<EvidenceQueryResponse>;
-  }
-
+  // Always use the receiver endpoint — it handles manual mode routing
+  // internally (WS bridge or DO bridge) with pre-built diagnosisResult.
   return apiFetchPost<EvidenceQueryResponse>(`/api/incidents/${encodeIncidentId(id)}/evidence/query`, body);
 }
 

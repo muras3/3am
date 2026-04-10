@@ -1119,7 +1119,7 @@ describe("LensEvidenceStudio — Q&A mutation integration", () => {
     );
   });
 
-  it("routes Q&A through the local bridge in manual mode", async () => {
+  it("routes Q&A through the receiver endpoint in manual mode", async () => {
     const user = userEvent.setup();
     const qc = setupReady();
     qc.setQueryData(curatedQueries.diagnosisSettings().queryKey, {
@@ -1129,34 +1129,22 @@ describe("LensEvidenceStudio — Q&A mutation integration", () => {
     });
     localStorage.setItem("receiver_auth_token", "browser-token");
 
-    fetchSpy.mockImplementation((input: RequestInfo | URL) => {
-      const url = String(input);
-      if (url === "http://127.0.0.1:4269/api/manual/evidence-query") {
-        return Promise.resolve({
-          ok: true,
-          status: 200,
-          json: () => Promise.resolve(groundedAnswer),
-        });
-      }
-      throw new Error(`Unexpected fetch: ${url}`);
-    });
-
     renderStudio("inc_0892", qc);
 
     await user.type(screen.getByLabelText("Ask a grounded question about this incident"), "Test question");
     await user.click(screen.getByRole("button", { name: "Ask" }));
 
+    // Manual mode now routes through the receiver endpoint (which internally
+    // forwards to the bridge via WS/DO). The console no longer calls the
+    // bridge HTTP endpoint directly.
     expect(fetchSpy).toHaveBeenCalledWith(
-      "http://127.0.0.1:4269/api/manual/evidence-query",
+      expect.stringContaining("/api/incidents/inc_0892/evidence/query"),
       expect.objectContaining({
         method: "POST",
         body: JSON.stringify({
-          incidentId: "inc_0892",
-          receiverUrl: "http://localhost:3000",
-          authToken: "browser-token",
           question: "Test question",
+          isFollowup: false,
           history: [],
-          provider: "codex",
         }),
       }),
     );
