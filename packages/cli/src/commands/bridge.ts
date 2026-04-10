@@ -1,6 +1,19 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import type { ProviderName } from "@3am/diagnosis";
-import { warmUpClaudePool, shutdownClaudePool } from "@3am/diagnosis";
+// Dynamic import — claude-code-pool uses node:child_process and must not
+// be statically imported (would crash CF Workers bundle via @3am/diagnosis).
+async function warmUpClaudePool(model?: string): Promise<void> {
+  try {
+    const { warmUp } = await import("@3am/diagnosis/claude-code-pool");
+    warmUp(model);
+  } catch { /* non-fatal */ }
+}
+async function shutdownClaudePool(): Promise<void> {
+  try {
+    const { shutdown } = await import("@3am/diagnosis/claude-code-pool");
+    shutdown();
+  } catch { /* non-fatal */ }
+}
 import type { DiagnosisResult, EvidenceResponse } from "@3am/core";
 import { loadCredentials, findReceiverCredentialByUrl } from "./init/credentials.js";
 import { runManualChat, runManualDiagnosis, runManualEvidenceQuery } from "./manual-execution.js";
