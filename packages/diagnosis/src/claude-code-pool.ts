@@ -77,8 +77,12 @@ function buildArgs(model: string | undefined): string[] {
     "-p",
     "--input-format", "stream-json",
     "--output-format", "stream-json",
+    "--verbose",
     "--no-session-persistence",
     "--tools", "",
+    "--strict-mcp-config",
+    "--thinking", "disabled",
+    "--system-prompt", "You are a text processing assistant for incident analysis. Follow instructions precisely. Respond only with the requested output format. Never use tools.",
   ];
   if (model) {
     args.push("--model", model);
@@ -252,9 +256,10 @@ function generateInternal(
     managed!.pending = { resolve, reject, timer };
 
     // Write user message as NDJSON to stdin
+    // stream-json protocol requires: {type:"user", message:{role:"user", content:"..."}}
     const message = JSON.stringify({
       type: "user",
-      content: prompt,
+      message: { role: "user", content: prompt },
     });
 
     try {
@@ -301,6 +306,17 @@ export function warmUp(model?: string, env?: NodeJS.ProcessEnv): void {
   if (pool.has(key)) return;
   spawnProcess(model, env ?? process.env);
   process.stdout.write(`[claude-pool] warmed up process for model=${model ?? "default"}\n`);
+}
+
+/**
+ * Spawn + send a priming prompt to absorb hook/init overhead.
+ * Subsequent calls reuse the warmed process and respond in ~3-5s.
+ */
+export async function prime(model?: string, env?: NodeJS.ProcessEnv): Promise<void> {
+  warmUp(model, env);
+  const t0 = Date.now();
+  await generate("respond with: ready", model, env);
+  process.stdout.write(`[claude-pool] primed in ${Date.now() - t0}ms for model=${model ?? "default"}\n`);
 }
 
 /**
