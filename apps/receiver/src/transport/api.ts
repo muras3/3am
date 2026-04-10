@@ -679,9 +679,10 @@ export function createApiRouter(
             incidentId: id,
             receiverUrl: new URL(c.req.url).origin,
             authToken,
-            message,
+            message: sandboxedMessage,
             history,
             provider: llmSettings.provider,
+            systemPrompt,
           });
           return c.json(wsResult);
         } catch (error) {
@@ -701,9 +702,10 @@ export function createApiRouter(
             incidentId: id,
             receiverUrl: new URL(c.req.url).origin,
             authToken,
-            message,
+            message: sandboxedMessage,
             history,
             provider: llmSettings.provider,
+            systemPrompt,
           });
           if (doResponse.type === "error_response") {
             return c.json({
