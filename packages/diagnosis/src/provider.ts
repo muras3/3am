@@ -383,8 +383,12 @@ class ClaudeCodeProvider extends CliProvider {
   /**
    * Override: try the persistent pool first (eliminates ~6s cold start),
    * fall back to the one-shot spawn approach if the pool fails.
+   * Set CLAUDE_CODE_POOL_DISABLED=1 to skip pool (used in tests).
    */
   override async generate(messages: ModelMessage[], options: ModelCallOptions): Promise<string> {
+    if (process.env["CLAUDE_CODE_POOL_DISABLED"]) {
+      return super.generate(messages, options);
+    }
     const prompt = renderMessagesAsPrompt(messages);
     try {
       const { generate: poolGenerate, hasProcess, warmUp } = await import("./claude-code-pool.js");
