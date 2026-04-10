@@ -2,11 +2,13 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import type { ProviderName } from "@3am/diagnosis";
 // Dynamic import — claude-code-pool uses node:child_process and must not
 // be statically imported (would crash CF Workers bundle via @3am/diagnosis).
-async function warmUpClaudePool(model?: string): Promise<void> {
+async function primeClaudePool(model?: string): Promise<void> {
   try {
-    const { warmUp } = await import("@3am/diagnosis/claude-code-pool");
-    warmUp(model);
-  } catch { /* non-fatal */ }
+    const { prime } = await import("@3am/diagnosis/claude-code-pool");
+    await prime(model);
+  } catch (err) {
+    process.stderr.write(`[bridge] pool prime failed: ${err instanceof Error ? err.message : String(err)}\n`);
+  }
 }
 async function shutdownClaudePool(): Promise<void> {
   try {
@@ -241,11 +243,7 @@ export function runBridge(options: BridgeOptions = {}): void {
   // ── Warm up persistent Claude Code pool ───────────────────────────────
   const creds = loadCredentials();
   if (!creds.llmProvider || creds.llmProvider === "claude-code") {
-    try {
-      warmUpClaudePool(creds.llmModel);
-    } catch {
-      // Non-fatal — pool will be lazily initialized on first call
-    }
+    void primeClaudePool(creds.llmModel);
   }
 
   // ── HTTP server (always started, for local dev backward compat) ──────

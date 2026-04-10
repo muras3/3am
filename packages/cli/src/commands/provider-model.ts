@@ -6,8 +6,5 @@ export function resolveProviderModel(
   storedModel?: string,
 ): string | undefined {
   if (explicitModel) return explicitModel;
-  if (provider === "claude-code" || provider === "codex") {
-    return undefined;
-  }
   return storedModel;
 }
