@@ -396,7 +396,7 @@ class ClaudeCodeProvider extends CliProvider {
       if (!hasProcess(options.model)) {
         warmUp(options.model, this.buildSpawnEnv(options));
       }
-      const result = await poolGenerate(prompt, options.model, this.buildSpawnEnv(options));
+      const result = await poolGenerate(prompt, options.model, this.buildSpawnEnv(options), options.timeoutMs);
       return extractText(result, this.name);
     } catch (poolError) {
       // Pool failed — fall back to one-shot spawn

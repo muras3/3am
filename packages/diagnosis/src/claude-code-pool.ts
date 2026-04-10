@@ -17,7 +17,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 
 const DEFAULT_MODEL_KEY = "__default__";
 const MAX_CALLS_PER_PROCESS = 8;
-const RESPONSE_TIMEOUT_MS = 300_000;
+const DEFAULT_RESPONSE_TIMEOUT_MS = 300_000;
 
 // ── Types ───────────────────────────────────────────────────────────────
 
@@ -35,27 +35,40 @@ type ManagedProcess = {
   ready: boolean;
   dead: boolean;
   modelKey: string;
-  env: NodeJS.ProcessEnv;
 };
 
-// ── Queue for serialized access ─────────────────────────────────────────
+// ── Per-model queues for serialized access ──────────────────────────────
 
 type QueuedCall = {
   prompt: string;
-  model: string | undefined;
   env: NodeJS.ProcessEnv;
+  timeoutMs?: number;
   resolve: (text: string) => void;
   reject: (err: Error) => void;
 };
 
-const queue: QueuedCall[] = [];
-let processing = false;
+/** Per-model queue + processing flag */
+type ModelQueue = {
+  items: QueuedCall[];
+  processing: boolean;
+};
+
+const modelQueues = new Map<string, ModelQueue>();
+
+function getModelQueue(key: string): ModelQueue {
+  let mq = modelQueues.get(key);
+  if (!mq) {
+    mq = { items: [], processing: false };
+    modelQueues.set(key, mq);
+  }
+  return mq;
+}
 
 // ── Process pool ────────────────────────────────────────────────────────
 
 const pool = new Map<string, ManagedProcess>();
 
-function modelKey(model: string | undefined): string {
+function modelKeyFor(model: string | undefined): string {
   return model ?? DEFAULT_MODEL_KEY;
 }
 
@@ -64,7 +77,8 @@ function buildArgs(model: string | undefined): string[] {
     "-p",
     "--input-format", "stream-json",
     "--output-format", "stream-json",
-    "--verbose",
+    "--no-session-persistence",
+    "--tools", "",
   ];
   if (model) {
     args.push("--model", model);
@@ -80,7 +94,7 @@ function buildEnv(callerEnv: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
 }
 
 function spawnProcess(model: string | undefined, env: NodeJS.ProcessEnv): ManagedProcess {
-  const key = modelKey(model);
+  const key = modelKeyFor(model);
   const args = buildArgs(model);
   const spawnEnv = buildEnv(env);
 
@@ -97,7 +111,6 @@ function spawnProcess(model: string | undefined, env: NodeJS.ProcessEnv): Manage
     ready: true,
     dead: false,
     modelKey: key,
-    env: spawnEnv,
   };
 
   child.stdout?.on("data", (chunk: Buffer) => {
@@ -105,12 +118,19 @@ function spawnProcess(model: string | undefined, env: NodeJS.ProcessEnv): Manage
     drainBuffer(managed);
   });
 
-  child.stderr?.on("data", (chunk: Buffer) => {
-    // Log stderr for debugging but don't fail on it
-    const text = chunk.toString("utf8").trim();
-    if (text) {
-      process.stderr.write(`[claude-pool:${key}:stderr] ${text}\n`);
+  child.stderr?.on("data", (_chunk: Buffer) => {
+    // Silently discard stderr to avoid leaking sensitive CLI output
+  });
+
+  // [Codex high] Handle stdin pipe errors to prevent unhandled EPIPE crash
+  child.stdin?.on("error", (err) => {
+    managed.dead = true;
+    if (managed.pending) {
+      clearTimeout(managed.pending.timer);
+      managed.pending.reject(new Error(`claude stdin error: ${err.message}`));
+      managed.pending = null;
     }
+    pool.delete(key);
   });
 
   child.on("error", (err) => {
@@ -125,6 +145,11 @@ function spawnProcess(model: string | undefined, env: NodeJS.ProcessEnv): Manage
 
   child.on("close", (code) => {
     managed.dead = true;
+    // [Codex medium] Flush remaining buffer on close
+    if (managed.buffer.trim()) {
+      drainLine(managed, managed.buffer.trim());
+      managed.buffer = "";
+    }
     if (managed.pending) {
       clearTimeout(managed.pending.timer);
       managed.pending.reject(
@@ -147,53 +172,47 @@ function drainBuffer(managed: ManagedProcess): void {
   managed.buffer = lines.pop() ?? "";
 
   for (const line of lines) {
-    const trimmed = line.trim();
-    if (!trimmed) continue;
+    drainLine(managed, line.trim());
+  }
+}
 
-    let event: Record<string, unknown>;
-    try {
-      event = JSON.parse(trimmed) as Record<string, unknown>;
-    } catch {
-      // Not valid JSON, skip
-      continue;
-    }
+function drainLine(managed: ManagedProcess, trimmed: string): void {
+  if (!trimmed || !managed.pending) return;
 
-    if (!managed.pending) continue;
+  let event: Record<string, unknown>;
+  try {
+    event = JSON.parse(trimmed) as Record<string, unknown>;
+  } catch {
+    return;
+  }
 
-    // The stream-json output emits various event types.
-    // We look for the result message which contains the assistant's response.
-    // Format: {"type":"result","subtype":"success","result":"<text>",...}
-    if (event["type"] === "result" && typeof event["result"] === "string") {
-      const text = event["result"] as string;
+  // The stream-json output emits various event types.
+  // We look for the result message which contains the assistant's response.
+  if (event["type"] === "result" && typeof event["result"] === "string") {
+    clearTimeout(managed.pending.timer);
+    managed.pending.resolve(event["result"] as string);
+    managed.pending = null;
+    return;
+  }
+
+  if (event["type"] === "result" && event["subtype"] === "success") {
+    const result = event["result"];
+    if (typeof result === "string") {
       clearTimeout(managed.pending.timer);
-      managed.pending.resolve(text);
+      managed.pending.resolve(result);
       managed.pending = null;
-      continue;
+      return;
     }
+  }
 
-    // Alternative: {"type":"result","subtype":"success","result":"..."} with content blocks
-    // Some versions emit content blocks in a message structure
-    if (event["type"] === "result" && event["subtype"] === "success") {
-      // Try to extract text from the result field
-      const result = event["result"];
-      if (typeof result === "string") {
-        clearTimeout(managed.pending.timer);
-        managed.pending.resolve(result);
-        managed.pending = null;
-        continue;
-      }
-    }
-
-    // Handle error results
-    if (event["type"] === "result" && event["subtype"] === "error") {
-      const errorMsg = typeof event["error"] === "string"
-        ? event["error"]
-        : "claude stream-json returned an error result";
-      clearTimeout(managed.pending.timer);
-      managed.pending.reject(new Error(errorMsg));
-      managed.pending = null;
-      continue;
-    }
+  // Handle error results
+  if (event["type"] === "result" && event["subtype"] === "error") {
+    const errorMsg = typeof event["error"] === "string"
+      ? event["error"]
+      : "claude stream-json returned an error result";
+    clearTimeout(managed.pending.timer);
+    managed.pending.reject(new Error(errorMsg));
+    managed.pending = null;
   }
 }
 
@@ -203,8 +222,9 @@ function generateInternal(
   prompt: string,
   model: string | undefined,
   env: NodeJS.ProcessEnv,
+  timeoutMs?: number,
 ): Promise<string> {
-  const key = modelKey(model);
+  const key = modelKeyFor(model);
   let managed = pool.get(key);
 
   // Recycle if the process has been used too many times or is dead
@@ -218,16 +238,16 @@ function generateInternal(
   }
 
   managed.callCount++;
+  const effectiveTimeout = timeoutMs ?? DEFAULT_RESPONSE_TIMEOUT_MS;
 
   return new Promise<string>((resolve, reject) => {
     const timer = setTimeout(() => {
       if (managed!.pending) {
         managed!.pending = null;
-        reject(new Error(`claude stream-json response timed out after ${RESPONSE_TIMEOUT_MS}ms`));
-        // Kill the hung process
+        reject(new Error(`claude stream-json response timed out after ${effectiveTimeout}ms`));
         killProcess(managed!);
       }
-    }, RESPONSE_TIMEOUT_MS);
+    }, effectiveTimeout);
 
     managed!.pending = { resolve, reject, timer };
 
@@ -250,23 +270,25 @@ function generateInternal(
   });
 }
 
-// ── Queue processor ─────────────────────────────────────────────────────
+// ── Per-model queue processor ───────────────────────────────────────────
+// [Codex high] Serialization is now per-model, not global
 
-async function processQueue(): Promise<void> {
-  if (processing) return;
-  processing = true;
+async function processModelQueue(key: string): Promise<void> {
+  const mq = getModelQueue(key);
+  if (mq.processing) return;
+  mq.processing = true;
 
-  while (queue.length > 0) {
-    const call = queue.shift()!;
+  while (mq.items.length > 0) {
+    const call = mq.items.shift()!;
     try {
-      const result = await generateInternal(call.prompt, call.model, call.env);
+      const result = await generateInternal(call.prompt, key === DEFAULT_MODEL_KEY ? undefined : key, call.env, call.timeoutMs);
       call.resolve(result);
     } catch (err) {
       call.reject(err instanceof Error ? err : new Error(String(err)));
     }
   }
 
-  processing = false;
+  mq.processing = false;
 }
 
 // ── Public API ──────────────────────────────────────────────────────────
@@ -275,7 +297,7 @@ async function processQueue(): Promise<void> {
  * Pre-spawn a claude process for the given model so the first real call is fast.
  */
 export function warmUp(model?: string, env?: NodeJS.ProcessEnv): void {
-  const key = modelKey(model);
+  const key = modelKeyFor(model);
   if (pool.has(key)) return;
   spawnProcess(model, env ?? process.env);
   process.stdout.write(`[claude-pool] warmed up process for model=${model ?? "default"}\n`);
@@ -289,16 +311,18 @@ export function generate(
   prompt: string,
   model?: string,
   env?: NodeJS.ProcessEnv,
+  timeoutMs?: number,
 ): Promise<string> {
+  const key = modelKeyFor(model);
   return new Promise<string>((resolve, reject) => {
-    queue.push({
+    getModelQueue(key).items.push({
       prompt,
-      model,
       env: env ?? process.env,
+      timeoutMs,
       resolve,
       reject,
     });
-    void processQueue();
+    void processModelQueue(key);
   });
 }
 
@@ -306,7 +330,7 @@ export function generate(
  * Check if a persistent process is available for the given model.
  */
 export function hasProcess(model?: string): boolean {
-  const key = modelKey(model);
+  const key = modelKeyFor(model);
   const managed = pool.get(key);
   return !!managed && !managed.dead;
 }
@@ -323,6 +347,10 @@ function killProcess(managed: ManagedProcess): void {
   }
   try {
     managed.child.kill("SIGTERM");
+    // [Codex medium] Force kill after 5s if SIGTERM ignored
+    setTimeout(() => {
+      try { managed.child.kill("SIGKILL"); } catch { /* already dead */ }
+    }, 5000).unref();
   } catch {
     // ignore
   }
@@ -331,13 +359,23 @@ function killProcess(managed: ManagedProcess): void {
 
 /**
  * Shut down all persistent claude processes.
+ * [Codex high] Rejects all queued requests before clearing.
  */
 export function shutdown(): void {
   for (const managed of pool.values()) {
     killProcess(managed);
   }
   pool.clear();
-  queue.length = 0;
-  processing = false;
+
+  // Reject all queued requests
+  for (const [, mq] of modelQueues) {
+    for (const call of mq.items) {
+      call.reject(new Error("claude pool shutting down"));
+    }
+    mq.items.length = 0;
+    mq.processing = false;
+  }
+  modelQueues.clear();
+
   process.stdout.write("[claude-pool] all processes shut down\n");
 }
