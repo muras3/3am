@@ -1,4 +1,4 @@
-import type { IncidentPacket, DiagnosisResult } from "@3am/core";
+import type { IncidentPacket, DiagnosisResult } from "3am-core";
 
 // Scenario: cascading_timeout_downstream_dependency
 // notification-svc latency spikes 100ms → 8s →

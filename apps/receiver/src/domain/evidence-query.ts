@@ -10,8 +10,8 @@ import type {
   EvidenceQueryResponse,
   EvidenceResponse,
   Followup,
-} from "@3am/core";
-import { generateEvidencePlan, generateEvidenceQuery } from "@3am/diagnosis";
+} from "3am-core";
+import { generateEvidencePlan, generateEvidenceQuery } from "3am-diagnosis";
 import type { Incident } from "../storage/interface.js";
 import { classifyDiagnosisState } from "./diagnosis-state.js";
 import type { TelemetryStoreDriver } from "../telemetry/interface.js";

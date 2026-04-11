@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { buildPrompt } from "../prompt.js";
-import type { IncidentPacket } from "@3am/core";
+import type { IncidentPacket } from "3am-core";
 
 const packet: IncidentPacket = {
   schemaVersion: "incident-packet/v1alpha1",

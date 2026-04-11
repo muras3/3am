@@ -4,7 +4,7 @@ import {
   IncidentPacketSchema,
   PlatformEventSchema,
   ThinEventSchema,
-} from "@3am/core";
+} from "3am-core";
 import { z } from "zod";
 import type { AnomalousSignal, TelemetryScope } from "../interface.js";
 

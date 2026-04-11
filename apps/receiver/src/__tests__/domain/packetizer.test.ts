@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { IncidentPacketSchema, type PlatformEvent } from '@3am/core'
+import { IncidentPacketSchema, type PlatformEvent } from '3am-core'
 import {
   buildAnomalousSignals,
   buildPlatformLogRef,

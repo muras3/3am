@@ -23,8 +23,8 @@ import { spawnSync } from "child_process";
 import { writeFileSync, unlinkSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
-import { diagnose, buildPrompt, parseResult } from "@3am/diagnosis";
-import type { IncidentPacket, DiagnosisResult } from "@3am/core";
+import { diagnose, buildPrompt, parseResult } from "3am-diagnosis";
+import type { IncidentPacket, DiagnosisResult } from "3am-core";
 
 const BASE_URL = process.env["RECEIVER_BASE_URL"] ?? "http://localhost:4319";
 const MAX_DIAGNOSES = Number(process.env["MAX_DIAGNOSES"] ?? "1");

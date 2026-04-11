@@ -1,4 +1,4 @@
-import type { IncidentPacket, DiagnosisResult } from "@3am/core";
+import type { IncidentPacket, DiagnosisResult } from "3am-core";
 
 // Scenario: db_migration_lock_contention
 // Long-running analytics query holds ShareLock →

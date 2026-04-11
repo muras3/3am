@@ -7,7 +7,7 @@ import {
 } from '../../ambient/runtime-map.js'
 import type { TelemetrySpan, TelemetryStoreDriver } from '../../telemetry/interface.js'
 import type { StorageDriver, Incident } from '../../storage/interface.js'
-import type { IncidentPacket } from '@3am/core'
+import type { IncidentPacket } from '3am-core'
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 

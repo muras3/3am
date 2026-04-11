@@ -1,4 +1,4 @@
-import type { IncidentPacket, DiagnosisResult } from "@3am/core";
+import type { IncidentPacket, DiagnosisResult } from "3am-core";
 import { buildPrompt } from "./prompt.js";
 import { callModel } from "./model-client.js";
 import { parseResult } from "./parse-result.js";

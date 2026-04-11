@@ -9,7 +9,7 @@ import { existsSync, readFileSync, writeFileSync, mkdirSync, chmodSync } from "n
 import { join } from "node:path";
 import { homedir } from "node:os";
 import { createInterface } from "node:readline";
-import type { ProviderName } from "@3am/diagnosis";
+import type { ProviderName } from "3am-diagnosis";
 
 export type DiagnosisMode = "automatic" | "manual";
 export type ReceiverPlatform = "vercel" | "cloudflare";

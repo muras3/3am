@@ -8,15 +8,15 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { MemoryAdapter } from "../storage/adapters/memory.js";
 import { createApp } from "../index.js";
 import { COOKIE_NAME } from "../middleware/session-cookie.js";
-import type { DiagnosisResult } from "@3am/core";
+import type { DiagnosisResult } from "3am-core";
 
 // ── Mock diagnosis model layer ─────────────────────────────────────────────
 const { mockCallModelMessages } = vi.hoisted(() => {
   const callModelMessages = vi.fn();
   return { mockCallModelMessages: callModelMessages };
 });
-vi.mock("@3am/diagnosis", async () => {
-  const actual = await vi.importActual("@3am/diagnosis");
+vi.mock("3am-diagnosis", async () => {
+  const actual = await vi.importActual("3am-diagnosis");
   return {
     ...actual,
     callModelMessages: mockCallModelMessages,

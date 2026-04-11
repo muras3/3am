@@ -5,7 +5,7 @@ import { D1StorageAdapter } from "../../storage/drizzle/d1.js";
 import { D1TelemetryAdapter } from "../../telemetry/drizzle/d1.js";
 import { makeMembership, makePacket } from "../storage/shared-suite.js";
 
-vi.mock("@3am/diagnosis", () => ({
+vi.mock("3am-diagnosis", () => ({
   diagnose: vi.fn().mockResolvedValue({
     summary: {
       what_happened: "Stripe 429s caused checkout 500s.",
@@ -122,7 +122,7 @@ async function seedIncident(overrides: { withDiagnosis?: boolean } = {}): Promis
 
 describe("Cloudflare Queue consumer", () => {
   it("retries the message when diagnosis execution fails", async () => {
-    const { diagnose } = await import("@3am/diagnosis");
+    const { diagnose } = await import("3am-diagnosis");
     vi.mocked(diagnose).mockRejectedValueOnce(new Error("Anthropic timeout"));
     const incidentId = await seedIncident();
 

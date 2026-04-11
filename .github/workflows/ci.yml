@@ -65,33 +65,33 @@ jobs:
 
       # core
       - name: Build core
-        run: pnpm --filter @3am/core build
+        run: pnpm --filter 3am-core build
       - name: Test core
-        run: pnpm --filter @3am/core test
+        run: pnpm --filter 3am-core test
       - name: Typecheck core
-        run: pnpm --filter @3am/core typecheck
+        run: pnpm --filter 3am-core typecheck
       - name: Lint core
-        run: pnpm --filter @3am/core lint
+        run: pnpm --filter 3am-core lint
 
       # diagnosis (no real API calls — all mocked in tests)
       - name: Build diagnosis
-        run: pnpm --filter @3am/diagnosis build
+        run: pnpm --filter 3am-diagnosis build
       - name: Test diagnosis
-        run: pnpm --filter @3am/diagnosis test
+        run: pnpm --filter 3am-diagnosis test
       - name: Typecheck diagnosis
-        run: pnpm --filter @3am/diagnosis typecheck
+        run: pnpm --filter 3am-diagnosis typecheck
       - name: Lint diagnosis
-        run: pnpm --filter @3am/diagnosis lint
+        run: pnpm --filter 3am-diagnosis lint
 
       # cli (no real API calls — all mocked in tests)
       - name: Build cli
-        run: pnpm --filter @3am/cli build
+        run: pnpm --filter 3am-cli build
       - name: Test cli
-        run: pnpm --filter @3am/cli test
+        run: pnpm --filter 3am-cli test
       - name: Typecheck cli
-        run: pnpm --filter @3am/cli typecheck
+        run: pnpm --filter 3am-cli typecheck
       - name: Lint cli
-        run: pnpm --filter @3am/cli lint
+        run: pnpm --filter 3am-cli lint
 
       # receiver (PostgresAdapter tests run when DATABASE_URL is set)
       - name: Test receiver (with coverage)

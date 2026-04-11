@@ -45,4 +45,4 @@ export { callModelMessages } from "./model-client.js";
 export { wrapUserMessage } from "./user-message-envelope.js";
 // claude-code-pool uses node:child_process and must NOT be statically
 // imported — it would crash CF Workers. Use dynamic import instead:
-//   const { warmUp, shutdown } = await import("@3am/diagnosis/claude-code-pool");
+//   const { warmUp, shutdown } = await import("3am-diagnosis/claude-code-pool");

@@ -11,7 +11,7 @@
 import type { TelemetryLog, TelemetryStoreDriver } from '../telemetry/interface.js'
 import { buildIncidentQueryFilter } from '../telemetry/interface.js'
 import type { TelemetryScope, AnomalousSignal } from '../storage/interface.js'
-import type { AbsenceEvidenceEntry, CuratedEvidenceRef } from '@3am/core/schemas/curated-evidence'
+import type { AbsenceEvidenceEntry, CuratedEvidenceRef } from '3am-core/schemas/curated-evidence'
 import { resolveEffectiveBody } from './otlp-utils.js'
 
 // ── Pattern Definitions ─────────────────────────────────────────────────

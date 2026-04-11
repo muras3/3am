@@ -8,7 +8,7 @@ vi.mock("../model-client.js", () => ({
 
 import { diagnose } from "../diagnose.js";
 import { callModel } from "../model-client.js";
-import type { IncidentPacket } from "@3am/core";
+import type { IncidentPacket } from "3am-core";
 
 const packet: IncidentPacket = {
   schemaVersion: "incident-packet/v1alpha1",

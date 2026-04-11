@@ -126,8 +126,8 @@ function ensureLocalWorkspaceReady(repoRoot: string): string {
   }
 
   const buildTargets: Array<{ name: string; marker: string }> = [
-    { name: "@3am/core", marker: join(repoRoot, "packages", "core", "dist", "index.js") },
-    { name: "@3am/diagnosis", marker: join(repoRoot, "packages", "diagnosis", "dist", "index.js") },
+    { name: "3am-core", marker: join(repoRoot, "packages", "core", "dist", "index.js") },
+    { name: "3am-diagnosis", marker: join(repoRoot, "packages", "diagnosis", "dist", "index.js") },
     { name: "@3am/console", marker: join(repoRoot, "apps", "console", "dist", "index.html") },
   ];
 

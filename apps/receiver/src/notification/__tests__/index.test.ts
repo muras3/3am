@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import type { IncidentPacket } from "@3am/core";
+import type { IncidentPacket } from "3am-core";
 
 // Mock the sub-modules so we can assert calls without real HTTP
 vi.mock("../detect.js", () => ({

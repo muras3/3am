@@ -358,11 +358,11 @@ describe("runDev", () => {
     runDev();
 
     expect(mockExecSync).toHaveBeenCalledWith(
-      "pnpm --filter @3am/core build",
+      "pnpm --filter 3am-core build",
       expect.objectContaining({ stdio: "inherit" }),
     );
     expect(mockExecSync).toHaveBeenCalledWith(
-      "pnpm --filter @3am/diagnosis build",
+      "pnpm --filter 3am-diagnosis build",
       expect.objectContaining({ stdio: "inherit" }),
     );
     expect(mockExecSync).toHaveBeenCalledWith(

@@ -10,7 +10,7 @@ import { detectRuntimeTarget, findWranglerConfigPath } from "./init/detect-runti
 import { updateCloudflareObservabilityConfig } from "./cloudflare-workers.js";
 import { resolveApiKey, loadCredentials, saveCredentials } from "./init/credentials.js";
 import { createInterface } from "node:readline";
-import { PROVIDER_NAMES, type ProviderName } from "@3am/diagnosis";
+import { PROVIDER_NAMES, type ProviderName } from "3am-diagnosis";
 
 const OTEL_DEPS = [
   "@opentelemetry/sdk-node",

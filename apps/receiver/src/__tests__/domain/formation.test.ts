@@ -10,7 +10,7 @@ import {
 import type { ExtractedSpan } from '../../domain/anomaly-detector.js'
 import type { Incident } from '../../storage/interface.js'
 import { createEmptyTelemetryScope } from '../../storage/interface.js'
-import type { IncidentPacket } from '@3am/core'
+import type { IncidentPacket } from '3am-core'
 
 // Minimal IncidentPacket fixture — only fields needed for formation logic
 function makePacket(
