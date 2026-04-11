@@ -59,14 +59,32 @@ open http://localhost:3333
 | 4 | `OPENAI_API_KEY` in env | openai | Yes |
 | 5 | Ollama on localhost:11434 | ollama | No (free, local) |
 
+### Which mode should I use?
+
+| Situation | Mode | Provider flag |
+|-----------|------|--------------|
+| You have `ANTHROPIC_API_KEY` | `auto` | `--provider anthropic` |
+| You have `OPENAI_API_KEY` | `auto` | `--provider openai` |
+| You use Claude Code subscription (no API key) | `manual` | `--provider claude-code` |
+| You use Codex subscription (no API key) | `manual` | `--provider codex` |
+| You run Ollama locally (no API key) | `manual` | `--provider ollama` |
+
+**IMPORTANT:** `--mode manual --provider anthropic` is a contradiction. Manual mode is for when you do NOT have a server-side API key. If you have `ANTHROPIC_API_KEY`, use `--mode auto --provider anthropic`.
+
+### Automatic mode setup (API key path — most common for production)
+
+```bash
+npx 3am init --mode auto --provider anthropic
+export ANTHROPIC_API_KEY=sk-ant-...
+npx 3am deploy vercel
+```
+
 ### Diagnosis modes
 
-- **automatic**: Receiver runs diagnosis server-side when an incident is detected. Requires a server-side API key.
+- **automatic** (alias: `auto`): Receiver runs diagnosis server-side when an incident is detected. Requires a server-side API key (`ANTHROPIC_API_KEY` or `OPENAI_API_KEY`).
 - **manual**: Diagnosis is triggered from the Console UI or CLI. Routes through a local bridge (`npx 3am bridge`). Supports Claude Code, Codex, Ollama, or any provider without a server-side API key.
 
-### Manual mode workflow
-
-For end-to-end manual mode, document these requirements explicitly:
+### Manual mode workflow (local receiver)
 
 1. Configure manual mode during init:
    ```bash
@@ -85,6 +103,19 @@ For end-to-end manual mode, document these requirements explicitly:
    VITE_RECEIVER_BASE_URL=http://localhost:3333 pnpm --filter @3am/console dev
    ```
 5. Trigger reruns or chat from the Console, or run manual diagnosis directly from the CLI.
+
+### Remote manual mode (bridge to a deployed receiver)
+
+Use this when the Receiver is deployed (Vercel or Cloudflare) but you want diagnosis to run locally through your Claude Code or Codex subscription:
+
+```bash
+npx 3am bridge --receiver-url https://your-3am-receiver.vercel.app
+```
+
+- The bridge connects to the deployed Receiver via WebSocket
+- On Cloudflare Workers: uses Durable Objects to maintain the connection
+- On Vercel: uses the Node.js HTTP server upgrade path
+- Auth token is auto-detected from credentials saved by `npx 3am deploy`; pass `--receiver-url` explicitly to override
 
 ### Manual diagnosis via CLI
 
@@ -160,6 +191,44 @@ packages/
   diagnosis/    # @3am/diagnosis — LLM diagnosis engine
   cli/          # @3am/cli — CLI commands (init, local, deploy, diagnose, bridge, demo)
 ```
+
+## CLI Reference
+
+```bash
+# Instrumentation setup
+npx 3am init                                          # interactive setup
+npx 3am init --mode auto --provider anthropic         # auto mode (API key)
+npx 3am init --mode manual --provider claude-code     # manual mode (subscription)
+npx 3am init --api-key <key> --no-interactive         # CI/scripted setup
+
+# Local development
+npx 3am local                                         # start local receiver on :3333
+npx 3am local demo                                    # inject demo incident + run diagnosis
+npx 3am local demo --yes                              # skip cost prompt
+
+# Deployment
+npx 3am deploy vercel                                 # deploy receiver to Vercel (interactive)
+npx 3am deploy vercel --yes --no-interactive --json   # CI deploy
+npx 3am deploy cloudflare --yes                       # deploy to Cloudflare Workers
+
+# Bridge (manual mode)
+npx 3am bridge                                        # local bridge on :4269
+npx 3am bridge --receiver-url <url>                   # WebSocket bridge to remote receiver
+npx 3am bridge --port 4270                            # custom port
+
+# Manual diagnosis
+npx 3am diagnose --incident-id inc_000001 --receiver-url http://localhost:3333 --provider claude-code
+```
+
+### Flag summary
+
+| Command | Key flags |
+|---------|-----------|
+| `init` | `--mode auto\|manual`, `--provider anthropic\|openai\|claude-code\|codex\|ollama`, `--api-key`, `--model`, `--lang en\|ja`, `--no-interactive` |
+| `local` | `--port` (default 3333), `--yes`, `--no-interactive`, `--receiver-url` |
+| `deploy` | `vercel\|cloudflare`, `--yes`, `--no-interactive`, `--json`, `--project-name`, `--auth-token` |
+| `bridge` | `--port` (default 4269), `--receiver-url` (remote WS target; auto-detected from credentials) |
+| `diagnose` | `--incident-id`, `--receiver-url`, `--provider`, `--model` |
 
 ## Notification Setup
 
