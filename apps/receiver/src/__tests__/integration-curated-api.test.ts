@@ -20,6 +20,7 @@ import { buildReasoningStructure } from '../domain/reasoning-structure-builder.j
 import type { TelemetrySpan, TelemetryMetric, TelemetryLog } from '../telemetry/interface.js'
 import type { Incident, TelemetryScope, AnomalousSignal } from '../storage/interface.js'
 import type { IncidentPacket, DiagnosisResult, ConsoleNarrative } from '@3am/core'
+import type * as DiagnosisModule from '@3am/diagnosis'
 
 import { RuntimeMapResponseSchema } from '@3am/core/schemas/runtime-map'
 import { ExtendedIncidentSchema } from '@3am/core/schemas/incident-detail-extension'
@@ -34,7 +35,7 @@ const { mockDiagnose, mockGenerateConsoleNarrative } = vi.hoisted(() => ({
 }))
 
 vi.mock('@3am/diagnosis', async (importOriginal) => {
-  const original = await importOriginal<typeof import('@3am/diagnosis')>()
+  const original = await importOriginal<typeof DiagnosisModule>()
   return {
     ...original,
     diagnose: mockDiagnose,
