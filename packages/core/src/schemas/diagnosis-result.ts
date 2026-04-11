@@ -1,52 +1,52 @@
 import { z } from "zod";
 
-// All sub-schemas use .strict() so that unknown keys are rejected at every
+// All sub-schemas use z.strictObject() so that unknown keys are rejected at every
 // nesting level, not just at the top. This prevents callers from accidentally
 // embedding incident-packet fields (triggerSignals, evidence, pointers, etc.)
-// inside nested objects — a class of mistake that a top-level-only .strict()
-// would miss. Mirror of the pattern used in incident-packet.ts.
+// inside nested objects — a class of mistake that a top-level-only strict
+// check would miss. Mirror of the pattern used in incident-packet.ts.
 
-const CausalChainStepSchema = z.object({
+const CausalChainStepSchema = z.strictObject({
   type: z.enum(["external", "system", "incident", "impact"]),
   title: z.string(),
   detail: z.string(),
-}).strict();
+});
 
-const WatchItemSchema = z.object({
+const WatchItemSchema = z.strictObject({
   label: z.string(),
   state: z.string(),
   status: z.string(),
-}).strict();
+});
 
-export const DiagnosisResultSchema = z.object({
-  summary: z.object({
+export const DiagnosisResultSchema = z.strictObject({
+  summary: z.strictObject({
     what_happened: z.string(),
     root_cause_hypothesis: z.string(),
-  }).strict(),
-  recommendation: z.object({
+  }),
+  recommendation: z.strictObject({
     immediate_action: z.string(),
     action_rationale_short: z.string(),
     do_not: z.string(),
-  }).strict(),
-  reasoning: z.object({
+  }),
+  reasoning: z.strictObject({
     causal_chain: z.array(CausalChainStepSchema),
-  }).strict(),
-  operator_guidance: z.object({
+  }),
+  operator_guidance: z.strictObject({
     watch_items: z.array(WatchItemSchema),
     operator_checks: z.array(z.string()),
-  }).strict(),
-  confidence: z.object({
+  }),
+  confidence: z.strictObject({
     confidence_assessment: z.string(),
     uncertainty: z.string(),
-  }).strict(),
-  metadata: z.object({
+  }),
+  metadata: z.strictObject({
     incident_id: z.string(),
     packet_id: z.string(),
     model: z.string(),
     prompt_version: z.string(),
     created_at: z.string(),
-  }).strict(),
-}).strict();
+  }),
+});
 
 export type DiagnosisResult = z.infer<typeof DiagnosisResultSchema>;
 export type CausalChainStep = z.infer<typeof CausalChainStepSchema>;

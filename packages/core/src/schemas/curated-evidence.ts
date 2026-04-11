@@ -9,19 +9,19 @@ import { ProofRefSchema } from "./reasoning-structure.js";
 import { CuratedStateSchema } from "./runtime-map.js";
 
 // Internal receiver-facing evidence ref system.
-export const CuratedEvidenceRefSchema = z.object({
+export const CuratedEvidenceRefSchema = z.strictObject({
   refId: z.string(),
   surface: z.enum(["traces", "metrics", "logs", "absences"]),
   groupId: z.string().optional(),
   isSmokingGun: z.boolean().optional(),
-}).strict();
+});
 
-export const EvidenceIndexSchema = z.object({
+export const EvidenceIndexSchema = z.strictObject({
   spans: z.record(z.string(), CuratedEvidenceRefSchema),
   metrics: z.record(z.string(), CuratedEvidenceRefSchema),
   logs: z.record(z.string(), CuratedEvidenceRefSchema),
   absences: z.record(z.string(), CuratedEvidenceRefSchema),
-}).strict();
+});
 
 // ── Diagnosis-owned narrative slots ──────────────────────────
 // These shapes are NOT defined here. Diagnosis plan owns their contract.
@@ -31,22 +31,22 @@ export const EvidenceIndexSchema = z.object({
 // ── Baseline Context ─────────────────────────────────────────
 
 export const BaselineSourceSchema = z.discriminatedUnion("kind", [
-  z.object({ kind: z.literal("exact_operation"), operation: z.string(), service: z.string() }).strict(),
-  z.object({ kind: z.literal("same_operation_family"), operation: z.string(), service: z.string() }).strict(),
-  z.object({ kind: z.literal("none") }).strict(),
+  z.strictObject({ kind: z.literal("exact_operation"), operation: z.string(), service: z.string() }),
+  z.strictObject({ kind: z.literal("same_operation_family"), operation: z.string(), service: z.string() }),
+  z.strictObject({ kind: z.literal("none") }),
 ]);
 
-export const BaselineContextSchema = z.object({
+export const BaselineContextSchema = z.strictObject({
   windowStart: z.string(),
   windowEnd: z.string(),
   sampleCount: z.number(),
   confidence: z.enum(["high", "medium", "low", "unavailable"]),
   source: BaselineSourceSchema,
-}).strict();
+});
 
 // ── Traces Surface ───────────────────────────────────────────
 
-export const CuratedTraceSpanSchema = z.object({
+export const CuratedTraceSpanSchema = z.strictObject({
   spanId: z.string(),
   parentSpanId: z.string().optional(),
   refId: z.string(),
@@ -60,9 +60,9 @@ export const CuratedTraceSpanSchema = z.object({
   peerService: z.string().optional(),
   attributes: z.record(z.string(), z.unknown()),
   correlatedLogRefIds: z.array(z.string()),
-}).strict();
+});
 
-export const CuratedGroupedTraceSchema = z.object({
+export const CuratedGroupedTraceSchema = z.strictObject({
   traceId: z.string(),
   groupId: z.string(),
   rootSpanName: z.string(),
@@ -71,24 +71,24 @@ export const CuratedGroupedTraceSchema = z.object({
   status: z.enum(["ok", "error", "slow"]),
   startTimeMs: z.number(),
   spans: z.array(CuratedTraceSpanSchema),
-}).strict();
+});
 
-export const CuratedTraceSurfaceSchema = z.object({
+export const CuratedTraceSurfaceSchema = z.strictObject({
   observed: z.array(CuratedGroupedTraceSchema),
   expected: z.array(CuratedGroupedTraceSchema),
   smokingGunSpanId: z.string().optional(),
   baseline: BaselineContextSchema,
-}).strict();
+});
 
 // ── Metrics Surface ──────────────────────────────────────────
 
-export const MetricGroupKeySchema = z.object({
+export const MetricGroupKeySchema = z.strictObject({
   service: z.string(),
   anomalyMagnitude: z.enum(["extreme", "significant", "moderate", "baseline"]),
   metricClass: z.enum(["error_rate", "latency", "throughput", "resource"]),
-}).strict();
+});
 
-export const MetricRowSchema = z.object({
+export const MetricRowSchema = z.strictObject({
   refId: z.string(),
   name: z.string(),
   service: z.string(),
@@ -97,30 +97,30 @@ export const MetricRowSchema = z.object({
   deviation: z.number().nullable(),
   zScore: z.number().nullable(),
   impactBar: z.number(),
-}).strict();
+});
 
-export const MetricGroupSchema = z.object({
+export const MetricGroupSchema = z.strictObject({
   groupId: z.string(),
   groupKey: MetricGroupKeySchema,
   diagnosisLabel: z.string().optional(),
   diagnosisVerdict: z.string().optional(),
   rows: z.array(MetricRowSchema),
-}).strict();
+});
 
-export const CuratedMetricsSurfaceSchema = z.object({
+export const CuratedMetricsSurfaceSchema = z.strictObject({
   groups: z.array(MetricGroupSchema),
-}).strict();
+});
 
 // ── Logs Surface ─────────────────────────────────────────────
 
-export const LogClusterKeySchema = z.object({
+export const LogClusterKeySchema = z.strictObject({
   primaryService: z.string(),
   severityDominant: z.enum(["FATAL", "ERROR", "WARN", "INFO"]),
   hasTraceCorrelation: z.boolean(),
   keywordHits: z.array(z.string()),
-}).strict();
+});
 
-export const CuratedLogEntrySchema = z.object({
+export const CuratedLogEntrySchema = z.strictObject({
   refId: z.string(),
   timestamp: z.string(),
   severity: z.string(),
@@ -128,9 +128,9 @@ export const CuratedLogEntrySchema = z.object({
   isSignal: z.boolean(),
   traceId: z.string().optional(),
   spanId: z.string().optional(),
-}).strict();
+});
 
-export const LogClusterSchema = z.object({
+export const LogClusterSchema = z.strictObject({
   clusterId: z.string(),
   clusterKey: LogClusterKeySchema,
   diagnosisLabel: z.string().optional(),
@@ -138,39 +138,39 @@ export const LogClusterSchema = z.object({
   entries: z.array(CuratedLogEntrySchema),
   signalCount: z.number(),
   noiseCount: z.number(),
-}).strict();
+});
 
-export const AbsenceEvidenceEntrySchema = z.object({
+export const AbsenceEvidenceEntrySchema = z.strictObject({
   refId: z.string(),
   kind: z.literal("absence"),
   patternId: z.string(),
   keywords: z.array(z.string()),
   matchCount: z.literal(0),
-  searchWindow: z.object({
+  searchWindow: z.strictObject({
     start: z.string(),
     end: z.string(),
-  }).strict(),
+  }),
   defaultLabel: z.string(),
   diagnosisLabel: z.string().optional(),
   diagnosisExpected: z.string().optional(),
   diagnosisExplanation: z.string().optional(),
-}).strict();
+});
 
-export const CuratedLogsSurfaceSchema = z.object({
+export const CuratedLogsSurfaceSchema = z.strictObject({
   clusters: z.array(LogClusterSchema),
   absenceEvidence: z.array(AbsenceEvidenceEntrySchema),
-}).strict();
+});
 
 // Public console-facing evidence response.
 export const EvidenceRefSchema = AnswerEvidenceRefSchema;
 
-export const CorrelatedLogSchema = z.object({
+export const CorrelatedLogSchema = z.strictObject({
   timestamp: z.string(),
   severity: z.string(),
   body: z.string(),
-}).strict();
+});
 
-export const TraceSpanSchema = z.object({
+export const TraceSpanSchema = z.strictObject({
   spanId: z.string(),
   parentSpanId: z.string().optional(),
   name: z.string(),
@@ -178,9 +178,9 @@ export const TraceSpanSchema = z.object({
   status: z.enum(["ok", "error", "slow"]),
   attributes: z.record(z.string(), z.unknown()),
   correlatedLogs: z.array(CorrelatedLogSchema).optional(),
-}).strict();
+});
 
-export const TraceGroupSchema = z.object({
+export const TraceGroupSchema = z.strictObject({
   traceId: z.string(),
   route: z.string(),
   status: z.number(),
@@ -188,50 +188,50 @@ export const TraceGroupSchema = z.object({
   expectedDurationMs: z.number().optional(),
   annotation: z.string().optional(),
   spans: z.array(TraceSpanSchema),
-}).strict();
+});
 
-export const PublicBaselineSchema = z.object({
+export const PublicBaselineSchema = z.strictObject({
   source: z.enum(["exact_operation", "same_operation_family", "none"]),
   windowStart: z.string(),
   windowEnd: z.string(),
   sampleCount: z.number(),
   confidence: z.enum(["high", "medium", "low", "unavailable"]),
-}).strict();
+});
 
-export const TraceSurfaceSchema = z.object({
+export const TraceSurfaceSchema = z.strictObject({
   observed: z.array(TraceGroupSchema),
   expected: z.array(TraceGroupSchema),
   smokingGunSpanId: z.string().nullable(),
   baseline: PublicBaselineSchema.optional(),
-}).strict();
+});
 
-export const HypothesisMetricSchema = z.object({
+export const HypothesisMetricSchema = z.strictObject({
   name: z.string(),
   value: z.string(),
   expected: z.string(),
   barPercent: z.number(),
-}).strict();
+});
 
-export const HypothesisGroupSchema = z.object({
+export const HypothesisGroupSchema = z.strictObject({
   id: z.string(),
   type: z.enum(["trigger", "cascade", "recovery", "absence"]),
   claim: z.string(),
   verdict: z.enum(["Confirmed", "Inferred"]),
   metrics: z.array(HypothesisMetricSchema),
-}).strict();
+});
 
-export const MetricsSurfaceSchema = z.object({
+export const MetricsSurfaceSchema = z.strictObject({
   hypotheses: z.array(HypothesisGroupSchema),
-}).strict();
+});
 
-export const LogEntrySchema = z.object({
+export const LogEntrySchema = z.strictObject({
   timestamp: z.string(),
   severity: z.enum(["error", "warn", "info"]),
   body: z.string(),
   signal: z.boolean(),
-}).strict();
+});
 
-export const LogClaimSchema = z.object({
+export const LogClaimSchema = z.strictObject({
   id: z.string(),
   type: z.enum(["trigger", "cascade", "recovery", "absence"]),
   label: z.string(),
@@ -240,70 +240,70 @@ export const LogClaimSchema = z.object({
   observed: z.string().optional(),
   explanation: z.string().optional(),
   entries: z.array(LogEntrySchema),
-}).strict();
+});
 
-export const LogsSurfaceSchema = z.object({
+export const LogsSurfaceSchema = z.strictObject({
   claims: z.array(LogClaimSchema),
-}).strict();
+});
 
-export const ProofCardSchema = z.object({
+export const ProofCardSchema = z.strictObject({
   id: ProofRefSchema.shape.cardId,
   label: z.string(),
   status: ProofRefSchema.shape.status,
   summary: z.string(),
   targetSurface: ProofRefSchema.shape.targetSurface,
   evidenceRefs: z.array(ProofRefSchema.shape.evidenceRefs.element),
-}).strict();
+});
 
-export const EvidenceSummarySchema = z.object({
+export const EvidenceSummarySchema = z.strictObject({
   traces: z.number(),
   metrics: z.number(),
   logs: z.number(),
-}).strict();
+});
 
-export const QABlockSchema = z.object({
+export const QABlockSchema = z.strictObject({
   question: z.string(),
   answer: z.string(),
   evidenceRefs: z.array(EvidenceRefSchema),
   status: z.enum(["answered", "no_answer"]).optional(),
-  segments: z.array(z.object({
+  segments: z.array(z.strictObject({
     id: z.string(),
     kind: z.enum(["fact", "inference", "unknown"]),
     text: z.string().min(1),
     evidenceRefs: z.array(EvidenceRefSchema).min(1),
-  }).strict()).optional(),
+  })).optional(),
   evidenceSummary: EvidenceSummarySchema,
   followups: z.array(FollowupSchema),
   noAnswerReason: z.string().optional(),
-}).strict();
+});
 
 // ── Evidence Query (POST /api/incidents/:id/evidence/query) ──
 
-export const EvidenceQueryRequestSchema = z.object({
+export const EvidenceQueryRequestSchema = z.strictObject({
   question: z.string().min(1).max(2000),
   isFollowup: z.boolean().optional(),
   locale: z.enum(["en", "ja"]).optional(),
-  history: z.array(z.object({
+  history: z.array(z.strictObject({
     role: z.enum(["user", "assistant"]),
     content: z.string().min(1).max(4000),
-  }).strict()).max(20).optional(),
-}).strict();
+  })).max(20).optional(),
+});
 
-export const EvidenceQueryRefSchema = z.object({
+export const EvidenceQueryRefSchema = z.strictObject({
   kind: z.enum(["span", "metric_group", "log_cluster", "absence"]),
   id: z.string(),
-}).strict();
+});
 
-export const EvidenceQuerySegmentSchema = z.object({
+export const EvidenceQuerySegmentSchema = z.strictObject({
   id: z.string(),
   kind: z.enum(["fact", "inference", "unknown"]),
   text: z.string().min(1),
   evidenceRefs: z.array(EvidenceQueryRefSchema).min(1),
-}).strict();
+});
 
 export const EvidenceQueryStatusSchema = z.enum(["answered", "no_answer", "clarification"]);
 
-export const EvidenceQueryResponseSchema = z.object({
+export const EvidenceQueryResponseSchema = z.strictObject({
   question: z.string(),
   status: EvidenceQueryStatusSchema,
   segments: z.array(EvidenceQuerySegmentSchema),
@@ -311,27 +311,27 @@ export const EvidenceQueryResponseSchema = z.object({
   followups: z.array(FollowupSchema),
   noAnswerReason: z.string().optional(),
   clarificationQuestion: z.string().optional(),
-}).strict();
+});
 
-export const SideNoteSchema = z.object({
+export const SideNoteSchema = z.strictObject({
   title: z.string(),
   text: z.string(),
   kind: NarrativeSideNoteSchema.shape.kind,
-}).strict();
+});
 
-export const EvidenceSurfacesSchema = z.object({
+export const EvidenceSurfacesSchema = z.strictObject({
   traces: TraceSurfaceSchema,
   metrics: MetricsSurfaceSchema,
   logs: LogsSurfaceSchema,
-}).strict();
+});
 
-export const EvidenceResponseSchema = z.object({
+export const EvidenceResponseSchema = z.strictObject({
   proofCards: z.array(ProofCardSchema).length(3),
   qa: QABlockSchema,
   surfaces: EvidenceSurfacesSchema,
   sideNotes: z.array(SideNoteSchema),
   state: CuratedStateSchema,
-}).strict();
+});
 
 export type EvidenceIndex = z.infer<typeof EvidenceIndexSchema>;
 export type CuratedEvidenceRef = z.infer<typeof CuratedEvidenceRefSchema>;
