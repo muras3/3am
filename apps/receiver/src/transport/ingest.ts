@@ -50,9 +50,9 @@ async function expandAndAppendFallback(
 }
 
 const INGEST_BODY_LIMIT = 1 * 1024 * 1024; // 1MB per ADR 0022 (resource exhaustion protection)
-const PlatformEventsRequestSchema = z.object({
+const PlatformEventsRequestSchema = z.strictObject({
   events: z.array(PlatformEventSchema),
-}).strict();
+});
 
 /**
  * Read the raw request body and decompress if Content-Encoding: gzip.

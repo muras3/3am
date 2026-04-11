@@ -116,7 +116,7 @@ describe("IncidentPacketSchema", () => {
     ).toThrow(ZodError);
   });
 
-  it("rejects old severity field via .strict()", () => {
+  it("rejects old severity field via strict mode", () => {
     expect(() =>
       IncidentPacketSchema.parse({ ...minimalValidPacket, severity: "critical" })
     ).toThrow(ZodError);
@@ -223,7 +223,7 @@ describe("ChangedMetricSchema", () => {
     expect(() => ChangedMetricSchema.parse({ name: "x" })).toThrow(ZodError);
   });
 
-  it("rejects unknown fields (.strict())", () => {
+  it("rejects unknown fields (strict mode)", () => {
     expect(() =>
       ChangedMetricSchema.parse({
         name: "x", service: "s", environment: "e", startTimeMs: 1, summary: {},
@@ -251,7 +251,7 @@ describe("RelevantLogSchema", () => {
     expect(() => RelevantLogSchema.parse({ severity: "ERROR" })).toThrow(ZodError);
   });
 
-  it("rejects unknown fields (.strict())", () => {
+  it("rejects unknown fields (strict mode)", () => {
     expect(() =>
       RelevantLogSchema.parse({
         service: "s", environment: "e", timestamp: "t", startTimeMs: 1,

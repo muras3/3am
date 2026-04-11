@@ -309,17 +309,17 @@ describe('buildEvidenceQueryAnswer', () => {
     // Path 1: unavailable
     const incident1 = makeIncident()
     const result1 = await buildEvidenceQueryAnswer(incident1, makeMockStore(), 'Q?', false)
-    EvidenceQueryResponseSchema.strict().parse(result1)
+    EvidenceQueryResponseSchema.parse(result1)
 
     // Path 1: pending
     const incident2 = makeIncident({ diagnosisDispatchedAt: new Date().toISOString() })
     const result2 = await buildEvidenceQueryAnswer(incident2, makeMockStore(), 'Q?', false)
-    EvidenceQueryResponseSchema.strict().parse(result2)
+    EvidenceQueryResponseSchema.parse(result2)
 
     // Path 2: diagnosis ready, no narrative
     const incident3 = makeIncident({ diagnosisResult: makeDiagnosisResult() })
     const result3 = await buildEvidenceQueryAnswer(incident3, makeMockStore(), 'Q?', false)
-    EvidenceQueryResponseSchema.strict().parse(result3)
+    EvidenceQueryResponseSchema.parse(result3)
   })
 
   it('isFollowup flag does not crash (smoke test)', async () => {
@@ -738,6 +738,6 @@ describe('buildEvidenceQueryAnswer', () => {
     })
 
     const result = await buildEvidenceQueryAnswer(incident, makeTracesOnlyStore('trace-cf-2', 'span-cf-2', 504), 'Why is checkout failing?', false)
-    EvidenceQueryResponseSchema.strict().parse(result)
+    EvidenceQueryResponseSchema.parse(result)
   })
 })

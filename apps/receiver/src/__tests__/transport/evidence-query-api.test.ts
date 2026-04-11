@@ -251,7 +251,7 @@ describe('POST /api/incidents/:id/evidence/query', () => {
 
     expect(res.status).toBe(200)
     const body = await res.json()
-    const parsed = EvidenceQueryResponseSchema.strict().parse(body)
+    const parsed = EvidenceQueryResponseSchema.parse(body)
     expect(parsed.question).toBe('Why are payments failing?')
     expect(parsed.status).toBeTruthy()
     expect(Array.isArray(parsed.segments)).toBe(true)
