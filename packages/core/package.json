@@ -1,6 +1,16 @@
 {
   "name": "@3am/core",
   "version": "0.1.0",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/muras3/3am.git",
+    "directory": "packages/core"
+  },
+  "homepage": "https://github.com/muras3/3am#readme",
+  "bugs": {
+    "url": "https://github.com/muras3/3am/issues"
+  },
   "private": false,
   "type": "module",
   "main": "./dist/index.js",
