@@ -20,11 +20,28 @@ import { buildReasoningStructure } from '../domain/reasoning-structure-builder.j
 import type { TelemetrySpan, TelemetryMetric, TelemetryLog } from '../telemetry/interface.js'
 import type { Incident, TelemetryScope, AnomalousSignal } from '../storage/interface.js'
 import type { IncidentPacket, DiagnosisResult, ConsoleNarrative } from '@3am/core'
+import type * as DiagnosisModule from '@3am/diagnosis'
 
 import { RuntimeMapResponseSchema } from '@3am/core/schemas/runtime-map'
 import { ExtendedIncidentSchema } from '@3am/core/schemas/incident-detail-extension'
 import { EvidenceResponseSchema } from '@3am/core/schemas/curated-evidence'
 import { ReasoningStructureSchema } from '@3am/core/schemas/reasoning-structure'
+
+// ── Hoisted mocks (Vitest 4: vi.mock must be at module scope) ────────────
+
+const { mockDiagnose, mockGenerateConsoleNarrative } = vi.hoisted(() => ({
+  mockDiagnose: vi.fn(),
+  mockGenerateConsoleNarrative: vi.fn(),
+}))
+
+vi.mock('@3am/diagnosis', async (importOriginal) => {
+  const original = await importOriginal<typeof DiagnosisModule>()
+  return {
+    ...original,
+    diagnose: mockDiagnose,
+    generateConsoleNarrative: mockGenerateConsoleNarrative,
+  }
+})
 
 // ── Shared constants ────────────────────────────────────────────────────
 
@@ -815,21 +832,16 @@ describe('Integration: Curated API assembly (§6)', () => {
   // ═══════════════════════════════════════════════════════════════════════
 
   describe('Step 4: Stage 2 pipeline', () => {
-    // For pipeline tests we mock the LLM calls
+    // For pipeline tests we drive the top-level hoisted mocks via mockResolvedValue
     beforeEach(() => {
-      vi.mock('@3am/diagnosis', async (importOriginal) => {
-        const original = await importOriginal()
-        return {
-          ...(original as Record<string, unknown>),
-          diagnose: vi.fn().mockResolvedValue(makeDiagnosisResult()),
-          generateConsoleNarrative: vi.fn().mockResolvedValue(makeNarrative()),
-        }
-      })
+      mockDiagnose.mockResolvedValue(makeDiagnosisResult())
+      mockGenerateConsoleNarrative.mockResolvedValue(makeNarrative())
       process.env['ANTHROPIC_API_KEY'] = 'test-key'
     })
 
     afterEach(() => {
-      vi.restoreAllMocks()
+      mockDiagnose.mockReset()
+      mockGenerateConsoleNarrative.mockReset()
       delete process.env['ANTHROPIC_API_KEY']
     })
 
