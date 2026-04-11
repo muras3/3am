@@ -7,12 +7,14 @@
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
-      "import": "./dist/index.js",
-      "types": "./dist/index.d.ts"
+      "source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
     },
     "./claude-code-pool": {
-      "import": "./dist/claude-code-pool.js",
-      "types": "./dist/claude-code-pool.d.ts"
+      "source": "./src/claude-code-pool.ts",
+      "types": "./dist/claude-code-pool.d.ts",
+      "import": "./dist/claude-code-pool.js"
     }
   },
   "scripts": {
