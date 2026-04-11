@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
-import { IncidentPacketSchema } from "@3am/core";
-import { PROVIDER_NAMES, diagnose, type ProviderName } from "@3am/diagnosis";
+import { IncidentPacketSchema } from "3am-core";
+import { PROVIDER_NAMES, diagnose, type ProviderName } from "3am-diagnosis";
 import { loadCredentials, findReceiverCredentialByUrl } from "./init/credentials.js";
 import { runManualDiagnosis } from "./manual-execution.js";
 import { resolveProviderModel } from "./provider-model.js";

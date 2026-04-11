@@ -8,7 +8,7 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { MemoryAdapter } from "../storage/adapters/memory.js";
 import { createApp } from "../index.js";
-import type { DiagnosisResult } from "@3am/core";
+import type { DiagnosisResult } from "3am-core";
 
 // ---------------------------------------------------------------------------
 // Minimal OTLP payload to seed an incident

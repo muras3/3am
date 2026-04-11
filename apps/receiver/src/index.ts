@@ -12,7 +12,7 @@ import { SpanBuffer } from "./ambient/span-buffer.js";
 import type { DiagnosisConfig } from "./runtime/diagnosis-debouncer.js";
 import { DiagnosisRunner } from "./runtime/diagnosis-runner.js";
 import type { EnqueueDiagnosisFn } from "./runtime/diagnosis-dispatch.js";
-import { PROVIDER_NAMES } from "@3am/diagnosis";
+import { PROVIDER_NAMES } from "3am-diagnosis";
 import {
   getReceiverLlmSettings,
   SETTINGS_KEY_DIAGNOSIS_MODE,

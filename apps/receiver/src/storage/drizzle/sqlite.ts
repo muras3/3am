@@ -11,7 +11,7 @@ import { drizzle } from "drizzle-orm/better-sqlite3";
 import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import { eq, desc, lt, and } from "drizzle-orm";
 import { sql } from "drizzle-orm";
-import type { IncidentPacket, DiagnosisResult, ConsoleNarrative, PlatformEvent, ThinEvent } from "@3am/core";
+import type { IncidentPacket, DiagnosisResult, ConsoleNarrative, PlatformEvent, ThinEvent } from "3am-core";
 import type {
   AnomalousSignal,
   Incident,

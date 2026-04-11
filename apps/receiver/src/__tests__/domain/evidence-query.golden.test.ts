@@ -1,9 +1,9 @@
 import { describe, expect, it, vi } from 'vitest'
-import type { DiagnosisResult, IncidentPacket } from '@3am/core'
+import type { DiagnosisResult, IncidentPacket } from '3am-core'
 import type { Incident } from '../../storage/interface.js'
 import type { TelemetryLog, TelemetryMetric, TelemetrySpan, TelemetryStoreDriver } from '../../telemetry/interface.js'
 
-vi.mock('@3am/diagnosis', async (importOriginal) => {
+vi.mock('3am-diagnosis', async (importOriginal) => {
   const original = await importOriginal() as Record<string, unknown>
   return {
     ...original,

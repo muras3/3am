@@ -4,8 +4,8 @@ const { mockCallModelMessages } = vi.hoisted(() => ({
   mockCallModelMessages: vi.fn(),
 }));
 
-vi.mock("@3am/diagnosis", async () => {
-  const actual = await vi.importActual("@3am/diagnosis");
+vi.mock("3am-diagnosis", async () => {
+  const actual = await vi.importActual("3am-diagnosis");
   return {
     ...actual,
     callModelMessages: mockCallModelMessages,

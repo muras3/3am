@@ -19,13 +19,13 @@ import { buildCuratedEvidence } from '../domain/curated-evidence.js'
 import { buildReasoningStructure } from '../domain/reasoning-structure-builder.js'
 import type { TelemetrySpan, TelemetryMetric, TelemetryLog } from '../telemetry/interface.js'
 import type { Incident, TelemetryScope, AnomalousSignal } from '../storage/interface.js'
-import type { IncidentPacket, DiagnosisResult, ConsoleNarrative } from '@3am/core'
-import type * as DiagnosisModule from '@3am/diagnosis'
+import type { IncidentPacket, DiagnosisResult, ConsoleNarrative } from '3am-core'
+import type * as DiagnosisModule from '3am-diagnosis'
 
-import { RuntimeMapResponseSchema } from '@3am/core/schemas/runtime-map'
-import { ExtendedIncidentSchema } from '@3am/core/schemas/incident-detail-extension'
-import { EvidenceResponseSchema } from '@3am/core/schemas/curated-evidence'
-import { ReasoningStructureSchema } from '@3am/core/schemas/reasoning-structure'
+import { RuntimeMapResponseSchema } from '3am-core/schemas/runtime-map'
+import { ExtendedIncidentSchema } from '3am-core/schemas/incident-detail-extension'
+import { EvidenceResponseSchema } from '3am-core/schemas/curated-evidence'
+import { ReasoningStructureSchema } from '3am-core/schemas/reasoning-structure'
 
 // ── Hoisted mocks (Vitest 4: vi.mock must be at module scope) ────────────
 
@@ -34,7 +34,7 @@ const { mockDiagnose, mockGenerateConsoleNarrative } = vi.hoisted(() => ({
   mockGenerateConsoleNarrative: vi.fn(),
 }))
 
-vi.mock('@3am/diagnosis', async (importOriginal) => {
+vi.mock('3am-diagnosis', async (importOriginal) => {
   const original = await importOriginal<typeof DiagnosisModule>()
   return {
     ...original,
@@ -847,7 +847,7 @@ describe('Integration: Curated API assembly (§6)', () => {
 
     it('stage2-pipeline-connected: DiagnosisRunner calls buildReasoningStructure + generateConsoleNarrative', async () => {
       const { DiagnosisRunner } = await import('../runtime/diagnosis-runner.js')
-      const { generateConsoleNarrative } = await import('@3am/diagnosis')
+      const { generateConsoleNarrative } = await import('3am-diagnosis')
 
       await seedRichTelemetry(telemetryStore)
       const incident = makeIncident()
@@ -871,7 +871,7 @@ describe('Integration: Curated API assembly (§6)', () => {
 
     it('stage2-retry-on-failure: retries once on narrative generation failure', async () => {
       const { DiagnosisRunner } = await import('../runtime/diagnosis-runner.js')
-      const { generateConsoleNarrative } = await import('@3am/diagnosis')
+      const { generateConsoleNarrative } = await import('3am-diagnosis')
 
       // Fail first, succeed on retry
       const mockGenerate = vi.mocked(generateConsoleNarrative)

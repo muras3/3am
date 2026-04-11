@@ -15,7 +15,7 @@ import type {
   CuratedLogEntry,
   LogClusterKey,
   CuratedEvidenceRef,
-} from '@3am/core/schemas/curated-evidence'
+} from '3am-core/schemas/curated-evidence'
 import { LOG_KEYWORDS } from '../telemetry/constants.js'
 import { detectAbsences } from './absence-detector.js'
 import { resolveEffectiveBody } from './otlp-utils.js'

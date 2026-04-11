@@ -1,4 +1,4 @@
-import type { EvidenceQueryRef } from "@3am/core";
+import type { EvidenceQueryRef } from "3am-core";
 
 export type EvidencePlanPromptEvidence = {
   ref: EvidenceQueryRef;

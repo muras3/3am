@@ -1,5 +1,5 @@
 {
-  "name": "@3am/cli",
+  "name": "3am-cli",
   "version": "0.1.0",
   "license": "Apache-2.0",
   "repository": {
@@ -35,8 +35,8 @@
     "lint": "eslint src --max-warnings 0"
   },
   "dependencies": {
-    "@3am/core": "workspace:*",
-    "@3am/diagnosis": "workspace:*",
+    "3am-core": "workspace:*",
+    "3am-diagnosis": "workspace:*",
     "commander": "^14.0.3"
   },
   "devDependencies": {

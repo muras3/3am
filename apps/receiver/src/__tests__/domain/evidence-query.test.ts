@@ -8,15 +8,15 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { TelemetryLog, TelemetryMetric, TelemetrySpan, TelemetryStoreDriver } from '../../telemetry/interface.js'
 import type { Incident } from '../../storage/interface.js'
-import type { IncidentPacket, DiagnosisResult } from '@3am/core'
-import { EvidenceQueryResponseSchema } from '@3am/core/schemas/curated-evidence'
-import * as diagnosis from '@3am/diagnosis'
+import type { IncidentPacket, DiagnosisResult } from '3am-core'
+import { EvidenceQueryResponseSchema } from '3am-core/schemas/curated-evidence'
+import * as diagnosis from '3am-diagnosis'
 const { generateEvidencePlanMock, generateEvidenceQueryMock } = vi.hoisted(() => ({
   generateEvidencePlanMock: vi.fn(),
   generateEvidenceQueryMock: vi.fn(),
 }))
-vi.mock('@3am/diagnosis', async () => {
-  const actual = await vi.importActual('@3am/diagnosis')
+vi.mock('3am-diagnosis', async () => {
+  const actual = await vi.importActual('3am-diagnosis')
   return {
     ...actual,
     generateEvidencePlan: generateEvidencePlanMock,

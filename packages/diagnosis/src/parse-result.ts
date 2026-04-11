@@ -1,4 +1,4 @@
-import { DiagnosisResultSchema, type DiagnosisResult } from "@3am/core";
+import { DiagnosisResultSchema, type DiagnosisResult } from "3am-core";
 
 export type ResultMeta = {
   incidentId: string;

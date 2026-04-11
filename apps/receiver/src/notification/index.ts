@@ -1,4 +1,4 @@
-import type { IncidentPacket } from "@3am/core";
+import type { IncidentPacket } from "3am-core";
 import type { NotificationPayload } from "./types.js";
 import { detectProvider } from "./detect.js";
 import { formatSlack } from "./slack.js";

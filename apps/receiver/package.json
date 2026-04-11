@@ -18,8 +18,8 @@
     "proto:gen": "bash -c 'TMPD=$(mktemp -d) && BASE=https://raw.githubusercontent.com/open-telemetry/opentelemetry-proto/v1.3.2 && BUF_BIN=$(pwd)/../../node_modules/.pnpm/@bufbuild+buf@1.66.1/node_modules/@bufbuild/buf/bin/buf && ES_BIN_DIR=$(pwd)/../../node_modules/.pnpm/@bufbuild+protoc-gen-es@2.11.0_@bufbuild+protobuf@2.11.0/node_modules/@bufbuild/protoc-gen-es/bin && trap \"rm -rf $TMPD\" EXIT && for f in opentelemetry/proto/common/v1/common.proto opentelemetry/proto/resource/v1/resource.proto opentelemetry/proto/trace/v1/trace.proto opentelemetry/proto/collector/trace/v1/trace_service.proto opentelemetry/proto/metrics/v1/metrics.proto opentelemetry/proto/collector/metrics/v1/metrics_service.proto opentelemetry/proto/logs/v1/logs.proto opentelemetry/proto/collector/logs/v1/logs_service.proto; do mkdir -p $TMPD/$(dirname $f) && curl -sf $BASE/$f -o $TMPD/$f; done && PATH=$ES_BIN_DIR:$PATH $BUF_BIN generate $TMPD --template buf.gen.yaml && echo done'"
   },
   "dependencies": {
-    "@3am/core": "workspace:*",
-    "@3am/diagnosis": "workspace:*",
+    "3am-core": "workspace:*",
+    "3am-diagnosis": "workspace:*",
     "@anthropic-ai/sdk": "^0.39.0",
     "@bufbuild/protobuf": "^2.11.0",
     "@hono/node-server": "^1.0.0",

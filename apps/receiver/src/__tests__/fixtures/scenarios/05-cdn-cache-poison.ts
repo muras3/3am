@@ -1,4 +1,4 @@
-import type { IncidentPacket, DiagnosisResult } from "@3am/core";
+import type { IncidentPacket, DiagnosisResult } from "3am-core";
 
 // Scenario: upstream_cdn_stale_cache_poison
 // Origin briefly returns 503 with Cache-Control: public, s-maxage=30.

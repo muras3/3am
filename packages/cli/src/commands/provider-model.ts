@@ -1,4 +1,4 @@
-import type { ProviderName } from "@3am/diagnosis";
+import type { ProviderName } from "3am-diagnosis";
 
 export function resolveProviderModel(
   provider: ProviderName | undefined,

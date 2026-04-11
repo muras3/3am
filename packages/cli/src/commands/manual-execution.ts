@@ -5,7 +5,7 @@ import type {
   EvidenceResponse,
   IncidentPacket,
   ReasoningStructure,
-} from "@3am/core";
+} from "3am-core";
 import {
   callModelMessages,
   diagnose,
@@ -14,7 +14,7 @@ import {
   generateConsoleNarrative,
   wrapUserMessage,
   type ProviderName,
-} from "@3am/diagnosis";
+} from "3am-diagnosis";
 import { resolveProviderModel } from "./provider-model.js";
 
 export type ManualExecutionOptions = {

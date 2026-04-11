@@ -1,4 +1,4 @@
-import type { EvidenceQueryRef, EvidenceQueryResponse } from "@3am/core";
+import type { EvidenceQueryRef, EvidenceQueryResponse } from "3am-core";
 import { callModel } from "./model-client.js";
 import {
   buildEvidenceQueryPrompt,

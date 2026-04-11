@@ -7,7 +7,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import type { StorageDriver, AnomalousSignal, InitialMembership } from "../../storage/interface.js";
 import { createEmptyTelemetryScope } from "../../storage/interface.js";
-import type { IncidentPacket, DiagnosisResult, PlatformEvent, ThinEvent } from "@3am/core";
+import type { IncidentPacket, DiagnosisResult, PlatformEvent, ThinEvent } from "3am-core";
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
 

@@ -12,7 +12,7 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { performance } from "node:perf_hooks";
 import { MemoryAdapter } from "../storage/adapters/memory.js";
 import { createApp } from "../index.js";
-import type { IncidentPacket } from "@3am/core";
+import type { IncidentPacket } from "3am-core";
 
 // ── Shared OTLP JSON payloads ─────────────────────────────────────────────────
 
@@ -349,7 +349,7 @@ describe("Gate 3: Diagnosis path", () => {
       // This keeps receiver typecheck scoped to its own source tree.
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const dynamicImport = new Function("specifier", "return import(specifier)") as (s: string) => Promise<any>;
-      const { diagnose } = await dynamicImport("@3am/diagnosis") as {
+      const { diagnose } = await dynamicImport("3am-diagnosis") as {
         diagnose: (packet: IncidentPacket) => Promise<{
           summary: { root_cause_hypothesis: string };
           recommendation: { immediate_action: string };
