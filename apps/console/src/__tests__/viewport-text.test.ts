@@ -1,4 +1,4 @@
-import { describe, expect, it, beforeEach, afterEach, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { splitActionForViewport } from "../components/lens/board/viewport-text.js";
 
 // i18n module is mocked at module level via vitest auto-mock
@@ -53,11 +53,10 @@ describe("splitActionForViewport", () => {
 
   describe("bullet list patterns", () => {
     it("splits on '- ' bullet markers inline", () => {
-      const text = "- Pull span details - Check logs - Verify";
       // only 2+ markers triggers numbered path; inline bullets need newlines or
       // the pattern to match — test with newline form
-      const text2 = "- Pull span details\n- Check logs\n- Verify";
-      const result = splitActionForViewport(text2);
+      const text = "- Pull span details\n- Check logs\n- Verify";
+      const result = splitActionForViewport(text);
       expect(result).toHaveLength(3);
     });
   });
