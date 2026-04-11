@@ -17,24 +17,29 @@
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
-      "import": "./dist/index.js",
-      "types": "./dist/index.d.ts"
+      "source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
     },
     "./schemas/curated-evidence": {
-      "import": "./dist/schemas/curated-evidence.js",
-      "types": "./dist/schemas/curated-evidence.d.ts"
+      "source": "./src/schemas/curated-evidence.ts",
+      "types": "./dist/schemas/curated-evidence.d.ts",
+      "import": "./dist/schemas/curated-evidence.js"
     },
     "./schemas/runtime-map": {
-      "import": "./dist/schemas/runtime-map.js",
-      "types": "./dist/schemas/runtime-map.d.ts"
+      "source": "./src/schemas/runtime-map.ts",
+      "types": "./dist/schemas/runtime-map.d.ts",
+      "import": "./dist/schemas/runtime-map.js"
     },
     "./schemas/incident-detail-extension": {
-      "import": "./dist/schemas/incident-detail-extension.js",
-      "types": "./dist/schemas/incident-detail-extension.d.ts"
+      "source": "./src/schemas/incident-detail-extension.ts",
+      "types": "./dist/schemas/incident-detail-extension.d.ts",
+      "import": "./dist/schemas/incident-detail-extension.js"
     },
     "./schemas/reasoning-structure": {
-      "import": "./dist/schemas/reasoning-structure.js",
-      "types": "./dist/schemas/reasoning-structure.d.ts"
+      "source": "./src/schemas/reasoning-structure.ts",
+      "types": "./dist/schemas/reasoning-structure.d.ts",
+      "import": "./dist/schemas/reasoning-structure.js"
     }
   },
   "scripts": {
