@@ -7,7 +7,7 @@ import {
   ReasoningStructureSchema,
   type DiagnosisResult,
 } from "@3am/core";
-import { callModelMessages } from "@3am/diagnosis";
+import { callModelMessages, wrapUserMessage } from "@3am/diagnosis";
 import { jwtCookieSetter, jwtCookieValidator } from "../middleware/session-cookie.js";
 import { rateLimiter } from "../middleware/rate-limit.js";
 import type { Incident, IncidentPage, StorageDriver } from "../storage/interface.js";
@@ -684,7 +684,7 @@ export function createApiRouter(
     const storedLocale = await storage.getSettings("locale");
     const locale: "en" | "ja" = storedLocale === "ja" ? "ja" : "en";
     const systemPrompt = buildChatSystemPrompt(incident.diagnosisResult, locale);
-    const sandboxedMessage = `<user_message>${message}</user_message>`;
+    const sandboxedMessage = wrapUserMessage(message);
 
     const llmSettings = await getReceiverLlmSettings(storage);
     if (llmSettings.mode === "manual") {
@@ -695,7 +695,7 @@ export function createApiRouter(
             incidentId: id,
             receiverUrl: new URL(c.req.url).origin,
             authToken,
-            message: sandboxedMessage,
+            message,
             history,
             provider: llmSettings.provider,
             systemPrompt,
@@ -718,7 +718,7 @@ export function createApiRouter(
             incidentId: id,
             receiverUrl: new URL(c.req.url).origin,
             authToken,
-            message: sandboxedMessage,
+            message,
             history,
             provider: llmSettings.provider,
             systemPrompt,

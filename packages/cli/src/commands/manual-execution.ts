@@ -12,6 +12,7 @@ import {
   generateEvidencePlan,
   generateEvidenceQuery,
   generateConsoleNarrative,
+  wrapUserMessage,
   type ProviderName,
 } from "@3am/diagnosis";
 import { resolveProviderModel } from "./provider-model.js";
@@ -817,7 +818,7 @@ export async function runManualChat(options: ManualExecutionOptions & {
     [
       { role: "system", content: resolvedSystemPrompt },
       ...options.history,
-      { role: "user", content: `<user_message>${options.message}</user_message>` },
+      { role: "user", content: wrapUserMessage(options.message) },
     ],
     {
       provider: options.provider,

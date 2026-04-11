@@ -25,13 +25,13 @@ export interface BridgeOptions {
   port?: number;
   /** Remote receiver URL to connect via WebSocket. Auto-detected from credentials if not specified. */
   receiverUrl?: string;
+  /** Test-only: skip SIGINT/SIGTERM registration and allow controlled shutdown. */
+  registerSignalHandlers?: boolean;
 }
 
 function sendJson(res: ServerResponse<IncomingMessage>, status: number, body: unknown): void {
   res.statusCode = status;
   res.setHeader("Content-Type", "application/json");
-  res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
   res.end(JSON.stringify(body));
 }
 
@@ -55,6 +55,38 @@ function isRemoteUrl(url: string): boolean {
 
 function httpToWs(url: string): string {
   return url.replace(/^http/, "ws");
+}
+
+export function isLoopbackOrigin(origin: string): boolean {
+  try {
+    const parsed = new URL(origin);
+    return parsed.hostname === "localhost" || parsed.hostname === "127.0.0.1" || parsed.hostname === "::1";
+  } catch {
+    return false;
+  }
+}
+
+export function isAllowedBridgeOrigin(origin: string | undefined, receiverUrl?: string): boolean {
+  if (!origin) return true;
+  if (isLoopbackOrigin(origin)) return true;
+  if (!receiverUrl) return false;
+
+  try {
+    return new URL(receiverUrl).origin === origin;
+  } catch {
+    return false;
+  }
+}
+
+function applyCorsHeaders(
+  res: ServerResponse<IncomingMessage>,
+  origin: string | undefined,
+): void {
+  if (!origin) return;
+  res.setHeader("Access-Control-Allow-Origin", origin);
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+  res.setHeader("Vary", "Origin");
 }
 
 // ── WebSocket bridge client ──────────────────────────────────────────────
@@ -237,19 +269,25 @@ async function handleWsMessage(msg: WsMessage, sendResponse: (response: unknown)
 
 // ── Main entry ───────────────────────────────────────────────────────────
 
-export function runBridge(options: BridgeOptions = {}): void {
+export function runBridge(options: BridgeOptions = {}): { close: () => void } {
   const port = options.port ?? 4269;
+  const registerSignalHandlers = options.registerSignalHandlers ?? true;
 
   // ── Warm up persistent Claude Code pool ───────────────────────────────
   const creds = loadCredentials();
+  const receiverUrl = options.receiverUrl ?? creds.receiverUrl;
   if (!creds.llmProvider || creds.llmProvider === "claude-code") {
     void primeClaudePool(creds.llmModel);
   }
 
   // ── HTTP server (always started, for local dev backward compat) ──────
   const server = createServer(async (req, res) => {
-    res.setHeader("Access-Control-Allow-Origin", "*");
-    res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+    const requestOrigin = typeof req.headers.origin === "string" ? req.headers.origin : undefined;
+    if (!isAllowedBridgeOrigin(requestOrigin, receiverUrl)) {
+      sendJson(res, 403, { error: "origin not allowed" });
+      return;
+    }
+    applyCorsHeaders(res, requestOrigin);
     if (req.method === "OPTIONS") {
       res.statusCode = 204;
       res.end();
@@ -363,7 +401,6 @@ export function runBridge(options: BridgeOptions = {}): void {
   });
 
   // ── WebSocket client (for remote receivers) ─────────────────────────
-  const receiverUrl = options.receiverUrl ?? creds.receiverUrl;
   // Use URL-scoped credential lookup (matches diagnose.ts pattern)
   const matchedReceiver = receiverUrl
     ? findReceiverCredentialByUrl(creds, receiverUrl)
@@ -386,15 +423,21 @@ export function runBridge(options: BridgeOptions = {}): void {
       wsClient.close();
       server.close();
     };
-    process.on("SIGINT", shutdown);
-    process.on("SIGTERM", shutdown);
+    if (registerSignalHandlers) {
+      process.on("SIGINT", shutdown);
+      process.on("SIGTERM", shutdown);
+    }
+    return { close: shutdown };
   } else {
     // No WS client — still register shutdown for the claude pool
     const shutdown = () => {
       shutdownClaudePool();
       server.close();
     };
-    process.on("SIGINT", shutdown);
-    process.on("SIGTERM", shutdown);
+    if (registerSignalHandlers) {
+      process.on("SIGINT", shutdown);
+      process.on("SIGTERM", shutdown);
+    }
+    return { close: shutdown };
   }
 }
