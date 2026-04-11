@@ -21,7 +21,7 @@ import { updateCloudflareObservabilityConfig } from "../commands/cloudflare-work
 import { detectLogger } from "../commands/init/detect-logger.js";
 import { detectPackageManager } from "../commands/init/detect-package-manager.js";
 import { getInstrumentationTemplate } from "../commands/init/templates.js";
-import { updateEnvFile, runInit, isTypeScriptProject, isEsmProject, ensureGitignore } from "../commands/init.js";
+import { updateEnvFile, runInit, isTypeScriptProject, isEsmProject, ensureGitignore, patchNextConfig, NEXTJS_SERVER_EXTERNAL_PACKAGES } from "../commands/init.js";
 import { patchScripts } from "../commands/init/patch-scripts.js";
 import { loadCredentials, saveCredentials } from "../commands/init/credentials.js";
 import { runDev } from "../commands/dev.js";
@@ -1126,5 +1126,170 @@ describe("runInit()", () => {
 
     const envContent = readFileSync(join(tmpDir, ".env"), "utf-8");
     expect(envContent).toContain("NOTIFICATION_WEBHOOK_URL=https://hooks.slack.com/services/T/B/z");
+  });
+
+  it("patches next.config with serverExternalPackages for plain Next.js (no Vercel)", async () => {
+    writeFileSync(
+      join(tmpDir, "package.json"),
+      JSON.stringify({
+        name: "my-nextjs-app",
+        dependencies: { next: "14.0.0", typescript: "5.0.0" },
+      }),
+    );
+    writeFileSync(
+      join(tmpDir, "next.config.ts"),
+      'import type { NextConfig } from "next";\nconst nextConfig: NextConfig = {};\nexport default nextConfig;\n',
+    );
+
+    const stdoutSpy = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    await runInit([], { noInteractive: true });
+    stdoutSpy.mockRestore();
+
+    const content = readFileSync(join(tmpDir, "next.config.ts"), "utf-8");
+    expect(content).toContain("serverExternalPackages");
+    expect(content).toContain("@opentelemetry/auto-instrumentations-node");
+    expect(content).toContain("require-in-the-middle");
+    // Vercel-specific packages (pino, winston, bunyan) should NOT be present for non-Vercel
+    expect(content).not.toContain('"pino"');
+    expect(content).not.toContain('"winston"');
+  });
+
+  it("does not double-patch next.config on second runInit (idempotency)", async () => {
+    writeFileSync(
+      join(tmpDir, "package.json"),
+      JSON.stringify({
+        name: "my-nextjs-app",
+        dependencies: { next: "14.0.0" },
+      }),
+    );
+    writeFileSync(
+      join(tmpDir, "next.config.js"),
+      'const nextConfig = {};\nmodule.exports = nextConfig;\n',
+    );
+
+    const stdoutSpy = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    await runInit([], { noInteractive: true });
+    await runInit([], { noInteractive: true });
+    stdoutSpy.mockRestore();
+
+    const content = readFileSync(join(tmpDir, "next.config.js"), "utf-8");
+    const count = (content.match(/serverExternalPackages/g) ?? []).length;
+    expect(count).toBe(1);
+  });
+
+  it("warns when Next.js project has no next.config file", async () => {
+    writeFileSync(
+      join(tmpDir, "package.json"),
+      JSON.stringify({
+        name: "my-nextjs-app",
+        dependencies: { next: "14.0.0" },
+      }),
+    );
+    // Deliberately do NOT create next.config.*
+
+    const stdoutChunks: string[] = [];
+    const stdoutSpy = vi.spyOn(process.stdout, "write").mockImplementation((chunk) => {
+      stdoutChunks.push(String(chunk));
+      return true;
+    });
+    await runInit([], { noInteractive: true });
+    stdoutSpy.mockRestore();
+
+    const combined = stdoutChunks.join("");
+    expect(combined).toContain("no next.config found");
+    expect(combined).toContain("serverExternalPackages");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// patchNextConfig (unit)
+// ---------------------------------------------------------------------------
+
+describe("patchNextConfig()", () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = join(tmpdir(), `next-config-test-${Date.now()}`);
+    mkdirSync(tmpDir, { recursive: true });
+  });
+
+  afterEach(() => {
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it("injects serverExternalPackages into next.config.ts (NextConfig assignment)", () => {
+    writeFileSync(
+      join(tmpDir, "next.config.ts"),
+      'import type { NextConfig } from "next";\nconst nextConfig: NextConfig = {};\nexport default nextConfig;\n',
+    );
+    const patched = patchNextConfig(tmpDir, NEXTJS_SERVER_EXTERNAL_PACKAGES);
+    expect(patched).toBe(true);
+
+    const content = readFileSync(join(tmpDir, "next.config.ts"), "utf-8");
+    expect(content).toContain("serverExternalPackages");
+    expect(content).toContain("@opentelemetry/auto-instrumentations-node");
+    expect(content).toContain("require-in-the-middle");
+  });
+
+  it("injects serverExternalPackages into next.config.js (module.exports)", () => {
+    writeFileSync(
+      join(tmpDir, "next.config.js"),
+      'const nextConfig = {};\nmodule.exports = nextConfig;\n',
+    );
+    const patched = patchNextConfig(tmpDir, NEXTJS_SERVER_EXTERNAL_PACKAGES);
+    expect(patched).toBe(true);
+
+    const content = readFileSync(join(tmpDir, "next.config.js"), "utf-8");
+    expect(content).toContain("serverExternalPackages");
+  });
+
+  it("injects serverExternalPackages into next.config.mjs (export default)", () => {
+    writeFileSync(
+      join(tmpDir, "next.config.mjs"),
+      "const nextConfig = {};\nexport default nextConfig;\n",
+    );
+    const patched = patchNextConfig(tmpDir, NEXTJS_SERVER_EXTERNAL_PACKAGES);
+    expect(patched).toBe(true);
+
+    const content = readFileSync(join(tmpDir, "next.config.mjs"), "utf-8");
+    expect(content).toContain("serverExternalPackages");
+  });
+
+  it("returns false when next.config already contains serverExternalPackages", () => {
+    writeFileSync(
+      join(tmpDir, "next.config.ts"),
+      'const nextConfig = { serverExternalPackages: ["some-pkg"] };\nexport default nextConfig;\n',
+    );
+    const patched = patchNextConfig(tmpDir, NEXTJS_SERVER_EXTERNAL_PACKAGES);
+    expect(patched).toBe(false);
+
+    // Content should be unchanged
+    const content = readFileSync(join(tmpDir, "next.config.ts"), "utf-8");
+    expect(content).toContain('"some-pkg"');
+    expect(content).not.toContain("require-in-the-middle");
+  });
+
+  it("returns false when no next.config file exists", () => {
+    const patched = patchNextConfig(tmpDir, NEXTJS_SERVER_EXTERNAL_PACKAGES);
+    expect(patched).toBe(false);
+  });
+
+  it("warns and returns false for wrapper-function configs (e.g. withSentryConfig)", () => {
+    writeFileSync(
+      join(tmpDir, "next.config.ts"),
+      'import withSentry from "@sentry/nextjs";\nexport default withSentry({});\n',
+    );
+    const stdoutChunks: string[] = [];
+    const spy = vi.spyOn(process.stdout, "write").mockImplementation((chunk) => {
+      stdoutChunks.push(String(chunk));
+      return true;
+    });
+    const patched = patchNextConfig(tmpDir, NEXTJS_SERVER_EXTERNAL_PACKAGES);
+    spy.mockRestore();
+
+    expect(patched).toBe(false);
+    const combined = stdoutChunks.join("");
+    expect(combined).toContain("could not auto-patch");
+    expect(combined).toContain("serverExternalPackages");
   });
 });

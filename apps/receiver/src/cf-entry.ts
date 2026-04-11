@@ -6,11 +6,12 @@
  * - Lazy init: D1StorageAdapter + migrate runs once per isolate lifetime
  * - AUTH_TOKEN: resolved from D1 (auto-generated on first cold start) or env var
  * - Diagnosis: incidents are enqueued to Cloudflare Queues and processed by the queue consumer
- * - Console SPA is NOT served — use CF Pages for static hosting
+ * - Console SPA: static files served by CF Assets; SPA fallback (index.html) handled below
  * - process.env is populated from bindings for createApp() compatibility
  */
 import type { Hono } from "hono";
-import { createApp, resolveAuthToken } from "./index.js";
+import { createApp, resolveAuthToken, WsBridgeManager } from "./index.js";
+import type { BridgeRequest, BridgeResponse } from "./transport/ws-bridge.js";
 import { runIfNeeded, setRequestWaitUntil } from "./runtime/diagnosis-debouncer.js";
 import type { DiagnosisQueueMessage } from "./runtime/diagnosis-dispatch.js";
 import { DiagnosisRunner } from "./runtime/diagnosis-runner.js";
@@ -44,9 +45,26 @@ interface QueueMessage<T> {
 interface MessageBatch<T> {
   messages: Array<QueueMessage<T>>;
 }
+// Durable Object namespace binding type
+interface DurableObjectId {
+  toString(): string;
+}
+interface DurableObjectStub {
+  fetch(request: Request | string, init?: RequestInit): Promise<Response>;
+}
+interface DurableObjectNamespace {
+  idFromName(name: string): DurableObjectId;
+  get(id: DurableObjectId): DurableObjectStub;
+}
+
+interface AssetsBinding {
+  fetch(request: Request): Promise<Response>;
+}
 
 interface Env {
   DB: D1Database;
+  ASSETS?: AssetsBinding;
+  BRIDGE_DO?: DurableObjectNamespace;
   DIAGNOSIS_QUEUE?: QueueBinding<DiagnosisQueueMessage>;
   RECEIVER_AUTH_TOKEN?: string;
   ALLOW_INSECURE_DEV_MODE?: string;
@@ -65,6 +83,8 @@ interface RuntimeServices {
   app: Hono;
   storage: D1StorageAdapter;
   diagnosisRunner: DiagnosisRunner;
+  wsBridge: WsBridgeManager;
+  authToken: string | null;
 }
 
 let cachedRuntime: Promise<RuntimeServices> | null = null;
@@ -120,9 +140,40 @@ async function getRuntime(env: Env): Promise<RuntimeServices> {
 
     const resolvedAuthToken = await resolveAuthToken(storage);
     const diagnosisRunner = new DiagnosisRunner(storage, telemetryStore);
+    const wsBridge = new WsBridgeManager();
     const enqueueDiagnosis = env.DIAGNOSIS_QUEUE
       ? async (incidentId: string, mode: DiagnosisQueueMessage["mode"] = "diagnosis", delaySeconds?: number) => {
           await env.DIAGNOSIS_QUEUE!.send({ incidentId, mode }, delaySeconds ? { delaySeconds } : undefined);
+        }
+      : undefined;
+
+    // Build a bridge DO forwarder if the Durable Object binding is available.
+    // This function forwards bridge requests (chat, diagnose, evidence-query)
+    // to the BridgeDO singleton via its /request endpoint.
+    const bridgeDoForwarder = env.BRIDGE_DO
+      ? async (request: BridgeRequest) => {
+          const doId = env.BRIDGE_DO!.idFromName("singleton");
+          const stub = env.BRIDGE_DO!.get(doId);
+          const doResponse = await stub.fetch("https://do.internal/request", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(request),
+          });
+          if (!doResponse.ok) {
+            const errBody = await doResponse.text();
+            throw new Error(errBody || `DO returned HTTP ${doResponse.status}`);
+          }
+          return await doResponse.json() as BridgeResponse;
+        }
+      : undefined;
+
+    const bridgeDoStatus = env.BRIDGE_DO
+      ? async () => {
+          const doId = env.BRIDGE_DO!.idFromName("singleton");
+          const stub = env.BRIDGE_DO!.get(doId);
+          const res = await stub.fetch("https://do.internal/status");
+          const data = await res.json() as { connected: boolean };
+          return data.connected;
         }
       : undefined;
 
@@ -131,9 +182,14 @@ async function getRuntime(env: Env): Promise<RuntimeServices> {
         telemetryStore,
         resolvedAuthToken,
         enqueueDiagnosis,
+        wsBridge,
+        bridgeDoForwarder,
+        bridgeDoStatus,
       }),
       storage,
       diagnosisRunner,
+      wsBridge,
+      authToken: resolvedAuthToken,
     };
   })();
 
@@ -147,7 +203,42 @@ export default {
     // Inject CF Workers ctx.waitUntil so diagnosis-debouncer can extend isolate lifetime
     setRequestWaitUntil((p) => ctx.waitUntil(p));
     const runtime = await getRuntime(env);
-    return runtime.app.fetch(request, env, ctx);
+
+    // Handle WebSocket upgrade for /bridge/ws — route to Durable Object (#331)
+    const url = new URL(request.url);
+    if (url.pathname === "/bridge/ws" && request.headers.get("Upgrade") === "websocket") {
+      if (env.BRIDGE_DO) {
+        // Pass the resolved auth token to the DO so it can validate
+        // even when the token is DB-backed (not just env var).
+        const doId = env.BRIDGE_DO.idFromName("singleton");
+        const stub = env.BRIDGE_DO.get(doId);
+        const doRequest = new Request(request.url, request);
+        doRequest.headers.set("X-Bridge-Auth-Token", runtime.authToken ?? "");
+        return stub.fetch(doRequest);
+      }
+      return new Response("bridge DO not configured", { status: 503 });
+    }
+
+    const response = await runtime.app.fetch(request, env, ctx);
+
+    // SPA fallback (not_found_handling="none"): serve index.html for client-side routes.
+    // Hashed static assets never reach the worker (CF Assets handles them directly),
+    // so any GET 404 here is a SPA navigation path.
+    if (
+      response.status === 404 &&
+      request.method === "GET" &&
+      env.ASSETS &&
+      !url.pathname.startsWith("/api/") &&
+      !url.pathname.startsWith("/v1/") &&
+      !url.pathname.startsWith("/bridge/") &&
+      url.pathname !== "/healthz"
+    ) {
+      const indexRequest = new Request(new URL("/index.html", request.url).toString(), request);
+      const indexResponse = await env.ASSETS.fetch(indexRequest);
+      if (indexResponse.status === 200) return indexResponse;
+    }
+
+    return response;
   },
   async queue(batch: MessageBatch<DiagnosisQueueMessage>, env: Env): Promise<void> {
     const runtime = await getRuntime(env);
@@ -184,3 +275,7 @@ export default {
     }
   },
 };
+
+// Re-export Durable Object class — CF Workers requires DO classes to be
+// exported from the entry point module.
+export { BridgeDO } from "./transport/ws-bridge-do.js";

@@ -7,7 +7,7 @@ import type { TelemetryStoreDriver } from "./telemetry/interface.js";
 import { MemoryAdapter } from "./storage/adapters/memory.js";
 import { MemoryTelemetryAdapter } from "./telemetry/adapters/memory.js";
 import { createIngestRouter } from "./transport/ingest.js";
-import { createApiRouter } from "./transport/api.js";
+import { createApiRouter, type BridgeDoForwarder } from "./transport/api.js";
 import { SpanBuffer } from "./ambient/span-buffer.js";
 import type { DiagnosisConfig } from "./runtime/diagnosis-debouncer.js";
 import { DiagnosisRunner } from "./runtime/diagnosis-runner.js";
@@ -21,11 +21,14 @@ import {
 } from "./runtime/llm-settings.js";
 import { emitSelfTelemetryLog, isSelfTelemetryActive } from "./self-telemetry/log.js";
 import { recordSelfTelemetryMetrics } from "./self-telemetry/metrics.js";
+import type { WsBridgeManager } from "./transport/ws-bridge.js";
 
 export type { StorageDriver } from "./storage/interface.js";
 export type { Incident, IncidentPage } from "./storage/interface.js";
 export { MemoryAdapter } from "./storage/adapters/memory.js";
 export type { TelemetryStoreDriver } from "./telemetry/interface.js";
+export { WsBridgeManager } from "./transport/ws-bridge.js";
+export type { BridgeDoForwarder } from "./transport/api.js";
 
 const SETTINGS_KEY_AUTH_TOKEN = "receiver_auth_token";
 const SETTINGS_KEY_SETUP_COMPLETE = "setup_complete";
@@ -72,6 +75,12 @@ export interface AppOptions {
    */
   resolvedAuthToken?: string | null | undefined;
   enqueueDiagnosis?: EnqueueDiagnosisFn | undefined;
+  /** WebSocket bridge manager for remote manual mode (#331). */
+  wsBridge?: WsBridgeManager | undefined;
+  /** Durable Object bridge forwarder for CF Workers (#331). */
+  bridgeDoForwarder?: BridgeDoForwarder | undefined;
+  /** Returns whether the DO bridge has a connected WebSocket. CF Workers only. */
+  bridgeDoStatus?: () => Promise<boolean>;
 }
 
 export function createApp(storage?: StorageDriver, options?: AppOptions): Hono {
@@ -336,8 +345,24 @@ export function createApp(storage?: StorageDriver, options?: AppOptions): Hono {
     return c.json(await getReceiverLlmSettings(store));
   });
 
+  // WebSocket bridge manager for remote manual mode (#331)
+  const wsBridge = options?.wsBridge;
+
   app.route("/", createIngestRouter(store, spanBuffer, telemetryStore, diagnosisConfig, runner, options?.enqueueDiagnosis));
-  app.route("/", createApiRouter(store, spanBuffer, telemetryStore, diagnosisConfig, runner, options?.enqueueDiagnosis));
+  app.route("/", createApiRouter(store, spanBuffer, telemetryStore, diagnosisConfig, runner, options?.enqueueDiagnosis, wsBridge, options?.bridgeDoForwarder));
+
+  // Bridge status endpoint — protected by Bearer auth (under /api/*)
+  const bridgeDoStatus = options?.bridgeDoStatus;
+  app.get("/api/bridge/status", async (c) => {
+    if (wsBridge?.isConnected()) {
+      return c.json({ connected: true });
+    }
+    if (bridgeDoStatus) {
+      const connected = await bridgeDoStatus();
+      return c.json({ connected });
+    }
+    return c.json({ connected: false });
+  });
 
   return app;
 }

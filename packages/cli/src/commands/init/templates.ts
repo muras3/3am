@@ -75,7 +75,7 @@ function createInstrumentations(): NonNullable<Configuration["instrumentations"]
       "@opentelemetry/instrumentation-winston": { enabled: false },
       "@opentelemetry/instrumentation-bunyan": { enabled: false },
     }),
-    new PinoInstrumentation(),
+    new PinoInstrumentation({ logSeverity: SeverityNumber.WARN }),
     new WinstonInstrumentation({ logSeverity: SeverityNumber.WARN }),
     new BunyanInstrumentation({ logSeverity: SeverityNumber.WARN }),
   ];

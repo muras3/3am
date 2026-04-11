@@ -503,8 +503,14 @@ function buildFallbackAnswer(
 
   const segments: EvidenceQueryResponse["segments"] = [];
   const primary = retrieved.find((entry) => intent.preferredSurfaces.includes(entry.surface)) ?? retrieved[0];
+  // For secondary diversity, skip absence entries when the intent is not about logs.
+  // Absence entries ("0 entries matching [healthcheck]...") are misleading for trace/metrics/general questions.
+  const isLogFocused = intent.kind === "logs";
   const secondary = retrieved.find(
-    (entry) => entry.ref.id !== primary?.ref.id && entry.surface !== primary?.surface,
+    (entry) =>
+      entry.ref.id !== primary?.ref.id &&
+      entry.surface !== primary?.surface &&
+      (isLogFocused || entry.ref.kind !== "absence"),
   );
   const direct = buildDirectAnswer(intent, locale, incident, primary);
 
@@ -563,11 +569,16 @@ function buildFallbackAnswer(
     const evidenceRefs = [primary, secondary]
       .filter((entry): entry is RetrievedEvidence => Boolean(entry))
       .map((entry) => entry.ref);
+    // When primary/secondary are both absent, fall back to non-absence entries so the
+    // inference segment does not cite phantom "0 entries matching…" absence evidence.
+    const inferenceRefs = evidenceRefs.length > 0
+      ? evidenceRefs
+      : retrieved.filter((item) => isLogFocused || item.ref.kind !== "absence").slice(0, 2).map((item) => item.ref);
     segments.push({
       id: "seg_inference_1",
       kind: "inference",
       text: ensureSentence(inferenceTail),
-      evidenceRefs: evidenceRefs.length > 0 ? evidenceRefs : retrieved.slice(0, 2).map((item) => item.ref),
+      evidenceRefs: inferenceRefs.length > 0 ? inferenceRefs : retrieved.slice(0, 2).map((item) => item.ref),
     });
   } else if (inferenceTail && intent.kind === "root_cause" && primary) {
     segments.push({

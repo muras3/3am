@@ -97,6 +97,12 @@ describe("ClaudeCodeProvider: ANTHROPIC_API_KEY env isolation", () => {
     spawnMock.mockReset();
     // claude binary is available
     spawnSyncMock.mockReturnValue({ status: 0 });
+    // Skip persistent pool in tests — tests mock spawn() directly
+    process.env["CLAUDE_CODE_POOL_DISABLED"] = "1";
+  });
+
+  afterEach(() => {
+    delete process.env["CLAUDE_CODE_POOL_DISABLED"];
   });
 
   function makeSpawnChild(stdout: string) {

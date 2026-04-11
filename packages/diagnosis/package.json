@@ -9,6 +9,10 @@
     ".": {
       "import": "./dist/index.js",
       "types": "./dist/index.d.ts"
+    },
+    "./claude-code-pool": {
+      "import": "./dist/claude-code-pool.js",
+      "types": "./dist/claude-code-pool.d.ts"
     }
   },
   "scripts": {

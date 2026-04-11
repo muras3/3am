@@ -35,6 +35,15 @@ import type { EnqueueDiagnosisFn } from "../runtime/diagnosis-dispatch.js";
 import { ensureIncidentMaterialized } from "../runtime/materialization.js";
 import { getReceiverLlmSettings } from "../runtime/llm-settings.js";
 import { maybeCleanup } from "../retention/lazy-cleanup.js";
+import type { WsBridgeManager } from "./ws-bridge.js";
+import type { BridgeRequest, BridgeResponse } from "./ws-bridge.js";
+
+/**
+ * Function that forwards a bridge request through a Durable Object.
+ * Used on CF Workers where the WS connection lives in a DO, not in-memory.
+ * Returns the BridgeResponse from the DO, or throws on failure.
+ */
+export type BridgeDoForwarder = (request: BridgeRequest) => Promise<BridgeResponse>;
 
 const CHAT_MAX_HISTORY = 10;
 const CHAT_MAX_MESSAGE_CHARS = 500;
@@ -249,6 +258,8 @@ export function createApiRouter(
   diagnosisConfig: DiagnosisConfig,
   diagnosisRunner?: DiagnosisRunner,
   enqueueDiagnosis?: EnqueueDiagnosisFn,
+  wsBridge?: WsBridgeManager,
+  bridgeDoForwarder?: BridgeDoForwarder,
 ): Hono {
   const app = new Hono();
 
@@ -475,7 +486,109 @@ export function createApiRouter(
     }
 
     const storedLocale = await storage.getSettings("locale");
-    const locale: "en" | "ja" = storedLocale === "ja" ? "ja" : "en";
+    const locale: "en" | "ja" = parsed.data.locale ?? (storedLocale === "ja" ? "ja" : "en");
+
+    // In manual mode, route evidence query through bridge (LLM-powered).
+    // Pre-build diagnosisResult + evidence so bridge doesn't need to re-fetch.
+    const llmSettings = await getReceiverLlmSettings(storage);
+    if (llmSettings.mode === "manual") {
+      if (!incident.diagnosisResult) {
+        return c.json({ error: "diagnosis not yet available for this incident" }, 404);
+      }
+      const evidence = await buildCuratedEvidence(incident, telemetryStore);
+
+      if (wsBridge?.isConnected()) {
+        try {
+          const wsResult = await wsBridge.evidenceQuery({
+            incidentId: id,
+            receiverUrl: new URL(c.req.url).origin,
+            authToken,
+            question: parsed.data.question,
+            history: parsed.data.history ?? [],
+            provider: llmSettings.provider,
+            diagnosisResult: incident.diagnosisResult,
+            evidence,
+            locale,
+          });
+          return c.json(wsResult.result);
+        } catch (error) {
+          return c.json({
+            error: "manual evidence query bridge failed",
+            details: error instanceof Error ? error.message : String(error),
+          }, 502);
+        }
+      }
+
+      // CF Workers: route through Durable Object bridge
+      if (bridgeDoForwarder) {
+        try {
+          const doResponse = await bridgeDoForwarder({
+            type: "evidence_query_request",
+            id: "", // will be assigned by the DO
+            incidentId: id,
+            receiverUrl: new URL(c.req.url).origin,
+            authToken,
+            question: parsed.data.question,
+            history: parsed.data.history ?? [],
+            provider: llmSettings.provider,
+            diagnosisResult: incident.diagnosisResult,
+            evidence,
+            locale,
+          });
+          if (doResponse.type === "error_response") {
+            return c.json({
+              error: "manual evidence query bridge failed",
+              details: doResponse.error,
+            }, 502);
+          }
+          if (doResponse.type === "evidence_query_response") {
+            return c.json(doResponse.result);
+          }
+          return c.json({
+            error: "manual evidence query bridge failed",
+            details: `unexpected response type: ${doResponse.type}`,
+          }, 502);
+        } catch (error) {
+          return c.json({
+            error: "manual evidence query bridge failed",
+            details: error instanceof Error ? error.message : String(error),
+          }, 502);
+        }
+      }
+
+      // Fall back to HTTP proxy (only works when bridge is on localhost)
+      try {
+        const bridgeResponse = await fetch(`${llmSettings.bridgeUrl}/api/manual/evidence-query`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            receiverUrl: new URL(c.req.url).origin,
+            incidentId: id,
+            authToken,
+            question: parsed.data.question,
+            history: parsed.data.history ?? [],
+            provider: llmSettings.provider,
+            diagnosisResult: incident.diagnosisResult,
+            evidence,
+            locale,
+          }),
+        });
+        if (!bridgeResponse.ok) {
+          const bodyText = await bridgeResponse.text();
+          return c.json({
+            error: "manual evidence query bridge failed",
+            details: bodyText || `bridge returned HTTP ${bridgeResponse.status}`,
+          }, 502);
+        }
+        return c.json(await bridgeResponse.json());
+      } catch (error) {
+        return c.json({
+          error: "manual evidence query bridge unavailable",
+          details: error instanceof Error ? error.message : String(error),
+        }, 502);
+      }
+    }
+
     const result = await buildEvidenceQueryAnswer(
       incident,
       telemetryStore,
@@ -575,6 +688,63 @@ export function createApiRouter(
 
     const llmSettings = await getReceiverLlmSettings(storage);
     if (llmSettings.mode === "manual") {
+      // Prefer WebSocket bridge if connected (Node.js/Vercel: in-memory WsBridgeManager)
+      if (wsBridge?.isConnected()) {
+        try {
+          const wsResult = await wsBridge.chat({
+            incidentId: id,
+            receiverUrl: new URL(c.req.url).origin,
+            authToken,
+            message: sandboxedMessage,
+            history,
+            provider: llmSettings.provider,
+            systemPrompt,
+          });
+          return c.json(wsResult);
+        } catch (error) {
+          return c.json({
+            error: "manual chat bridge failed",
+            details: error instanceof Error ? error.message : String(error),
+          }, 502);
+        }
+      }
+
+      // CF Workers: route through Durable Object bridge
+      if (bridgeDoForwarder) {
+        try {
+          const doResponse = await bridgeDoForwarder({
+            type: "chat_request",
+            id: "", // will be assigned by the DO
+            incidentId: id,
+            receiverUrl: new URL(c.req.url).origin,
+            authToken,
+            message: sandboxedMessage,
+            history,
+            provider: llmSettings.provider,
+            systemPrompt,
+          });
+          if (doResponse.type === "error_response") {
+            return c.json({
+              error: "manual chat bridge failed",
+              details: doResponse.error,
+            }, 502);
+          }
+          if (doResponse.type === "chat_response") {
+            return c.json({ reply: doResponse.reply });
+          }
+          return c.json({
+            error: "manual chat bridge failed",
+            details: `unexpected response type: ${doResponse.type}`,
+          }, 502);
+        } catch (error) {
+          return c.json({
+            error: "manual chat bridge failed",
+            details: error instanceof Error ? error.message : String(error),
+          }, 502);
+        }
+      }
+
+      // Fall back to HTTP proxy (only works when bridge is on localhost)
       try {
         const bridgeResponse = await fetch(`${llmSettings.bridgeUrl}/api/manual/chat`, {
           method: "POST",
@@ -586,6 +756,7 @@ export function createApiRouter(
             message,
             history,
             provider: llmSettings.provider,
+            systemPrompt,
           }),
         });
         if (!bridgeResponse.ok) {
