@@ -62,7 +62,7 @@ export type ResolvedProvider = {
   source: "explicit" | "autodetect";
 };
 
-const DEFAULT_TIMEOUT_MS = 300_000;
+const DEFAULT_TIMEOUT_MS = 600_000;
 
 export function defaultModelForProvider(
   provider: ProviderName | undefined,

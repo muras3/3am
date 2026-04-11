@@ -15,7 +15,13 @@ import { spanMembershipKey } from "../storage/interface.js";
 import type { SpanBuffer } from "../ambient/span-buffer.js";
 import type { BufferedSpan } from "../ambient/types.js";
 import type { TelemetryStoreDriver } from "../telemetry/interface.js";
-import { buildIncidentQueryFilter, type TelemetrySpan } from "../telemetry/interface.js";
+import {
+  MAX_QUERY_LOGS,
+  MAX_QUERY_METRICS,
+  MAX_QUERY_SPANS,
+  buildIncidentQueryFilter,
+  type TelemetrySpan,
+} from "../telemetry/interface.js";
 import { computeServices, computeActivity } from "../ambient/service-aggregator.js";
 import { buildRuntimeMap } from "../ambient/runtime-map.js";
 import { buildExtendedIncident } from "../domain/incident-detail-extension.js";
@@ -107,6 +113,10 @@ function paginateItems<T>(
   };
 }
 
+function boundedQueryLimit(cursor: string | undefined, limit: number, hardCap: number): number {
+  return Math.min(parseCursor(cursor) + limit + 1, hardCap);
+}
+
 function telemetrySpanToBufferedSpan(span: TelemetrySpan): BufferedSpan {
   return {
     traceId: span.traceId,
@@ -141,6 +151,8 @@ async function loadAmbientSpans(
   const recentSpans = await telemetryStore.querySpans({
     startMs: now - AMBIENT_LIVE_WINDOW_MS,
     endMs: now,
+    limit: MAX_QUERY_SPANS,
+    orderBy: "startTimeDesc",
   });
   if (recentSpans.length > 0) {
     return recentSpans.map(telemetrySpanToBufferedSpan);
@@ -154,7 +166,11 @@ async function loadAmbientSpans(
   for (const incident of openIncidents) {
     if (incident.telemetryScope.windowStartMs >= incident.telemetryScope.windowEndMs) continue;
 
-    const scopedSpans = await telemetryStore.querySpans(buildIncidentQueryFilter(incident.telemetryScope));
+    const scopedSpans = await telemetryStore.querySpans({
+      ...buildIncidentQueryFilter(incident.telemetryScope),
+      limit: MAX_QUERY_SPANS,
+      orderBy: "startTimeDesc",
+    });
     const membership = new Set(incident.spanMembership);
     const matchedSpans = membership.size > 0
       ? scopedSpans.filter((span) => membership.has(spanMembershipKey(span.traceId, span.spanId)))
@@ -249,10 +265,10 @@ export function createApiRouter(
   }
 
   // Rate limit chat endpoint — LLM cost protection (B-11)
-  app.use("/api/chat/*", rateLimiter({ windowMs: 60_000, max: 10 }));
+  app.use("/api/chat/*", rateLimiter({ windowMs: 60_000, max: 10, storage }));
 
   // Rate limit evidence query endpoint — LLM cost protection
-  app.use("/api/incidents/*/evidence/query", rateLimiter({ windowMs: 60_000, max: 10 }));
+  app.use("/api/incidents/*/evidence/query", rateLimiter({ windowMs: 60_000, max: 10, storage }));
 
   app.get("/api/incidents", async (c) => {
     await maybeCleanup(storage, telemetryStore);
@@ -644,7 +660,13 @@ export function createApiRouter(
       return c.json({ items: [] });
     }
 
-    const filter = buildIncidentQueryFilter(telemetryScope);
+    const limit = parseLimit(c.req.query("limit"), TELEMETRY_SPANS_DEFAULT_LIMIT);
+    const cursor = c.req.query("cursor");
+    const filter = {
+      ...buildIncidentQueryFilter(telemetryScope),
+      limit: boundedQueryLimit(cursor, limit, MAX_QUERY_SPANS),
+      orderBy: "startTimeDesc" as const,
+    };
     const spans = await telemetryStore.querySpans(filter);
     // Filter by spanMembership — only return incident-bound spans
     const membershipSet = new Set(spanMembership);
@@ -657,8 +679,7 @@ export function createApiRouter(
         || a.traceId.localeCompare(b.traceId)
         || a.spanId.localeCompare(b.spanId),
       );
-    const limit = parseLimit(c.req.query("limit"), TELEMETRY_SPANS_DEFAULT_LIMIT);
-    return c.json(paginateItems(memberSpans, limit, c.req.query("cursor")));
+    return c.json(paginateItems(memberSpans, limit, cursor));
   });
 
   app.get("/api/incidents/:id/telemetry/metrics", async (c) => {
@@ -673,15 +694,20 @@ export function createApiRouter(
       return c.json({ items: [] });
     }
 
-    const filter = buildIncidentQueryFilter(telemetryScope);
+    const limit = parseLimit(c.req.query("limit"), TELEMETRY_METRICS_DEFAULT_LIMIT);
+    const cursor = c.req.query("cursor");
+    const filter = {
+      ...buildIncidentQueryFilter(telemetryScope),
+      limit: boundedQueryLimit(cursor, limit, MAX_QUERY_METRICS),
+      orderBy: "startTimeDesc" as const,
+    };
     const metrics = (await telemetryStore.queryMetrics(filter))
       .sort((a, b) =>
         b.startTimeMs - a.startTimeMs
         || a.service.localeCompare(b.service)
         || a.name.localeCompare(b.name),
       );
-    const limit = parseLimit(c.req.query("limit"), TELEMETRY_METRICS_DEFAULT_LIMIT);
-    return c.json(paginateItems(metrics, limit, c.req.query("cursor")));
+    return c.json(paginateItems(metrics, limit, cursor));
   });
 
   app.get("/api/incidents/:id/telemetry/logs", async (c) => {
@@ -699,7 +725,26 @@ export function createApiRouter(
       } satisfies TelemetryLogsPageResponse<unknown>);
     }
 
-    const filter = buildIncidentQueryFilter(telemetryScope);
+    const correlatedLimit = parseLimit(
+      c.req.query("correlatedLimit"),
+      TELEMETRY_LOGS_CORRELATED_DEFAULT_LIMIT,
+    );
+    const contextualLimit = parseLimit(
+      c.req.query("contextualLimit"),
+      TELEMETRY_LOGS_CONTEXTUAL_DEFAULT_LIMIT,
+    );
+    const correlatedCursor = c.req.query("correlatedCursor");
+    const contextualCursor = c.req.query("contextualCursor");
+    const logFetchLimit = boundedQueryLimit(
+      undefined,
+      parseCursor(correlatedCursor) + correlatedLimit + parseCursor(contextualCursor) + contextualLimit,
+      MAX_QUERY_LOGS,
+    );
+    const filter = {
+      ...buildIncidentQueryFilter(telemetryScope),
+      limit: logFetchLimit,
+      orderBy: "startTimeDesc" as const,
+    };
     const logs = await telemetryStore.queryLogs(filter);
 
     // Build trace set from spanMembership for correlation
@@ -723,18 +768,9 @@ export function createApiRouter(
         || a.bodyHash.localeCompare(b.bodyHash),
       );
 
-    const correlatedLimit = parseLimit(
-      c.req.query("correlatedLimit"),
-      TELEMETRY_LOGS_CORRELATED_DEFAULT_LIMIT,
-    );
-    const contextualLimit = parseLimit(
-      c.req.query("contextualLimit"),
-      TELEMETRY_LOGS_CONTEXTUAL_DEFAULT_LIMIT,
-    );
-
     return c.json({
-      correlated: paginateItems(correlated, correlatedLimit, c.req.query("correlatedCursor")),
-      contextual: paginateItems(contextual, contextualLimit, c.req.query("contextualCursor")),
+      correlated: paginateItems(correlated, correlatedLimit, correlatedCursor),
+      contextual: paginateItems(contextual, contextualLimit, contextualCursor),
     });
   });
 

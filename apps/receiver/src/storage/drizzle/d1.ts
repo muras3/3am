@@ -41,6 +41,16 @@ import {
   deriveAnomalousSignalsFromRawState,
   derivePlatformEventsFromRawState,
 } from "./lazy-migration.js";
+import {
+  parseAnomalousSignals,
+  parseConsoleNarrative,
+  parseDiagnosisResult,
+  parseIncidentPacket,
+  parsePlatformEvents,
+  parseSpanMembership,
+  parseTelemetryScope,
+  parseThinEvent,
+} from "./validation.js";
 import { incidents, thinEvents, settings } from "./schema.js";
 
 type Schema = { incidents: typeof incidents; thinEvents: typeof thinEvents; settings: typeof settings };
@@ -123,7 +133,7 @@ export class D1StorageAdapter implements StorageDriver {
   }
 
   private toIncident(row: typeof incidents.$inferSelect): Incident {
-    const packet = JSON.parse(row.packet) as IncidentPacket;
+    const packet = parseIncidentPacket(JSON.parse(row.packet));
     const rawState = row.rawState ? (JSON.parse(row.rawState) as LegacyRawState) : null;
 
     const incident: Incident = {
@@ -133,24 +143,24 @@ export class D1StorageAdapter implements StorageDriver {
       lastActivityAt: row.lastActivityAt ?? row.updatedAt,
       packet,
       telemetryScope: row.telemetryScope
-        ? (JSON.parse(row.telemetryScope) as TelemetryScope)
+        ? parseTelemetryScope(JSON.parse(row.telemetryScope))
         : deriveTelemetryScopeFromPacket(packet),
       spanMembership: row.spanMembership
-        ? (JSON.parse(row.spanMembership) as string[])
+        ? parseSpanMembership(JSON.parse(row.spanMembership))
         : deriveSpanMembershipFromRawState(rawState),
       anomalousSignals: row.anomalousSignals
-        ? (JSON.parse(row.anomalousSignals) as AnomalousSignal[])
+        ? parseAnomalousSignals(JSON.parse(row.anomalousSignals))
         : deriveAnomalousSignalsFromRawState(rawState),
       platformEvents: row.platformEvents
-        ? (JSON.parse(row.platformEvents) as PlatformEvent[])
+        ? parsePlatformEvents(JSON.parse(row.platformEvents))
         : derivePlatformEventsFromRawState(rawState, packet),
     };
     if (row.closedAt) incident.closedAt = row.closedAt;
     if (row.diagnosisResult) {
-      incident.diagnosisResult = JSON.parse(row.diagnosisResult) as DiagnosisResult;
+      incident.diagnosisResult = parseDiagnosisResult(JSON.parse(row.diagnosisResult));
     }
     if (row.consoleNarrative) {
-      incident.consoleNarrative = JSON.parse(row.consoleNarrative) as ConsoleNarrative;
+      incident.consoleNarrative = parseConsoleNarrative(JSON.parse(row.consoleNarrative));
     }
     if (row.diagnosisScheduledAt) {
       incident.diagnosisScheduledAt = row.diagnosisScheduledAt;
@@ -547,7 +557,7 @@ export class D1StorageAdapter implements StorageDriver {
 
   async listThinEvents(): Promise<ThinEvent[]> {
     const rows = await this.db.select().from(thinEvents).orderBy(thinEvents.id);
-    return rows.map((r) => ({
+    return rows.map((r) => parseThinEvent({
       event_id: r.eventId,
       event_type: r.eventType as ThinEvent["event_type"],
       incident_id: r.incidentId,
@@ -566,6 +576,25 @@ export class D1StorageAdapter implements StorageDriver {
       .insert(settings)
       .values({ key, value, updatedAt: now })
       .onConflictDoUpdate({ target: settings.key, set: { value, updatedAt: now } });
+  }
+
+  async consumeRateLimit(key: string, windowMs: number, max: number, now = Date.now()): Promise<boolean> {
+    const bucketStart = now - (now % windowMs);
+    const bucketKey = `rl:${windowMs}:${bucketStart}:${key}`;
+    const result = await this.rawDb.prepare(`
+      INSERT INTO settings (key, value, updated_at)
+      VALUES (?, '1', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+      ON CONFLICT(key) DO UPDATE SET
+        value = CASE
+          WHEN CAST(settings.value AS INTEGER) >= ? THEN settings.value
+          ELSE CAST(CAST(settings.value AS INTEGER) + 1 AS TEXT)
+        END,
+        updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+      RETURNING CAST(value AS INTEGER) AS count
+    `).bind(bucketKey, max).run() as { results?: Array<{ count?: number | string }> };
+    const rawCount = result.results?.[0]?.count;
+    const count = typeof rawCount === "string" ? Number.parseInt(rawCount, 10) : rawCount;
+    return typeof count === "number" && Number.isFinite(count) && count <= max;
   }
 }
 

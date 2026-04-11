@@ -10,14 +10,17 @@ import Database from "better-sqlite3";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import { and, gte, lte, lt, inArray, eq, sql } from "drizzle-orm";
-import type {
-  TelemetryStoreDriver,
-  TelemetrySpan,
-  TelemetryMetric,
-  TelemetryLog,
-  TelemetryQueryFilter,
-  SnapshotType,
-  EvidenceSnapshot,
+import {
+  MAX_QUERY_LOGS,
+  MAX_QUERY_METRICS,
+  MAX_QUERY_SPANS,
+  type TelemetryStoreDriver,
+  type TelemetrySpan,
+  type TelemetryMetric,
+  type TelemetryLog,
+  type TelemetryQueryFilter,
+  type SnapshotType,
+  type EvidenceSnapshot,
 } from "../interface.js";
 import {
   telemetrySpans,
@@ -270,10 +273,13 @@ export class SQLiteTelemetryAdapter implements TelemetryStoreDriver {
       conditions.push(eq(telemetrySpans.environment, filter.environment));
     }
 
+    const order = filter.orderBy ?? "startTimeDesc";
     const rows = this.db
       .select()
       .from(telemetrySpans)
       .where(and(...conditions))
+      .orderBy(order === "startTimeAsc" ? telemetrySpans.startTimeMs : sql`${telemetrySpans.startTimeMs} DESC`)
+      .limit(Math.min(filter.limit ?? MAX_QUERY_SPANS, MAX_QUERY_SPANS))
       .all();
 
     return rows.map((r) => ({
@@ -309,10 +315,13 @@ export class SQLiteTelemetryAdapter implements TelemetryStoreDriver {
       conditions.push(eq(telemetryMetrics.environment, filter.environment));
     }
 
+    const order = filter.orderBy ?? "startTimeDesc";
     const rows = this.db
       .select()
       .from(telemetryMetrics)
       .where(and(...conditions))
+      .orderBy(order === "startTimeAsc" ? telemetryMetrics.startTimeMs : sql`${telemetryMetrics.startTimeMs} DESC`)
+      .limit(Math.min(filter.limit ?? MAX_QUERY_METRICS, MAX_QUERY_METRICS))
       .all();
 
     return rows.map((r) => ({
@@ -337,10 +346,13 @@ export class SQLiteTelemetryAdapter implements TelemetryStoreDriver {
       conditions.push(eq(telemetryLogs.environment, filter.environment));
     }
 
+    const order = filter.orderBy ?? "startTimeDesc";
     const rows = this.db
       .select()
       .from(telemetryLogs)
       .where(and(...conditions))
+      .orderBy(order === "startTimeAsc" ? telemetryLogs.startTimeMs : sql`${telemetryLogs.startTimeMs} DESC`)
+      .limit(Math.min(filter.limit ?? MAX_QUERY_LOGS, MAX_QUERY_LOGS))
       .all();
 
     return rows.map((r) => ({
