@@ -364,6 +364,7 @@ describe("POST /api/chat/:incidentId", () => {
       history: [{ role: "user", content: "Start with the safest action." }],
       provider: "codex",
     });
+    expect(String(bridgeCallBody["message"])).not.toContain("<user_message>");
     // systemPrompt is pre-built by the receiver so the bridge can use it directly
     // without re-fetching /api/incidents/:id (the fix for #330)
     expect(typeof bridgeCallBody["systemPrompt"]).toBe("string");
