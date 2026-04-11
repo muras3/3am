@@ -19,7 +19,7 @@
   "types": "./dist/index.d.ts",
   "bin": {
     "3am": "./dist/cli.js",
-    "3am-cli": "./dist/index.js"
+    "3am-cli": "./dist/cli.js"
   },
   "exports": {
     ".": {
