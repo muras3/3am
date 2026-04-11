@@ -186,8 +186,21 @@ export async function extractTelemetryLogs(body: unknown): Promise<TelemetryLog[
         if (!isRecord(lr)) continue
 
         const sevNum = parseSeverityNumber(lr['severityNumber'])
-        const severity = severityLabel(sevNum)
-        if (!severity) continue  // below WARN, skip
+        let severity = severityLabel(sevNum)
+        if (!severity) {
+          // Fallback for platforms (e.g. CF Observability) that omit severityNumber
+          // (absent or 0) but populate severityText. Only activate when severityNumber
+          // was not a valid positive number — a positive number below WARN is intentionally filtered.
+          const hasExplicitNumber = !isNaN(sevNum) && sevNum > 0
+          if (hasExplicitNumber) {
+            continue  // explicit low severity (e.g. DEBUG), skip
+          }
+          const sevText = typeof lr['severityText'] === 'string' ? lr['severityText'].toUpperCase() : ''
+          if (sevText.startsWith('FATAL')) severity = 'FATAL'
+          else if (sevText.startsWith('ERROR')) severity = 'ERROR'
+          else if (sevText.startsWith('WARN')) severity = 'WARN'
+          else continue  // no usable severity, skip
+        }
 
         const startTimeMs = nanoToMs(lr['timeUnixNano']) ?? nanoToMs(lr['observedTimeUnixNano'])
         if (startTimeMs === null) continue
