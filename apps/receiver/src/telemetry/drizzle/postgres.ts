@@ -8,14 +8,17 @@ import { drizzle } from "drizzle-orm/postgres-js";
 import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import { and, gte, lte, lt, inArray, eq, sql as drizzleSql } from "drizzle-orm";
 import { pgTable, text, integer, bigint, jsonb, uniqueIndex, index } from "drizzle-orm/pg-core";
-import type {
-  TelemetryStoreDriver,
-  TelemetrySpan,
-  TelemetryMetric,
-  TelemetryLog,
-  TelemetryQueryFilter,
-  SnapshotType,
-  EvidenceSnapshot,
+import {
+  MAX_QUERY_LOGS,
+  MAX_QUERY_METRICS,
+  MAX_QUERY_SPANS,
+  type TelemetryStoreDriver,
+  type TelemetrySpan,
+  type TelemetryMetric,
+  type TelemetryLog,
+  type TelemetryQueryFilter,
+  type SnapshotType,
+  type EvidenceSnapshot,
 } from "../interface.js";
 import type { SharedPostgresClient } from "../../storage/drizzle/postgres-client.js";
 import { createPostgresClient } from "../../storage/drizzle/postgres-client.js";
@@ -347,10 +350,13 @@ export class PostgresTelemetryAdapter implements TelemetryStoreDriver {
       conditions.push(eq(pgTelemetrySpans.environment, filter.environment));
     }
 
+    const order = filter.orderBy ?? "startTimeDesc";
     const rows = await this.db
       .select()
       .from(pgTelemetrySpans)
-      .where(and(...conditions));
+      .where(and(...conditions))
+      .orderBy(order === "startTimeAsc" ? pgTelemetrySpans.startTimeMs : drizzleSql`${pgTelemetrySpans.startTimeMs} DESC`)
+      .limit(Math.min(filter.limit ?? MAX_QUERY_SPANS, MAX_QUERY_SPANS));
 
     return rows.map((r) => ({
       traceId: r.traceId,
@@ -385,10 +391,13 @@ export class PostgresTelemetryAdapter implements TelemetryStoreDriver {
       conditions.push(eq(pgTelemetryMetrics.environment, filter.environment));
     }
 
+    const order = filter.orderBy ?? "startTimeDesc";
     const rows = await this.db
       .select()
       .from(pgTelemetryMetrics)
-      .where(and(...conditions));
+      .where(and(...conditions))
+      .orderBy(order === "startTimeAsc" ? pgTelemetryMetrics.startTimeMs : drizzleSql`${pgTelemetryMetrics.startTimeMs} DESC`)
+      .limit(Math.min(filter.limit ?? MAX_QUERY_METRICS, MAX_QUERY_METRICS));
 
     return rows.map((r) => ({
       service: r.service,
@@ -412,10 +421,13 @@ export class PostgresTelemetryAdapter implements TelemetryStoreDriver {
       conditions.push(eq(pgTelemetryLogs.environment, filter.environment));
     }
 
+    const order = filter.orderBy ?? "startTimeDesc";
     const rows = await this.db
       .select()
       .from(pgTelemetryLogs)
-      .where(and(...conditions));
+      .where(and(...conditions))
+      .orderBy(order === "startTimeAsc" ? pgTelemetryLogs.startTimeMs : drizzleSql`${pgTelemetryLogs.startTimeMs} DESC`)
+      .limit(Math.min(filter.limit ?? MAX_QUERY_LOGS, MAX_QUERY_LOGS));
 
     return rows.map((r) => ({
       service: r.service,

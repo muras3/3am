@@ -7,6 +7,7 @@ export class MemoryAdapter implements StorageDriver {
   private packetIndex: Map<string, string> = new Map(); // packetId → incidentId
   private thinEvents: ThinEvent[] = [];
   private settings: Map<string, string> = new Map();
+  private rateLimitBuckets: Map<string, { bucketStart: number; count: number }> = new Map();
   private nextIncidentSequenceValue = 1;
 
   async nextIncidentSequence(): Promise<number> {
@@ -241,6 +242,18 @@ export class MemoryAdapter implements StorageDriver {
 
   async setSettings(key: string, value: string): Promise<void> {
     this.settings.set(key, value);
+  }
+
+  async consumeRateLimit(key: string, windowMs: number, max: number, now = Date.now()): Promise<boolean> {
+    const bucketStart = now - (now % windowMs);
+    const existing = this.rateLimitBuckets.get(key);
+    if (!existing || existing.bucketStart !== bucketStart) {
+      this.rateLimitBuckets.set(key, { bucketStart, count: 1 });
+      return true;
+    }
+    if (existing.count >= max) return false;
+    existing.count += 1;
+    return true;
   }
 }
 

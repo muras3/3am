@@ -676,7 +676,6 @@ describe('buildEvidenceQueryAnswer', () => {
     expect(traceFirstRef?.kind).toBe('span')
     expect(metricFirstRef?.kind).toBe('metric_group')
   })
-
   // ── #335: CF Workers — traces-only evidence ─────────────────────────────
 
   function makeTracesOnlyStore(traceId: string, spanId: string, httpStatusCode = 500): TelemetryStoreDriver {

@@ -60,7 +60,13 @@ export interface TelemetryQueryFilter {
   endMs: number     // inclusive
   services?: string[]  // omit = all services
   environment?: string
+  limit?: number
+  orderBy?: "startTimeAsc" | "startTimeDesc"
 }
+
+export const MAX_QUERY_SPANS = 5_000;
+export const MAX_QUERY_METRICS = 2_000;
+export const MAX_QUERY_LOGS = 5_000;
 
 // ── Query Helpers ────────────────────────────────────────────────────────
 
