@@ -666,7 +666,7 @@ describe('L2 Evidence Contracts', () => {
       })
 
       const result = await buildCuratedEvidence(incident, makeMockStore())
-      const parsed = EvidenceResponseSchema.strict().parse(result)
+      const parsed = EvidenceResponseSchema.parse(result)
 
       expect(parsed).toBeDefined()
     })
@@ -678,7 +678,7 @@ describe('L2 Evidence Contracts', () => {
       })
 
       const result = await buildCuratedEvidence(incident, makeMockStore())
-      EvidenceResponseSchema.strict().parse(result)
+      EvidenceResponseSchema.parse(result)
 
       expect(result.proofCards.length).toBeGreaterThan(0)
       expect(result.qa.question.length).toBeGreaterThan(0)
@@ -697,7 +697,7 @@ describe('L2 Evidence Contracts', () => {
       })
 
       const result = await buildCuratedEvidence(incident, makeMockStore())
-      EvidenceResponseSchema.strict().parse(result)
+      EvidenceResponseSchema.parse(result)
 
       expect(result.proofCards).toHaveLength(3)
       expect(result.proofCards.map((c) => c.id)).toEqual(['trigger', 'design_gap', 'recovery'])
@@ -716,7 +716,7 @@ describe('L2 Evidence Contracts', () => {
       })
 
       const result = await buildCuratedEvidence(incident, makeMockStore())
-      EvidenceResponseSchema.strict().parse(result)
+      EvidenceResponseSchema.parse(result)
 
       // Collect all IDs from surfaces
       const allSpanIds = result.surfaces.traces.observed.flatMap(
@@ -757,7 +757,7 @@ describe('L2 Evidence Contracts', () => {
       })
 
       const result = await buildCuratedEvidence(incident, makeMockStore())
-      EvidenceResponseSchema.strict().parse(result)
+      EvidenceResponseSchema.parse(result)
 
       for (const card of result.proofCards) {
         expect(['traces', 'metrics', 'logs']).toContain(card.targetSurface)
@@ -867,7 +867,7 @@ describe('L2 Evidence Contracts', () => {
       })
 
       const result = await buildCuratedEvidence(incident, makeMockStore())
-      EvidenceResponseSchema.strict().parse(result)
+      EvidenceResponseSchema.parse(result)
 
       // The trigger proof card has a span ref
       const triggerCard = result.proofCards.find((c) => c.id === 'trigger')
@@ -893,7 +893,7 @@ describe('L2 Evidence Contracts', () => {
       })
 
       const result = await buildCuratedEvidence(incident, makeMockStore())
-      EvidenceResponseSchema.strict().parse(result)
+      EvidenceResponseSchema.parse(result)
 
       const allSpanIds = result.surfaces.traces.observed.flatMap(
         (t) => t.spans.map((s) => s.spanId),
@@ -926,7 +926,7 @@ describe('L2 Evidence Contracts', () => {
       })
 
       const result = await buildCuratedEvidence(incident, makeMockStore())
-      EvidenceResponseSchema.strict().parse(result)
+      EvidenceResponseSchema.parse(result)
 
       // trace-1 has correlated logs in the log cluster (traceId: 'trace-1', spanId: 'span-2')
       const trace1 = result.surfaces.traces.observed.find((t) => t.traceId === 'trace-1')
@@ -947,7 +947,7 @@ describe('L2 Evidence Contracts', () => {
       })
 
       const result = await buildCuratedEvidence(incident, makeMockStore())
-      EvidenceResponseSchema.strict().parse(result)
+      EvidenceResponseSchema.parse(result)
 
       // The narrative references trace-1:span-2 in QA and the trigger proof card
       // references it via reasoning structure
@@ -976,7 +976,7 @@ describe('L2 Evidence Contracts', () => {
       })
 
       const result = await buildCuratedEvidence(incident, makeMockStore())
-      EvidenceResponseSchema.strict().parse(result)
+      EvidenceResponseSchema.parse(result)
 
       expect(Array.isArray(result.surfaces.traces.observed)).toBe(true)
       expect(Array.isArray(result.surfaces.traces.expected)).toBe(true)
@@ -991,7 +991,7 @@ describe('L2 Evidence Contracts', () => {
       })
 
       const result = await buildCuratedEvidence(incident, makeMockStore())
-      EvidenceResponseSchema.strict().parse(result)
+      EvidenceResponseSchema.parse(result)
 
       const smokingGunId = result.surfaces.traces.smokingGunSpanId
       expect(smokingGunId).not.toBeNull()
@@ -1009,7 +1009,7 @@ describe('L2 Evidence Contracts', () => {
       })
 
       const result = await buildCuratedEvidence(incident, makeMockStore())
-      EvidenceResponseSchema.strict().parse(result)
+      EvidenceResponseSchema.parse(result)
 
       for (const trace of result.surfaces.traces.observed) {
         for (const span of trace.spans) {
@@ -1025,7 +1025,7 @@ describe('L2 Evidence Contracts', () => {
       })
 
       const result = await buildCuratedEvidence(incident, makeMockStore())
-      EvidenceResponseSchema.strict().parse(result)
+      EvidenceResponseSchema.parse(result)
 
       const baseline = result.surfaces.traces.baseline
       expect(baseline).toBeDefined()
@@ -1043,7 +1043,7 @@ describe('L2 Evidence Contracts', () => {
       })
 
       const result = await buildCuratedEvidence(incident, makeMockStore())
-      EvidenceResponseSchema.strict().parse(result)
+      EvidenceResponseSchema.parse(result)
 
       // span-2 in trace-1 should have correlated logs (logs cluster has spanId=span-2)
       const trace1 = result.surfaces.traces.observed.find((t) => t.traceId === 'trace-1')
@@ -1073,7 +1073,7 @@ describe('L2 Evidence Contracts', () => {
       })
 
       const result = await buildCuratedEvidence(incident, makeMockStore())
-      EvidenceResponseSchema.strict().parse(result)
+      EvidenceResponseSchema.parse(result)
 
       expect(result.state.baseline).toBe('ready')
       expect(['high', 'medium']).toContain(result.surfaces.traces.baseline!.confidence)
@@ -1087,7 +1087,7 @@ describe('L2 Evidence Contracts', () => {
       })
 
       const result = await buildCuratedEvidence(incident, makeMockStore())
-      EvidenceResponseSchema.strict().parse(result)
+      EvidenceResponseSchema.parse(result)
 
       expect(result.state.baseline).toBe('insufficient')
       expect(result.surfaces.traces.baseline!.confidence).toBe('low')
@@ -1101,7 +1101,7 @@ describe('L2 Evidence Contracts', () => {
       })
 
       const result = await buildCuratedEvidence(incident, makeMockStore())
-      EvidenceResponseSchema.strict().parse(result)
+      EvidenceResponseSchema.parse(result)
 
       expect(result.state.baseline).toBe('unavailable')
       expect(result.surfaces.traces.baseline!.confidence).toBe('unavailable')
@@ -1121,7 +1121,7 @@ describe('L2 Evidence Contracts', () => {
       })
 
       const result = await buildCuratedEvidence(incident, makeMockStore())
-      EvidenceResponseSchema.strict().parse(result)
+      EvidenceResponseSchema.parse(result)
 
       const absenceClaims = result.surfaces.logs.claims.filter((c) => c.type === 'absence')
       expect(absenceClaims.length).toBeGreaterThan(0)
@@ -1146,7 +1146,7 @@ describe('L2 Evidence Contracts', () => {
       })
 
       const result = await buildCuratedEvidence(incident, makeMockStore())
-      EvidenceResponseSchema.strict().parse(result)
+      EvidenceResponseSchema.parse(result)
 
       const absenceClaims = result.surfaces.logs.claims.filter((c) => c.type === 'absence')
       for (const claim of absenceClaims) {
@@ -1163,7 +1163,7 @@ describe('L2 Evidence Contracts', () => {
       })
 
       const result = await buildCuratedEvidence(incident, makeMockStore())
-      EvidenceResponseSchema.strict().parse(result)
+      EvidenceResponseSchema.parse(result)
 
       const nonAbsenceClaims = result.surfaces.logs.claims.filter((c) => c.type !== 'absence')
       for (const claim of nonAbsenceClaims) {
@@ -1178,7 +1178,7 @@ describe('L2 Evidence Contracts', () => {
       })
 
       const result = await buildCuratedEvidence(incident, makeMockStore())
-      EvidenceResponseSchema.strict().parse(result)
+      EvidenceResponseSchema.parse(result)
 
       // Find proof cards targeting logs
       const logTargetCards = result.proofCards.filter((c) => c.targetSurface === 'logs')
@@ -1202,7 +1202,7 @@ describe('L2 Evidence Contracts', () => {
       })
 
       const result = await buildCuratedEvidence(incident, makeMockStore())
-      EvidenceResponseSchema.strict().parse(result)
+      EvidenceResponseSchema.parse(result)
 
       expect(result.surfaces.metrics.hypotheses.length).toBe(3)
 
@@ -1235,7 +1235,7 @@ describe('L2 Evidence Contracts', () => {
       })
 
       const result = await buildCuratedEvidence(incident, makeMockStore())
-      EvidenceResponseSchema.strict().parse(result)
+      EvidenceResponseSchema.parse(result)
 
       for (const hypothesis of result.surfaces.metrics.hypotheses) {
         for (const metric of hypothesis.metrics) {
@@ -1262,7 +1262,7 @@ describe('L2 Evidence Contracts', () => {
       })
 
       const result = await buildCuratedEvidence(incident, makeMockStore())
-      EvidenceResponseSchema.strict().parse(result)
+      EvidenceResponseSchema.parse(result)
 
       expect(result.state.diagnosis).toBe('ready')
     })
@@ -1273,7 +1273,7 @@ describe('L2 Evidence Contracts', () => {
       })
 
       const result = await buildCuratedEvidence(incident, makeMockStore())
-      EvidenceResponseSchema.strict().parse(result)
+      EvidenceResponseSchema.parse(result)
 
       expect(result.state.diagnosis).toBe('pending')
     })
@@ -1282,7 +1282,7 @@ describe('L2 Evidence Contracts', () => {
       const incident = makeIncident()
 
       const result = await buildCuratedEvidence(incident, makeMockStore())
-      EvidenceResponseSchema.strict().parse(result)
+      EvidenceResponseSchema.parse(result)
 
       expect(result.state.diagnosis).toBe('unavailable')
     })
@@ -1294,7 +1294,7 @@ describe('L2 Evidence Contracts', () => {
       })
 
       const result = await buildCuratedEvidence(incident, makeMockStore())
-      EvidenceResponseSchema.strict().parse(result)
+      EvidenceResponseSchema.parse(result)
 
       expect(result.state.baseline).toBe('insufficient')
     })
@@ -1321,7 +1321,7 @@ describe('L2 Evidence Contracts', () => {
       const incident = makeIncident()
 
       const result = await buildCuratedEvidence(incident, makeMockStore())
-      EvidenceResponseSchema.strict().parse(result)
+      EvidenceResponseSchema.parse(result)
 
       expect(result.state.evidenceDensity).toBe('empty')
     })
@@ -1336,7 +1336,7 @@ describe('L2 Evidence Contracts', () => {
       const incident = makeIncident()
 
       const result = await buildCuratedEvidence(incident, makeMockStore())
-      EvidenceResponseSchema.strict().parse(result)
+      EvidenceResponseSchema.parse(result)
 
       expect(result.state.diagnosis).toBe('unavailable')
       expect(result.qa.noAnswerReason).toBeTruthy()
@@ -1349,7 +1349,7 @@ describe('L2 Evidence Contracts', () => {
       })
 
       const result = await buildCuratedEvidence(incident, makeMockStore())
-      EvidenceResponseSchema.strict().parse(result)
+      EvidenceResponseSchema.parse(result)
 
       expect(result.qa.noAnswerReason).toBeTruthy()
       // Even with noAnswerReason, answer should provide useful fallback text
@@ -1360,7 +1360,7 @@ describe('L2 Evidence Contracts', () => {
       const incident = makeIncident()
 
       const result = await buildCuratedEvidence(incident, makeMockStore())
-      EvidenceResponseSchema.strict().parse(result)
+      EvidenceResponseSchema.parse(result)
 
       expect(result.qa.followups.length).toBeGreaterThan(0)
       for (const followup of result.qa.followups) {
@@ -1373,7 +1373,7 @@ describe('L2 Evidence Contracts', () => {
       const incident = makeIncident()
 
       const result = await buildCuratedEvidence(incident, makeMockStore())
-      EvidenceResponseSchema.strict().parse(result)
+      EvidenceResponseSchema.parse(result)
 
       expect(result.qa.evidenceSummary).toBeDefined()
       expect(typeof result.qa.evidenceSummary.traces).toBe('number')

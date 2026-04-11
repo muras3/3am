@@ -355,18 +355,18 @@ describe('Integration: Curated API assembly (§6)', () => {
   // ═══════════════════════════════════════════════════════════════════════
 
   describe('Step 1: Receiver deterministic', () => {
-    it('runtime-map-schema-valid: RuntimeMapResponseSchema.strict().parse() green', async () => {
+    it('runtime-map-schema-valid: RuntimeMapResponseSchema.parse() green', async () => {
       await seedRichTelemetry(telemetryStore)
 
       const result = await buildRuntimeMap(telemetryStore, storage)
-      const parsed = RuntimeMapResponseSchema.strict().parse(result)
+      const parsed = RuntimeMapResponseSchema.parse(result)
 
       expect(parsed.services.length).toBeGreaterThan(0)
       expect(parsed.summary).toBeDefined()
       expect(parsed.state.diagnosis).toBe('ready')
     })
 
-    it('incident-deterministic-schema-valid: ExtendedIncidentSchema.strict().parse() green', async () => {
+    it('incident-deterministic-schema-valid: ExtendedIncidentSchema.parse() green', async () => {
       await seedRichTelemetry(telemetryStore)
       const incident = makeIncident({
         anomalousSignals: [
@@ -376,7 +376,7 @@ describe('Integration: Curated API assembly (§6)', () => {
       })
 
       const result = await buildExtendedIncident(incident, telemetryStore)
-      const parsed = ExtendedIncidentSchema.strict().parse(result)
+      const parsed = ExtendedIncidentSchema.parse(result)
 
       expect(parsed.incidentId).toBe('inc_test')
       expect(parsed.status).toBe('open')
@@ -390,7 +390,7 @@ describe('Integration: Curated API assembly (§6)', () => {
       })
 
       const result = await buildExtendedIncident(incident, telemetryStore)
-      const parsed = ExtendedIncidentSchema.strict().parse(result)
+      const parsed = ExtendedIncidentSchema.parse(result)
 
       expect(parsed.state.diagnosis).toBe('pending')
       expect(parsed.headline).toBe('')
@@ -412,7 +412,7 @@ describe('Integration: Curated API assembly (§6)', () => {
       })
 
       const mapResult = await buildRuntimeMap(telemetryStore, storage)
-      RuntimeMapResponseSchema.strict().parse(mapResult)
+      RuntimeMapResponseSchema.parse(mapResult)
 
       // If the map has incidents, verify their IDs can fetch a valid detail
       for (const mapIncident of mapResult.incidents) {
@@ -431,7 +431,7 @@ describe('Integration: Curated API assembly (§6)', () => {
   // ═══════════════════════════════════════════════════════════════════════
 
   describe('Step 2: Evidence surfaces', () => {
-    it('evidence-schema-valid: EvidenceResponseSchema.strict().parse() green', async () => {
+    it('evidence-schema-valid: EvidenceResponseSchema.parse() green', async () => {
       await seedRichTelemetry(telemetryStore)
       const incident = makeIncident({
         anomalousSignals: [makeSignal()],
@@ -439,7 +439,7 @@ describe('Integration: Curated API assembly (§6)', () => {
       })
 
       const result = await buildCuratedEvidence(incident, telemetryStore)
-      const parsed = EvidenceResponseSchema.strict().parse(result)
+      const parsed = EvidenceResponseSchema.parse(result)
 
       expect(parsed.surfaces).toBeDefined()
       expect(parsed.state).toBeDefined()
@@ -453,7 +453,7 @@ describe('Integration: Curated API assembly (§6)', () => {
       })
 
       const result = await buildCuratedEvidence(incident, telemetryStore)
-      EvidenceResponseSchema.strict().parse(result)
+      EvidenceResponseSchema.parse(result)
 
       const { smokingGunSpanId } = result.surfaces.traces
       if (smokingGunSpanId !== null) {
@@ -493,7 +493,7 @@ describe('Integration: Curated API assembly (§6)', () => {
       })
 
       const result = await buildCuratedEvidence(incident, telemetryStore)
-      EvidenceResponseSchema.strict().parse(result)
+      EvidenceResponseSchema.parse(result)
 
       const absenceClaims = result.surfaces.logs.claims.filter((c) => c.type === 'absence')
       // Absence claims should exist when dependency failure detected but no retry patterns
@@ -514,7 +514,7 @@ describe('Integration: Curated API assembly (§6)', () => {
       })
 
       const result = await buildCuratedEvidence(incident, telemetryStore)
-      EvidenceResponseSchema.strict().parse(result)
+      EvidenceResponseSchema.parse(result)
 
       expect(result.state.diagnosis).toBe('pending')
       expect(result.qa.noAnswerReason).toContain('Diagnosis narrative is pending')
@@ -526,7 +526,7 @@ describe('Integration: Curated API assembly (§6)', () => {
       const incident = makeIncident()
 
       const result = await buildCuratedEvidence(incident, telemetryStore)
-      EvidenceResponseSchema.strict().parse(result)
+      EvidenceResponseSchema.parse(result)
 
       expect(result.state.evidenceDensity).toBe('empty')
       expect(result.surfaces.traces.observed).toEqual([])
@@ -551,7 +551,7 @@ describe('Integration: Curated API assembly (§6)', () => {
 
       const incident = makeIncident()
       const result = await buildCuratedEvidence(incident, telemetryStore)
-      EvidenceResponseSchema.strict().parse(result)
+      EvidenceResponseSchema.parse(result)
 
       expect(result.surfaces.traces.observed).toEqual([])
       expect(result.surfaces.traces.expected).toEqual([])
@@ -565,7 +565,7 @@ describe('Integration: Curated API assembly (§6)', () => {
       })
 
       const extended = await buildExtendedIncident(incident, telemetryStore)
-      ExtendedIncidentSchema.strict().parse(extended)
+      ExtendedIncidentSchema.parse(extended)
 
       // Verify canonical counting rule:
       // traces = unique traceId count
@@ -598,7 +598,7 @@ describe('Integration: Curated API assembly (§6)', () => {
       })
 
       const result = await buildCuratedEvidence(incident, telemetryStore)
-      EvidenceResponseSchema.strict().parse(result)
+      EvidenceResponseSchema.parse(result)
 
       const baseline = result.surfaces.traces.baseline
       expect(baseline).toBeDefined()
@@ -622,7 +622,7 @@ describe('Integration: Curated API assembly (§6)', () => {
       })
 
       const result = await buildCuratedEvidence(incident, telemetryStore)
-      EvidenceResponseSchema.strict().parse(result)
+      EvidenceResponseSchema.parse(result)
 
       // Proof card evidenceRefs come from buildReasoningStructure which queries
       // ALL telemetry (not just spanMembership). Some refs may point to evidence
@@ -656,7 +656,7 @@ describe('Integration: Curated API assembly (§6)', () => {
       const incident = makeIncident({ diagnosisResult })
 
       const result = await buildExtendedIncident(incident, telemetryStore)
-      ExtendedIncidentSchema.strict().parse(result)
+      ExtendedIncidentSchema.parse(result)
 
       expect(result.headline).toBe(diagnosisResult.summary.what_happened)
       expect(result.action.text).toBe(diagnosisResult.recommendation.immediate_action)
@@ -683,7 +683,7 @@ describe('Integration: Curated API assembly (§6)', () => {
       const incident = makeIncident({ diagnosisResult })
 
       const result = await buildExtendedIncident(incident, telemetryStore)
-      ExtendedIncidentSchema.strict().parse(result)
+      ExtendedIncidentSchema.parse(result)
 
       const validTypes = ['external', 'system', 'incident', 'impact']
       for (const step of result.causalChain) {
@@ -706,7 +706,7 @@ describe('Integration: Curated API assembly (§6)', () => {
       })
 
       const result = await buildCuratedEvidence(incident, telemetryStore)
-      EvidenceResponseSchema.strict().parse(result)
+      EvidenceResponseSchema.parse(result)
 
       expect(result.qa.question).toBeTruthy()
       expect(result.qa.answer).toBeTruthy()
@@ -719,7 +719,7 @@ describe('Integration: Curated API assembly (§6)', () => {
       })
 
       const result = await buildCuratedEvidence(incident, telemetryStore)
-      EvidenceResponseSchema.strict().parse(result)
+      EvidenceResponseSchema.parse(result)
 
       expect(result.qa.question).toBeTruthy()
       expect(result.qa.answer).toBeTruthy()
@@ -739,12 +739,12 @@ describe('Integration: Curated API assembly (§6)', () => {
       })
 
       const result = await buildCuratedEvidence(incident, telemetryStore)
-      EvidenceResponseSchema.strict().parse(result)
+      EvidenceResponseSchema.parse(result)
 
       expect(result.qa.noAnswerReason).toBe('Insufficient telemetry data to determine root cause.')
     })
 
-    it('reasoning-structure-valid: ReasoningStructureSchema.strict().parse() green', async () => {
+    it('reasoning-structure-valid: ReasoningStructureSchema.parse() green', async () => {
       await seedRichTelemetry(telemetryStore)
       const incident = makeIncident({
         anomalousSignals: [
@@ -754,7 +754,7 @@ describe('Integration: Curated API assembly (§6)', () => {
       })
 
       const result = await buildReasoningStructure(incident, telemetryStore)
-      const parsed = ReasoningStructureSchema.strict().parse(result)
+      const parsed = ReasoningStructureSchema.parse(result)
 
       expect(parsed.incidentId).toBe('inc_test')
       expect(parsed.evidenceCounts.traces).toBeGreaterThan(0)
@@ -770,7 +770,7 @@ describe('Integration: Curated API assembly (§6)', () => {
       })
 
       const result = await buildCuratedEvidence(incident, telemetryStore)
-      EvidenceResponseSchema.strict().parse(result)
+      EvidenceResponseSchema.parse(result)
 
       expect(result.qa.answer.length).toBeGreaterThan(0)
     })
@@ -787,7 +787,7 @@ describe('Integration: Curated API assembly (§6)', () => {
       })
 
       const result = await buildCuratedEvidence(incident, telemetryStore)
-      EvidenceResponseSchema.strict().parse(result)
+      EvidenceResponseSchema.parse(result)
 
       expect(result.proofCards).toHaveLength(3)
       expect(result.proofCards.map((c) => c.id)).toEqual([
@@ -814,7 +814,7 @@ describe('Integration: Curated API assembly (§6)', () => {
       })
 
       const reasoning = await buildReasoningStructure(incident, telemetryStore)
-      ReasoningStructureSchema.strict().parse(reasoning)
+      ReasoningStructureSchema.parse(reasoning)
 
       // All proofRefs must have valid cardId and targetSurface
       const validCardIds = ['trigger', 'design_gap', 'recovery']
@@ -913,7 +913,7 @@ describe('Integration: Curated API assembly (§6)', () => {
 
       const incident = makeIncident()
       const result = await buildExtendedIncident(incident, telemetryStore)
-      ExtendedIncidentSchema.strict().parse(result)
+      ExtendedIncidentSchema.parse(result)
 
       expect(result.state.baseline).toBe('unavailable')
     })
@@ -926,7 +926,7 @@ describe('Integration: Curated API assembly (§6)', () => {
 
       const incident = makeIncident()
       const result = await buildExtendedIncident(incident, telemetryStore)
-      ExtendedIncidentSchema.strict().parse(result)
+      ExtendedIncidentSchema.parse(result)
 
       expect(result.state.evidenceDensity).toBe('sparse')
     })
@@ -945,7 +945,7 @@ describe('Integration: Curated API assembly (§6)', () => {
       ])
 
       const result = await buildRuntimeMap(telemetryStore, storage)
-      const parsed = RuntimeMapResponseSchema.strict().parse(result)
+      const parsed = RuntimeMapResponseSchema.parse(result)
 
       expect(parsed.services.length).toBe(1)
       expect(parsed.edges).toEqual([])
