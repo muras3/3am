@@ -11,6 +11,8 @@
   "bugs": {
     "url": "https://github.com/muras3/3am/issues"
   },
+  "publishConfig": { "access": "public" },
+  "files": ["dist"],
   "private": false,
   "type": "module",
   "main": "./dist/index.js",
