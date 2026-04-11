@@ -4,10 +4,10 @@
  * RETENTION_HOURS controls how long telemetry data (spans, metrics, logs,
  * snapshots) and closed incidents are kept before lazy cleanup removes them.
  *
- * Default: 48 hours. Accepts positive integers only.
+ * Default: 1 hour. Accepts positive integers only.
  */
 
-const DEFAULT_RETENTION_HOURS = 48;
+const DEFAULT_RETENTION_HOURS = 1;
 
 /**
  * Parse RETENTION_HOURS from environment.
