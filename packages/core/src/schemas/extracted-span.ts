@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const ExtractedSpanSchema = z.object({
+export const ExtractedSpanSchema = z.strictObject({
   traceId: z.string(),
   spanId: z.string(),
   serviceName: z.string(),
@@ -17,6 +17,6 @@ export const ExtractedSpanSchema = z.object({
   spanName: z.string().optional(),
   httpMethod: z.string().optional(),
   attributes: z.record(z.string(), z.unknown()).optional(),
-}).strict();
+});
 
 export type ExtractedSpan = z.infer<typeof ExtractedSpanSchema>;

@@ -1,105 +1,105 @@
 import { z } from "zod";
 import { CuratedStateSchema } from "./runtime-map.js";
 
-const CorrelationEntrySchema = z.object({
+const CorrelationEntrySchema = z.strictObject({
   metricName: z.string(),
   service: z.string(),
   correlationValue: z.number(),
   pValue: z.number().optional(),
-}).strict();
+});
 
-export const ConfidencePrimitivesSchema = z.object({
-  evidenceCoverage: z.object({
+export const ConfidencePrimitivesSchema = z.strictObject({
+  evidenceCoverage: z.strictObject({
     traceCount: z.number(),
     metricCount: z.number(),
     logCount: z.number(),
     baselineSampleCount: z.number(),
-  }).strict(),
+  }),
   correlations: z.array(CorrelationEntrySchema),
   baselineConfidence: z.enum(["high", "medium", "low", "unavailable"]),
-}).strict();
+});
 
-export const InternalBlastRadiusEntrySchema = z.object({
+export const InternalBlastRadiusEntrySchema = z.strictObject({
   targetId: z.string(),
   label: z.string(),
   status: z.enum(["healthy", "degraded", "critical"]),
   impactMetric: z.literal("error_rate"),
   impactValue: z.number(),
   displayValue: z.string(),
-}).strict();
+});
 
-export const BlastRadiusRollupSchema = z.object({
+export const BlastRadiusRollupSchema = z.strictObject({
   healthyCount: z.number(),
   label: z.string(),
-}).strict();
+});
 
-export const IncidentDetailExtensionSchema = z.object({
-  impactSummary: z.object({
+export const IncidentDetailExtensionSchema = z.strictObject({
+  impactSummary: z.strictObject({
     startedAt: z.string(),
     fullCascadeAt: z.string().optional(),
     diagnosedAt: z.string().optional(),
-  }).strict(),
+  }),
   blastRadius: z.array(InternalBlastRadiusEntrySchema),
   blastRadiusRollup: BlastRadiusRollupSchema,
   confidencePrimitives: ConfidencePrimitivesSchema,
-  evidenceSummary: z.object({
+  evidenceSummary: z.strictObject({
     traces: z.number(),
     traceErrors: z.number(),
     metrics: z.number(),
     metricsAnomalous: z.number(),
     logs: z.number(),
     logErrors: z.number(),
-  }).strict(),
+  }),
   state: CuratedStateSchema,
-}).strict();
+});
 
-export const IncidentChipSchema = z.object({
+export const IncidentChipSchema = z.strictObject({
   type: z.enum(["critical", "system", "external"]),
   label: z.string(),
-}).strict();
+});
 
-export const IncidentActionSchema = z.object({
+export const IncidentActionSchema = z.strictObject({
   text: z.string(),
   rationale: z.string(),
   doNot: z.string(),
-}).strict();
+});
 
-export const CausalStepSchema = z.object({
+export const CausalStepSchema = z.strictObject({
   type: z.enum(["external", "system", "incident", "impact"]),
   tag: z.string(),
   title: z.string(),
   detail: z.string(),
-}).strict();
+});
 
-export const ImpactSummarySchema = z.object({
+export const ImpactSummarySchema = z.strictObject({
   startedAt: z.string(),
   fullCascadeAt: z.string(),
   diagnosedAt: z.string(),
-}).strict();
+});
 
-export const BlastRadiusEntrySchema = z.object({
+export const BlastRadiusEntrySchema = z.strictObject({
   target: z.string(),
   status: z.enum(["healthy", "degraded", "critical"]),
   impactValue: z.number(),
   label: z.string(),
-}).strict();
+});
 
-export const ConfidenceSummarySchema = z.object({
+export const ConfidenceSummarySchema = z.strictObject({
   label: z.string(),
   value: z.number(),
   basis: z.string(),
   risk: z.string(),
-}).strict();
+});
 
-export const EvidenceCountsSchema = z.object({
+export const EvidenceCountsSchema = z.strictObject({
   traces: z.number(),
   traceErrors: z.number(),
   metrics: z.number(),
   logs: z.number(),
   logErrors: z.number(),
-}).strict();
+});
 
-export const ExtendedIncidentSchema = z.object({
+export const ExtendedIncidentSchema = z.strictObject({
   incidentId: z.string(),
   status: z.enum(["open", "closed"]),
   severity: z.string(),
@@ -116,7 +116,7 @@ export const ExtendedIncidentSchema = z.object({
   confidenceSummary: ConfidenceSummarySchema,
   evidenceSummary: EvidenceCountsSchema,
   state: CuratedStateSchema,
-}).strict();
+});
 
 export type IncidentDetailExtension = z.infer<typeof IncidentDetailExtensionSchema>;
 export type InternalBlastRadiusEntry = z.infer<typeof InternalBlastRadiusEntrySchema>;
