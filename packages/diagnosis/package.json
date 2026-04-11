@@ -1,5 +1,5 @@
 {
-  "name": "@3am/diagnosis",
+  "name": "3am-diagnosis",
   "version": "0.1.0",
   "license": "Apache-2.0",
   "repository": {
@@ -36,7 +36,7 @@
     "lint": "eslint src --max-warnings 0"
   },
   "dependencies": {
-    "@3am/core": "workspace:*",
+    "3am-core": "workspace:*",
     "@anthropic-ai/sdk": "^0.82.0",
     "zod": "^4.3.6"
   },
