@@ -13,8 +13,13 @@ vi.mock("../../domain/reasoning-structure-builder.js", () => ({
   buildReasoningStructure: vi.fn(),
 }));
 
+vi.mock("../materialization.js", () => ({
+  ensureIncidentMaterialized: vi.fn().mockResolvedValue(false),
+}));
+
 import { diagnose, generateConsoleNarrative } from "3am-diagnosis";
 import { buildReasoningStructure } from "../../domain/reasoning-structure-builder.js";
+import { ensureIncidentMaterialized } from "../materialization.js";
 
 function makeIncident(partial: Partial<Incident> = {}): Incident {
   return {
@@ -67,6 +72,13 @@ function makeStorage(overrides: Partial<StorageDriver> = {}): StorageDriver {
     listThinEvents: vi.fn(),
     getSettings: vi.fn(),
     setSettings: vi.fn(),
+    // Materialization lease: return false by default (no-op in tests — materialization skips rebuild)
+    claimMaterializationLease: vi.fn().mockResolvedValue(false),
+    releaseMaterializationLease: vi.fn().mockResolvedValue(undefined),
+    claimDiagnosisDispatch: vi.fn().mockResolvedValue(true),
+    releaseDiagnosisDispatch: vi.fn().mockResolvedValue(undefined),
+    markDiagnosisScheduled: vi.fn().mockResolvedValue(undefined),
+    clearDiagnosisScheduled: vi.fn().mockResolvedValue(undefined),
     ...overrides,
   } as StorageDriver;
 }
@@ -276,6 +288,73 @@ describe("DiagnosisRunner", () => {
 
       expect(result).toBe(false);
       warnSpy.mockRestore();
+    });
+  });
+
+  describe("Fix 5.2: pre-diagnosis materialization + re-fetch", () => {
+    it("calls ensureIncidentMaterialized before getIncident", async () => {
+      process.env["ANTHROPIC_API_KEY"] = "test-key";
+      const mockResult = { summary: { what_happened: "test" } } as never;
+      vi.mocked(diagnose).mockResolvedValueOnce(mockResult);
+      const callOrder: string[] = [];
+      const storage = makeStorage({
+        getIncident: vi.fn().mockImplementation(() => {
+          callOrder.push("getIncident");
+          return Promise.resolve(makeIncident());
+        }),
+      });
+      vi.mocked(ensureIncidentMaterialized).mockImplementationOnce(async () => {
+        callOrder.push("ensureIncidentMaterialized");
+        return false;
+      });
+      const runner = new DiagnosisRunner(storage, makeTelemetryStore());
+
+      await runner.run("inc_test");
+
+      expect(callOrder[0]).toBe("ensureIncidentMaterialized");
+      expect(callOrder[1]).toBe("getIncident");
+    });
+
+    it("passes the re-fetched (post-materialization) incident to diagnose()", async () => {
+      process.env["ANTHROPIC_API_KEY"] = "test-key";
+      const staleIncident = makeIncident(); // fetched before materialization (not used by runner)
+      const freshIncident = makeIncident({
+        packet: {
+          ...makeIncident().packet,
+          generation: 6,
+        } as never,
+      });
+      const mockResult = { summary: { what_happened: "payment timeout" } } as never;
+      vi.mocked(diagnose).mockResolvedValueOnce(mockResult);
+      // getIncident is called once (post-materialization re-fetch) — returns freshIncident
+      const storage = makeStorage({
+        getIncident: vi.fn().mockResolvedValue(freshIncident),
+      });
+      vi.mocked(ensureIncidentMaterialized).mockResolvedValueOnce(true);
+      const runner = new DiagnosisRunner(storage, makeTelemetryStore());
+
+      await runner.run("inc_test");
+
+      // diagnose() must have been called with the fresh packet (generation: 6)
+      expect(diagnose).toHaveBeenCalledWith(
+        expect.objectContaining({ generation: 6 }),
+        expect.any(Object),
+      );
+      void staleIncident; // suppress unused warning
+    });
+
+    it("proceeds with diagnosis even when ensureIncidentMaterialized returns false (lease contention)", async () => {
+      process.env["ANTHROPIC_API_KEY"] = "test-key";
+      const mockResult = { summary: { what_happened: "test" } } as never;
+      vi.mocked(diagnose).mockResolvedValueOnce(mockResult);
+      vi.mocked(ensureIncidentMaterialized).mockResolvedValueOnce(false); // no-op
+      const storage = makeStorage();
+      const runner = new DiagnosisRunner(storage, makeTelemetryStore());
+
+      const result = await runner.run("inc_test");
+
+      expect(result).toBe(true);
+      expect(diagnose).toHaveBeenCalled();
     });
   });
 });

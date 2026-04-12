@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { scheduleDelayedDiagnosis, checkGenerationThreshold, runIfNeeded, _resetInFlightForTest } from "../diagnosis-debouncer.js";
-import type { StorageDriver } from "../../storage/interface.js";
+import { scheduleDelayedDiagnosis, checkGenerationThreshold, runIfNeeded, _resetInFlightForTest, shouldAllowRediagnosis } from "../diagnosis-debouncer.js";
+import type { StorageDriver, Incident } from "../../storage/interface.js";
 import type { DiagnosisRunner } from "../diagnosis-runner.js";
 
 function createMockStorage(incident?: { diagnosisResult?: unknown }): StorageDriver {
@@ -34,6 +34,20 @@ function createMockStorage(incident?: { diagnosisResult?: unknown }): StorageDri
 
 function createMockRunner(): DiagnosisRunner & { run: ReturnType<typeof vi.fn> } {
   return { run: vi.fn().mockResolvedValue(true) } as unknown as DiagnosisRunner & { run: ReturnType<typeof vi.fn> };
+}
+
+/** Build a partial Incident fixture with a diagnosisResult carrying packet_generation */
+function makeIncidentWithDiagnosis(
+  packetGeneration: number,
+  diagnosedAtGeneration: number,
+): Partial<Incident> {
+  return {
+    incidentId: "inc_1",
+    packet: { generation: packetGeneration } as never,
+    diagnosisResult: {
+      metadata: { packet_generation: diagnosedAtGeneration },
+    } as never,
+  };
 }
 
 describe("scheduleDelayedDiagnosis", () => {
@@ -356,5 +370,183 @@ describe("runIfNeeded (exported for immediate path)", () => {
     await runIfNeeded("inc_1", storage, runner);
 
     expect(runner.run).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Fix 5.3: shouldAllowRediagnosis unified predicate
+// ---------------------------------------------------------------------------
+
+describe("shouldAllowRediagnosis", () => {
+  it("returns false for null incident", () => {
+    expect(shouldAllowRediagnosis(null, 5)).toBe(false);
+  });
+
+  it("returns false for undefined incident", () => {
+    expect(shouldAllowRediagnosis(undefined, 5)).toBe(false);
+  });
+
+  it("returns true when no diagnosisResult exists (initial diagnosis)", () => {
+    const incident = { incidentId: "inc_1", packet: { generation: 1 }, diagnosisResult: undefined } as unknown as Incident;
+    expect(shouldAllowRediagnosis(incident, 1)).toBe(true);
+  });
+
+  it("returns false when diagnosisResult has no metadata.packet_generation (legacy record)", () => {
+    const incident = {
+      incidentId: "inc_1",
+      packet: { generation: 6 },
+      diagnosisResult: { metadata: {} }, // no packet_generation
+    } as unknown as Incident;
+    expect(shouldAllowRediagnosis(incident, 6)).toBe(false);
+  });
+
+  it("returns false when diagnosisResult has no metadata at all (defensive guard)", () => {
+    const incident = {
+      incidentId: "inc_1",
+      packet: { generation: 6 },
+      diagnosisResult: { summary: "done" }, // no metadata
+    } as unknown as Incident;
+    expect(shouldAllowRediagnosis(incident, 6)).toBe(false);
+  });
+
+  it("returns false when currentGeneration === storedGeneration (already up-to-date)", () => {
+    const incident = makeIncidentWithDiagnosis(6, 6) as Incident;
+    expect(shouldAllowRediagnosis(incident, 6)).toBe(false);
+  });
+
+  it("returns false when currentGeneration < storedGeneration (should not happen, but safe)", () => {
+    const incident = makeIncidentWithDiagnosis(5, 6) as Incident;
+    expect(shouldAllowRediagnosis(incident, 5)).toBe(false);
+  });
+
+  it("returns true when currentGeneration > storedGeneration (stale packet — allow re-diagnosis)", () => {
+    const incident = makeIncidentWithDiagnosis(6, 1) as Incident;
+    expect(shouldAllowRediagnosis(incident, 6)).toBe(true);
+  });
+
+  it("returns false after re-diagnosis (new result carries updated generation)", () => {
+    // After re-diagnosis, stored generation matches current → no further re-diagnoses
+    const incident = makeIncidentWithDiagnosis(6, 6) as Incident;
+    expect(shouldAllowRediagnosis(incident, 6)).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Fix 5.3: Three freeze checkpoints use the unified predicate
+// ---------------------------------------------------------------------------
+
+describe("scheduleDelayedDiagnosis freeze gate (Fix 5.3)", () => {
+  beforeEach(() => { vi.useFakeTimers(); _resetInFlightForTest(); });
+  afterEach(() => { vi.useRealTimers(); });
+
+  it("skips runner.run when diagnosisResult has current generation (non-stale)", async () => {
+    // diagnosisResult.metadata.packet_generation === current packet.generation → freeze
+    const incident = {
+      incidentId: "inc_1",
+      packet: { generation: 6 },
+      diagnosisResult: { metadata: { packet_generation: 6 } },
+    };
+    const storage = createMockStorage({ diagnosisResult: undefined });
+    (storage.getIncident as ReturnType<typeof vi.fn>).mockResolvedValue(incident);
+    const runner = createMockRunner();
+    const waitUntilFn = vi.fn((p: Promise<unknown>) => { void p; });
+
+    scheduleDelayedDiagnosis("inc_1", storage, runner, { maxWaitMs: 5_000 }, waitUntilFn);
+    await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(5_000);
+
+    expect(runner.run).not.toHaveBeenCalled();
+  });
+
+  it("calls runner.run when diagnosisResult has stale generation (packet advanced)", async () => {
+    // diagnosisResult.metadata.packet_generation=1 but current packet.generation=6 → allow re-diagnosis
+    const incident = {
+      incidentId: "inc_1",
+      packet: { generation: 6 },
+      diagnosisResult: { metadata: { packet_generation: 1 } },
+    };
+    const storage = createMockStorage({ diagnosisResult: undefined });
+    (storage.getIncident as ReturnType<typeof vi.fn>).mockResolvedValue(incident);
+    const runner = createMockRunner();
+    const waitUntilFn = vi.fn((p: Promise<unknown>) => { void p; });
+
+    scheduleDelayedDiagnosis("inc_1", storage, runner, { maxWaitMs: 5_000 }, waitUntilFn);
+    await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(5_000);
+
+    expect(runner.run).toHaveBeenCalledWith("inc_1");
+  });
+});
+
+describe("checkGenerationThreshold freeze gate (Fix 5.3)", () => {
+  beforeEach(() => { _resetInFlightForTest(); });
+
+  it("skips enqueue when diagnosisResult has current generation", async () => {
+    const incident = {
+      incidentId: "inc_1",
+      packet: { generation: 6 },
+      diagnosisResult: { metadata: { packet_generation: 6 } },
+    };
+    const storage = createMockStorage({ diagnosisResult: undefined });
+    (storage.getIncident as ReturnType<typeof vi.fn>).mockResolvedValue(incident);
+    const enqueueDiagnosis = vi.fn().mockResolvedValue(undefined);
+
+    checkGenerationThreshold("inc_1", 6, storage, undefined, { generationThreshold: 5 }, enqueueDiagnosis);
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(enqueueDiagnosis).not.toHaveBeenCalled();
+  });
+
+  it("enqueues when diagnosisResult has stale generation", async () => {
+    const incident = {
+      incidentId: "inc_1",
+      packet: { generation: 6 },
+      diagnosisResult: { metadata: { packet_generation: 1 } },
+    };
+    const storage = createMockStorage({ diagnosisResult: undefined });
+    (storage.getIncident as ReturnType<typeof vi.fn>).mockResolvedValue(incident);
+    const enqueueDiagnosis = vi.fn().mockResolvedValue(undefined);
+
+    checkGenerationThreshold("inc_1", 6, storage, undefined, { generationThreshold: 5 }, enqueueDiagnosis);
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(storage.markDiagnosisScheduled).toHaveBeenCalledWith("inc_1");
+    expect(enqueueDiagnosis).toHaveBeenCalledWith("inc_1");
+  });
+});
+
+describe("runIfNeeded freeze gate (Fix 5.3)", () => {
+  beforeEach(() => { _resetInFlightForTest(); });
+
+  it("skips when diagnosisResult has current generation (non-stale)", async () => {
+    const incident = {
+      incidentId: "inc_1",
+      packet: { generation: 6 },
+      diagnosisResult: { metadata: { packet_generation: 6 } },
+    };
+    const storage = createMockStorage({ diagnosisResult: undefined });
+    (storage.getIncident as ReturnType<typeof vi.fn>).mockResolvedValue(incident);
+    const runner = createMockRunner();
+
+    const result = await runIfNeeded("inc_1", storage, runner);
+
+    expect(result).toBe("skipped");
+    expect(runner.run).not.toHaveBeenCalled();
+  });
+
+  it("proceeds when diagnosisResult has stale generation", async () => {
+    const incident = {
+      incidentId: "inc_1",
+      packet: { generation: 6 },
+      diagnosisResult: { metadata: { packet_generation: 1 } },
+    };
+    const storage = createMockStorage({ diagnosisResult: undefined });
+    (storage.getIncident as ReturnType<typeof vi.fn>).mockResolvedValue(incident);
+    const runner = createMockRunner();
+
+    const result = await runIfNeeded("inc_1", storage, runner);
+
+    expect(result).toBe("succeeded");
+    expect(runner.run).toHaveBeenCalledWith("inc_1");
   });
 });

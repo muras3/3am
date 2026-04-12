@@ -35,5 +35,6 @@ export async function diagnose(
     packetId: packet.packetId,
     model: modelLabel,
     promptVersion,
+    packetGeneration: packet.generation,
   });
 }

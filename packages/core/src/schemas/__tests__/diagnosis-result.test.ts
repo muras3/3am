@@ -130,4 +130,47 @@ describe("DiagnosisResultSchema", () => {
     };
     expect(() => DiagnosisResultSchema.parse(withExtra)).toThrow(ZodError);
   });
+
+  // Fix 5.1: packet_generation backward compatibility
+  describe("Fix 5.1: packet_generation optional field", () => {
+    it("accepts existing records without packet_generation (backward compat)", () => {
+      // minimalValid has no packet_generation — must parse successfully
+      const result = DiagnosisResultSchema.parse(minimalValid);
+      expect(result.metadata.packet_generation).toBeUndefined();
+    });
+
+    it("accepts records with packet_generation=0 (first generation)", () => {
+      const withGen = {
+        ...minimalValid,
+        metadata: { ...minimalValid.metadata, packet_generation: 0 },
+      };
+      const result = DiagnosisResultSchema.parse(withGen);
+      expect(result.metadata.packet_generation).toBe(0);
+    });
+
+    it("accepts records with packet_generation=6 (round-trip)", () => {
+      const withGen = {
+        ...minimalValid,
+        metadata: { ...minimalValid.metadata, packet_generation: 6 },
+      };
+      const result = DiagnosisResultSchema.parse(withGen);
+      expect(result.metadata.packet_generation).toBe(6);
+    });
+
+    it("rejects non-integer packet_generation", () => {
+      const withBadGen = {
+        ...minimalValid,
+        metadata: { ...minimalValid.metadata, packet_generation: 1.5 },
+      };
+      expect(() => DiagnosisResultSchema.parse(withBadGen)).toThrow(ZodError);
+    });
+
+    it("rejects negative packet_generation", () => {
+      const withBadGen = {
+        ...minimalValid,
+        metadata: { ...minimalValid.metadata, packet_generation: -1 },
+      };
+      expect(() => DiagnosisResultSchema.parse(withBadGen)).toThrow(ZodError);
+    });
+  });
 });

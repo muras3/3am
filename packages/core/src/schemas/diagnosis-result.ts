@@ -45,6 +45,13 @@ export const DiagnosisResultSchema = z.strictObject({
     model: z.string(),
     prompt_version: z.string(),
     created_at: z.string(),
+    /**
+     * The packet.generation value at the time of diagnosis.
+     * Used to detect stale diagnoses: if the stored generation is lower than the
+     * current packet.generation, the result may have been based on incomplete evidence.
+     * Optional for backward compatibility with existing records that predate this field.
+     */
+    packet_generation: z.number().int().nonnegative().optional(),
   }),
 });
 

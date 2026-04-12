@@ -1,4 +1,4 @@
-import type { StorageDriver } from "../storage/interface.js";
+import type { StorageDriver, Incident } from "../storage/interface.js";
 import type { DiagnosisRunner } from "./diagnosis-runner.js";
 import type { EnqueueDiagnosisFn } from "./diagnosis-dispatch.js";
 import { DEFAULT_DIAGNOSIS_LEASE_MS } from "./diagnosis-dispatch.js";
@@ -81,6 +81,46 @@ export function _resetWaitUntilForTest(): void {
 }
 
 /**
+ * Unified freeze predicate for all three diagnosis gate checkpoints.
+ *
+ * Returns true (allow diagnosis to proceed) when:
+ *   - No diagnosisResult exists yet (initial diagnosis path), OR
+ *   - A diagnosisResult exists BUT was based on a stale packet generation
+ *     (currentGeneration > stored packet_generation) AND no re-diagnosis has
+ *     occurred yet (stored packet_generation is defined, meaning it was recorded
+ *     with Fix 5.1 and is still behind the current generation).
+ *
+ * Returns false (freeze / skip) when:
+ *   - diagnosisResult already exists and was based on a current or newer packet, OR
+ *   - diagnosisResult exists without packet_generation metadata (legacy record) —
+ *     treated conservatively as already-up-to-date to avoid infinite re-diagnoses.
+ *
+ * @param incident - The incident to evaluate. May be null (returns false).
+ * @param currentGeneration - The current packet.generation value (from the live packet).
+ */
+export function shouldAllowRediagnosis(
+  incident: Incident | null | undefined,
+  currentGeneration: number,
+): boolean {
+  if (!incident) return false;
+
+  // No prior diagnosis → always allow.
+  if (!incident.diagnosisResult) return true;
+
+  // Prior diagnosis exists: check whether it was based on a stale packet.
+  // Use optional chaining: legacy or mock records may not have metadata.
+  const storedGeneration = incident.diagnosisResult.metadata?.packet_generation;
+
+  // Legacy record without packet_generation: treat conservatively — do not re-diagnose.
+  if (storedGeneration === undefined) return false;
+
+  // Allow re-diagnosis only if the packet has advanced beyond the stored generation.
+  // This gates exactly one re-diagnosis per generation gap (once re-diagnosed, the new
+  // result will carry the updated generation and this predicate will return false again).
+  return currentGeneration > storedGeneration;
+}
+
+/**
  * Schedule a delayed diagnosis using platform-native `waitUntil`.
  *
  * After `maxWaitMs` elapses, checks whether diagnosis has already been
@@ -103,7 +143,8 @@ export function scheduleDelayedDiagnosis(
         await sleep(opts.maxWaitMs);
         // Check if diagnosis was already triggered (e.g. by threshold) before running.
         const incident = await storage.getIncident(incidentId);
-        if (incident?.diagnosisResult) return; // Already diagnosed — skip.
+        const currentGeneration = incident?.packet.generation ?? 1;
+        if (!shouldAllowRediagnosis(incident, currentGeneration)) return;
         await runIfNeeded(incidentId, storage, runner);
       } catch (err) {
         // Prevent unhandled rejection when waitUntil is fire-and-forget.
@@ -130,10 +171,10 @@ export function checkGenerationThreshold(
 ): void {
   if (opts.generationThreshold > 0 && generation >= opts.generationThreshold) {
     if (enqueueDiagnosis) {
-      // Guard against redundant enqueues: skip if diagnosis already in progress or complete.
+      // Guard against redundant enqueues: skip if diagnosis already up-to-date.
       void (async () => {
         const incident = await storage.getIncident(incidentId);
-        if (incident?.diagnosisResult) return;
+        if (!shouldAllowRediagnosis(incident, generation)) return;
         await storage.markDiagnosisScheduled(incidentId);
         await enqueueDiagnosis(incidentId);
       })();
@@ -196,7 +237,8 @@ export async function runIfNeeded(
 
   const incident = await storage.getIncident(incidentId);
   if (!incident) return "skipped";
-  if (incident.diagnosisResult) return "skipped"; // Already diagnosed — skip.
+  const currentGeneration = incident.packet.generation ?? 1;
+  if (!shouldAllowRediagnosis(incident, currentGeneration)) return "skipped"; // Already diagnosed with current packet — skip.
 
   // DB-level atomic claim: prevents cross-instance duplicate dispatch.
   const claimed = await storage.claimDiagnosisDispatch(incidentId, DEFAULT_DIAGNOSIS_LEASE_MS);

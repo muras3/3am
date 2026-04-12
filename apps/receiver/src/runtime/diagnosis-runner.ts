@@ -3,6 +3,7 @@ import type { StorageDriver, Incident } from "../storage/interface.js";
 import type { TelemetryStoreDriver } from "../telemetry/interface.js";
 import { buildReasoningStructure } from "../domain/reasoning-structure-builder.js";
 import { getReceiverLlmSettings } from "./llm-settings.js";
+import { ensureIncidentMaterialized } from "./materialization.js";
 
 export class DiagnosisRunner {
   constructor(
@@ -23,6 +24,11 @@ export class DiagnosisRunner {
     }
 
     try {
+      // Pre-diagnosis materialization: ensure snapshots are fresh before reading the incident.
+      // Best-effort — returns false on lease contention or rebuild failure, but we still proceed.
+      await ensureIncidentMaterialized(incidentId, this.storage, this.telemetryStore);
+
+      // Re-fetch after materialization to pick up any packet updates from the rebuild.
       const incident = await this.storage.getIncident(incidentId);
       if (!incident) {
         console.warn(`[diagnosis-runner] incident ${incidentId} not found`);

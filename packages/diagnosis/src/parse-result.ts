@@ -5,6 +5,8 @@ export type ResultMeta = {
   packetId: string;
   model: string;
   promptVersion: string;
+  /** packet.generation at diagnosis time — stored in metadata for staleness detection */
+  packetGeneration?: number;
 };
 
 const MAX_CAUSAL_CHAIN = 8;
@@ -122,6 +124,9 @@ export function parseResult(raw: string, meta: ResultMeta): DiagnosisResult {
       model: meta.model,
       prompt_version: meta.promptVersion,
       created_at: new Date().toISOString(),
+      ...(meta.packetGeneration !== undefined
+        ? { packet_generation: meta.packetGeneration }
+        : {}),
     },
   };
 
