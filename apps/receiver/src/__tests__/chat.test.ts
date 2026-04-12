@@ -46,10 +46,20 @@ function extractSessionCookie(res: Response): string {
   return match?.[1] ?? "";
 }
 
-/** Get a valid session cookie by hitting an /api/* endpoint (Bearer required). */
+/** Get a valid session cookie by minting and exchanging a one-time claim. */
 async function getSessionCookie(app: ReturnType<typeof makeApp>): Promise<string> {
-  const res = await app.request("/api/incidents", { headers: authHeader() });
-  return extractSessionCookie(res);
+  const claimRes = await app.request("/api/claims", {
+    method: "POST",
+    headers: { ...authHeader(), "Content-Type": "application/json" },
+    body: "{}",
+  });
+  const claimBody = await claimRes.json() as { token: string };
+  const exchangeRes = await app.request("/api/claims/exchange", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ token: claimBody.token }),
+  });
+  return extractSessionCookie(exchangeRes);
 }
 
 function chatHeaders(sessionCookie: string) {
@@ -180,9 +190,8 @@ describe("POST /api/chat/:incidentId", () => {
     expect(res.status).toBe(401);
   });
 
-  it("session cookie is set on /api/* responses as JWT (B-11)", async () => {
-    const res = await app.request("/api/incidents", { headers: authHeader() });
-    const cookie = extractSessionCookie(res);
+  it("session cookie is issued after a valid claim exchange (B-11)", async () => {
+    const cookie = await getSessionCookie(app);
     expect(cookie).toBeTruthy();
     // JWT format: three base64url segments separated by dots
     expect(cookie.split(".")).toHaveLength(3);

@@ -216,26 +216,11 @@ export async function buildTraceSurface(
     telemetryStore.queryLogs(filter),
   ])
 
-  // Diagnostic logging for #169 — evidence empty despite D1 data
-  console.log('[trace-surface] query filter:', JSON.stringify(filter))
-  console.log('[trace-surface] querySpans returned:', allSpans.length, 'rows')
-  console.log('[trace-surface] queryLogs returned:', allLogs.length, 'rows')
-  console.log('[trace-surface] spanMembership size:', incident.spanMembership.length)
-
   // Filter to incident-bound spans only
   const membershipSet = new Set(incident.spanMembership)
   const incidentSpans = allSpans.filter((s) =>
     membershipSet.has(spanMembershipKey(s.traceId, s.spanId)),
   )
-
-  console.log('[trace-surface] incidentSpans after membership filter:', incidentSpans.length)
-  if (allSpans.length > 0 && incidentSpans.length === 0) {
-    // Log a sample span key vs membership keys for mismatch debugging
-    const sampleSpan = allSpans[0]!
-    const sampleKey = spanMembershipKey(sampleSpan.traceId, sampleSpan.spanId)
-    const sampleMembership = incident.spanMembership.slice(0, 3)
-    console.log('[trace-surface] KEY MISMATCH DEBUG — sample span key:', sampleKey, 'sample membership keys:', sampleMembership)
-  }
 
   // Group by traceId
   const observedGroups = groupSpansByTrace(incidentSpans)

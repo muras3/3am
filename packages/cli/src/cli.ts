@@ -70,6 +70,16 @@ program
   });
 
 program
+  .command("auth-link")
+  .description("Mint a one-time browser sign-in link for a deployed receiver")
+  .argument("[receiver-url]")
+  .option("--json", "Output structured JSON")
+  .action(async (receiverUrl: string | undefined, options: { json?: boolean }) => {
+    const { runAuthLink } = await import("./commands/auth-link.js");
+    await runAuthLink({ receiverUrl, json: options.json });
+  });
+
+program
   .command("bridge")
   .description("Start the local LLM bridge for manual console actions")
   .option("--port <number>", "Port to expose (default: 4269)", parseInt)

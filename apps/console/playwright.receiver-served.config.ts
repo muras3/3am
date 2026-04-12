@@ -10,6 +10,11 @@ export const E2E_RECEIVER_SERVED_STORAGE_STATE = path.resolve(
   "e2e/.auth/storage-receiver-served.json",
 );
 
+export const E2E_RECEIVER_SERVED_CLAIM_URL = path.resolve(
+  __dirname,
+  "e2e/.auth/claim-url.txt",
+);
+
 export default defineConfig({
   testDir: "./e2e",
   testMatch: ["specs/**/*.spec.ts"],

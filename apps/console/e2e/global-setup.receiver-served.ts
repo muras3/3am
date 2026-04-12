@@ -13,7 +13,10 @@ import { mkdirSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import path from "path";
 import { fileURLToPath } from "url";
-import { E2E_RECEIVER_SERVED_STORAGE_STATE } from "../playwright.receiver-served.config.js";
+import {
+  E2E_RECEIVER_SERVED_CLAIM_URL,
+  E2E_RECEIVER_SERVED_STORAGE_STATE,
+} from "../playwright.receiver-served.config.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const RECEIVER_URL = "http://localhost:4321";
@@ -136,6 +139,23 @@ export default async function globalSetup(): Promise<void> {
     ],
   };
   writeFileSync(E2E_RECEIVER_SERVED_STORAGE_STATE, JSON.stringify(storageState), "utf8");
+
+  const claimRes = await fetch(`${RECEIVER_URL}/api/claims`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${TOKEN}`,
+      "Content-Type": "application/json",
+    },
+    body: "{}",
+  });
+  if (!claimRes.ok) {
+    throw new Error(`Failed to mint claim token: ${claimRes.status} ${await claimRes.text()}`);
+  }
+  const claimBody = await claimRes.json() as { token?: string };
+  if (!claimBody.token) {
+    throw new Error("Claim response missing token");
+  }
+  writeFileSync(E2E_RECEIVER_SERVED_CLAIM_URL, `${RECEIVER_URL}/#claim=${encodeURIComponent(claimBody.token)}`, "utf8");
 
   console.log("[E2E] Receiver ready (serving console dist) and seeded with 5 incidents");
 }

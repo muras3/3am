@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 
 const RECEIVER_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
+const DEV_AUTH_TOKEN = "cf-queue-local-token";
 
 const diagnosisReply = JSON.stringify({
   summary: {
@@ -128,7 +129,7 @@ function writeDevVars(mockAnthropicPort: number): () => void {
   const previous = existsSync(devVarsPath) ? readFileSync(devVarsPath, "utf8") : null;
   writeFileSync(
     devVarsPath,
-    `ANTHROPIC_API_KEY=local-mock-key\nANTHROPIC_BASE_URL=http://127.0.0.1:${mockAnthropicPort}\n`,
+    `ANTHROPIC_API_KEY=local-mock-key\nANTHROPIC_BASE_URL=http://127.0.0.1:${mockAnthropicPort}\nRECEIVER_AUTH_TOKEN=${DEV_AUTH_TOKEN}\n`,
     "utf8",
   );
   return () => {
@@ -162,17 +163,11 @@ async function main(): Promise<void> {
 
   try {
     await waitFor(`${baseUrl}/healthz`, async (response) => response.ok, 45_000);
-    const setupRes = await fetch(`${baseUrl}/api/setup-token`);
-    if (!setupRes.ok) {
-      throw new Error(`setup-token failed: ${setupRes.status} ${await setupRes.text()}`);
-    }
-    const { token } = await setupRes.json() as { token?: string };
-    if (!token) throw new Error("setup-token response did not include a token");
 
     const ingest = await fetch(`${baseUrl}/v1/traces`, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${token}`,
+        Authorization: `Bearer ${DEV_AUTH_TOKEN}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
@@ -214,7 +209,7 @@ async function main(): Promise<void> {
       if (!response.ok) return false;
       const page = await response.clone().json() as { items: Array<{ incidentId: string }> };
       return page.items.length > 0;
-    }, 45_000, token);
+    }, 45_000, DEV_AUTH_TOKEN);
     const page = await incidentsRes.json() as { items: Array<{ incidentId: string }> };
     const incidentId = page.items[0]?.incidentId;
     if (!incidentId) throw new Error("No incident created by wrangler queue smoke");
@@ -223,7 +218,7 @@ async function main(): Promise<void> {
       if (!response.ok) return false;
       const body = await response.clone().json() as { state?: { diagnosis?: string } };
       return body.state?.diagnosis === "ready";
-    }, 45_000, token);
+    }, 45_000, DEV_AUTH_TOKEN);
 
     const detail = await detailRes.json() as { state?: { diagnosis?: string }; diagnosisResult?: { summary?: { what_happened?: string } } };
     if (detail.state?.diagnosis !== "ready") {

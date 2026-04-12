@@ -4,7 +4,7 @@
  * Mirrors vercel-entry.ts: lazy init, D1 adapter for storage + telemetry.
  *
  * - Lazy init: D1StorageAdapter + migrate runs once per isolate lifetime
- * - AUTH_TOKEN: resolved from D1 (auto-generated on first cold start) or env var
+ * - AUTH_TOKEN: resolved from D1 or env var; fail-closed if neither exists
  * - Diagnosis: incidents are enqueued to Cloudflare Queues and processed by the queue consumer
  * - Console SPA is NOT served — use CF Pages for static hosting
  * - process.env is populated from bindings for createApp() compatibility
