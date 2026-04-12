@@ -43,6 +43,36 @@ function getCredentialsPath(): string {
   return join(getCredentialsDir(), "credentials");
 }
 
+/**
+ * Canonicalize a receiver URL for consistent matching.
+ *
+ * Normalizations applied:
+ * - lowercase scheme + host
+ * - strip default port (:80 for http, :443 for https)
+ * - strip trailing slashes from path
+ * - preserve non-default ports and paths
+ *
+ * Returns the original string if URL parsing fails, so callers remain safe.
+ */
+export function canonicalizeReceiverUrl(url: string): string {
+  try {
+    const parsed = new URL(url);
+    // lowercase scheme and host are already normalized by URL constructor
+    // strip default ports
+    if (
+      (parsed.protocol === "https:" && parsed.port === "443") ||
+      (parsed.protocol === "http:" && parsed.port === "80")
+    ) {
+      parsed.port = "";
+    }
+    // strip trailing slashes from pathname
+    parsed.pathname = parsed.pathname.replace(/\/+$/, "") || "/";
+    return parsed.toString();
+  } catch {
+    return url;
+  }
+}
+
 function inferPlatformFromReceiverUrl(url: string | undefined): ReceiverPlatform | undefined {
   if (!url) return undefined;
   try {
@@ -101,6 +131,8 @@ export function setReceiverCredential(
   platform: ReceiverPlatform,
   receiver: { url: string; authToken: string },
 ): Credentials {
+  // Store URL as-is (no format change for backward compatibility).
+  // canonicalizeReceiverUrl is applied only at lookup time.
   return {
     ...creds,
     receiverUrl: receiver.url,
@@ -120,11 +152,16 @@ export function findReceiverCredentialByUrl(
   creds: Credentials,
   url: string,
 ): ReceiverCredential | undefined {
+  const needle = canonicalizeReceiverUrl(url);
+
   for (const receiver of Object.values(creds.receivers ?? {})) {
-    if (receiver?.url === url && receiver.authToken) return receiver;
+    if (receiver?.authToken && canonicalizeReceiverUrl(receiver.url) === needle) {
+      return receiver;
+    }
   }
 
-  if (creds.receiverUrl === url && creds.receiverAuthToken) {
+  if (creds.receiverUrl && creds.receiverAuthToken &&
+      canonicalizeReceiverUrl(creds.receiverUrl) === needle) {
     return {
       url: creds.receiverUrl,
       authToken: creds.receiverAuthToken,
