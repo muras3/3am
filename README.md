@@ -148,6 +148,26 @@ The bridge connects to the deployed Receiver via WebSocket (Durable Objects on C
 | [![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/muras3/3am&env=ANTHROPIC_API_KEY&products=%5B%7B%22type%22%3A%22integration%22%2C%22group%22%3A%22postgres%22%7D%5D&project-name=3am) | `npx 3am-cli deploy vercel` | Neon Postgres auto-provisioned, `AUTH_TOKEN` on first access |
 | **Cloudflare** | `npx 3am-cli deploy cloudflare` | D1 storage, Workers Observability integration |
 
+<details>
+<summary>Cloudflare deploy — required API token permissions</summary>
+
+Create a Cloudflare API token at https://dash.cloudflare.com/profile/api-tokens with **all** of the following permissions, then export it before running `deploy cloudflare`:
+
+- `Account Settings: Read`
+- `Workers Scripts: Edit`
+- `D1: Edit`
+- `Cloudflare Queues: Edit`
+- `Workers Observability: Edit`
+
+```bash
+export CLOUDFLARE_API_TOKEN=your-cloudflare-api-token
+npx 3am-cli deploy cloudflare --yes
+```
+
+> `Workers Observability: Edit` is required for the OTLP destinations API and is **not** included in Cloudflare's pre-built "Edit Workers" template — you must use a custom token.
+
+</details>
+
 ---
 
 ## How It Works
