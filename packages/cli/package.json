@@ -1,18 +1,31 @@
 {
-  "name": "@3am/cli",
+  "name": "3am-cli",
   "version": "0.1.0",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/muras3/3am.git",
+    "directory": "packages/cli"
+  },
+  "homepage": "https://github.com/muras3/3am#readme",
+  "bugs": {
+    "url": "https://github.com/muras3/3am/issues"
+  },
+  "publishConfig": { "access": "public" },
+  "files": ["dist"],
   "private": false,
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "bin": {
     "3am": "./dist/cli.js",
-    "3am-cli": "./dist/index.js"
+    "3am-cli": "./dist/cli.js"
   },
   "exports": {
     ".": {
-      "import": "./dist/index.js",
-      "types": "./dist/index.d.ts"
+      "source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
     }
   },
   "scripts": {
@@ -22,8 +35,8 @@
     "lint": "eslint src --max-warnings 0"
   },
   "dependencies": {
-    "@3am/core": "workspace:*",
-    "@3am/diagnosis": "workspace:*",
+    "3am-core": "workspace:*",
+    "3am-diagnosis": "workspace:*",
     "commander": "^14.0.3"
   },
   "devDependencies": {

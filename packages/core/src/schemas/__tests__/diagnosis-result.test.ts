@@ -102,7 +102,7 @@ describe("DiagnosisResultSchema", () => {
   });
 
   it("does NOT contain raw traces, raw logs, raw metrics, or packet body fields (ADR 0019 non-goals)", () => {
-    // With .strict(), embedding unknown top-level fields throws — which is the
+    // With strict mode, embedding unknown top-level fields throws — which is the
     // correct behaviour: raw OTel data must never enter DiagnosisResult.
     const withRaw = {
       ...minimalValid,

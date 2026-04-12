@@ -17,7 +17,7 @@
     "e2e:ui": "playwright test --ui"
   },
   "dependencies": {
-    "@3am/core": "workspace:*",
+    "3am-core": "workspace:*",
     "@tanstack/react-query": "^5.74.4",
     "@tanstack/react-router": "^1.114.22",
     "clsx": "^2.1.1",

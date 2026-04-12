@@ -12,14 +12,14 @@ import { MemoryAdapter } from "../../storage/adapters/memory.js";
 import { createApp } from "../../index.js";
 import { WsBridgeManager, type BridgeWsConnection } from "../../transport/ws-bridge.js";
 import { COOKIE_NAME } from "../../middleware/session-cookie.js";
-import type { DiagnosisResult } from "@3am/core";
+import type { DiagnosisResult } from "3am-core";
 
 const { mockCallModelMessages } = vi.hoisted(() => {
   const callModelMessages = vi.fn();
   return { mockCallModelMessages: callModelMessages };
 });
-vi.mock("@3am/diagnosis", async () => {
-  const actual = await vi.importActual("@3am/diagnosis");
+vi.mock("3am-diagnosis", async () => {
+  const actual = await vi.importActual("3am-diagnosis");
   return { ...actual, callModelMessages: mockCallModelMessages };
 });
 
@@ -190,8 +190,9 @@ describe("Chat endpoint with WebSocket bridge (#331)", () => {
 
     // Get the sent message and respond
     expect(ws.sentMessages.length).toBe(1);
-    const req = JSON.parse(ws.sentMessages[0]!) as { id: string; type: string };
+    const req = JSON.parse(ws.sentMessages[0]!) as { id: string; type: string; message: string };
     expect(req.type).toBe("chat_request");
+    expect(req.message).toBe("What happened?");
 
     wsBridge.handleMessage(JSON.stringify({
       type: "chat_response",
@@ -234,6 +235,8 @@ describe("Chat endpoint with WebSocket bridge (#331)", () => {
       "http://127.0.0.1:4269/api/manual/chat",
       expect.objectContaining({ method: "POST" }),
     );
+    const requestInit = mockFetch.mock.calls[0]?.[1] as { body: string };
+    expect(JSON.parse(requestInit.body)).toMatchObject({ message: "What happened?" });
     expect(mockCallModelMessages).not.toHaveBeenCalled();
   });
 

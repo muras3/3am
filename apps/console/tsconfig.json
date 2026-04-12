@@ -9,8 +9,8 @@
     "types": ["vite/client", "vitest/globals", "node"],
     "paths": {
       "@/*": ["./src/*"],
-      "@3am/core": ["../../packages/core/src/index.ts"],
-      "@3am/core/*": ["../../packages/core/src/*"]
+      "3am-core": ["../../packages/core/src/index.ts"],
+      "3am-core/*": ["../../packages/core/src/*"]
     }
   },
   "include": ["src"]

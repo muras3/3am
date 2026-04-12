@@ -12,7 +12,7 @@
  * NOTE: no dedup; duplicates are acceptable (batch re-sends treated as repeated signals)
  */
 
-import type { ChangedMetric, RelevantLog } from '@3am/core'
+import type { ChangedMetric, RelevantLog } from '3am-core'
 import type { Incident } from '../storage/interface.js'
 import { FORMATION_WINDOW_MS } from './formation.js'
 import {

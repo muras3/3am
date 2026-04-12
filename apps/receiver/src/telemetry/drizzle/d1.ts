@@ -9,20 +9,26 @@ import type { DrizzleD1Database } from "drizzle-orm/d1";
 
 // Local D1Database type to avoid polluting global scope with @cloudflare/workers-types
 interface D1Database {
-  prepare(query: string): unknown;
+  prepare(query: string): D1PreparedStatement;
   batch<T = unknown>(statements: unknown[]): Promise<T[]>;
   exec(query: string): Promise<unknown>;
   dump(): Promise<ArrayBuffer>;
 }
+interface D1PreparedStatement {
+  bind(...values: unknown[]): D1PreparedStatement;
+}
 import { and, gte, lte, lt, inArray, eq, sql } from "drizzle-orm";
-import type {
-  TelemetryStoreDriver,
-  TelemetrySpan,
-  TelemetryMetric,
-  TelemetryLog,
-  TelemetryQueryFilter,
-  SnapshotType,
-  EvidenceSnapshot,
+import {
+  MAX_QUERY_LOGS,
+  MAX_QUERY_METRICS,
+  MAX_QUERY_SPANS,
+  type TelemetryStoreDriver,
+  type TelemetrySpan,
+  type TelemetryMetric,
+  type TelemetryLog,
+  type TelemetryQueryFilter,
+  type SnapshotType,
+  type EvidenceSnapshot,
 } from "../interface.js";
 import {
   telemetrySpans,
@@ -254,10 +260,13 @@ export class D1TelemetryAdapter implements TelemetryStoreDriver {
       conditions.push(eq(telemetrySpans.environment, filter.environment));
     }
 
+    const order = filter.orderBy ?? "startTimeDesc";
     const rows = await this.db
       .select()
       .from(telemetrySpans)
-      .where(and(...conditions));
+      .where(and(...conditions))
+      .orderBy(order === "startTimeAsc" ? telemetrySpans.startTimeMs : sql`${telemetrySpans.startTimeMs} DESC`)
+      .limit(Math.min(filter.limit ?? MAX_QUERY_SPANS, MAX_QUERY_SPANS));
 
     return rows.map((r) => ({
       traceId: r.traceId,
@@ -292,10 +301,13 @@ export class D1TelemetryAdapter implements TelemetryStoreDriver {
       conditions.push(eq(telemetryMetrics.environment, filter.environment));
     }
 
+    const order = filter.orderBy ?? "startTimeDesc";
     const rows = await this.db
       .select()
       .from(telemetryMetrics)
-      .where(and(...conditions));
+      .where(and(...conditions))
+      .orderBy(order === "startTimeAsc" ? telemetryMetrics.startTimeMs : sql`${telemetryMetrics.startTimeMs} DESC`)
+      .limit(Math.min(filter.limit ?? MAX_QUERY_METRICS, MAX_QUERY_METRICS));
 
     return rows.map((r) => ({
       service: r.service,
@@ -319,10 +331,13 @@ export class D1TelemetryAdapter implements TelemetryStoreDriver {
       conditions.push(eq(telemetryLogs.environment, filter.environment));
     }
 
+    const order = filter.orderBy ?? "startTimeDesc";
     const rows = await this.db
       .select()
       .from(telemetryLogs)
-      .where(and(...conditions));
+      .where(and(...conditions))
+      .orderBy(order === "startTimeAsc" ? telemetryLogs.startTimeMs : sql`${telemetryLogs.startTimeMs} DESC`)
+      .limit(Math.min(filter.limit ?? MAX_QUERY_LOGS, MAX_QUERY_LOGS));
 
     return rows.map((r) => ({
       service: r.service,

@@ -6,8 +6,8 @@ import {
   EvidenceQueryRequestSchema,
   ReasoningStructureSchema,
   type DiagnosisResult,
-} from "@3am/core";
-import { callModelMessages } from "@3am/diagnosis";
+} from "3am-core";
+import { callModelMessages, wrapUserMessage } from "3am-diagnosis";
 import { issueSessionCookie } from "../middleware/session-cookie.js";
 import { rateLimiter } from "../middleware/rate-limit.js";
 import type { Incident, IncidentPage, StorageDriver } from "../storage/interface.js";
@@ -15,7 +15,13 @@ import { spanMembershipKey } from "../storage/interface.js";
 import type { SpanBuffer } from "../ambient/span-buffer.js";
 import type { BufferedSpan } from "../ambient/types.js";
 import type { TelemetryStoreDriver } from "../telemetry/interface.js";
-import { buildIncidentQueryFilter, type TelemetrySpan } from "../telemetry/interface.js";
+import {
+  MAX_QUERY_LOGS,
+  MAX_QUERY_METRICS,
+  MAX_QUERY_SPANS,
+  buildIncidentQueryFilter,
+  type TelemetrySpan,
+} from "../telemetry/interface.js";
 import { computeServices, computeActivity } from "../ambient/service-aggregator.js";
 import { buildRuntimeMap } from "../ambient/runtime-map.js";
 import { buildExtendedIncident } from "../domain/incident-detail-extension.js";
@@ -30,6 +36,14 @@ import { ensureIncidentMaterialized } from "../runtime/materialization.js";
 import { getReceiverLlmSettings } from "../runtime/llm-settings.js";
 import { maybeCleanup } from "../retention/lazy-cleanup.js";
 import type { WsBridgeManager } from "./ws-bridge.js";
+import type { BridgeRequest, BridgeResponse } from "./ws-bridge.js";
+
+/**
+ * Function that forwards a bridge request through a Durable Object.
+ * Used on CF Workers where the WS connection lives in a DO, not in-memory.
+ * Returns the BridgeResponse from the DO, or throws on failure.
+ */
+export type BridgeDoForwarder = (request: BridgeRequest) => Promise<BridgeResponse>;
 
 const CHAT_MAX_HISTORY = 10;
 const CHAT_MAX_MESSAGE_CHARS = 500;
@@ -124,6 +138,10 @@ function paginateItems<T>(
   };
 }
 
+function boundedQueryLimit(cursor: string | undefined, limit: number, hardCap: number): number {
+  return Math.min(parseCursor(cursor) + limit + 1, hardCap);
+}
+
 function telemetrySpanToBufferedSpan(span: TelemetrySpan): BufferedSpan {
   return {
     traceId: span.traceId,
@@ -158,6 +176,8 @@ async function loadAmbientSpans(
   const recentSpans = await telemetryStore.querySpans({
     startMs: now - AMBIENT_LIVE_WINDOW_MS,
     endMs: now,
+    limit: MAX_QUERY_SPANS,
+    orderBy: "startTimeDesc",
   });
   if (recentSpans.length > 0) {
     return recentSpans.map(telemetrySpanToBufferedSpan);
@@ -171,7 +191,11 @@ async function loadAmbientSpans(
   for (const incident of openIncidents) {
     if (incident.telemetryScope.windowStartMs >= incident.telemetryScope.windowEndMs) continue;
 
-    const scopedSpans = await telemetryStore.querySpans(buildIncidentQueryFilter(incident.telemetryScope));
+    const scopedSpans = await telemetryStore.querySpans({
+      ...buildIncidentQueryFilter(incident.telemetryScope),
+      limit: MAX_QUERY_SPANS,
+      orderBy: "startTimeDesc",
+    });
     const membership = new Set(incident.spanMembership);
     const matchedSpans = membership.size > 0
       ? scopedSpans.filter((span) => membership.has(spanMembershipKey(span.traceId, span.spanId)))
@@ -251,6 +275,7 @@ export function createApiRouter(
   diagnosisRunner?: DiagnosisRunner,
   enqueueDiagnosis?: EnqueueDiagnosisFn,
   wsBridge?: WsBridgeManager,
+  bridgeDoForwarder?: BridgeDoForwarder,
 ): Hono {
   const app = new Hono();
 
@@ -259,10 +284,10 @@ export function createApiRouter(
   const allowInsecure = process.env["ALLOW_INSECURE_DEV_MODE"] === "true";
 
   // Rate limit chat endpoint — LLM cost protection (B-11)
-  app.use("/api/chat/*", rateLimiter({ windowMs: 60_000, max: 10 }));
+  app.use("/api/chat/*", rateLimiter({ windowMs: 60_000, max: 10, storage }));
 
   // Rate limit evidence query endpoint — LLM cost protection
-  app.use("/api/incidents/*/evidence/query", rateLimiter({ windowMs: 60_000, max: 10 }));
+  app.use("/api/incidents/*/evidence/query", rateLimiter({ windowMs: 60_000, max: 10, storage }));
 
   app.post("/api/claims", apiBodyLimit(4 * 1024), async (c) => {
     if (!authToken) {
@@ -465,10 +490,18 @@ export function createApiRouter(
       return c.json({ error: "not found" }, 404);
     }
 
-    // In manual mode, route evidence query through bridge
+    const storedLocale = await storage.getSettings("locale");
+    const locale: "en" | "ja" = parsed.data.locale ?? (storedLocale === "ja" ? "ja" : "en");
+
+    // In manual mode, route evidence query through bridge (LLM-powered).
+    // Pre-build diagnosisResult + evidence so bridge doesn't need to re-fetch.
     const llmSettings = await getReceiverLlmSettings(storage);
     if (llmSettings.mode === "manual") {
-      // Prefer WebSocket bridge if connected
+      if (!incident.diagnosisResult) {
+        return c.json({ error: "diagnosis not yet available for this incident" }, 404);
+      }
+      const evidence = await buildCuratedEvidence(incident, telemetryStore);
+
       if (wsBridge?.isConnected()) {
         try {
           const wsResult = await wsBridge.evidenceQuery({
@@ -478,8 +511,48 @@ export function createApiRouter(
             question: parsed.data.question,
             history: parsed.data.history ?? [],
             provider: llmSettings.provider,
+            diagnosisResult: incident.diagnosisResult,
+            evidence,
+            locale,
           });
           return c.json(wsResult.result);
+        } catch (error) {
+          return c.json({
+            error: "manual evidence query bridge failed",
+            details: error instanceof Error ? error.message : String(error),
+          }, 502);
+        }
+      }
+
+      // CF Workers: route through Durable Object bridge
+      if (bridgeDoForwarder) {
+        try {
+          const doResponse = await bridgeDoForwarder({
+            type: "evidence_query_request",
+            id: "", // will be assigned by the DO
+            incidentId: id,
+            receiverUrl: new URL(c.req.url).origin,
+            authToken,
+            question: parsed.data.question,
+            history: parsed.data.history ?? [],
+            provider: llmSettings.provider,
+            diagnosisResult: incident.diagnosisResult,
+            evidence,
+            locale,
+          });
+          if (doResponse.type === "error_response") {
+            return c.json({
+              error: "manual evidence query bridge failed",
+              details: doResponse.error,
+            }, 502);
+          }
+          if (doResponse.type === "evidence_query_response") {
+            return c.json(doResponse.result);
+          }
+          return c.json({
+            error: "manual evidence query bridge failed",
+            details: `unexpected response type: ${doResponse.type}`,
+          }, 502);
         } catch (error) {
           return c.json({
             error: "manual evidence query bridge failed",
@@ -500,6 +573,9 @@ export function createApiRouter(
             question: parsed.data.question,
             history: parsed.data.history ?? [],
             provider: llmSettings.provider,
+            diagnosisResult: incident.diagnosisResult,
+            evidence,
+            locale,
           }),
         });
         if (!bridgeResponse.ok) {
@@ -518,8 +594,6 @@ export function createApiRouter(
       }
     }
 
-    const storedLocale = await storage.getSettings("locale");
-    const locale: "en" | "ja" = parsed.data.locale ?? (storedLocale === "ja" ? "ja" : "en");
     const result = await buildEvidenceQueryAnswer(
       incident,
       telemetryStore,
@@ -615,11 +689,11 @@ export function createApiRouter(
     const storedLocale = await storage.getSettings("locale");
     const locale: "en" | "ja" = storedLocale === "ja" ? "ja" : "en";
     const systemPrompt = buildChatSystemPrompt(incident.diagnosisResult, locale);
-    const sandboxedMessage = `<user_message>${message}</user_message>`;
+    const sandboxedMessage = wrapUserMessage(message);
 
     const llmSettings = await getReceiverLlmSettings(storage);
     if (llmSettings.mode === "manual") {
-      // Prefer WebSocket bridge if connected
+      // Prefer WebSocket bridge if connected (Node.js/Vercel: in-memory WsBridgeManager)
       if (wsBridge?.isConnected()) {
         try {
           const wsResult = await wsBridge.chat({
@@ -629,8 +703,44 @@ export function createApiRouter(
             message,
             history,
             provider: llmSettings.provider,
+            systemPrompt,
           });
           return c.json(wsResult);
+        } catch (error) {
+          return c.json({
+            error: "manual chat bridge failed",
+            details: error instanceof Error ? error.message : String(error),
+          }, 502);
+        }
+      }
+
+      // CF Workers: route through Durable Object bridge
+      if (bridgeDoForwarder) {
+        try {
+          const doResponse = await bridgeDoForwarder({
+            type: "chat_request",
+            id: "", // will be assigned by the DO
+            incidentId: id,
+            receiverUrl: new URL(c.req.url).origin,
+            authToken,
+            message,
+            history,
+            provider: llmSettings.provider,
+            systemPrompt,
+          });
+          if (doResponse.type === "error_response") {
+            return c.json({
+              error: "manual chat bridge failed",
+              details: doResponse.error,
+            }, 502);
+          }
+          if (doResponse.type === "chat_response") {
+            return c.json({ reply: doResponse.reply });
+          }
+          return c.json({
+            error: "manual chat bridge failed",
+            details: `unexpected response type: ${doResponse.type}`,
+          }, 502);
         } catch (error) {
           return c.json({
             error: "manual chat bridge failed",
@@ -726,7 +836,13 @@ export function createApiRouter(
       return c.json({ items: [] });
     }
 
-    const filter = buildIncidentQueryFilter(telemetryScope);
+    const limit = parseLimit(c.req.query("limit"), TELEMETRY_SPANS_DEFAULT_LIMIT);
+    const cursor = c.req.query("cursor");
+    const filter = {
+      ...buildIncidentQueryFilter(telemetryScope),
+      limit: boundedQueryLimit(cursor, limit, MAX_QUERY_SPANS),
+      orderBy: "startTimeDesc" as const,
+    };
     const spans = await telemetryStore.querySpans(filter);
     // Filter by spanMembership — only return incident-bound spans
     const membershipSet = new Set(spanMembership);
@@ -739,8 +855,7 @@ export function createApiRouter(
         || a.traceId.localeCompare(b.traceId)
         || a.spanId.localeCompare(b.spanId),
       );
-    const limit = parseLimit(c.req.query("limit"), TELEMETRY_SPANS_DEFAULT_LIMIT);
-    return c.json(paginateItems(memberSpans, limit, c.req.query("cursor")));
+    return c.json(paginateItems(memberSpans, limit, cursor));
   });
 
   app.get("/api/incidents/:id/telemetry/metrics", async (c) => {
@@ -755,15 +870,20 @@ export function createApiRouter(
       return c.json({ items: [] });
     }
 
-    const filter = buildIncidentQueryFilter(telemetryScope);
+    const limit = parseLimit(c.req.query("limit"), TELEMETRY_METRICS_DEFAULT_LIMIT);
+    const cursor = c.req.query("cursor");
+    const filter = {
+      ...buildIncidentQueryFilter(telemetryScope),
+      limit: boundedQueryLimit(cursor, limit, MAX_QUERY_METRICS),
+      orderBy: "startTimeDesc" as const,
+    };
     const metrics = (await telemetryStore.queryMetrics(filter))
       .sort((a, b) =>
         b.startTimeMs - a.startTimeMs
         || a.service.localeCompare(b.service)
         || a.name.localeCompare(b.name),
       );
-    const limit = parseLimit(c.req.query("limit"), TELEMETRY_METRICS_DEFAULT_LIMIT);
-    return c.json(paginateItems(metrics, limit, c.req.query("cursor")));
+    return c.json(paginateItems(metrics, limit, cursor));
   });
 
   app.get("/api/incidents/:id/telemetry/logs", async (c) => {
@@ -781,7 +901,26 @@ export function createApiRouter(
       } satisfies TelemetryLogsPageResponse<unknown>);
     }
 
-    const filter = buildIncidentQueryFilter(telemetryScope);
+    const correlatedLimit = parseLimit(
+      c.req.query("correlatedLimit"),
+      TELEMETRY_LOGS_CORRELATED_DEFAULT_LIMIT,
+    );
+    const contextualLimit = parseLimit(
+      c.req.query("contextualLimit"),
+      TELEMETRY_LOGS_CONTEXTUAL_DEFAULT_LIMIT,
+    );
+    const correlatedCursor = c.req.query("correlatedCursor");
+    const contextualCursor = c.req.query("contextualCursor");
+    const logFetchLimit = boundedQueryLimit(
+      undefined,
+      parseCursor(correlatedCursor) + correlatedLimit + parseCursor(contextualCursor) + contextualLimit,
+      MAX_QUERY_LOGS,
+    );
+    const filter = {
+      ...buildIncidentQueryFilter(telemetryScope),
+      limit: logFetchLimit,
+      orderBy: "startTimeDesc" as const,
+    };
     const logs = await telemetryStore.queryLogs(filter);
 
     // Build trace set from spanMembership for correlation
@@ -805,18 +944,9 @@ export function createApiRouter(
         || a.bodyHash.localeCompare(b.bodyHash),
       );
 
-    const correlatedLimit = parseLimit(
-      c.req.query("correlatedLimit"),
-      TELEMETRY_LOGS_CORRELATED_DEFAULT_LIMIT,
-    );
-    const contextualLimit = parseLimit(
-      c.req.query("contextualLimit"),
-      TELEMETRY_LOGS_CONTEXTUAL_DEFAULT_LIMIT,
-    );
-
     return c.json({
-      correlated: paginateItems(correlated, correlatedLimit, c.req.query("correlatedCursor")),
-      contextual: paginateItems(contextual, contextualLimit, c.req.query("contextualCursor")),
+      correlated: paginateItems(correlated, correlatedLimit, correlatedCursor),
+      contextual: paginateItems(contextual, contextualLimit, contextualCursor),
     });
   });
 

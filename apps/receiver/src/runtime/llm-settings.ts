@@ -1,4 +1,4 @@
-import type { ProviderName } from "@3am/diagnosis";
+import type { ProviderName } from "3am-diagnosis";
 import type { StorageDriver } from "../storage/interface.js";
 
 export type DiagnosisMode = "automatic" | "manual";

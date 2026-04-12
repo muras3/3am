@@ -13,7 +13,7 @@
 import { createInterface } from "node:readline";
 import { resolveApiKey } from "./init/credentials.js";
 import { checkReceiver } from "./shared/health.js";
-import type { ProviderName } from "@3am/diagnosis";
+import type { ProviderName } from "3am-diagnosis";
 
 const DEFAULT_RECEIVER_URL = "http://localhost:3333";
 const POLL_INTERVAL_MS = 3_000;

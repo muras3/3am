@@ -1,4 +1,4 @@
-import type { IncidentPacket, DiagnosisResult, ConsoleNarrative, PlatformEvent, ThinEvent } from "@3am/core";
+import type { IncidentPacket, DiagnosisResult, ConsoleNarrative, PlatformEvent, ThinEvent } from "3am-core";
 
 export interface AnomalousSignal {
   signal: string;       // e.g., "http_429", "http_500", "span_error", "slow_span", "exception"
@@ -219,4 +219,10 @@ export interface StorageDriver {
    * Set a settings value by key.
    */
   setSettings(key: string, value: string): Promise<void>;
+
+  /**
+   * Atomically consume one request from a shared rate-limit bucket.
+   * Returns true when the request is allowed, false when the bucket is exhausted.
+   */
+  consumeRateLimit(key: string, windowMs: number, max: number, now?: number): Promise<boolean>;
 }

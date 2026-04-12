@@ -38,7 +38,7 @@
  *   and shuffled input orderings.
  */
 
-import type { IncidentPacket, PlatformEvent, RelevantLog } from "@3am/core"
+import type { IncidentPacket, PlatformEvent, RelevantLog } from "3am-core"
 import { type ExtractedSpan, isAnomalous, SLOW_SPAN_THRESHOLD_MS } from "./anomaly-detector.js"
 import { normalizeDependency } from "./formation.js"
 import type { AnomalousSignal, TelemetryScope, InitialMembership } from "../storage/interface.js"

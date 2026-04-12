@@ -4,7 +4,7 @@ vi.mock("node:fs", () => ({
   readFileSync: vi.fn(),
 }));
 
-vi.mock("@3am/core", () => ({
+vi.mock("3am-core", () => ({
   IncidentPacketSchema: {
     safeParse: vi.fn(),
   },
@@ -21,7 +21,7 @@ vi.mock("../commands/manual-execution.js", () => ({
   runManualDiagnosis: vi.fn(),
 }));
 
-vi.mock("@3am/diagnosis", () => ({
+vi.mock("3am-diagnosis", () => ({
   PROVIDER_NAMES: ["anthropic", "codex"],
   diagnose: vi.fn(),
 }));

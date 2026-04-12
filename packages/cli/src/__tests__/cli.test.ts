@@ -2,16 +2,16 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { writeFileSync, mkdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { DiagnosisResult, IncidentPacket } from "@3am/core";
+import type { DiagnosisResult, IncidentPacket } from "3am-core";
 
-// Mock @3am/diagnosis BEFORE importing run
-vi.mock("@3am/diagnosis", () => ({
+// Mock 3am-diagnosis BEFORE importing run
+vi.mock("3am-diagnosis", () => ({
   diagnose: vi.fn(),
   PROVIDER_NAMES: ["anthropic", "openai", "ollama", "claude-code", "codex"],
 }));
 
 import { run } from "../index.js";
-import { diagnose } from "@3am/diagnosis";
+import { diagnose } from "3am-diagnosis";
 
 // ---------------------------------------------------------------------------
 // Fixtures

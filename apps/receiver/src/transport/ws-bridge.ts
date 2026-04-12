@@ -41,6 +41,7 @@ export interface ChatRequest {
   message: string;
   history: Array<{ role: "user" | "assistant"; content: string }>;
   provider?: string;
+  systemPrompt?: string;
 }
 
 export interface DiagnoseRequest {
@@ -62,6 +63,9 @@ export interface EvidenceQueryRequest {
   question: string;
   history: Array<{ role: "user" | "assistant"; content: string }>;
   provider?: string;
+  diagnosisResult?: unknown;
+  evidence?: unknown;
+  locale?: string;
 }
 
 export type BridgeRequest = ChatRequest | DiagnoseRequest | EvidenceQueryRequest;
@@ -206,6 +210,7 @@ export class WsBridgeManager {
     message: string;
     history: Array<{ role: "user" | "assistant"; content: string }>;
     provider?: string;
+    systemPrompt?: string;
   }): Promise<{ reply: string }> {
     const response = await this.sendRequest({
       type: "chat_request",
@@ -253,6 +258,9 @@ export class WsBridgeManager {
     question: string;
     history: Array<{ role: "user" | "assistant"; content: string }>;
     provider?: string;
+    diagnosisResult?: unknown;
+    evidence?: unknown;
+    locale?: string;
   }): Promise<{ result: unknown }> {
     const response = await this.sendRequest({
       type: "evidence_query_request",

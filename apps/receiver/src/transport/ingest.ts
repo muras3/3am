@@ -3,7 +3,7 @@ import { gunzip } from "node:zlib";
 import { Hono, type Context } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { z } from "zod";
-import { PlatformEventSchema, type PlatformEvent } from "@3am/core";
+import { PlatformEventSchema, type PlatformEvent } from "3am-core";
 import type { Incident, StorageDriver, AnomalousSignal } from "../storage/interface.js";
 import { spanMembershipKey } from "../storage/interface.js";
 import type { SpanBuffer } from "../ambient/span-buffer.js";
@@ -50,9 +50,9 @@ async function expandAndAppendFallback(
 }
 
 const INGEST_BODY_LIMIT = 1 * 1024 * 1024; // 1MB per ADR 0022 (resource exhaustion protection)
-const PlatformEventsRequestSchema = z.object({
+const PlatformEventsRequestSchema = z.strictObject({
   events: z.array(PlatformEventSchema),
-}).strict();
+});
 
 /**
  * Read the raw request body and decompress if Content-Encoding: gzip.

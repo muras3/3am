@@ -8,7 +8,7 @@ import { drizzle } from "drizzle-orm/postgres-js";
 import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import { eq, desc, lt, and, sql as drizzleSql, count } from "drizzle-orm";
 import { pgTable, text, timestamp, serial, jsonb } from "drizzle-orm/pg-core";
-import type { IncidentPacket, DiagnosisResult, ConsoleNarrative, PlatformEvent, ThinEvent } from "@3am/core";
+import type { IncidentPacket, DiagnosisResult, ConsoleNarrative, PlatformEvent, ThinEvent } from "3am-core";
 import type {
   AnomalousSignal,
   Incident,
@@ -27,6 +27,16 @@ import {
 } from "./lazy-migration.js";
 import type { SharedPostgresClient } from "./postgres-client.js";
 import { createPostgresClient } from "./postgres-client.js";
+import {
+  parseAnomalousSignals,
+  parseConsoleNarrative,
+  parseDiagnosisResult,
+  parseIncidentPacket,
+  parsePlatformEvents,
+  parseSpanMembership,
+  parseTelemetryScope,
+  parseThinEvent,
+} from "./validation.js";
 
 // ── Postgres-specific table definitions (JSONB, timestamptz) ─────────────────
 
@@ -176,7 +186,7 @@ export class PostgresAdapter implements StorageDriver {
   }
 
   private toIncident(row: typeof pgIncidents.$inferSelect): Incident {
-    const packet = row.packet as IncidentPacket;
+    const packet = parseIncidentPacket(row.packet);
     const rawState = row.rawState as LegacyRawState | null;
 
     const incident: Incident = {
@@ -186,24 +196,24 @@ export class PostgresAdapter implements StorageDriver {
       lastActivityAt: row.lastActivityAt ?? row.updatedAt.toISOString(),
       packet,
       telemetryScope: row.telemetryScope
-        ? (row.telemetryScope as TelemetryScope)
+        ? parseTelemetryScope(row.telemetryScope)
         : deriveTelemetryScopeFromPacket(packet),
       spanMembership: row.spanMembership
-        ? (row.spanMembership as string[])
+        ? parseSpanMembership(row.spanMembership)
         : deriveSpanMembershipFromRawState(rawState),
       anomalousSignals: row.anomalousSignals
-        ? (row.anomalousSignals as AnomalousSignal[])
+        ? parseAnomalousSignals(row.anomalousSignals)
         : deriveAnomalousSignalsFromRawState(rawState),
       platformEvents: row.platformEvents
-        ? (row.platformEvents as PlatformEvent[])
+        ? parsePlatformEvents(row.platformEvents)
         : derivePlatformEventsFromRawState(rawState, packet),
     };
     if (row.closedAt) incident.closedAt = row.closedAt;
     if (row.diagnosisResult) {
-      incident.diagnosisResult = row.diagnosisResult as DiagnosisResult;
+      incident.diagnosisResult = parseDiagnosisResult(row.diagnosisResult);
     }
     if (row.consoleNarrative) {
-      incident.consoleNarrative = row.consoleNarrative as ConsoleNarrative;
+      incident.consoleNarrative = parseConsoleNarrative(row.consoleNarrative);
     }
     if (row.diagnosisScheduledAt) {
       incident.diagnosisScheduledAt = row.diagnosisScheduledAt.toISOString();
@@ -515,7 +525,7 @@ export class PostgresAdapter implements StorageDriver {
 
   async listThinEvents(): Promise<ThinEvent[]> {
     const rows = await this.db.select().from(pgThinEvents).orderBy(pgThinEvents.id);
-    return rows.map((r) => ({
+    return rows.map((r) => parseThinEvent({
       event_id: r.eventId,
       event_type: r.eventType as ThinEvent["event_type"],
       incident_id: r.incidentId,
@@ -533,6 +543,24 @@ export class PostgresAdapter implements StorageDriver {
       .insert(pgSettings)
       .values({ key, value })
       .onConflictDoUpdate({ target: pgSettings.key, set: { value, updatedAt: new Date() } });
+  }
+
+  async consumeRateLimit(key: string, windowMs: number, max: number, now = Date.now()): Promise<boolean> {
+    const bucketStart = now - (now % windowMs);
+    const bucketKey = `rl:${windowMs}:${bucketStart}:${key}`;
+    const result = await this.db.execute(drizzleSql`
+      INSERT INTO settings (key, value, updated_at)
+      VALUES (${bucketKey}, '1', now())
+      ON CONFLICT (key) DO UPDATE SET
+        value = CASE
+          WHEN CAST(settings.value AS INTEGER) >= ${max} THEN settings.value
+          ELSE CAST(CAST(settings.value AS INTEGER) + 1 AS TEXT)
+        END,
+        updated_at = now()
+      RETURNING CAST(value AS INTEGER) AS count
+    `);
+    const row = result[0] as { count?: number } | undefined;
+    return typeof row?.count === "number" && row.count <= max;
   }
 }
 

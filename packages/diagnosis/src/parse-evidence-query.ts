@@ -2,22 +2,50 @@ import {
   EvidenceQueryResponseSchema,
   type EvidenceQueryRef,
   type EvidenceQueryResponse,
-} from "@3am/core";
+} from "3am-core";
 
 export type EvidenceQueryParseMeta = {
   question: string;
 };
 
+/**
+ * Extracts JSON from model output that may contain prose and/or code fences.
+ *
+ * Strategy (in order):
+ *  1. Direct JSON.parse (clean output)
+ *  2. Extract content from the first ```...``` code fence (handles prose before/after fence)
+ *  3. Extract from first '{' to last '}' (handles prose wrapping raw JSON without fences)
+ */
 function parseJson(raw: string): unknown {
+  // Attempt 1: direct parse
   try {
     return JSON.parse(raw);
   } catch {
-    const match = /```(?:json)?\s*\n?([\s\S]*?)\n?```/.exec(raw);
-    if (match?.[1] !== undefined) {
-      return JSON.parse(match[1]);
-    }
-    throw new Error("Failed to parse evidence query output as JSON");
+    // continue
   }
+
+  // Attempt 2: first code fence (allow any prose before/after)
+  const fenceMatch = /```(?:json)?\s*\n([\s\S]*?)\n\s*```/.exec(raw);
+  if (fenceMatch?.[1] !== undefined) {
+    try {
+      return JSON.parse(fenceMatch[1].trim());
+    } catch {
+      // continue to attempt 3
+    }
+  }
+
+  // Attempt 3: first '{' to last '}'
+  const start = raw.indexOf("{");
+  const end = raw.lastIndexOf("}");
+  if (start !== -1 && end > start) {
+    try {
+      return JSON.parse(raw.slice(start, end + 1));
+    } catch {
+      // fall through to throw
+    }
+  }
+
+  throw new Error("Failed to parse evidence query output as JSON");
 }
 
 function withSegmentIds(parsedSegments: unknown): unknown {

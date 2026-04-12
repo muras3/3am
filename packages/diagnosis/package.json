@@ -1,14 +1,32 @@
 {
-  "name": "@3am/diagnosis",
+  "name": "3am-diagnosis",
   "version": "0.1.0",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/muras3/3am.git",
+    "directory": "packages/diagnosis"
+  },
+  "homepage": "https://github.com/muras3/3am#readme",
+  "bugs": {
+    "url": "https://github.com/muras3/3am/issues"
+  },
+  "publishConfig": { "access": "public" },
+  "files": ["dist"],
   "private": false,
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
-      "import": "./dist/index.js",
-      "types": "./dist/index.d.ts"
+      "source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./claude-code-pool": {
+      "source": "./src/claude-code-pool.ts",
+      "types": "./dist/claude-code-pool.d.ts",
+      "import": "./dist/claude-code-pool.js"
     }
   },
   "scripts": {
@@ -18,7 +36,7 @@
     "lint": "eslint src --max-warnings 0"
   },
   "dependencies": {
-    "@3am/core": "workspace:*",
+    "3am-core": "workspace:*",
     "@anthropic-ai/sdk": "^0.82.0",
     "zod": "^4.3.6"
   },

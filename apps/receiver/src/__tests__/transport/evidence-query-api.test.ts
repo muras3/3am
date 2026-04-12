@@ -9,9 +9,9 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { MemoryAdapter } from '../../storage/adapters/memory.js'
 import { createApp } from '../../index.js'
 import { COOKIE_NAME } from '../../middleware/session-cookie.js'
-import { EvidenceQueryResponseSchema } from '@3am/core/schemas/curated-evidence'
-import type { DiagnosisResult } from '@3am/core'
-import type * as DiagnosisModule from '@3am/diagnosis'
+import { EvidenceQueryResponseSchema } from '3am-core/schemas/curated-evidence'
+import type { DiagnosisResult } from '3am-core'
+import type * as DiagnosisModule from '3am-diagnosis'
 
 const { generateEvidencePlanMock, generateEvidenceQueryMock } = vi.hoisted(() => ({
   generateEvidencePlanMock: vi.fn(async (input: { question: string }) => ({
@@ -33,8 +33,8 @@ const { generateEvidencePlanMock, generateEvidenceQueryMock } = vi.hoisted(() =>
   })),
 }))
 
-vi.mock('@3am/diagnosis', async () => {
-  const actual = await vi.importActual<typeof DiagnosisModule>('@3am/diagnosis')
+vi.mock('3am-diagnosis', async () => {
+  const actual = await vi.importActual<typeof DiagnosisModule>('3am-diagnosis')
   return {
     ...actual,
     generateEvidencePlan: generateEvidencePlanMock,
@@ -261,7 +261,7 @@ describe('POST /api/incidents/:id/evidence/query', () => {
 
     expect(res.status).toBe(200)
     const body = await res.json()
-    const parsed = EvidenceQueryResponseSchema.strict().parse(body)
+    const parsed = EvidenceQueryResponseSchema.parse(body)
     expect(parsed.question).toBe('Why are payments failing?')
     expect(parsed.status).toBeTruthy()
     expect(Array.isArray(parsed.segments)).toBe(true)

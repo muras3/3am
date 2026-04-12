@@ -1,4 +1,4 @@
-import type { IncidentPacket, DiagnosisResult } from "@3am/core";
+import type { IncidentPacket, DiagnosisResult } from "3am-core";
 
 // Scenario: third_party_api_rate_limit_cascade
 // Flash sale traffic spike → Stripe HTTP 429 → fixed-interval retry storm →

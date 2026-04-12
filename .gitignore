@@ -1,5 +1,6 @@
 .mcp.json
 .claude/
+.codex-worktrees/
 .worktrees/
 node_modules/
 dist/

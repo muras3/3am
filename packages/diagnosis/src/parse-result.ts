@@ -1,4 +1,4 @@
-import { DiagnosisResultSchema, type DiagnosisResult } from "@3am/core";
+import { DiagnosisResultSchema, type DiagnosisResult } from "3am-core";
 
 export type ResultMeta = {
   incidentId: string;
@@ -65,24 +65,53 @@ function validateOutputSize(result: DiagnosisResult): void {
   }
 }
 
+/**
+ * Extracts JSON from model output that may contain prose and/or code fences.
+ *
+ * Strategy (in order):
+ *  1. Direct JSON.parse (clean output)
+ *  2. Extract content from the first ```...``` code fence (handles prose before/after fence)
+ *  3. Extract from first '{' to last '}' (handles prose wrapping raw JSON without fences)
+ */
+function extractJson(raw: string): unknown {
+  // Attempt 1: direct parse
+  try {
+    return JSON.parse(raw);
+  } catch {
+    // continue
+  }
+
+  // Attempt 2: first code fence (allow any prose before/after)
+  const fenceMatch = /```(?:json)?\s*\n([\s\S]*?)\n\s*```/.exec(raw);
+  if (fenceMatch?.[1] !== undefined) {
+    try {
+      return JSON.parse(fenceMatch[1].trim());
+    } catch {
+      // continue to attempt 3
+    }
+  }
+
+  // Attempt 3: first '{' to last '}'
+  const start = raw.indexOf("{");
+  const end = raw.lastIndexOf("}");
+  if (start !== -1 && end > start) {
+    try {
+      return JSON.parse(raw.slice(start, end + 1));
+    } catch {
+      // fall through to throw
+    }
+  }
+
+  throw new Error("Failed to parse model output as JSON");
+}
+
 export function parseResult(raw: string, meta: ResultMeta): DiagnosisResult {
   let parsed: unknown;
 
-  // First attempt: direct JSON parse
   try {
-    parsed = JSON.parse(raw);
+    parsed = extractJson(raw);
   } catch {
-    // Second attempt: extract from code fence
-    const match = /```(?:json)?\s*\n?([\s\S]*?)\n?```/.exec(raw);
-    if (match?.[1] !== undefined) {
-      try {
-        parsed = JSON.parse(match[1]);
-      } catch {
-        throw new Error("Failed to parse model output as JSON");
-      }
-    } else {
-      throw new Error("Failed to parse model output as JSON");
-    }
+    throw new Error("Failed to parse model output as JSON");
   }
 
   const withMeta = {

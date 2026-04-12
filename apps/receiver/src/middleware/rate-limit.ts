@@ -1,33 +1,19 @@
 import type { MiddlewareHandler } from "hono";
+import type { StorageDriver } from "../storage/interface.js";
 
 export interface RateLimitOptions {
   /** Time window in milliseconds */
   windowMs: number;
   /** Maximum requests per window per key */
   max: number;
+  storage: StorageDriver;
 }
 
-const GC_INTERVAL_MS = 60_000;
-
 /**
- * In-memory sliding window rate limiter.
+ * Shared fixed-window rate limiter.
  * Key: `${clientIP}:${lastPathSegment}` (IP + incident ID for /api/chat/:id).
  */
 export function rateLimiter(opts: RateLimitOptions): MiddlewareHandler {
-  const store = new Map<string, number[]>();
-  let lastGc = Date.now();
-
-  function gc(now: number): void {
-    if (now - lastGc < GC_INTERVAL_MS) return;
-    lastGc = now;
-    const cutoff = now - opts.windowMs;
-    for (const [key, timestamps] of store) {
-      const valid = timestamps.filter((t) => t > cutoff);
-      if (valid.length === 0) store.delete(key);
-      else store.set(key, valid);
-    }
-  }
-
   return async (c, next) => {
     const ip =
       c.req.header("cf-connecting-ip") ??
@@ -38,27 +24,11 @@ export function rateLimiter(opts: RateLimitOptions): MiddlewareHandler {
     const resourceId = segments[segments.length - 1] ?? "unknown";
     const key = `${ip}:${resourceId}`;
 
-    const now = Date.now();
-    gc(now);
-
-    const cutoff = now - opts.windowMs;
-    let timestamps = store.get(key);
-
-    if (timestamps) {
-      // Prune expired entries
-      const firstValid = timestamps.findIndex((t) => t > cutoff);
-      if (firstValid > 0) timestamps.splice(0, firstValid);
-      else if (firstValid === -1) timestamps.length = 0;
-    } else {
-      timestamps = [];
-      store.set(key, timestamps);
-    }
-
-    if (timestamps.length >= opts.max) {
+    const allowed = await opts.storage.consumeRateLimit(key, opts.windowMs, opts.max);
+    if (!allowed) {
       return c.json({ error: "too many requests" }, 429);
     }
 
-    timestamps.push(now);
     await next();
   };
 }

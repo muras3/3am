@@ -11,7 +11,7 @@
 import type { TelemetryStoreDriver, TelemetryQueryFilter } from '../telemetry/interface.js'
 import { buildIncidentQueryFilter } from '../telemetry/interface.js'
 import type { Incident, TelemetryScope } from '../storage/interface.js'
-import type { IncidentDetailExtension, ExtendedIncident } from '@3am/core'
+import type { IncidentDetailExtension, ExtendedIncident } from '3am-core'
 import { computeBlastRadius } from './blast-radius.js'
 import { computeConfidencePrimitives } from './confidence-primitives.js'
 import { computeEvidenceCounts } from './evidence-counts.js'

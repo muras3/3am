@@ -43,6 +43,41 @@ describe("parseEvidenceQuery", () => {
     expect(result.segments[0]?.id).toBe("seg_1");
   });
 
+  it("parses JSON in code fence preceded by prose (issue #350)", () => {
+    const body = JSON.stringify({
+      status: "answered",
+      segments: [
+        {
+          id: "seg-1",
+          kind: "fact",
+          text: "Checkout spans are returning 504.",
+          evidenceRefs: [{ kind: "span", id: "trace-1:span-1" }],
+        },
+      ],
+    });
+    const raw = "Here is my analysis:\n```json\n" + body + "\n```\nHope that helps.";
+    const result = parseEvidenceQuery(raw, { question: "What failed?" }, allowedRefs);
+    expect(result.status).toBe("answered");
+    expect(result.segments[0]?.kind).toBe("fact");
+  });
+
+  it("parses bare JSON preceded by prose (no code fence)", () => {
+    const body = JSON.stringify({
+      status: "answered",
+      segments: [
+        {
+          id: "seg-1",
+          kind: "fact",
+          text: "Checkout spans are returning 504.",
+          evidenceRefs: [{ kind: "span", id: "trace-1:span-1" }],
+        },
+      ],
+    });
+    const raw = "Here is the result:\n" + body + "\nDone.";
+    const result = parseEvidenceQuery(raw, { question: "What failed?" }, allowedRefs);
+    expect(result.status).toBe("answered");
+  });
+
   it("rejects invented evidence refs", () => {
     const raw = JSON.stringify({
       status: "answered",

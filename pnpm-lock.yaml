@@ -15,10 +15,10 @@ importers:
 
   .:
     devDependencies:
-      '@3am/core':
+      3am-core:
         specifier: workspace:*
         version: link:packages/core
-      '@3am/diagnosis':
+      3am-diagnosis:
         specifier: workspace:*
         version: link:packages/diagnosis
       stylelint:
@@ -39,7 +39,7 @@ importers:
 
   apps/console:
     dependencies:
-      '@3am/core':
+      3am-core:
         specifier: workspace:*
         version: link:../../packages/core
       '@tanstack/react-query':
@@ -121,10 +121,10 @@ importers:
 
   apps/receiver:
     dependencies:
-      '@3am/core':
+      3am-core:
         specifier: workspace:*
         version: link:../../packages/core
-      '@3am/diagnosis':
+      3am-diagnosis:
         specifier: workspace:*
         version: link:../../packages/diagnosis
       '@anthropic-ai/sdk':
@@ -258,10 +258,10 @@ importers:
 
   packages/cli:
     dependencies:
-      '@3am/core':
+      3am-core:
         specifier: workspace:*
         version: link:../core
-      '@3am/diagnosis':
+      3am-diagnosis:
         specifier: workspace:*
         version: link:../diagnosis
       commander:
@@ -337,7 +337,7 @@ importers:
 
   packages/diagnosis:
     dependencies:
-      '@3am/core':
+      3am-core:
         specifier: workspace:*
         version: link:../core
       '@anthropic-ai/sdk':

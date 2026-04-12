@@ -5,7 +5,7 @@ import { describe, it, expect } from "vitest";
 import { buildPrompt } from "../prompt.js";
 import { buildNarrativePrompt } from "../narrative-prompt.js";
 import { buildEvidenceQueryPrompt } from "../evidence-query-prompt.js";
-import type { IncidentPacket, DiagnosisResult, ReasoningStructure } from "@3am/core";
+import type { IncidentPacket, DiagnosisResult, ReasoningStructure } from "3am-core";
 
 const packet: IncidentPacket = {
   schemaVersion: "incident-packet/v1alpha1",

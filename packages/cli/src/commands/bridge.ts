@@ -1,5 +1,22 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import type { ProviderName } from "@3am/diagnosis";
+import type { ProviderName } from "3am-diagnosis";
+// Dynamic import — claude-code-pool uses node:child_process and must not
+// be statically imported (would crash CF Workers bundle via 3am-diagnosis).
+async function primeClaudePool(model?: string): Promise<void> {
+  try {
+    const { prime } = await import("3am-diagnosis/claude-code-pool");
+    await prime(model);
+  } catch (err) {
+    process.stderr.write(`[bridge] pool prime failed: ${err instanceof Error ? err.message : String(err)}\n`);
+  }
+}
+async function shutdownClaudePool(): Promise<void> {
+  try {
+    const { shutdown } = await import("3am-diagnosis/claude-code-pool");
+    shutdown();
+  } catch { /* non-fatal */ }
+}
+import type { DiagnosisResult, EvidenceResponse } from "3am-core";
 import { loadCredentials, findReceiverCredentialByUrl } from "./init/credentials.js";
 import { runManualChat, runManualDiagnosis, runManualEvidenceQuery } from "./manual-execution.js";
 import { resolveProviderModel } from "./provider-model.js";
@@ -8,13 +25,13 @@ export interface BridgeOptions {
   port?: number;
   /** Remote receiver URL to connect via WebSocket. Auto-detected from credentials if not specified. */
   receiverUrl?: string;
+  /** Test-only: skip SIGINT/SIGTERM registration and allow controlled shutdown. */
+  registerSignalHandlers?: boolean;
 }
 
 function sendJson(res: ServerResponse<IncomingMessage>, status: number, body: unknown): void {
   res.statusCode = status;
   res.setHeader("Content-Type", "application/json");
-  res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
   res.end(JSON.stringify(body));
 }
 
@@ -38,6 +55,38 @@ function isRemoteUrl(url: string): boolean {
 
 function httpToWs(url: string): string {
   return url.replace(/^http/, "ws");
+}
+
+export function isLoopbackOrigin(origin: string): boolean {
+  try {
+    const parsed = new URL(origin);
+    return parsed.hostname === "localhost" || parsed.hostname === "127.0.0.1" || parsed.hostname === "::1";
+  } catch {
+    return false;
+  }
+}
+
+export function isAllowedBridgeOrigin(origin: string | undefined, receiverUrl?: string): boolean {
+  if (!origin) return true;
+  if (isLoopbackOrigin(origin)) return true;
+  if (!receiverUrl) return false;
+
+  try {
+    return new URL(receiverUrl).origin === origin;
+  } catch {
+    return false;
+  }
+}
+
+function applyCorsHeaders(
+  res: ServerResponse<IncomingMessage>,
+  origin: string | undefined,
+): void {
+  if (!origin) return;
+  res.setHeader("Access-Control-Allow-Origin", origin);
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+  res.setHeader("Vary", "Origin");
 }
 
 // ── WebSocket bridge client ──────────────────────────────────────────────
@@ -170,6 +219,7 @@ async function handleWsMessage(msg: WsMessage, sendResponse: (response: unknown)
         provider,
         model: resolveProviderModel(provider, undefined, creds.llmModel),
         locale: creds.locale === "ja" ? "ja" : "en",
+        systemPrompt: msg["systemPrompt"] as string | undefined,
       });
       sendResponse({ type: "chat_response", id: msg.id, reply: result.reply });
       return;
@@ -199,7 +249,9 @@ async function handleWsMessage(msg: WsMessage, sendResponse: (response: unknown)
         history: (msg["history"] as Array<{ role: "user" | "assistant"; content: string }>) ?? [],
         provider,
         model: resolveProviderModel(provider, undefined, creds.llmModel),
-        locale: creds.locale === "ja" ? "ja" : "en",
+        locale: (msg["locale"] as "en" | "ja") ?? (creds.locale === "ja" ? "ja" : "en"),
+        diagnosisResult: msg["diagnosisResult"] as DiagnosisResult | undefined,
+        evidence: msg["evidence"] as EvidenceResponse | undefined,
       });
       sendResponse({ type: "evidence_query_response", id: msg.id, result });
       return;
@@ -217,13 +269,25 @@ async function handleWsMessage(msg: WsMessage, sendResponse: (response: unknown)
 
 // ── Main entry ───────────────────────────────────────────────────────────
 
-export function runBridge(options: BridgeOptions = {}): void {
+export function runBridge(options: BridgeOptions = {}): { close: () => void } {
   const port = options.port ?? 4269;
+  const registerSignalHandlers = options.registerSignalHandlers ?? true;
+
+  // ── Warm up persistent Claude Code pool ───────────────────────────────
+  const creds = loadCredentials();
+  const receiverUrl = options.receiverUrl ?? creds.receiverUrl;
+  if (!creds.llmProvider || creds.llmProvider === "claude-code") {
+    void primeClaudePool(creds.llmModel);
+  }
 
   // ── HTTP server (always started, for local dev backward compat) ──────
   const server = createServer(async (req, res) => {
-    res.setHeader("Access-Control-Allow-Origin", "*");
-    res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+    const requestOrigin = typeof req.headers.origin === "string" ? req.headers.origin : undefined;
+    if (!isAllowedBridgeOrigin(requestOrigin, receiverUrl)) {
+      sendJson(res, 403, { error: "origin not allowed" });
+      return;
+    }
+    applyCorsHeaders(res, requestOrigin);
     if (req.method === "OPTIONS") {
       res.statusCode = 204;
       res.end();
@@ -302,6 +366,9 @@ export function runBridge(options: BridgeOptions = {}): void {
           history?: Array<{ role: "user" | "assistant"; content: string }>;
           provider?: ReturnType<typeof loadCredentials>["llmProvider"];
           model?: string;
+          diagnosisResult?: DiagnosisResult;
+          evidence?: EvidenceResponse;
+          locale?: "en" | "ja";
         };
         const creds = loadCredentials();
         const provider = payload.provider ?? creds.llmProvider;
@@ -313,7 +380,9 @@ export function runBridge(options: BridgeOptions = {}): void {
           history: payload.history ?? [],
           provider,
           model: resolveProviderModel(provider, payload.model, creds.llmModel),
-          locale: creds.locale === "ja" ? "ja" : "en",
+          locale: payload.locale ?? (creds.locale === "ja" ? "ja" : "en"),
+          diagnosisResult: payload.diagnosisResult,
+          evidence: payload.evidence,
         });
         sendJson(res, 200, result);
         return;
@@ -332,8 +401,6 @@ export function runBridge(options: BridgeOptions = {}): void {
   });
 
   // ── WebSocket client (for remote receivers) ─────────────────────────
-  const creds = loadCredentials();
-  const receiverUrl = options.receiverUrl ?? creds.receiverUrl;
   // Use URL-scoped credential lookup (matches diagnose.ts pattern)
   const matchedReceiver = receiverUrl
     ? findReceiverCredentialByUrl(creds, receiverUrl)
@@ -352,10 +419,25 @@ export function runBridge(options: BridgeOptions = {}): void {
 
     // Graceful shutdown
     const shutdown = () => {
+      shutdownClaudePool();
       wsClient.close();
       server.close();
     };
-    process.on("SIGINT", shutdown);
-    process.on("SIGTERM", shutdown);
+    if (registerSignalHandlers) {
+      process.on("SIGINT", shutdown);
+      process.on("SIGTERM", shutdown);
+    }
+    return { close: shutdown };
+  } else {
+    // No WS client — still register shutdown for the claude pool
+    const shutdown = () => {
+      shutdownClaudePool();
+      server.close();
+    };
+    if (registerSignalHandlers) {
+      process.on("SIGINT", shutdown);
+      process.on("SIGTERM", shutdown);
+    }
+    return { close: shutdown };
   }
 }

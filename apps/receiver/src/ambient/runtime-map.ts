@@ -5,9 +5,15 @@
  * not SpanBuffer. Produces a response conforming to RuntimeMapResponseSchema.
  */
 
-import { buildIncidentQueryFilter, type TelemetrySpan, type TelemetryStoreDriver, type TelemetryQueryFilter } from '../telemetry/interface.js'
+import {
+  MAX_QUERY_SPANS,
+  buildIncidentQueryFilter,
+  type TelemetrySpan,
+  type TelemetryStoreDriver,
+  type TelemetryQueryFilter,
+} from '../telemetry/interface.js'
 import type { StorageDriver, Incident } from '../storage/interface.js'
-import type { RuntimeMapResponse, RuntimeMapService, RuntimeMapRoute, RuntimeMapDependency, RuntimeMapServiceEdge, RuntimeMapIncident } from '@3am/core/schemas/runtime-map'
+import type { RuntimeMapResponse, RuntimeMapService, RuntimeMapRoute, RuntimeMapDependency, RuntimeMapServiceEdge, RuntimeMapIncident } from '3am-core/schemas/runtime-map'
 import { normalizeDependency } from '../domain/formation.js'
 
 // ── Node ID normalization ──────────────────────────────────────────────────
@@ -243,7 +249,7 @@ export async function buildRuntimeMap(
   const startMs = now - minutes * 60 * 1000
   const endMs = now
 
-  const filter: TelemetryQueryFilter = { startMs, endMs }
+  const filter: TelemetryQueryFilter = { startMs, endMs, limit: MAX_QUERY_SPANS, orderBy: 'startTimeDesc' }
   const spans = await telemetryStore.querySpans(filter)
   const incidentPage = await storage.listIncidents({ limit: 100 })
   const openIncidents = incidentPage.items

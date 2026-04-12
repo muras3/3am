@@ -1,45 +1,45 @@
 import { z } from "zod";
 
-// All sub-schemas use .strict() so that unknown keys are rejected at every
+// All sub-schemas use z.strictObject() so that unknown keys are rejected at every
 // nesting level, not just at the top. This prevents callers from accidentally
 // embedding diagnosis-result fields (immediateAction, rootCauseHypothesis,
 // etc.) inside nested objects — a class of mistake that a top-level-only
-// .strict() would miss.
+// strict check would miss.
 
-const WindowSchema = z.object({
+const WindowSchema = z.strictObject({
   start: z.string(),
   detect: z.string(),
   end: z.string(),
-}).strict();
+});
 
-const ScopeSchema = z.object({
+const ScopeSchema = z.strictObject({
   environment: z.string(),
   primaryService: z.string(),
   affectedServices: z.array(z.string()),
   affectedRoutes: z.array(z.string()),
   affectedDependencies: z.array(z.string()),
-}).strict();
+});
 
-const TriggerSignalSchema = z.object({
+const TriggerSignalSchema = z.strictObject({
   signal: z.string(),
   firstSeenAt: z.string(),
   entity: z.string(),
-}).strict();
+});
 
 // Representative spans captured at incident time (ADR 0018).
-// .strict() here ensures no span-level LLM annotations leak into the packet.
-export const RepresentativeTraceSchema = z.object({
+// z.strictObject() here ensures no span-level LLM annotations leak into the packet.
+export const RepresentativeTraceSchema = z.strictObject({
   traceId: z.string(),
   spanId: z.string(),
   serviceName: z.string(),
   durationMs: z.number(),
   httpStatusCode: z.number().optional(),
   spanStatusCode: z.number(),
-}).strict();
+});
 
 export type RepresentativeTrace = z.infer<typeof RepresentativeTraceSchema>;
 
-export const PlatformEventSchema = z.object({
+export const PlatformEventSchema = z.strictObject({
   eventType: z.enum(["deploy", "config_change", "provider_incident", "scaling_event"]),
   timestamp: z.string(),
   environment: z.string(),
@@ -50,23 +50,23 @@ export const PlatformEventSchema = z.object({
   provider: z.string().optional(),
   eventId: z.string().optional(),
   details: z.record(z.string(), z.unknown()).optional(),
-}).strict();
+});
 
 export type PlatformEvent = z.infer<typeof PlatformEventSchema>;
 
 // Plan 6 / B-4: typed evidence schemas.
 // Shapes match evidence-extractor.ts MetricEvidence/LogEvidence exactly.
-export const ChangedMetricSchema = z.object({
+export const ChangedMetricSchema = z.strictObject({
   name: z.string(),
   service: z.string(),
   environment: z.string(),
   startTimeMs: z.number(),
   summary: z.record(z.string(), z.unknown()),  // histogram/gauge/sum compressed shape — heterogeneous by metric type
-}).strict();
+});
 
 export type ChangedMetric = z.infer<typeof ChangedMetricSchema>;
 
-export const RelevantLogSchema = z.object({
+export const RelevantLogSchema = z.strictObject({
   service: z.string(),
   environment: z.string(),
   timestamp: z.string(),
@@ -74,34 +74,34 @@ export const RelevantLogSchema = z.object({
   severity: z.string(),
   body: z.string(),
   attributes: z.record(z.string(), z.unknown()),
-}).strict();
+});
 
 export type RelevantLog = z.infer<typeof RelevantLogSchema>;
 
-const EvidenceSchema = z.object({
+const EvidenceSchema = z.strictObject({
   changedMetrics: z.array(ChangedMetricSchema),
   representativeTraces: z.array(RepresentativeTraceSchema),
   relevantLogs: z.array(RelevantLogSchema),
   platformEvents: z.array(PlatformEventSchema),
-}).strict();
+});
 
-const PointersSchema = z.object({
+const PointersSchema = z.strictObject({
   traceRefs: z.array(z.string()),
   logRefs: z.array(z.string()),
   metricRefs: z.array(z.string()),
   platformLogRefs: z.array(z.string()),
-}).strict();
+});
 
 // ADR 0018 draws a hard boundary between the incident packet (raw observational
 // data: identity / situation / evidence / retrieval) and the diagnosis result
 // (LLM output: root cause, immediate action, confidence, etc.).
 //
-// .strict() enforces this boundary at runtime: any field that belongs to
+// z.strictObject() enforces this boundary at runtime: any field that belongs to
 // DiagnosisResult — immediateAction, rootCauseHypothesis, confidence, doNot,
 // whyThisAction — will cause a ZodError if someone tries to embed it here.
 // This makes the contract violation detectable early (at ingest / storage time)
 // rather than silently corrupting downstream consumers.
-export const IncidentPacketSchema = z.object({
+export const IncidentPacketSchema = z.strictObject({
   schemaVersion: z.literal("incident-packet/v1alpha1"),
   // identity layer (ADR 0018)
   packetId: z.string(),
@@ -119,6 +119,6 @@ export const IncidentPacketSchema = z.object({
   evidence: EvidenceSchema,
   // retrieval layer (ADR 0018)
   pointers: PointersSchema,
-}).strict();
+});
 
 export type IncidentPacket = z.infer<typeof IncidentPacketSchema>;

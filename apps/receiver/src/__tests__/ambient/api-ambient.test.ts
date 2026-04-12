@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import type { IncidentPacket } from "@3am/core";
+import type { IncidentPacket } from "3am-core";
 import { MemoryAdapter } from "../../storage/adapters/memory.js";
 import { createApp } from "../../index.js";
 import { SpanBuffer } from "../../ambient/span-buffer.js";

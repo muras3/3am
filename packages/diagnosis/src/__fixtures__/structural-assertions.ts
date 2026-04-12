@@ -3,8 +3,8 @@
  * Not exact-match — checks structural correctness, constraint adherence,
  * and forbidden patterns.
  */
-import { ConsoleNarrativeSchema } from "@3am/core";
-import type { ReasoningStructure } from "@3am/core";
+import { ConsoleNarrativeSchema } from "3am-core";
+import type { ReasoningStructure } from "3am-core";
 
 export interface AssertionResult {
   pass: boolean;

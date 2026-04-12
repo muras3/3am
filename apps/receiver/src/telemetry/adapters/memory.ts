@@ -12,14 +12,17 @@
  *
  * UPSERT semantics: last write wins (Map.set).
  */
-import type {
-  TelemetryStoreDriver,
-  TelemetrySpan,
-  TelemetryMetric,
-  TelemetryLog,
-  TelemetryQueryFilter,
-  SnapshotType,
-  EvidenceSnapshot,
+import {
+  MAX_QUERY_LOGS,
+  MAX_QUERY_METRICS,
+  MAX_QUERY_SPANS,
+  type TelemetryStoreDriver,
+  type TelemetrySpan,
+  type TelemetryMetric,
+  type TelemetryLog,
+  type TelemetryQueryFilter,
+  type SnapshotType,
+  type EvidenceSnapshot,
 } from "../interface.js";
 
 export class MemoryTelemetryAdapter implements TelemetryStoreDriver {
@@ -61,7 +64,9 @@ export class MemoryTelemetryAdapter implements TelemetryStoreDriver {
       if (filter.environment && span.environment !== filter.environment) continue;
       result.push(span);
     }
-    return result;
+    const order = filter.orderBy ?? "startTimeDesc";
+    result.sort((a, b) => order === "startTimeAsc" ? a.startTimeMs - b.startTimeMs : b.startTimeMs - a.startTimeMs);
+    return result.slice(0, Math.min(filter.limit ?? MAX_QUERY_SPANS, MAX_QUERY_SPANS));
   }
 
   async queryMetrics(filter: TelemetryQueryFilter): Promise<TelemetryMetric[]> {
@@ -72,7 +77,9 @@ export class MemoryTelemetryAdapter implements TelemetryStoreDriver {
       if (filter.environment && metric.environment !== filter.environment) continue;
       result.push(metric);
     }
-    return result;
+    const order = filter.orderBy ?? "startTimeDesc";
+    result.sort((a, b) => order === "startTimeAsc" ? a.startTimeMs - b.startTimeMs : b.startTimeMs - a.startTimeMs);
+    return result.slice(0, Math.min(filter.limit ?? MAX_QUERY_METRICS, MAX_QUERY_METRICS));
   }
 
   async queryLogs(filter: TelemetryQueryFilter): Promise<TelemetryLog[]> {
@@ -83,7 +90,9 @@ export class MemoryTelemetryAdapter implements TelemetryStoreDriver {
       if (filter.environment && log.environment !== filter.environment) continue;
       result.push(log);
     }
-    return result;
+    const order = filter.orderBy ?? "startTimeDesc";
+    result.sort((a, b) => order === "startTimeAsc" ? a.startTimeMs - b.startTimeMs : b.startTimeMs - a.startTimeMs);
+    return result.slice(0, Math.min(filter.limit ?? MAX_QUERY_LOGS, MAX_QUERY_LOGS));
   }
 
   // ── Snapshots ───────────────────────────────────────────────────────────────

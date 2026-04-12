@@ -9,7 +9,7 @@
  */
 
 import type { TelemetrySpan, TelemetryStoreDriver } from '../telemetry/interface.js'
-import type { BaselineContext, BaselineSource } from '@3am/core/schemas/curated-evidence'
+import type { BaselineContext, BaselineSource } from '3am-core/schemas/curated-evidence'
 
 // ── Operation Identity ──────────────────────────────────────────────────
 

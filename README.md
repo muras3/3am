@@ -11,7 +11,7 @@
 
 <p align="center">
   <a href="https://github.com/muras3/3am/actions/workflows/ci.yml"><img src="https://github.com/muras3/3am/actions/workflows/ci.yml/badge.svg?branch=develop" alt="CI"/></a>
-  <a href="https://www.npmjs.com/package/3amoncall"><img src="https://img.shields.io/npm/v/3amoncall.svg" alt="npm"/></a>
+  <a href="https://www.npmjs.com/package/3am-cli"><img src="https://img.shields.io/npm/v/3am-cli.svg" alt="npm"/></a>
   <a href="#license"><img src="https://img.shields.io/badge/license-Apache--2.0-blue.svg" alt="License"/></a>
 </p>
 
@@ -52,12 +52,42 @@ AVOID ASSUMING
 ## Quick Start
 
 ```bash
-npx 3am init          # instrument your app with OTel
-npx 3am local         # start local receiver (Docker)
-npx 3am local demo    # inject a demo incident → see diagnosis
+npx 3am-cli init          # instrument your app with OTel
+npx 3am-cli local         # start local receiver (Docker)
+npx 3am-cli local demo    # inject a demo incident → see diagnosis
 ```
 
 Open **http://localhost:3333**. Requires Docker and Node.js 20+.
+
+<details>
+<summary>Which mode should I pick?</summary>
+
+| | `automatic` mode | `manual` mode |
+|---|---|---|
+| **When to use** | You have an `ANTHROPIC_API_KEY` (or `OPENAI_API_KEY`) | You use Claude Code, Codex, or Ollama subscription — no API key |
+| **How diagnosis runs** | Receiver calls the LLM server-side on every incident | You click "Run Diagnosis" in the Console; the bridge routes it through your local CLI |
+| **Setup** | `npx 3am-cli init --mode auto --provider anthropic` | `npx 3am-cli init --mode manual --provider claude-code` |
+| **Bridge required** | No | Yes — run `npx 3am-cli bridge` in a terminal |
+
+**Using an API key? → `auto` mode is the production path:**
+
+```bash
+npx 3am-cli init --mode auto --provider anthropic
+export ANTHROPIC_API_KEY=sk-ant-...
+npx 3am-cli deploy vercel
+```
+
+**Using Claude Code / Codex subscription? → `manual` mode:**
+
+```bash
+npx 3am-cli init --mode manual --provider claude-code
+npx 3am-cli local              # terminal 1
+npx 3am-cli bridge             # terminal 2
+```
+
+> **Common mistake:** `--mode manual --provider anthropic` is a contradiction — manual mode is for when you don't have a server-side API key. If you have `ANTHROPIC_API_KEY`, use `--mode auto --provider anthropic`.
+
+</details>
 
 <details>
 <summary>What each command does</summary>
@@ -73,28 +103,38 @@ Open **http://localhost:3333**. Requires Docker and Node.js 20+.
 - **manual** — route diagnosis through Claude Code, Codex, or Ollama locally (no API key needed)
 
 **Manual mode notes:**
-- start `npx 3am bridge` when using manual mode so Console reruns and chat can reach your local provider
+- start `npx 3am-cli bridge` when using manual mode so Console reruns and chat can reach your local provider
 - you can also run manual diagnosis directly:
 
 ```bash
-npx 3am diagnose \
+npx 3am-cli diagnose \
   --incident-id inc_000001 \
   --receiver-url http://localhost:3333 \
   --provider claude-code
 ```
 
+**Remote manual mode (bridge to a deployed Receiver):**
+
+If your Receiver is deployed (Vercel, Cloudflare) but you want to run diagnosis locally through your Claude Code or Codex subscription, use the `--receiver-url` flag:
+
+```bash
+npx 3am-cli bridge --receiver-url https://your-3am-receiver.vercel.app
+```
+
+The bridge connects to the deployed Receiver via WebSocket (Durable Objects on CF Workers, HTTP upgrade on Vercel) and handles diagnosis requests locally. Auth token is auto-detected from credentials saved by `npx 3am-cli deploy`.
+
 **Manual mode workflow (local or hosted Receiver):**
-- `npx 3am init --mode manual --provider claude-code|codex|ollama`
-- start the bridge: `npx 3am bridge`
+- `npx 3am-cli init --mode manual --provider claude-code|codex|ollama`
+- start the bridge: `npx 3am-cli bridge` (add `--receiver-url <url>` for a remote Receiver)
 - start the Receiver without a server-side provider env var taking precedence over manual mode
   remove `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` from the Receiver process if you want provider selection to come only from the bridge side
-- for local Receiver, `npx 3am local` already sets `ALLOW_INSECURE_DEV_MODE=true`
+- for local Receiver, `npx 3am-cli local` already sets `ALLOW_INSECURE_DEV_MODE=true`
 - for a separately started dev Receiver, set `ALLOW_INSECURE_DEV_MODE=true` yourself if you want token-free Console access
 
 **Console dev proxy and auth:**
 - if you run the Console separately in dev, its Vite proxy expects the Receiver at `http://localhost:3333` by default
 - override with `VITE_RECEIVER_BASE_URL` only when your Receiver is on a different port
-- `npx 3am local` sets `ALLOW_INSECURE_DEV_MODE=true`, so Console API requests do not require a token
+- `npx 3am-cli local` sets `ALLOW_INSECURE_DEV_MODE=true`, so Console API requests do not require a token
 - if you run the Receiver without `ALLOW_INSECURE_DEV_MODE=true`, API routes require `RECEIVER_AUTH_TOKEN` and the Console expects a secure one-time sign-in link
 
 </details>
@@ -105,8 +145,30 @@ npx 3am diagnose \
 
 | | Command | What you get |
 |---|---|---|
-| [![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/muras3/3am&env=ANTHROPIC_API_KEY&products=%5B%7B%22type%22%3A%22integration%22%2C%22group%22%3A%22postgres%22%7D%5D&project-name=3am) | `npx 3am deploy vercel` | Neon Postgres auto-provisioned, secure one-time sign-in link |
-| **Cloudflare** | `npx 3am deploy cloudflare` | D1 storage, Workers Observability integration |
+| [![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/muras3/3am&env=ANTHROPIC_API_KEY&products=%5B%7B%22type%22%3A%22integration%22%2C%22group%22%3A%22postgres%22%7D%5D&project-name=3am) | `npx 3am-cli deploy vercel` | Neon Postgres auto-provisioned, `AUTH_TOKEN` on first access |
+| **Cloudflare** | `npx 3am-cli deploy cloudflare` | D1 storage, Workers Observability integration |
+
+<details>
+<summary>Cloudflare deploy — required API token permissions</summary>
+
+Create a Cloudflare API token at https://dash.cloudflare.com/profile/api-tokens with **all** of the following permissions, then export it before running `deploy cloudflare`:
+
+- `Account Settings: Read`
+- `Workers Scripts: Edit`
+- `D1: Edit`
+- `Cloudflare Queues: Edit`
+- `Workers Observability: Edit`
+
+```bash
+export CLOUDFLARE_API_TOKEN=your-cloudflare-api-token
+npx 3am-cli deploy cloudflare --yes
+```
+
+> `Workers Observability: Edit` is required for the OTLP destinations API and is **not** included in Cloudflare's pre-built "Edit Workers" template — you must use a custom token.
+
+</details>
+
+After deploy, the CLI prints a short-lived one-time sign-in link for the Console. Mint another later with `npx 3am-cli auth-link [receiver-url]`.
 
 ---
 
@@ -170,14 +232,23 @@ Requires a structured logger (pino, winston, bunyan) wired through `@opentelemet
 <summary><strong>CLI reference</strong></summary>
 
 ```bash
-npx 3am init                                    # set up OTel in your app
-npx 3am local                                   # start local receiver
-npx 3am local demo                              # run demo incident
-npx 3am deploy vercel|cloudflare                # deploy to platform
-npx 3am auth-link [receiver-url]                # mint a fresh sign-in link
-npx 3am diagnose --incident-id inc_000001       # manual diagnosis
-npx 3am bridge                                  # start local diagnosis bridge
+npx 3am-cli init                                    # set up OTel in your app
+npx 3am-cli init --mode auto --provider anthropic   # auto mode (API key path)
+npx 3am-cli init --mode manual --provider claude-code  # manual mode (subscription path)
+npx 3am-cli local                                   # start local receiver
+npx 3am-cli local demo                              # run demo incident
+npx 3am-cli deploy vercel|cloudflare                # deploy to platform
+npx 3am-cli auth-link [receiver-url]                # mint a fresh sign-in link
+npx 3am-cli diagnose --incident-id inc_000001       # manual diagnosis
+npx 3am-cli bridge                                  # start local diagnosis bridge (local receiver)
+npx 3am-cli bridge --receiver-url <url>             # connect bridge to a remote deployed receiver via WebSocket
 ```
+
+`init` flags: `--api-key`, `--mode auto|manual`, `--provider anthropic|openai|claude-code|codex|ollama`, `--model`, `--lang en|ja`, `--no-interactive`
+
+`bridge` flags: `--port` (default 4269), `--receiver-url` (remote WebSocket target; auto-detected from credentials if omitted)
+
+`deploy` flags: `--yes`, `--no-interactive`, `--json`, `--project-name`, `--auth-token`
 
 </details>
 
