@@ -347,7 +347,9 @@ export async function runInit(_argv: string[], options: InitOptions = {}): Promi
       }
       if (useVercelOtel) {
         if (patchBuildScript(pkgPath)) {
-          process.stdout.write(`Changed build script to use --webpack (required for OTel)\n`);
+          process.stdout.write(
+            `Changed build script to use --webpack — OpenTelemetry auto-instrumentation needs Webpack's stable module IDs (Turbopack renames them, breaking require-in-the-middle monkey-patching).\n`,
+          );
         } else {
           // Re-read to check current state
           const currentPkg = JSON.parse(readFileSync(pkgPath, "utf-8")) as PackageJson;

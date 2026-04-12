@@ -229,6 +229,17 @@ Requires a structured logger (pino, winston, bunyan) wired through `@opentelemet
 </details>
 
 <details>
+<summary><strong>Why does <code>3am init</code> change <code>next build</code> to <code>next build --webpack</code>?</strong></summary>
+
+OpenTelemetry's auto-instrumentation (`@opentelemetry/auto-instrumentations-node`) monkey-patches Node.js modules at require-time using [require-in-the-middle](https://github.com/elastic/require-in-the-middle). This works when module identifiers are stable — Webpack preserves them. Turbopack, however, renames module IDs as part of its compilation model, which breaks the monkey-patching and causes OTel instrumentation to silently stop working.
+
+`3am init` therefore rewrites `"next build"` to `"next build --webpack"` in your `package.json` build script to force Webpack for production builds. Your dev server (`next dev`) is unaffected.
+
+When OTel publishes an official Turbopack plugin that replaces require-in-the-middle, this workaround can be removed. Until then, removing `--webpack` will produce a build that appears to work but emits no traces.
+
+</details>
+
+<details>
 <summary><strong>CLI reference</strong></summary>
 
 ```bash
