@@ -145,7 +145,7 @@ The bridge connects to the deployed Receiver via WebSocket (Durable Objects on C
 
 | | Command | What you get |
 |---|---|---|
-| [![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/muras3/3am&env=ANTHROPIC_API_KEY&products=%5B%7B%22type%22%3A%22integration%22%2C%22group%22%3A%22postgres%22%7D%5D&project-name=3am) | `npx 3am-cli deploy vercel` | Neon Postgres auto-provisioned, `AUTH_TOKEN` on first access |
+| [![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/muras3/3am&env=ANTHROPIC_API_KEY&products=%5B%7B%22type%22%3A%22integration%22%2C%22group%22%3A%22postgres%22%7D%5D&project-name=3am) | `npx 3am-cli deploy vercel` | Neon Postgres auto-provisioned, secure one-time sign-in link |
 | **Cloudflare** | `npx 3am-cli deploy cloudflare` | D1 storage, Workers Observability integration |
 
 <details>
@@ -223,7 +223,7 @@ Requires a structured logger (pino, winston, bunyan) wired through `@opentelemet
 <summary><strong>Security</strong></summary>
 
 - Set an [Anthropic spending limit](https://console.anthropic.com/settings/billing) before deploying — diagnosis runs on every incident
-- Deploy prints a short-lived one-time sign-in link. Mint a fresh one later with `npx 3am auth-link`
+- Deploy prints a short-lived one-time sign-in link. Mint a fresh one later with `npx 3am-cli auth-link`
 - API keys are server-side only, never exposed to the browser
 
 </details>
