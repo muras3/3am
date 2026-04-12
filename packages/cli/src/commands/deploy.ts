@@ -89,6 +89,54 @@ async function promptConfirm(message: string): Promise<boolean> {
   });
 }
 
+const SUPPORTED_DEPLOY_LOCALES = ["en", "ja"] as const;
+
+/**
+ * Sync the locale stored in CLI credentials to the receiver.
+ * Best-effort: failures produce a warning but do not abort deploy.
+ */
+async function syncLocaleToReceiver(
+  receiverUrl: string,
+  locale: string | undefined,
+  json: boolean,
+): Promise<void> {
+  if (!locale) return;
+
+  if (!(SUPPORTED_DEPLOY_LOCALES as readonly string[]).includes(locale)) {
+    info(
+      `Warning: locale "${locale}" is not supported (must be one of: ${SUPPORTED_DEPLOY_LOCALES.join(", ")}). Skipping locale sync.\n`,
+      json,
+    );
+    return;
+  }
+
+  try {
+    const res = await fetch(`${receiverUrl}/api/settings/locale`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ locale }),
+      signal: AbortSignal.timeout(5_000),
+    });
+    if (res.status === 404 || res.status === 405) {
+      // Older receiver versions without this endpoint — skip silently.
+      return;
+    }
+    if (!res.ok) {
+      info(
+        `Warning: locale sync failed (HTTP ${res.status}). Diagnosis output may appear in English.\n`,
+        json,
+      );
+    } else {
+      info(`Locale synced to receiver: ${locale}.\n`, json);
+    }
+  } catch (err) {
+    info(
+      `Warning: locale sync failed (${String(err)}). Diagnosis output may appear in English.\n`,
+      json,
+    );
+  }
+}
+
 export async function runDeploy(
   _argv: string[],
   options: DeployOptions = {},
@@ -319,6 +367,11 @@ export async function runDeploy(
     claimUrl = buildClaimUrl(deployedUrl, claimResult.token);
     info("Receiver initialisation verified.\n", json);
   }
+
+  // -------------------------------------------------------------------------
+  // Step 9c: Sync locale to receiver (best-effort)
+  // -------------------------------------------------------------------------
+  await syncLocaleToReceiver(deployedUrl, loadCredentials().locale, json);
 
   // -------------------------------------------------------------------------
   // Step 10: Connect the app runtime
