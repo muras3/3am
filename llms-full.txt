@@ -210,7 +210,7 @@ npx 3am local demo --yes                              # skip cost prompt
 npx 3am deploy vercel                                 # deploy receiver to Vercel (interactive)
 npx 3am deploy vercel --yes --no-interactive --json   # CI deploy
 npx 3am deploy cloudflare --yes                       # deploy to Cloudflare Workers
-npx 3am auth-link [receiver-url]                      # mint a fresh one-time sign-in URL
+npx 3am-cli auth-link [receiver-url]                  # mint a fresh one-time sign-in URL
 
 # Bridge (manual mode)
 npx 3am bridge                                        # local bridge on :4269
