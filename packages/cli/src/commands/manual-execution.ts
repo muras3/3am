@@ -627,7 +627,7 @@ async function buildManualEvidenceQueryAnswer(
   evidence: EvidenceResponse,
   question: string,
   history: EvidenceConversationTurn[],
-  options: { provider?: ProviderName; model?: string; locale: "en" | "ja" },
+  options: { provider?: ProviderName; model?: string; locale: "en" | "ja"; isSystemFollowup?: boolean },
 ): Promise<EvidenceQueryResponse> {
   if (/^(hi|hello|hey|こんにちは|こんばんは|おはよう)/i.test(question.trim())) {
     return buildDeterministicNoAnswer(
@@ -660,6 +660,7 @@ async function buildManualEvidenceQueryAnswer(
     const plan = await generateEvidencePlan(
       {
         question,
+        isSystemFollowup: options.isSystemFollowup,
         history,
         diagnosis: {
           whatHappened: diagnosisResult.summary.what_happened,
@@ -676,7 +677,7 @@ async function buildManualEvidenceQueryAnswer(
       },
     );
 
-    if (plan.mode === "clarification") {
+    if (plan.mode === "clarification" && !options.isSystemFollowup) {
       return {
         question,
         status: "clarification",
@@ -687,9 +688,11 @@ async function buildManualEvidenceQueryAnswer(
       };
     }
 
+    // When isSystemFollowup is true and the planner still chose clarification,
+    // treat the rewritten question as an "answer" mode — never surface clarification.
     effectiveQuestion = plan.rewrittenQuestion;
-    answerMode = plan.mode;
-    intent = intentFromMode(plan.mode);
+    answerMode = plan.mode === "clarification" ? "answer" : plan.mode;
+    intent = intentFromMode(answerMode);
     intent.preferredSurfaces = plan.preferredSurfaces;
   } catch {
     // Fall back to deterministic routing below.
@@ -872,6 +875,7 @@ export async function runManualEvidenceQuery(options: ManualExecutionOptions & {
   history: EvidenceConversationTurn[];
   diagnosisResult?: DiagnosisResult;
   evidence?: EvidenceResponse;
+  isSystemFollowup?: boolean;
 }): Promise<EvidenceQueryResponse> {
   let diagnosisResult = options.diagnosisResult;
   let evidence = options.evidence;
@@ -914,6 +918,7 @@ export async function runManualEvidenceQuery(options: ManualExecutionOptions & {
       provider: options.provider,
       model,
       locale,
+      isSystemFollowup: options.isSystemFollowup,
     },
   );
 }

@@ -66,6 +66,7 @@ export interface EvidenceQueryRequest {
   diagnosisResult?: unknown;
   evidence?: unknown;
   locale?: string;
+  isSystemFollowup?: boolean;
 }
 
 export type BridgeRequest = ChatRequest | DiagnoseRequest | EvidenceQueryRequest;
@@ -261,6 +262,7 @@ export class WsBridgeManager {
     diagnosisResult?: unknown;
     evidence?: unknown;
     locale?: string;
+    isSystemFollowup?: boolean;
   }): Promise<{ result: unknown }> {
     const response = await this.sendRequest({
       type: "evidence_query_request",
