@@ -137,7 +137,7 @@ npx 3am deploy vercel --yes --no-interactive --json
 ```
 
 - Neon Postgres is auto-provisioned via Vercel integration
-- After deploy, the first-access Console screen displays the `AUTH_TOKEN`
+- After deploy, the CLI prints a short-lived one-time sign-in URL for the Console
 - Set `ANTHROPIC_API_KEY` (or another provider credential) as a Vercel environment variable for automatic mode
 
 ### Cloudflare Workers
@@ -162,8 +162,8 @@ What it does:
 |----------|----------|---------|-------------|
 | `ANTHROPIC_API_KEY` | For automatic mode with Anthropic | — | Anthropic API key |
 | `OPENAI_API_KEY` | For automatic mode with OpenAI | — | OpenAI API key |
-| `RECEIVER_AUTH_TOKEN` | Production | Auto-generated | Bearer token for Receiver auth |
-| `RETENTION_HOURS` | No | `1` | Hours to retain telemetry and closed incidents |
+| `RECEIVER_AUTH_TOKEN` | Production | Must be configured before public exposure | Bearer token for Receiver auth |
+| `RETENTION_HOURS` | No | `48` | Hours to retain telemetry and closed incidents |
 | `NOTIFICATION_WEBHOOK_URL` | No | — | Slack or Discord webhook URL for incident alerts |
 | `CLOUDFLARE_API_TOKEN` | CF Workers deploy | — | Cloudflare API token |
 
@@ -210,6 +210,7 @@ npx 3am local demo --yes                              # skip cost prompt
 npx 3am deploy vercel                                 # deploy receiver to Vercel (interactive)
 npx 3am deploy vercel --yes --no-interactive --json   # CI deploy
 npx 3am deploy cloudflare --yes                       # deploy to Cloudflare Workers
+npx 3am auth-link [receiver-url]                      # mint a fresh one-time sign-in URL
 
 # Bridge (manual mode)
 npx 3am bridge                                        # local bridge on :4269
@@ -227,6 +228,7 @@ npx 3am diagnose --incident-id inc_000001 --receiver-url http://localhost:3333 -
 | `init` | `--mode auto\|manual`, `--provider anthropic\|openai\|claude-code\|codex\|ollama`, `--api-key`, `--model`, `--lang en\|ja`, `--no-interactive` |
 | `local` | `--port` (default 3333), `--yes`, `--no-interactive`, `--receiver-url` |
 | `deploy` | `vercel\|cloudflare`, `--yes`, `--no-interactive`, `--json`, `--project-name`, `--auth-token` |
+| `auth-link` | `[receiver-url]`, `--json` |
 | `bridge` | `--port` (default 4269), `--receiver-url` (remote WS target; auto-detected from credentials) |
 | `diagnose` | `--incident-id`, `--receiver-url`, `--provider`, `--model` |
 

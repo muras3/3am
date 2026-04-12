@@ -9,3 +9,5 @@
 - [Full setup guide for AI agents](llms-full.txt): Complete installation, configuration, and deployment instructions in a single file
 - [README](https://github.com/muras3/3am#readme): Human-readable project overview
 - [CLAUDE.md](https://github.com/muras3/3am/blob/develop/CLAUDE.md): Monorepo structure, commands, and conventions
+
+Deployment note: `npx 3am-cli deploy ...` prints a short-lived one-time sign-in URL for the Console. Mint another later with `npx 3am-cli auth-link [receiver-url]`.
