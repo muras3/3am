@@ -60,7 +60,7 @@ exports[`evidence query golden responses > keeps the inc_000006 follow-up answer
         ],
         "id": "seg_fact_1",
         "kind": "fact",
-        "text": "Trace POST /checkout span POST /checkout returned httpStatus=500 with durationMs=2340.",
+        "text": "トレース POST /checkout スパン POST /checkout は HTTPステータス=500 で終了し、処理時間は 2340ms でした。",
       },
       {
         "evidenceRefs": [
@@ -71,7 +71,7 @@ exports[`evidence query golden responses > keeps the inc_000006 follow-up answer
         ],
         "id": "seg_fact_2",
         "kind": "fact",
-        "text": "Metric group mgroup:0 indicates web error_rate Verdict=Inferred.",
+        "text": "メトリクスグループ mgroup:0 は web error_rate を示し、判定は Inferred です。観測メトリクス: checkout.error_rate: 観測値 0.710、期待値 0.0123。",
       },
       {
         "evidenceRefs": [
@@ -149,7 +149,7 @@ exports[`evidence query golden responses > keeps the inc_000006 follow-up answer
         ],
         "id": "seg_fact_1",
         "kind": "fact",
-        "text": "Metric group mgroup:0 indicates web error_rate Verdict=Inferred.",
+        "text": "メトリクスグループ mgroup:0 は web error_rate を示し、判定は Inferred です。観測メトリクス: checkout.error_rate: 観測値 0.710、期待値 0.0123。",
       },
       {
         "evidenceRefs": [
@@ -160,7 +160,7 @@ exports[`evidence query golden responses > keeps the inc_000006 follow-up answer
         ],
         "id": "seg_fact_2",
         "kind": "fact",
-        "text": "Trace POST /checkout span POST /checkout returned httpStatus=500 with durationMs=2340.",
+        "text": "トレース POST /checkout スパン POST /checkout は HTTPステータス=500 で終了し、処理時間は 2340ms でした。",
       },
       {
         "evidenceRefs": [
@@ -238,7 +238,7 @@ exports[`evidence query golden responses > keeps the inc_000006 follow-up answer
         ],
         "id": "seg_fact_1",
         "kind": "fact",
-        "text": "Trace POST /checkout span POST /checkout returned httpStatus=500 with durationMs=2340.",
+        "text": "トレース POST /checkout スパン POST /checkout は HTTPステータス=500 で終了し、処理時間は 2340ms でした。",
       },
       {
         "evidenceRefs": [
@@ -249,7 +249,7 @@ exports[`evidence query golden responses > keeps the inc_000006 follow-up answer
         ],
         "id": "seg_fact_2",
         "kind": "fact",
-        "text": "Metric group mgroup:0 indicates web error_rate Verdict=Inferred.",
+        "text": "メトリクスグループ mgroup:0 は web error_rate を示し、判定は Inferred です。観測メトリクス: checkout.error_rate: 観測値 0.710、期待値 0.0123。",
       },
       {
         "evidenceRefs": [

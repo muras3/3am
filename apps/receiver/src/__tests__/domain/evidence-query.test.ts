@@ -740,6 +740,68 @@ describe('buildEvidenceQueryAnswer', () => {
     const result = await buildEvidenceQueryAnswer(incident, makeTracesOnlyStore('trace-cf-2', 'span-cf-2', 504), 'Why is checkout failing?', false)
     EvidenceQueryResponseSchema.parse(result)
   })
+
+  // ── Locale=ja fact segment output ────────────────────────────────────────
+
+  it('fact segments use Japanese strings when locale=ja', async () => {
+    const incident = makeIncident({ diagnosisResult: makeDiagnosisResult() })
+    const store = makeMockStoreWithAnomalousMetrics()
+
+    const result = await buildEvidenceQueryAnswer(
+      incident,
+      store,
+      'checkoutが失敗している原因は？',
+      false,
+      'ja',
+    )
+
+    expect(result.status).toBe('answered')
+
+    const factSegments = result.segments.filter((seg) => seg.kind === 'fact')
+    expect(factSegments.length).toBeGreaterThan(0)
+
+    // At least one fact segment should contain Japanese metric or log text
+    const hasJapaneseFact = factSegments.some(
+      (seg) =>
+        seg.text.includes('メトリクスグループ') ||
+        seg.text.includes('ログ証跡') ||
+        seg.text.includes('トレース'),
+    )
+    expect(hasJapaneseFact).toBe(true)
+
+    // None of the fact segments should contain English-only metric/log patterns
+    for (const seg of factSegments) {
+      // English metric pattern: "Metric group ... Verdict=..."
+      expect(seg.text).not.toMatch(/^Metric group .+ Verdict=/)
+      // English log pattern: "Log evidence ... of type ... appeared"
+      expect(seg.text).not.toMatch(/^Log evidence .+ of type .+ appeared/)
+    }
+  })
+
+  it('no fact segment contains English metric or log template strings when locale=ja', async () => {
+    const incident = makeIncident({ diagnosisResult: makeDiagnosisResult() })
+    const store = makeMockStoreWithAnomalousMetrics()
+
+    const result = await buildEvidenceQueryAnswer(
+      incident,
+      store,
+      'checkoutが失敗している原因は？',
+      false,
+      'ja',
+    )
+
+    expect(result.status).toBe('answered')
+
+    const factSegments = result.segments.filter((seg) => seg.kind === 'fact')
+    for (const seg of factSegments) {
+      // Must not use English metric fact pattern
+      expect(seg.text).not.toMatch(/Metric group .+ indicates .+ Verdict=/)
+      // Must not use English log fact pattern
+      expect(seg.text).not.toMatch(/Log evidence .+ of type .+ appeared \d+ times/)
+      // Must not use English trace fact pattern
+      expect(seg.text).not.toMatch(/Trace .+ span .+ returned httpStatus=/)
+    }
+  })
 })
 
 // ── Followup text self-containment contract ──────────────────────────────────
