@@ -11,7 +11,7 @@ import type {
   EvidenceResponse,
   Followup,
 } from "3am-core";
-import { generateEvidencePlan, generateEvidenceQuery } from "3am-diagnosis";
+import { generateEvidencePlan, generateEvidenceQuery, formatMetricFact, formatLogFact, formatTraceFact } from "3am-diagnosis";
 import type { Incident } from "../storage/interface.js";
 import { classifyDiagnosisState } from "./diagnosis-state.js";
 import type { TelemetryStoreDriver } from "../telemetry/interface.js";
@@ -329,17 +329,22 @@ function summarizeEvidence(evidence: EvidenceResponse["surfaces"]) {
   };
 }
 
-function buildEvidenceCatalog(evidence: EvidenceResponse): RetrievedEvidence[] {
+function buildEvidenceCatalog(evidence: EvidenceResponse, locale: "en" | "ja" = "en"): RetrievedEvidence[] {
   const traces = evidence.surfaces.traces.observed.flatMap((trace) =>
     trace.spans.map((span) => ({
       ref: { kind: "span" as const, id: `${trace.traceId}:${span.spanId}` },
       surface: "traces" as const,
       summary: ensureSentence(
-        `Trace ${trace.route} span ${span.name} returned` +
-          ((span.attributes["http.response.status_code"] ?? span.attributes["http.status_code"]) !== undefined
-            ? ` httpStatus=${String(span.attributes["http.response.status_code"] ?? span.attributes["http.status_code"])}`
-            : ` status=${span.status}`) +
-          ` with durationMs=${span.durationMs}`,
+        formatTraceFact(
+          {
+            route: trace.route,
+            spanName: span.name,
+            httpStatus: (span.attributes["http.response.status_code"] ?? span.attributes["http.status_code"]) as string | number | undefined,
+            spanStatus: span.status,
+            durationMs: span.durationMs,
+          },
+          locale,
+        ),
       ),
       score: 0,
     })),
@@ -349,8 +354,15 @@ function buildEvidenceCatalog(evidence: EvidenceResponse): RetrievedEvidence[] {
     ref: { kind: "metric_group" as const, id: group.id },
     surface: "metrics" as const,
     summary: ensureSentence(
-      `Metric group ${group.id} indicates ${group.claim} Verdict=${group.verdict}. ` +
-      `Observed metrics: ${group.metrics.map((m) => `${m.name} observed ${m.value} versus expected ${m.expected}`).join("; ")}`,
+      formatMetricFact(
+        {
+          id: group.id,
+          claim: group.claim,
+          verdict: group.verdict,
+          metrics: group.metrics.map((m) => ({ name: m.name, value: m.value, expected: m.expected })),
+        },
+        locale,
+      ),
     ),
     score: 0,
   }));
@@ -362,9 +374,16 @@ function buildEvidenceCatalog(evidence: EvidenceResponse): RetrievedEvidence[] {
     },
     surface: "logs" as const,
     summary: ensureSentence(
-      `Log evidence ${claim.label} of type ${claim.type} appeared ${claim.count} times.` +
-      (claim.entries[0]?.body ? ` Sample log: ${claim.entries[0].body}.` : "") +
-      (claim.explanation ? ` Explanation: ${claim.explanation}.` : ""),
+      formatLogFact(
+        {
+          label: claim.label,
+          type: claim.type,
+          count: claim.count,
+          sampleBody: claim.entries[0]?.body,
+          explanation: claim.explanation,
+        },
+        locale,
+      ),
     ),
     score: 0,
   }));
@@ -620,37 +639,37 @@ function followupText(
   if (locale === "ja") {
     switch (key) {
       case "metrics_window":
-        return "同じ時間帯の異常はメトリクスでも出ている？";
+        return "障害期間中の同じ時間帯の異常はメトリクスでも出ている？";
       case "log_cluster":
-        return "そのドリフトに対応するログクラスタはどれ？";
+        return "障害期間中のそのドリフトに対応するログクラスタはどれ？";
       case "trace_path":
-        return "この失敗が最初に出たトレース経路はどれ？";
+        return "障害期間の中で、この失敗が最初に出たトレース経路はどれ？";
       case "missing_signal":
-        return "欠けているはずの回復シグナルは何？";
+        return "障害期間中に欠けているはずの回復シグナルは何？";
       case "inspect_span":
-        return "最初に見るべき span はどれ？";
+        return "障害期間中の最初に見るべき span はどれ？";
       case "abnormal_metric":
-        return "いちばん異常な metric group はどれ？";
+        return "障害期間中でいちばん異常な metric group はどれ？";
       case "symptom_log":
-        return "症状を最もよく説明するログクラスタはどれ？";
+        return "障害期間中の症状を最もよく説明するログクラスタはどれ？";
     }
   }
 
   switch (key) {
     case "metrics_window":
-      return "Do the metrics show the same failure window?";
+      return "Do the metrics show the same failure window during the incident?";
     case "log_cluster":
-      return "Which log cluster lines up with that drift?";
+      return "Which log cluster during the incident lines up with that drift?";
     case "trace_path":
-      return "Which trace path first shows this failure?";
+      return "Within the incident window, which trace path first shows this failure?";
     case "missing_signal":
-      return "What expected resilience signal is still missing?";
+      return "What expected resilience signal is still missing during the incident?";
     case "inspect_span":
-      return "Which span should I inspect first?";
+      return "Within the incident window, which span should I inspect first?";
     case "abnormal_metric":
-      return "Which metric group is most abnormal?";
+      return "Within the incident window, which metric group is most abnormal?";
     case "symptom_log":
-      return "Which log cluster best explains the symptom?";
+      return "Within the incident window, which log cluster best explains the symptom?";
   }
 }
 
@@ -713,6 +732,7 @@ export async function buildEvidenceQueryAnswer(
   isFollowup: boolean,
   locale: "en" | "ja" = "en",
   history: EvidenceConversationTurn[] = [],
+  isSystemFollowup = false,
 ): Promise<EvidenceQueryResponse> {
   const diagnosisState = determineDiagnosisState(incident);
   const curatedEvidence = await buildCuratedEvidence(incident, telemetryStore);
@@ -741,7 +761,7 @@ export async function buildEvidenceQueryAnswer(
     );
   }
 
-  const catalog = buildEvidenceCatalog(curatedEvidence);
+  const catalog = buildEvidenceCatalog(curatedEvidence, locale);
   const planningIntent: IntentProfile = { kind: "general", preferredSurfaces: ["traces", "metrics", "logs"] };
   const planningCandidates = retrieveEvidence(question, catalog, planningIntent).slice(0, 8);
   const explanatoryTerm = detectExplanatoryTerm(question, locale);
@@ -764,6 +784,7 @@ export async function buildEvidenceQueryAnswer(
     const plan = await generateEvidencePlan(
       {
         question,
+        isSystemFollowup,
         history,
         diagnosis: incident.diagnosisResult
           ? {
@@ -783,7 +804,7 @@ export async function buildEvidenceQueryAnswer(
       },
     );
 
-    if (plan.mode === "clarification") {
+    if (plan.mode === "clarification" && !isSystemFollowup) {
       return {
         question,
         status: "clarification",
@@ -794,9 +815,11 @@ export async function buildEvidenceQueryAnswer(
       };
     }
 
+    // When isSystemFollowup is true and the planner still chose clarification,
+    // treat the rewritten question as an "answer" mode — never surface clarification.
     effectiveQuestion = plan.rewrittenQuestion;
-    answerMode = plan.mode;
-    intent = intentFromMode(plan.mode);
+    answerMode = plan.mode === "clarification" ? "answer" : plan.mode;
+    intent = intentFromMode(answerMode);
     intent.preferredSurfaces = plan.preferredSurfaces;
   } catch {
     if (/^(hi|hello|hey|こんにちは|こんばんは|おはよう)/i.test(question.trim())) {

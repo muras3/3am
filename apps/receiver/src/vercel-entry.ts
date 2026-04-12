@@ -6,7 +6,7 @@
  * hono/vercel handle() which relies on unsupported export default.
  *
  * - Lazy init: PostgresAdapter + migrate runs once per cold start
- * - AUTH_TOKEN: resolved from DB (auto-generated on first cold start) or env var
+ * - AUTH_TOKEN: resolved from DB or env var; fail-closed if neither exists
  * - Diagnosis debouncer uses waitUntil (@vercel/functions) for serverless-safe deferred execution
  * - consoleDist NOT passed — Vercel serves console SPA as static files
  * - server.ts (Node.js entry) is preserved for local/Docker use

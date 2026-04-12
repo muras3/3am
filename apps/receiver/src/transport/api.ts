@@ -8,7 +8,7 @@ import {
   type DiagnosisResult,
 } from "3am-core";
 import { callModelMessages, wrapUserMessage } from "3am-diagnosis";
-import { jwtCookieSetter, jwtCookieValidator } from "../middleware/session-cookie.js";
+import { issueSessionCookie } from "../middleware/session-cookie.js";
 import { rateLimiter } from "../middleware/rate-limit.js";
 import type { Incident, IncidentPage, StorageDriver } from "../storage/interface.js";
 import { spanMembershipKey } from "../storage/interface.js";
@@ -82,6 +82,9 @@ const TELEMETRY_LOGS_CONTEXTUAL_DEFAULT_LIMIT = 50;
 const TELEMETRY_MAX_LIMIT = 200;
 const AMBIENT_LIVE_WINDOW_MS = 5 * 60 * 1000;
 const AMBIENT_INCIDENT_FALLBACK_LIMIT = 50;
+const CLAIM_SETTINGS_KEY = "receiver_claim_state";
+const SETUP_COMPLETE_SETTINGS_KEY = "setup_complete";
+const CLAIM_TTL_MS = 10 * 60 * 1000;
 
 function toIncidentResponse(incident: Incident): IncidentResponse {
   const { telemetryScope: _ts, spanMembership: _sm, anomalousSignals: _as, platformEvents: _pe, packet: _pk, consoleNarrative: _cn, diagnosisResult: _dr, ...response } = incident;
@@ -106,6 +109,19 @@ function parseLimit(raw: string | undefined, defaultLimit: number): number {
   const parsed = parseInt(raw, 10);
   if (Number.isNaN(parsed)) return defaultLimit;
   return Math.min(Math.max(parsed, 1), TELEMETRY_MAX_LIMIT);
+}
+
+function base64UrlEncode(bytes: Uint8Array): string {
+  return Buffer.from(bytes)
+    .toString("base64")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/g, "");
+}
+
+async function sha256(value: string): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
+  return base64UrlEncode(new Uint8Array(digest));
 }
 
 function paginateItems<T>(
@@ -263,23 +279,79 @@ export function createApiRouter(
 ): Hono {
   const app = new Hono();
 
-  // JWT session cookie for chat endpoint (B-11)
-  // Cookie is set on all /api/* responses; validated only on /api/chat/*.
-  // Active only when RECEIVER_AUTH_TOKEN is set (production).
+  // JWT session cookie for browser clients.
   const authToken = process.env["RECEIVER_AUTH_TOKEN"];
   const allowInsecure = process.env["ALLOW_INSECURE_DEV_MODE"] === "true";
-  if (authToken) {
-    app.use("/api/*", jwtCookieSetter({ authToken, secure: !allowInsecure }));
-    app.use("/api/chat/*", jwtCookieValidator(authToken));
-    app.use("/api/incidents/*/evidence/query", jwtCookieValidator(authToken));
-    app.use("/api/incidents/*/rerun-diagnosis", jwtCookieValidator(authToken));
-  }
 
   // Rate limit chat endpoint — LLM cost protection (B-11)
   app.use("/api/chat/*", rateLimiter({ windowMs: 60_000, max: 10, storage }));
 
   // Rate limit evidence query endpoint — LLM cost protection
   app.use("/api/incidents/*/evidence/query", rateLimiter({ windowMs: 60_000, max: 10, storage }));
+
+  app.post("/api/claims", apiBodyLimit(4 * 1024), async (c) => {
+    if (!authToken) {
+      return c.json({ error: "claims unavailable in insecure dev mode" }, 404);
+    }
+
+    const tokenBytes = crypto.getRandomValues(new Uint8Array(32));
+    const token = base64UrlEncode(tokenBytes);
+    const expiresAt = new Date(Date.now() + CLAIM_TTL_MS).toISOString();
+    const tokenHash = await sha256(token);
+
+    await storage.setSettings(
+      CLAIM_SETTINGS_KEY,
+      JSON.stringify({ tokenHash, expiresAt }),
+    );
+
+    return c.json({ token, expiresAt });
+  });
+
+  app.post("/api/claims/exchange", apiBodyLimit(4 * 1024), async (c) => {
+    if (!authToken) {
+      return c.json({ error: "claims unavailable in insecure dev mode" }, 404);
+    }
+
+    let body: unknown;
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ error: "invalid body" }, 400);
+    }
+    const token = typeof body === "object" && body !== null
+      ? (body as Record<string, unknown>)["token"]
+      : undefined;
+    if (typeof token !== "string" || token.length < 16) {
+      return c.json({ error: "invalid token" }, 400);
+    }
+
+    const rawState = await storage.getSettings(CLAIM_SETTINGS_KEY);
+    if (!rawState) {
+      return c.json({ error: "claim unavailable" }, 404);
+    }
+
+    let claimState: { tokenHash: string; expiresAt: string };
+    try {
+      claimState = JSON.parse(rawState) as { tokenHash: string; expiresAt: string };
+    } catch {
+      return c.json({ error: "claim unavailable" }, 404);
+    }
+
+    if (Date.parse(claimState.expiresAt) <= Date.now()) {
+      await storage.setSettings(CLAIM_SETTINGS_KEY, "");
+      return c.json({ error: "claim expired" }, 410);
+    }
+
+    const tokenHash = await sha256(token);
+    if (tokenHash !== claimState.tokenHash) {
+      return c.json({ error: "invalid claim" }, 401);
+    }
+
+    await storage.setSettings(CLAIM_SETTINGS_KEY, "");
+    await storage.setSettings(SETUP_COMPLETE_SETTINGS_KEY, "true");
+    await issueSessionCookie(c, { authToken, secure: !allowInsecure });
+    return c.json({ status: "ok" });
+  });
 
   app.get("/api/incidents", async (c) => {
     await maybeCleanup(storage, telemetryStore);
@@ -331,73 +403,6 @@ export function createApiRouter(
       return c.json({ error: "not found" }, 404);
     }
     return c.json(await buildCuratedEvidence(incident, telemetryStore));
-  });
-
-  // Diagnostic endpoint for #169 — evidence empty despite D1 data
-  app.get("/api/incidents/:id/evidence/debug", async (c) => {
-    const id = c.req.param("id");
-
-    const incident = await storage.getIncident(id);
-    if (incident === null) {
-      return c.json({ error: "not found" }, 404);
-    }
-
-    const { telemetryScope, spanMembership } = incident;
-    const filter = buildIncidentQueryFilter(telemetryScope);
-
-    const [spans, metrics, logs, snapshots] = await Promise.all([
-      telemetryStore.querySpans(filter),
-      telemetryStore.queryMetrics(filter),
-      telemetryStore.queryLogs(filter),
-      telemetryStore.getSnapshots(id),
-    ]);
-
-    const membershipSet = new Set(spanMembership);
-    const memberSpans = spans.filter(s =>
-      membershipSet.has(spanMembershipKey(s.traceId, s.spanId)),
-    );
-
-    const sampleSpanKey = spans.length > 0
-      ? spanMembershipKey(spans[0]!.traceId, spans[0]!.spanId)
-      : null;
-    const sampleMembershipKeys = spanMembership.slice(0, 5);
-    const spanServices = [...new Set(spans.map(s => s.serviceName))];
-    const spanEnvironments = [...new Set(spans.map(s => s.environment))];
-    const unfilteredSpans = await telemetryStore.querySpans({
-      startMs: filter.startMs,
-      endMs: filter.endMs,
-    });
-
-    return c.json({
-      incidentId: id,
-      telemetryScope: {
-        windowStartMs: telemetryScope.windowStartMs,
-        windowEndMs: telemetryScope.windowEndMs,
-        detectTimeMs: telemetryScope.detectTimeMs,
-        environment: telemetryScope.environment,
-        memberServices: telemetryScope.memberServices,
-        dependencyServices: telemetryScope.dependencyServices,
-      },
-      queryFilter: filter,
-      rawCounts: {
-        spans: spans.length,
-        metrics: metrics.length,
-        logs: logs.length,
-        unfilteredSpans: unfilteredSpans.length,
-      },
-      membershipFilter: {
-        membershipSize: spanMembership.length,
-        matchingSpans: memberSpans.length,
-        sampleSpanKey,
-        sampleMembershipKeys,
-      },
-      d1Metadata: {
-        spanServices,
-        spanEnvironments,
-        snapshotTypes: snapshots.map(s => s.snapshotType),
-        snapshotSizes: snapshots.map(s => JSON.stringify(s.data).length),
-      },
-    });
   });
 
   app.post("/api/incidents/:id/close", apiBodyLimit(4 * 1024), async (c) => {
@@ -509,6 +514,7 @@ export function createApiRouter(
             diagnosisResult: incident.diagnosisResult,
             evidence,
             locale,
+            isSystemFollowup: parsed.data.isSystemFollowup ?? false,
           });
           return c.json(wsResult.result);
         } catch (error) {
@@ -534,6 +540,7 @@ export function createApiRouter(
             diagnosisResult: incident.diagnosisResult,
             evidence,
             locale,
+            isSystemFollowup: parsed.data.isSystemFollowup ?? false,
           });
           if (doResponse.type === "error_response") {
             return c.json({
@@ -571,6 +578,7 @@ export function createApiRouter(
             diagnosisResult: incident.diagnosisResult,
             evidence,
             locale,
+            isSystemFollowup: parsed.data.isSystemFollowup ?? false,
           }),
         });
         if (!bridgeResponse.ok) {
@@ -596,6 +604,7 @@ export function createApiRouter(
       parsed.data.isFollowup ?? false,
       locale,
       parsed.data.history ?? [],
+      parsed.data.isSystemFollowup ?? false,
     );
     return c.json(result);
   });

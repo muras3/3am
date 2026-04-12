@@ -9,6 +9,9 @@ import type {
 import {
   callModelMessages,
   diagnose,
+  formatLogFact,
+  formatMetricFact,
+  formatTraceFact,
   generateEvidencePlan,
   generateEvidenceQuery,
   generateConsoleNarrative,
@@ -123,17 +126,22 @@ function summarizeEvidence(evidence: EvidenceResponse["surfaces"]) {
   };
 }
 
-function buildEvidenceCatalog(evidence: EvidenceResponse): RetrievedEvidence[] {
+function buildEvidenceCatalog(evidence: EvidenceResponse, locale: "en" | "ja" = "en"): RetrievedEvidence[] {
   const traces = evidence.surfaces.traces.observed.flatMap((trace) =>
     trace.spans.map((span) => ({
       ref: { kind: "span" as const, id: `${trace.traceId}:${span.spanId}` },
       surface: "traces" as const,
       summary: ensureSentence(
-        `Trace ${trace.route} span ${span.name} returned` +
-          (span.attributes["http.response.status_code"] !== undefined
-            ? ` httpStatus=${String(span.attributes["http.response.status_code"])}`
-            : ` status=${span.status}`) +
-          ` with durationMs=${span.durationMs}`,
+        formatTraceFact(
+          {
+            route: trace.route,
+            spanName: span.name,
+            httpStatus: span.attributes["http.response.status_code"] as string | number | undefined,
+            spanStatus: span.status,
+            durationMs: span.durationMs,
+          },
+          locale,
+        ),
       ),
       score: 0,
     })),
@@ -143,8 +151,15 @@ function buildEvidenceCatalog(evidence: EvidenceResponse): RetrievedEvidence[] {
     ref: { kind: "metric_group" as const, id: group.id },
     surface: "metrics" as const,
     summary: ensureSentence(
-      `Metric group ${group.id} indicates ${group.claim} Verdict=${group.verdict}. ` +
-      `Observed metrics: ${group.metrics.map((m) => `${m.name} observed ${m.value} versus expected ${m.expected}`).join("; ")}`,
+      formatMetricFact(
+        {
+          id: group.id,
+          claim: group.claim,
+          verdict: group.verdict,
+          metrics: group.metrics.map((m) => ({ name: m.name, value: m.value, expected: m.expected })),
+        },
+        locale,
+      ),
     ),
     score: 0,
   }));
@@ -156,9 +171,16 @@ function buildEvidenceCatalog(evidence: EvidenceResponse): RetrievedEvidence[] {
     },
     surface: "logs" as const,
     summary: ensureSentence(
-      `Log evidence ${claim.label} of type ${claim.type} appeared ${claim.count} times.` +
-      (claim.entries[0]?.body ? ` Sample log: ${claim.entries[0].body}.` : "") +
-      (claim.explanation ? ` Explanation: ${claim.explanation}.` : ""),
+      formatLogFact(
+        {
+          label: claim.label,
+          type: claim.type,
+          count: claim.count,
+          sampleBody: claim.entries[0]?.body,
+          explanation: claim.explanation,
+        },
+        locale,
+      ),
     ),
     score: 0,
   }));
@@ -514,37 +536,37 @@ function followupText(
   if (locale === "ja") {
     switch (key) {
       case "metrics_window":
-        return "同じ時間帯の異常はメトリクスでも出ている？";
+        return "障害期間中の同じ時間帯の異常はメトリクスでも出ている？";
       case "log_cluster":
-        return "そのドリフトに対応するログクラスタはどれ？";
+        return "障害期間中のそのドリフトに対応するログクラスタはどれ？";
       case "trace_path":
-        return "この失敗が最初に出たトレース経路はどれ？";
+        return "障害期間の中で、この失敗が最初に出たトレース経路はどれ？";
       case "missing_signal":
-        return "欠けているはずの回復シグナルは何？";
+        return "障害期間中に欠けているはずの回復シグナルは何？";
       case "inspect_span":
-        return "最初に見るべき span はどれ？";
+        return "障害期間中の最初に見るべき span はどれ？";
       case "abnormal_metric":
-        return "いちばん異常な metric group はどれ？";
+        return "障害期間中でいちばん異常な metric group はどれ？";
       case "symptom_log":
-        return "症状を最もよく説明するログクラスタはどれ？";
+        return "障害期間中の症状を最もよく説明するログクラスタはどれ？";
     }
   }
 
   switch (key) {
     case "metrics_window":
-      return "Do the metrics show the same failure window?";
+      return "Do the metrics show the same failure window during the incident?";
     case "log_cluster":
-      return "Which log cluster lines up with that drift?";
+      return "Which log cluster during the incident lines up with that drift?";
     case "trace_path":
-      return "Which trace path first shows this failure?";
+      return "Within the incident window, which trace path first shows this failure?";
     case "missing_signal":
-      return "What expected resilience signal is still missing?";
+      return "What expected resilience signal is still missing during the incident?";
     case "inspect_span":
-      return "Which span should I inspect first?";
+      return "Within the incident window, which span should I inspect first?";
     case "abnormal_metric":
-      return "Which metric group is most abnormal?";
+      return "Within the incident window, which metric group is most abnormal?";
     case "symptom_log":
-      return "Which log cluster best explains the symptom?";
+      return "Within the incident window, which log cluster best explains the symptom?";
   }
 }
 
@@ -605,7 +627,7 @@ async function buildManualEvidenceQueryAnswer(
   evidence: EvidenceResponse,
   question: string,
   history: EvidenceConversationTurn[],
-  options: { provider?: ProviderName; model?: string; locale: "en" | "ja" },
+  options: { provider?: ProviderName; model?: string; locale: "en" | "ja"; isSystemFollowup?: boolean },
 ): Promise<EvidenceQueryResponse> {
   if (/^(hi|hello|hey|こんにちは|こんばんは|おはよう)/i.test(question.trim())) {
     return buildDeterministicNoAnswer(
@@ -615,7 +637,7 @@ async function buildManualEvidenceQueryAnswer(
     );
   }
 
-  const catalog = buildEvidenceCatalog(evidence);
+  const catalog = buildEvidenceCatalog(evidence, options.locale);
   const planningIntent: IntentProfile = { kind: "general", preferredSurfaces: ["traces", "metrics", "logs"] };
   const planningCandidates = retrieveEvidence(question, catalog, planningIntent).slice(0, 8);
   const explanatoryTerm = detectExplanatoryTerm(question, options.locale);
@@ -638,6 +660,7 @@ async function buildManualEvidenceQueryAnswer(
     const plan = await generateEvidencePlan(
       {
         question,
+        isSystemFollowup: options.isSystemFollowup,
         history,
         diagnosis: {
           whatHappened: diagnosisResult.summary.what_happened,
@@ -654,7 +677,7 @@ async function buildManualEvidenceQueryAnswer(
       },
     );
 
-    if (plan.mode === "clarification") {
+    if (plan.mode === "clarification" && !options.isSystemFollowup) {
       return {
         question,
         status: "clarification",
@@ -665,9 +688,11 @@ async function buildManualEvidenceQueryAnswer(
       };
     }
 
+    // When isSystemFollowup is true and the planner still chose clarification,
+    // treat the rewritten question as an "answer" mode — never surface clarification.
     effectiveQuestion = plan.rewrittenQuestion;
-    answerMode = plan.mode;
-    intent = intentFromMode(plan.mode);
+    answerMode = plan.mode === "clarification" ? "answer" : plan.mode;
+    intent = intentFromMode(answerMode);
     intent.preferredSurfaces = plan.preferredSurfaces;
   } catch {
     // Fall back to deterministic routing below.
@@ -735,7 +760,7 @@ function buildChatSystemPrompt(dr: DiagnosisResult, locale?: "en" | "ja"): strin
 
 export async function runManualDiagnosis(options: ManualExecutionOptions): Promise<{
   diagnosis: DiagnosisResult;
-  narrative: ConsoleNarrative;
+  narrative: ConsoleNarrative | undefined;
 }> {
   const headers = authHeaders(options.authToken);
   const packet = await fetchJson<IncidentPacket>(
@@ -758,11 +783,22 @@ export async function runManualDiagnosis(options: ManualExecutionOptions): Promi
     model,
     locale,
   });
-  const narrative = await generateConsoleNarrative(diagnosis, reasoning, {
-    provider: options.provider,
-    model,
-    locale,
-  });
+
+  // Stage 2: narrative generation — graceful degradation.
+  // A NarrativeValidationError or any other narrative failure must NOT cause
+  // the diagnose command to fail. Stage 1 result is always returned.
+  let narrative: ConsoleNarrative | undefined;
+  try {
+    narrative = await generateConsoleNarrative(diagnosis, reasoning, {
+      provider: options.provider,
+      model,
+      locale,
+    });
+  } catch (narrativeErr) {
+    console.warn(
+      `[manual-execution] narrative generation failed (stage 1 result preserved): ${String(narrativeErr)}`,
+    );
+  }
 
   await fetchJson<{ status: string }>(
     `${options.receiverUrl}/api/diagnosis/${encodeURIComponent(options.incidentId)}`,
@@ -772,14 +808,17 @@ export async function runManualDiagnosis(options: ManualExecutionOptions): Promi
       body: JSON.stringify(diagnosis),
     },
   );
-  await fetchJson<{ status: string }>(
-    `${options.receiverUrl}/api/incidents/${encodeURIComponent(options.incidentId)}/console-narrative`,
-    {
-      method: "POST",
-      headers,
-      body: JSON.stringify(narrative),
-    },
-  );
+
+  if (narrative) {
+    await fetchJson<{ status: string }>(
+      `${options.receiverUrl}/api/incidents/${encodeURIComponent(options.incidentId)}/console-narrative`,
+      {
+        method: "POST",
+        headers,
+        body: JSON.stringify(narrative),
+      },
+    );
+  }
 
   return { diagnosis, narrative };
 }
@@ -836,6 +875,7 @@ export async function runManualEvidenceQuery(options: ManualExecutionOptions & {
   history: EvidenceConversationTurn[];
   diagnosisResult?: DiagnosisResult;
   evidence?: EvidenceResponse;
+  isSystemFollowup?: boolean;
 }): Promise<EvidenceQueryResponse> {
   let diagnosisResult = options.diagnosisResult;
   let evidence = options.evidence;
@@ -878,6 +918,7 @@ export async function runManualEvidenceQuery(options: ManualExecutionOptions & {
       provider: options.provider,
       model,
       locale,
+      isSystemFollowup: options.isSystemFollowup,
     },
   );
 }

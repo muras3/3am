@@ -249,7 +249,7 @@ describe("Bearer Token auth (ADR 0011)", () => {
     expect(res.status).toBe(401);
   });
 
-  // /api/* requires Bearer auth (ADR 0034: inline diagnosis, Console uses localStorage token)
+  // /api/* requires session cookie or Bearer auth.
   it("returns 401 on /api/incidents without Bearer when token is set", async () => {
     process.env["RECEIVER_AUTH_TOKEN"] = "test-secret";
     app = createApp(storage);
@@ -264,6 +264,67 @@ describe("Bearer Token auth (ADR 0011)", () => {
       headers: { Authorization: "Bearer test-secret" },
     });
     expect(res.status).toBe(200);
+  });
+
+  it("mints a claim token and exchanges it for a cookie session", async () => {
+    process.env["RECEIVER_AUTH_TOKEN"] = "test-secret";
+    app = createApp(storage);
+
+    const claimRes = await app.request("/api/claims", {
+      method: "POST",
+      headers: {
+        Authorization: "Bearer test-secret",
+        "Content-Type": "application/json",
+      },
+      body: "{}",
+    });
+    expect(claimRes.status).toBe(200);
+    const claimBody = await claimRes.json() as { token: string; expiresAt: string };
+    expect(typeof claimBody.token).toBe("string");
+    expect(typeof claimBody.expiresAt).toBe("string");
+
+    const exchangeRes = await app.request("/api/claims/exchange", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token: claimBody.token }),
+    });
+    expect(exchangeRes.status).toBe(200);
+    const cookie = exchangeRes.headers.get("set-cookie");
+    expect(cookie).toContain("console_session=");
+
+    const authedRes = await app.request("/api/incidents", {
+      headers: { Cookie: cookie! },
+    });
+    expect(authedRes.status).toBe(200);
+  });
+
+  it("rejects reuse of an already-consumed claim token", async () => {
+    process.env["RECEIVER_AUTH_TOKEN"] = "test-secret";
+    app = createApp(storage);
+
+    const claimRes = await app.request("/api/claims", {
+      method: "POST",
+      headers: {
+        Authorization: "Bearer test-secret",
+        "Content-Type": "application/json",
+      },
+      body: "{}",
+    });
+    const claimBody = await claimRes.json() as { token: string };
+
+    const firstExchange = await app.request("/api/claims/exchange", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token: claimBody.token }),
+    });
+    expect(firstExchange.status).toBe(200);
+
+    const secondExchange = await app.request("/api/claims/exchange", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token: claimBody.token }),
+    });
+    expect([401, 404]).toContain(secondExchange.status);
   });
 
   it("allows all requests when ALLOW_INSECURE_DEV_MODE=true and no token (dev mode)", async () => {

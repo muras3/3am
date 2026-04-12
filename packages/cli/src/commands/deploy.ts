@@ -12,7 +12,7 @@
  *  7. Resolve auth token (CLI credentials or generate)
  *  8. Set platform secrets + deploy
  *  9. Wait for Receiver readiness
- *  9b. Verify Receiver initialisation (setup token fetch with retry)
+ *  9b. Verify Receiver initialisation and mint a sign-in link
  * 10. Connect app runtime (CF Worker config / .env update)
  * 11. Completion output
  *
@@ -30,7 +30,11 @@ import {
 } from "./deploy/platform.js";
 import { createProvider } from "./deploy/provider.js";
 import { updateAppEnv } from "./deploy/env-writer.js";
-import { waitForReceiver, fetchSetupTokenWithRetry } from "./shared/health.js";
+import {
+  waitForReceiver,
+  createClaimTokenWithRetry,
+  buildClaimUrl,
+} from "./shared/health.js";
 import {
   resolveApiKey,
   loadCredentials,
@@ -83,6 +87,54 @@ async function promptConfirm(message: string): Promise<boolean> {
       resolve(a === "" || a === "y" || a === "yes");
     });
   });
+}
+
+const SUPPORTED_DEPLOY_LOCALES = ["en", "ja"] as const;
+
+/**
+ * Sync the locale stored in CLI credentials to the receiver.
+ * Best-effort: failures produce a warning but do not abort deploy.
+ */
+async function syncLocaleToReceiver(
+  receiverUrl: string,
+  locale: string | undefined,
+  json: boolean,
+): Promise<void> {
+  if (!locale) return;
+
+  if (!(SUPPORTED_DEPLOY_LOCALES as readonly string[]).includes(locale)) {
+    info(
+      `Warning: locale "${locale}" is not supported (must be one of: ${SUPPORTED_DEPLOY_LOCALES.join(", ")}). Skipping locale sync.\n`,
+      json,
+    );
+    return;
+  }
+
+  try {
+    const res = await fetch(`${receiverUrl}/api/settings/locale`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ locale }),
+      signal: AbortSignal.timeout(5_000),
+    });
+    if (res.status === 404 || res.status === 405) {
+      // Older receiver versions without this endpoint — skip silently.
+      return;
+    }
+    if (!res.ok) {
+      info(
+        `Warning: locale sync failed (HTTP ${res.status}). Diagnosis output may appear in English.\n`,
+        json,
+      );
+    } else {
+      info(`Locale synced to receiver: ${locale}.\n`, json);
+    }
+  } catch (err) {
+    info(
+      `Warning: locale sync failed (${String(err)}). Diagnosis output may appear in English.\n`,
+      json,
+    );
+  }
 }
 
 export async function runDeploy(
@@ -231,6 +283,7 @@ export async function runDeploy(
     projectName: options.projectName,
   });
   let deployedUrl: string;
+  let claimUrl: string | undefined;
   try {
     // Set secrets on the platform before deploying
     info("Setting ANTHROPIC_API_KEY on platform...\n", json);
@@ -288,38 +341,37 @@ export async function runDeploy(
   }
 
   // -------------------------------------------------------------------------
-  // Step 9b: Verify Receiver initialisation via setup token fetch
+  // Step 9b: Verify Receiver initialisation and mint a secure sign-in link
   // -------------------------------------------------------------------------
-  // After healthz passes the DB migration may still be running, which causes
-  // setup-status to return 401. Retry with exponential backoff so we can
-  // confirm the Receiver is fully initialised before declaring success.
-  // Only applies to Vercel deploys — CF Workers have a different lifecycle.
-  if (platform === "vercel") {
-    info("\nVerifying Receiver initialisation...\n", json);
-    const setupResult = await fetchSetupTokenWithRetry(
-      deployedUrl,
-      5, // maxRetries
-      (attempt, max, delayMs, message) => {
-        info(
-          `  Setup not ready (${message}), retrying in ${delayMs / 1000}s... (${attempt}/${max})\n`,
-          json,
-        );
-      },
-    );
-
-    if (setupResult.status === "error") {
+  info("\nMinting secure sign-in link...\n", json);
+  const claimResult = await createClaimTokenWithRetry(
+    deployedUrl,
+    authToken,
+    5,
+    (attempt, max, delayMs, message) => {
       info(
-        `Warning: could not verify setup status: ${setupResult.message}\n` +
-          "  The Receiver may still be initialising. If this persists, check\n" +
-          "  the deployment logs on the platform dashboard.\n",
+        `  Receiver not ready (${message}), retrying in ${delayMs / 1000}s... (${attempt}/${max})\n`,
         json,
       );
-    } else if (setupResult.status === "already-setup") {
-      info("Receiver setup already complete.\n", json);
-    } else {
-      info("Receiver initialisation verified.\n", json);
-    }
+    },
+  );
+
+  if (claimResult.status === "error") {
+    info(
+      `Warning: could not mint sign-in link: ${claimResult.message}\n` +
+        "  The Receiver may still be initialising. You can generate a fresh link later with:\n" +
+        `  npx 3am auth-link ${deployedUrl}\n`,
+      json,
+    );
+  } else {
+    claimUrl = buildClaimUrl(deployedUrl, claimResult.token);
+    info("Receiver initialisation verified.\n", json);
   }
+
+  // -------------------------------------------------------------------------
+  // Step 9c: Sync locale to receiver (best-effort)
+  // -------------------------------------------------------------------------
+  await syncLocaleToReceiver(deployedUrl, loadCredentials().locale, json);
 
   // -------------------------------------------------------------------------
   // Step 10: Connect the app runtime
@@ -350,6 +402,7 @@ export async function runDeploy(
           status: "deployed",
           receiverUrl: deployedUrl,
           consoleUrl: deployedUrl,
+          claimUrl,
           authToken,
           workerName: state.workerName,
           wranglerConfigPath: state.configPath,
@@ -365,13 +418,13 @@ export async function runDeploy(
     process.stdout.write("\nDeploy complete!\n\n");
     process.stdout.write(`  Receiver URL: ${deployedUrl}\n`);
     process.stdout.write(`  Console URL:  ${deployedUrl}\n`);
-    process.stdout.write(`  Auth Token:   ${authToken}\n`);
+    if (claimUrl) process.stdout.write(`  Sign-in URL:  ${claimUrl}\n`);
     process.stdout.write(`  Worker:       ${state.workerName}\n`);
     process.stdout.write(`  Wrangler:     ${state.configPath}\n\n`);
     process.stdout.write("Next steps:\n");
     process.stdout.write("  1. Trigger requests against your Cloudflare Worker\n");
-    process.stdout.write(`  2. Open ${deployedUrl} and enter the auth token above\n`);
-    process.stdout.write("  3. Token is stored in ~/.config/3am/credentials\n\n");
+    process.stdout.write(`  2. Open ${claimUrl ?? deployedUrl}\n`);
+    process.stdout.write("  3. Generate a fresh sign-in link any time with `npx 3am auth-link`\n\n");
     return;
   }
 
@@ -436,6 +489,7 @@ export async function runDeploy(
         status: "deployed",
         receiverUrl: deployedUrl,
         consoleUrl,
+        claimUrl,
         authToken,
         envUpdated,
         envPath: finalEnvPath,
@@ -448,7 +502,8 @@ export async function runDeploy(
     process.stdout.write("\nDeploy complete!\n\n");
     process.stdout.write(`  Receiver URL: ${deployedUrl}\n`);
     process.stdout.write(`  Console URL:  ${consoleUrl}\n`);
-    process.stdout.write(`  Auth Token:   ${authToken}\n\n`);
+    if (claimUrl) process.stdout.write(`  Sign-in URL:  ${claimUrl}\n`);
+    process.stdout.write("\n");
     process.stdout.write("Next steps:\n");
     if (!envUpdated) {
       process.stdout.write("  1. Add to your app's .env:\n");
@@ -459,11 +514,11 @@ export async function runDeploy(
         `       OTEL_EXPORTER_OTLP_HEADERS=Authorization=Bearer ${authToken}\n`,
       );
       process.stdout.write("  2. Restart your app\n");
-      process.stdout.write(`  3. Open ${consoleUrl} and enter the auth token above\n`);
+      process.stdout.write(`  3. Open ${claimUrl ?? consoleUrl}\n`);
     } else {
       process.stdout.write("  1. Restart your app to pick up the new .env\n");
-      process.stdout.write(`  2. Open ${consoleUrl} and enter the auth token above\n`);
+      process.stdout.write(`  2. Open ${claimUrl ?? consoleUrl}\n`);
     }
-    process.stdout.write("  Token is stored in ~/.config/3am/credentials\n\n");
+    process.stdout.write("  Use `npx 3am auth-link` from a trusted machine to mint a fresh sign-in link later\n\n");
   }
 }

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { parseNarrative } from "../parse-narrative.js";
 import { rateLimit as rsFixture } from "../__fixtures__/reasoning-structures.js";
 
@@ -68,19 +68,72 @@ describe("parseNarrative", () => {
     expect(result.headline).toHaveLength(180);
   });
 
-  it("rejects invented evidence ref IDs", () => {
-    const bad = {
+  it("strips invented evidence ref IDs with a warning instead of throwing", () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    const withInventedRef = {
       ...validOutput,
       qa: {
         ...validOutput.qa,
         evidenceBindings: [
-          { claim: "test", evidenceRefs: [{ kind: "span", id: "invented:id:123" }] },
+          { claim: "Payment API rate limit exceeded", evidenceRefs: [{ kind: "span", id: "tid:a3f8:sid:pay429" }] },
+          { claim: "invented claim", evidenceRefs: [{ kind: "span", id: "eventloop.utilization" }] },
         ],
       },
     };
-    expect(() => parseNarrative(JSON.stringify(bad), meta, rsFixture)).toThrow(
-      "NarrativeValidationError",
-    );
+    // Should NOT throw
+    const result = parseNarrative(JSON.stringify(withInventedRef), meta, rsFixture);
+
+    // Binding with invalid ref should be removed entirely (no valid refs remain)
+    const claimsAfter = result.qa.evidenceBindings.map((b) => b.claim);
+    expect(claimsAfter).not.toContain("invented claim");
+    expect(claimsAfter).toContain("Payment API rate limit exceeded");
+
+    // Warning should have been emitted
+    const warnCalls = warnSpy.mock.calls.map((args) => String(args[0]));
+    expect(warnCalls.some((msg) => msg.includes("NarrativeValidationWarning"))).toBe(true);
+    expect(warnCalls.some((msg) => msg.includes("eventloop.utilization"))).toBe(true);
+
+    warnSpy.mockRestore();
+  });
+
+  it("strips invented answerEvidenceRefs with a warning, preserving valid ones", () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    const withInventedAnswerRef = {
+      ...validOutput,
+      qa: {
+        ...validOutput.qa,
+        answerEvidenceRefs: [
+          { kind: "span", id: "tid:a3f8:sid:pay429" },     // valid
+          { kind: "metric", id: "eventloop.utilization" },  // invented
+        ],
+      },
+    };
+    const result = parseNarrative(JSON.stringify(withInventedAnswerRef), meta, rsFixture);
+
+    expect(result.qa.answerEvidenceRefs.map((r) => r.id)).toContain("tid:a3f8:sid:pay429");
+    expect(result.qa.answerEvidenceRefs.map((r) => r.id)).not.toContain("eventloop.utilization");
+
+    const warnCalls = warnSpy.mock.calls.map((args) => String(args[0]));
+    expect(warnCalls.some((msg) => msg.includes("eventloop.utilization"))).toBe(true);
+
+    warnSpy.mockRestore();
+  });
+
+  it("passes through narrative with all valid refs without warnings", () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    const result = parseNarrative(JSON.stringify(validOutput), meta, rsFixture);
+
+    // No NarrativeValidationWarning should be emitted
+    const warnCalls = warnSpy.mock.calls.map((args) => String(args[0]));
+    expect(warnCalls.some((msg) => msg.includes("NarrativeValidationWarning"))).toBe(false);
+
+    // All original bindings should be preserved
+    expect(result.qa.evidenceBindings).toHaveLength(validOutput.qa.evidenceBindings.length);
+
+    warnSpy.mockRestore();
   });
 
   it("normalizes kind-prefixed evidence ref IDs before validation", () => {

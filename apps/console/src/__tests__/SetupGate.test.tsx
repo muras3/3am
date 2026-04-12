@@ -1,18 +1,6 @@
 import { render, screen, act, cleanup } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
-import i18n from "i18next";
 import { AUTH_FAILURE_EVENT } from "../api/client.js";
-
-vi.mock("../i18n/index.js", async () => {
-  return {
-    detectPreferredContentLanguage: vi.fn(() => "en" as const),
-    setPreferredLocale: vi.fn(async (locale: "en" | "ja") => {
-      Object.assign(i18n, { language: locale });
-    }),
-  };
-});
-
 import { SetupGate } from "../components/setup-gate.js";
 
 async function flushMicrotasks(): Promise<void> {
@@ -23,31 +11,26 @@ async function flushMicrotasks(): Promise<void> {
 describe("SetupGate", () => {
   beforeEach(() => {
     localStorage.clear();
-    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
-      const url = String(input);
-      if (url === "/api/setup-status") {
-        return Promise.resolve({ ok: true, json: () => Promise.resolve({ setupComplete: false }) });
-      }
-      if (url === "/api/setup-token") {
-        return Promise.resolve({ ok: true, json: () => Promise.resolve({ token: "secret-token" }) });
-      }
-      if (url === "/api/settings/locale") {
-        return Promise.resolve({ ok: true, json: () => Promise.resolve({ locale: "ja" }) });
-      }
-      return Promise.reject(new Error(`Unhandled fetch: ${url} ${init?.method ?? "GET"}`));
-    }));
+    window.history.replaceState({}, document.title, "/");
   });
 
-  afterEach(async () => {
+  afterEach(() => {
     cleanup();
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
     localStorage.clear();
-    await i18n.changeLanguage("en");
+    window.history.replaceState({}, document.title, "/");
   });
 
-  it("shows content-language choices during first setup and persists the selection", async () => {
-    const user = userEvent.setup();
+  it("exchanges a claim token from the URL hash and enters the app", async () => {
+    window.history.replaceState({}, document.title, "/#claim=claim-token");
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === "/api/claims/exchange") {
+        return Promise.resolve(new Response(JSON.stringify({ status: "ok" }), { status: 200 }));
+      }
+      return Promise.reject(new Error(`Unhandled fetch: ${url}`));
+    }));
 
     await act(async () => {
       render(
@@ -58,23 +41,40 @@ describe("SetupGate", () => {
       await flushMicrotasks();
     });
 
-    expect(await screen.findByText("Content Language")).toBeInTheDocument();
-    await act(async () => {
-      await user.click(screen.getByRole("button", { name: /Japanese/i }));
-    });
-    await act(async () => {
-      await user.click(screen.getByRole("button", { name: /Continue/i }));
-      await flushMicrotasks();
-    });
-
-    expect(localStorage.getItem("receiver_auth_token")).toBe("secret-token");
     expect(await screen.findByText("ready")).toBeInTheDocument();
-    expect(i18n.language).toBe("ja");
+    expect(window.location.hash).toBe("");
   });
 
-  it("switches to recovery screen when AUTH_FAILURE_EVENT is dispatched", async () => {
-    // Start in ready state (token already in localStorage)
-    localStorage.setItem("receiver_auth_token", "valid-token");
+  it("shows claim-required screen when no active session exists", async () => {
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === "/api/settings/diagnosis") {
+        return Promise.resolve(new Response("unauthorized", { status: 401 }));
+      }
+      return Promise.reject(new Error(`Unhandled fetch: ${url}`));
+    }));
+
+    await act(async () => {
+      render(
+        <SetupGate>
+          <div>ready</div>
+        </SetupGate>,
+      );
+      await flushMicrotasks();
+    });
+
+    expect(await screen.findByText("Open Your Sign-In Link")).toBeInTheDocument();
+    expect(screen.queryByText("ready")).not.toBeInTheDocument();
+  });
+
+  it("returns to claim-required screen on auth failure", async () => {
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === "/api/settings/diagnosis") {
+        return Promise.resolve(new Response(JSON.stringify({ mode: "automatic", bridgeUrl: "" }), { status: 200 }));
+      }
+      return Promise.reject(new Error(`Unhandled fetch: ${url}`));
+    }));
 
     await act(async () => {
       render(
@@ -85,57 +85,14 @@ describe("SetupGate", () => {
       await flushMicrotasks();
     });
 
-    // App should be showing content
     expect(await screen.findByText("app content")).toBeInTheDocument();
 
-    // Simulate auth failure (e.g. token became invalid after D1 re-creation)
     await act(async () => {
       window.dispatchEvent(new CustomEvent(AUTH_FAILURE_EVENT));
       await flushMicrotasks();
     });
 
-    // Should show recovery screen (Enter Auth Token)
-    expect(await screen.findByText("Enter Auth Token")).toBeInTheDocument();
+    expect(await screen.findByText("Open Your Sign-In Link")).toBeInTheDocument();
     expect(screen.queryByText("app content")).not.toBeInTheDocument();
-  });
-
-  it("recovers from auth failure after entering a new token", async () => {
-    const user = userEvent.setup();
-
-    // Start in ready state
-    localStorage.setItem("receiver_auth_token", "valid-token");
-
-    await act(async () => {
-      render(
-        <SetupGate>
-          <div>app content</div>
-        </SetupGate>,
-      );
-      await flushMicrotasks();
-    });
-
-    expect(await screen.findByText("app content")).toBeInTheDocument();
-
-    // Auth failure
-    await act(async () => {
-      window.dispatchEvent(new CustomEvent(AUTH_FAILURE_EVENT));
-      await flushMicrotasks();
-    });
-
-    expect(await screen.findByText("Enter Auth Token")).toBeInTheDocument();
-
-    // Enter new token
-    const input = screen.getByPlaceholderText("Paste your auth token here");
-    await act(async () => {
-      await user.type(input, "new-valid-token");
-    });
-    await act(async () => {
-      await user.click(screen.getByRole("button", { name: /Save and Continue/i }));
-      await flushMicrotasks();
-    });
-
-    // Should be back to ready state
-    expect(await screen.findByText("app content")).toBeInTheDocument();
-    expect(localStorage.getItem("receiver_auth_token")).toBe("new-valid-token");
   });
 });

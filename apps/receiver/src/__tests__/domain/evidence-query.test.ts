@@ -740,4 +740,156 @@ describe('buildEvidenceQueryAnswer', () => {
     const result = await buildEvidenceQueryAnswer(incident, makeTracesOnlyStore('trace-cf-2', 'span-cf-2', 504), 'Why is checkout failing?', false)
     EvidenceQueryResponseSchema.parse(result)
   })
+
+  // ── Locale=ja fact segment output ────────────────────────────────────────
+
+  it('fact segments use Japanese strings when locale=ja', async () => {
+    const incident = makeIncident({ diagnosisResult: makeDiagnosisResult() })
+    const store = makeMockStoreWithAnomalousMetrics()
+
+    const result = await buildEvidenceQueryAnswer(
+      incident,
+      store,
+      'checkoutが失敗している原因は？',
+      false,
+      'ja',
+    )
+
+    expect(result.status).toBe('answered')
+
+    const factSegments = result.segments.filter((seg) => seg.kind === 'fact')
+    expect(factSegments.length).toBeGreaterThan(0)
+
+    // At least one fact segment should contain Japanese metric or log text
+    const hasJapaneseFact = factSegments.some(
+      (seg) =>
+        seg.text.includes('メトリクスグループ') ||
+        seg.text.includes('ログ証跡') ||
+        seg.text.includes('トレース'),
+    )
+    expect(hasJapaneseFact).toBe(true)
+
+    // None of the fact segments should contain English-only metric/log patterns
+    for (const seg of factSegments) {
+      // English metric pattern: "Metric group ... Verdict=..."
+      expect(seg.text).not.toMatch(/^Metric group .+ Verdict=/)
+      // English log pattern: "Log evidence ... of type ... appeared"
+      expect(seg.text).not.toMatch(/^Log evidence .+ of type .+ appeared/)
+    }
+  })
+
+  it('no fact segment contains English metric or log template strings when locale=ja', async () => {
+    const incident = makeIncident({ diagnosisResult: makeDiagnosisResult() })
+    const store = makeMockStoreWithAnomalousMetrics()
+
+    const result = await buildEvidenceQueryAnswer(
+      incident,
+      store,
+      'checkoutが失敗している原因は？',
+      false,
+      'ja',
+    )
+
+    expect(result.status).toBe('answered')
+
+    const factSegments = result.segments.filter((seg) => seg.kind === 'fact')
+    for (const seg of factSegments) {
+      // Must not use English metric fact pattern
+      expect(seg.text).not.toMatch(/Metric group .+ indicates .+ Verdict=/)
+      // Must not use English log fact pattern
+      expect(seg.text).not.toMatch(/Log evidence .+ of type .+ appeared \d+ times/)
+      // Must not use English trace fact pattern
+      expect(seg.text).not.toMatch(/Trace .+ span .+ returned httpStatus=/)
+    }
+  })
+})
+
+// ── Followup text self-containment contract ──────────────────────────────────
+// Followup questions must be self-contained so that when the user sends them
+// as a follow-up query the planning layer can answer rather than clarifying.
+// Each followup must include a temporal/scope anchor (incident window, 障害期間).
+
+describe('followup text self-containment', () => {
+  beforeEach(() => {
+    generateEvidencePlanMock.mockReset()
+    generateEvidenceQueryMock.mockReset()
+  })
+
+  async function getFollowups(
+    locale: 'en' | 'ja',
+    question: string,
+  ): Promise<string[]> {
+    generateEvidencePlanMock.mockResolvedValueOnce({
+      mode: 'answer',
+      rewrittenQuestion: question,
+      preferredSurfaces: ['traces', 'logs', 'metrics'],
+    })
+    const incident = makeIncident({ diagnosisResult: makeDiagnosisResult() })
+    const store = makeMockStore()
+    const result = await buildEvidenceQueryAnswer(incident, store, question, false, locale)
+    return (result.followups ?? []).map((f) => f.question)
+  }
+
+  it('en followup texts contain incident-window scope anchor', async () => {
+    const followups = await getFollowups('en', 'What happened?')
+    for (const text of followups) {
+      const hasAnchor =
+        text.includes('incident') ||
+        text.includes('window') ||
+        text.includes('during') ||
+        text.includes('Within')
+      expect(
+        hasAnchor,
+        `Followup lacks incident-window anchor: "${text}"`,
+      ).toBe(true)
+    }
+  })
+
+  it('ja followup texts contain incident-window scope anchor (障害期間)', async () => {
+    const followups = await getFollowups('ja', '何が起きたか？')
+    for (const text of followups) {
+      const hasAnchor = text.includes('障害期間')
+      expect(
+        hasAnchor,
+        `Followup lacks 障害期間 anchor: "${text}"`,
+      ).toBe(true)
+    }
+  })
+
+  it('trace_path followup is self-contained in en', async () => {
+    // Simulate a logs-surface question so trace_path followup is generated
+    generateEvidencePlanMock.mockResolvedValueOnce({
+      mode: 'answer',
+      rewrittenQuestion: 'What do the error logs say?',
+      preferredSurfaces: ['logs', 'traces', 'metrics'],
+    })
+    const incident = makeIncident({ diagnosisResult: makeDiagnosisResult() })
+    const store = makeMockStore()
+    const result = await buildEvidenceQueryAnswer(incident, store, 'What do the error logs say?', false, 'en')
+    const traceFollowup = (result.followups ?? []).find((f) => f.targetEvidenceKinds.includes('traces'))
+    expect(traceFollowup).toBeDefined()
+    // Must contain "incident" or "window" or "Within" so the planner knows the scope
+    const hasAnchor =
+      (traceFollowup?.question ?? '').includes('incident') ||
+      (traceFollowup?.question ?? '').includes('window') ||
+      (traceFollowup?.question ?? '').includes('Within')
+    expect(hasAnchor, `trace_path followup lacks scope: "${traceFollowup?.question}"`).toBe(true)
+  })
+
+  it('trace_path followup is self-contained in ja', async () => {
+    generateEvidencePlanMock.mockResolvedValueOnce({
+      mode: 'answer',
+      rewrittenQuestion: 'エラーログは何を示しているか？',
+      preferredSurfaces: ['logs', 'traces', 'metrics'],
+    })
+    const incident = makeIncident({ diagnosisResult: makeDiagnosisResult() })
+    const store = makeMockStore()
+    const result = await buildEvidenceQueryAnswer(incident, store, 'エラーログは何を示しているか？', false, 'ja')
+    const traceFollowup = (result.followups ?? []).find((f) => f.targetEvidenceKinds.includes('traces'))
+    expect(traceFollowup).toBeDefined()
+    expect(
+      (traceFollowup?.question ?? '').includes('障害期間'),
+      `trace_path ja followup lacks 障害期間: "${traceFollowup?.question}"`,
+    ).toBe(true)
+  })
 })

@@ -43,6 +43,17 @@ export type {
 } from "./provider.js";
 export { callModelMessages } from "./model-client.js";
 export { wrapUserMessage } from "./user-message-envelope.js";
+export {
+  formatMetricFact,
+  formatLogFact,
+  formatTraceFact,
+} from "./fact-segment-formatter.js";
+export type {
+  FactSegmentLocale,
+  MetricGroupInput,
+  LogClaimInput,
+  TraceSpanInput,
+} from "./fact-segment-formatter.js";
 // claude-code-pool uses node:child_process and must NOT be statically
 // imported — it would crash CF Workers. Use dynamic import instead:
 //   const { warmUp, shutdown } = await import("3am-diagnosis/claude-code-pool");

@@ -19,6 +19,21 @@ function extractSessionCookie(res: Response): string {
   return match?.[1] ?? "";
 }
 
+async function getSessionCookie(app: ReturnType<typeof createApiRouter>): Promise<string> {
+  const claimRes = await app.request("/api/claims", {
+    method: "POST",
+    headers: { ...authHeader(), "Content-Type": "application/json" },
+    body: "{}",
+  });
+  const claimBody = await claimRes.json() as { token: string };
+  const exchangeRes = await app.request("/api/claims/exchange", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ token: claimBody.token }),
+  });
+  return extractSessionCookie(exchangeRes);
+}
+
 function queryHeaders(sessionCookie: string) {
   return {
     ...authHeader(),
@@ -197,7 +212,7 @@ describe("POST /api/incidents/:id/rerun-diagnosis", () => {
       { generationThreshold: 0 },
       { run } as unknown as DiagnosisRunner,
     );
-    const cookie = extractSessionCookie(await app.request("/api/incidents", { headers: authHeader() }));
+    const cookie = await getSessionCookie(app);
     const incidentId = await seedIncident(storage, true);
 
     const res = await app.request(`/api/incidents/${incidentId}/rerun-diagnosis`, {
@@ -225,7 +240,7 @@ describe("POST /api/incidents/:id/rerun-diagnosis", () => {
       { run: vi.fn().mockResolvedValue(true) } as unknown as DiagnosisRunner,
       enqueueDiagnosis,
     );
-    const cookie = extractSessionCookie(await app.request("/api/incidents", { headers: authHeader() }));
+    const cookie = await getSessionCookie(app);
     const incidentId = await seedIncident(storage, true);
 
     const res = await app.request(`/api/incidents/${incidentId}/rerun-diagnosis`, {
@@ -249,7 +264,7 @@ describe("POST /api/incidents/:id/rerun-diagnosis", () => {
       { run: vi.fn().mockResolvedValue(true) } as unknown as DiagnosisRunner,
       enqueueDiagnosis,
     );
-    const cookie = extractSessionCookie(await app.request("/api/incidents", { headers: authHeader() }));
+    const cookie = await getSessionCookie(app);
     const incidentId = await seedIncident(storage, true);
 
     const res = await app.request(`/api/incidents/${incidentId}/rerun-diagnosis`, {
@@ -271,7 +286,7 @@ describe("POST /api/incidents/:id/rerun-diagnosis", () => {
       { generationThreshold: 0 },
       { run: vi.fn() } as unknown as DiagnosisRunner,
     );
-    const cookie = extractSessionCookie(await app.request("/api/incidents", { headers: authHeader() }));
+    const cookie = await getSessionCookie(app);
 
     const res = await app.request("/api/incidents/inc_missing/rerun-diagnosis", {
       method: "POST",
@@ -291,7 +306,7 @@ describe("POST /api/incidents/:id/rerun-diagnosis", () => {
       { generationThreshold: 0 },
       { run: vi.fn().mockResolvedValue(true) } as unknown as DiagnosisRunner,
     );
-    const cookie = extractSessionCookie(await app.request("/api/incidents", { headers: authHeader() }));
+    const cookie = await getSessionCookie(app);
     const incidentId = await seedIncident(storage, true);
     await storage.claimDiagnosisDispatch(incidentId);
 
@@ -317,7 +332,7 @@ describe("POST /api/incidents/:id/rerun-diagnosis", () => {
       { generationThreshold: 0 },
       { run } as unknown as DiagnosisRunner,
     );
-    const cookie = extractSessionCookie(await app.request("/api/incidents", { headers: authHeader() }));
+    const cookie = await getSessionCookie(app);
     const incidentId = await seedIncident(storage, true);
 
     const startRes = await app.request(`/api/incidents/${incidentId}/rerun-diagnosis`, {
