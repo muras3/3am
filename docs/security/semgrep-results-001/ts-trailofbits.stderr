@@ -1,6 +1,0 @@
-Paths that match both --include and --exclude will be skipped by Semgrep.
-
-Rules downloaded from https://github.com/trailofbits/semgrep-rules failed to parse.
-This is likely because rules have been added that use functionality introduced in later versions of semgrep.
-Please upgrade to latest version of semgrep (see https://semgrep.dev/docs/upgrading/) and try again.
-
