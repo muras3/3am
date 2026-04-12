@@ -85,6 +85,13 @@ vi.mock("node:crypto", () => ({
 }));
 
 // ---------------------------------------------------------------------------
+// Mock global fetch (used for locale sync)
+// ---------------------------------------------------------------------------
+
+const mockFetch = vi.fn();
+vi.stubGlobal("fetch", mockFetch);
+
+// ---------------------------------------------------------------------------
 // Import mocked dependencies
 // ---------------------------------------------------------------------------
 
@@ -122,6 +129,8 @@ function setupHappyPathMocks(): void {
     updated: [],
     envPath: "/path/.env",
   });
+  // Default: locale PUT succeeds
+  mockFetch.mockResolvedValue({ ok: true, status: 200, text: async () => "" });
 }
 
 /** Set the readline answers queue for the next test. */
@@ -160,6 +169,9 @@ describe("runDeploy()", () => {
     mockProvider.deploy.mockReset();
     mockProvider.setEnvVar.mockReset();
     mockProvider.cleanup.mockReset();
+
+    // Reset fetch mock
+    mockFetch.mockReset();
   });
 
   afterEach(() => {
@@ -622,5 +634,131 @@ describe("runDeploy()", () => {
     expect(parsed.envUpdated).toBe(true);
 
     expect(stderrText).toContain("Deploying Receiver");
+  });
+
+  // -------------------------------------------------------------------------
+  // Locale sync
+  // -------------------------------------------------------------------------
+
+  it("locale=ja: fires PUT /api/settings/locale with {locale:'ja'} after deploy", async () => {
+    setupHappyPathMocks();
+    vi.mocked(loadCredentials).mockReturnValue({ locale: "ja" });
+    mockFetch.mockResolvedValue({ ok: true, status: 200, text: async () => "" });
+
+    await runDeploy([], {
+      yes: true,
+      noInteractive: true,
+      platform: "vercel",
+    });
+
+    expect(process.exit).not.toHaveBeenCalled();
+
+    const localeCalls = mockFetch.mock.calls.filter(
+      ([url]: [string]) => String(url).includes("/api/settings/locale"),
+    );
+    expect(localeCalls).toHaveLength(1);
+    const [url, init] = localeCalls[0] as [string, RequestInit];
+    expect(url).toBe("https://test.vercel.app/api/settings/locale");
+    expect(init.method).toBe("PUT");
+    expect(JSON.parse(init.body as string)).toEqual({ locale: "ja" });
+  });
+
+  it("locale sync PUT failure: deploy remains success and warning is emitted", async () => {
+    setupHappyPathMocks();
+    vi.mocked(loadCredentials).mockReturnValue({ locale: "ja" });
+    mockFetch.mockResolvedValue({
+      ok: false,
+      status: 500,
+      text: async () => "internal server error",
+    });
+
+    await runDeploy([], {
+      yes: true,
+      noInteractive: true,
+      platform: "vercel",
+    });
+
+    expect(process.exit).not.toHaveBeenCalled();
+    const stdout = stdoutChunks.join("");
+    expect(stdout).toContain("Deploy complete");
+    const all = stdout + stderrChunks.join("");
+    expect(all).toContain("Warning");
+    expect(all).toContain("locale sync failed");
+    // Response body must NOT be included in warning output (avoid leaking HTML/JSON blobs)
+    expect(all).not.toContain("internal server error");
+  });
+
+  it("locale sync 404: old receiver without locale API — silently skipped, no warning", async () => {
+    setupHappyPathMocks();
+    vi.mocked(loadCredentials).mockReturnValue({ locale: "ja" });
+    mockFetch.mockResolvedValue({ ok: false, status: 404, text: async () => "Not Found" });
+
+    await runDeploy([], {
+      yes: true,
+      noInteractive: true,
+      platform: "vercel",
+    });
+
+    expect(process.exit).not.toHaveBeenCalled();
+    const stdout = stdoutChunks.join("");
+    expect(stdout).toContain("Deploy complete");
+    // No warning emitted for 404 (old receiver compat)
+    const all = stdout + stderrChunks.join("");
+    expect(all).not.toContain("locale sync failed");
+  });
+
+  it("locale sync fetch throws: deploy remains success and warning is emitted", async () => {
+    setupHappyPathMocks();
+    vi.mocked(loadCredentials).mockReturnValue({ locale: "ja" });
+    mockFetch.mockRejectedValue(new Error("network failure"));
+
+    await runDeploy([], {
+      yes: true,
+      noInteractive: true,
+      platform: "vercel",
+    });
+
+    expect(process.exit).not.toHaveBeenCalled();
+    const stdout = stdoutChunks.join("");
+    expect(stdout).toContain("Deploy complete");
+    const all = stdout + stderrChunks.join("");
+    expect(all).toContain("Warning");
+    expect(all).toContain("locale sync failed");
+  });
+
+  it("locale not set: PUT is not called", async () => {
+    setupHappyPathMocks();
+    vi.mocked(loadCredentials).mockReturnValue({});
+
+    await runDeploy([], {
+      yes: true,
+      noInteractive: true,
+      platform: "vercel",
+    });
+
+    expect(process.exit).not.toHaveBeenCalled();
+    const localeCalls = mockFetch.mock.calls.filter(
+      ([url]: [string]) => String(url).includes("/api/settings/locale"),
+    );
+    expect(localeCalls).toHaveLength(0);
+  });
+
+  it("unsupported locale: PUT is not called, warning is emitted", async () => {
+    setupHappyPathMocks();
+    vi.mocked(loadCredentials).mockReturnValue({ locale: "fr" });
+
+    await runDeploy([], {
+      yes: true,
+      noInteractive: true,
+      platform: "vercel",
+    });
+
+    expect(process.exit).not.toHaveBeenCalled();
+    const localeCalls = mockFetch.mock.calls.filter(
+      ([url]: [string]) => String(url).includes("/api/settings/locale"),
+    );
+    expect(localeCalls).toHaveLength(0);
+    const all = stdoutChunks.join("") + stderrChunks.join("");
+    expect(all).toContain('locale "fr" is not supported');
   });
 });
