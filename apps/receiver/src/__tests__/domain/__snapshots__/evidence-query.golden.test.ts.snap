@@ -10,25 +10,25 @@ exports[`evidence query golden responses > keeps the inc_000006 follow-up answer
     },
     "followups": [
       {
-        "question": "同じ時間帯の異常はメトリクスでも出ている？",
+        "question": "障害期間中の同じ時間帯の異常はメトリクスでも出ている？",
         "targetEvidenceKinds": [
           "metrics",
         ],
       },
       {
-        "question": "そのドリフトに対応するログクラスタはどれ？",
+        "question": "障害期間中のそのドリフトに対応するログクラスタはどれ？",
         "targetEvidenceKinds": [
           "logs",
         ],
       },
       {
-        "question": "この失敗が最初に出たトレース経路はどれ？",
+        "question": "障害期間の中で、この失敗が最初に出たトレース経路はどれ？",
         "targetEvidenceKinds": [
           "traces",
         ],
       },
       {
-        "question": "欠けているはずの回復シグナルは何？",
+        "question": "障害期間中に欠けているはずの回復シグナルは何？",
         "targetEvidenceKinds": [
           "logs",
         ],
@@ -99,25 +99,25 @@ exports[`evidence query golden responses > keeps the inc_000006 follow-up answer
     },
     "followups": [
       {
-        "question": "同じ時間帯の異常はメトリクスでも出ている？",
+        "question": "障害期間中の同じ時間帯の異常はメトリクスでも出ている？",
         "targetEvidenceKinds": [
           "metrics",
         ],
       },
       {
-        "question": "そのドリフトに対応するログクラスタはどれ？",
+        "question": "障害期間中のそのドリフトに対応するログクラスタはどれ？",
         "targetEvidenceKinds": [
           "logs",
         ],
       },
       {
-        "question": "この失敗が最初に出たトレース経路はどれ？",
+        "question": "障害期間の中で、この失敗が最初に出たトレース経路はどれ？",
         "targetEvidenceKinds": [
           "traces",
         ],
       },
       {
-        "question": "欠けているはずの回復シグナルは何？",
+        "question": "障害期間中に欠けているはずの回復シグナルは何？",
         "targetEvidenceKinds": [
           "logs",
         ],
@@ -188,25 +188,25 @@ exports[`evidence query golden responses > keeps the inc_000006 follow-up answer
     },
     "followups": [
       {
-        "question": "同じ時間帯の異常はメトリクスでも出ている？",
+        "question": "障害期間中の同じ時間帯の異常はメトリクスでも出ている？",
         "targetEvidenceKinds": [
           "metrics",
         ],
       },
       {
-        "question": "そのドリフトに対応するログクラスタはどれ？",
+        "question": "障害期間中のそのドリフトに対応するログクラスタはどれ？",
         "targetEvidenceKinds": [
           "logs",
         ],
       },
       {
-        "question": "この失敗が最初に出たトレース経路はどれ？",
+        "question": "障害期間の中で、この失敗が最初に出たトレース経路はどれ？",
         "targetEvidenceKinds": [
           "traces",
         ],
       },
       {
-        "question": "欠けているはずの回復シグナルは何？",
+        "question": "障害期間中に欠けているはずの回復シグナルは何？",
         "targetEvidenceKinds": [
           "logs",
         ],
@@ -277,7 +277,7 @@ exports[`evidence query golden responses > keeps the inc_000006 follow-up answer
     },
     "followups": [
       {
-        "question": "What expected resilience signal is still missing?",
+        "question": "What expected resilience signal is still missing during the incident?",
         "targetEvidenceKinds": [
           "logs",
         ],
