@@ -9,6 +9,9 @@ import type {
 import {
   callModelMessages,
   diagnose,
+  formatLogFact,
+  formatMetricFact,
+  formatTraceFact,
   generateEvidencePlan,
   generateEvidenceQuery,
   generateConsoleNarrative,
@@ -123,17 +126,22 @@ function summarizeEvidence(evidence: EvidenceResponse["surfaces"]) {
   };
 }
 
-function buildEvidenceCatalog(evidence: EvidenceResponse): RetrievedEvidence[] {
+function buildEvidenceCatalog(evidence: EvidenceResponse, locale: "en" | "ja" = "en"): RetrievedEvidence[] {
   const traces = evidence.surfaces.traces.observed.flatMap((trace) =>
     trace.spans.map((span) => ({
       ref: { kind: "span" as const, id: `${trace.traceId}:${span.spanId}` },
       surface: "traces" as const,
       summary: ensureSentence(
-        `Trace ${trace.route} span ${span.name} returned` +
-          (span.attributes["http.response.status_code"] !== undefined
-            ? ` httpStatus=${String(span.attributes["http.response.status_code"])}`
-            : ` status=${span.status}`) +
-          ` with durationMs=${span.durationMs}`,
+        formatTraceFact(
+          {
+            route: trace.route,
+            spanName: span.name,
+            httpStatus: span.attributes["http.response.status_code"] as string | number | undefined,
+            spanStatus: span.status,
+            durationMs: span.durationMs,
+          },
+          locale,
+        ),
       ),
       score: 0,
     })),
@@ -143,8 +151,15 @@ function buildEvidenceCatalog(evidence: EvidenceResponse): RetrievedEvidence[] {
     ref: { kind: "metric_group" as const, id: group.id },
     surface: "metrics" as const,
     summary: ensureSentence(
-      `Metric group ${group.id} indicates ${group.claim} Verdict=${group.verdict}. ` +
-      `Observed metrics: ${group.metrics.map((m) => `${m.name} observed ${m.value} versus expected ${m.expected}`).join("; ")}`,
+      formatMetricFact(
+        {
+          id: group.id,
+          claim: group.claim,
+          verdict: group.verdict,
+          metrics: group.metrics.map((m) => ({ name: m.name, value: m.value, expected: m.expected })),
+        },
+        locale,
+      ),
     ),
     score: 0,
   }));
@@ -156,9 +171,16 @@ function buildEvidenceCatalog(evidence: EvidenceResponse): RetrievedEvidence[] {
     },
     surface: "logs" as const,
     summary: ensureSentence(
-      `Log evidence ${claim.label} of type ${claim.type} appeared ${claim.count} times.` +
-      (claim.entries[0]?.body ? ` Sample log: ${claim.entries[0].body}.` : "") +
-      (claim.explanation ? ` Explanation: ${claim.explanation}.` : ""),
+      formatLogFact(
+        {
+          label: claim.label,
+          type: claim.type,
+          count: claim.count,
+          sampleBody: claim.entries[0]?.body,
+          explanation: claim.explanation,
+        },
+        locale,
+      ),
     ),
     score: 0,
   }));
@@ -615,7 +637,7 @@ async function buildManualEvidenceQueryAnswer(
     );
   }
 
-  const catalog = buildEvidenceCatalog(evidence);
+  const catalog = buildEvidenceCatalog(evidence, options.locale);
   const planningIntent: IntentProfile = { kind: "general", preferredSurfaces: ["traces", "metrics", "logs"] };
   const planningCandidates = retrieveEvidence(question, catalog, planningIntent).slice(0, 8);
   const explanatoryTerm = detectExplanatoryTerm(question, options.locale);
