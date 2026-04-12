@@ -11,7 +11,7 @@ export const E2E_STORAGE_STATE = path.resolve(__dirname, "e2e/.auth/storage.json
 
 export default defineConfig({
   testDir: "./e2e",
-  testIgnore: ["**/screenshots.spec.ts"],
+  testIgnore: ["**/screenshots.spec.ts", "**/*.receiver-served.spec.ts"],
   timeout: 30_000,
   retries: process.env["CI"] ? 2 : 0,
   reporter: process.env["CI"] ? "github" : "list",

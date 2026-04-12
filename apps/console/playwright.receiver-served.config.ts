@@ -17,7 +17,7 @@ export const E2E_RECEIVER_SERVED_CLAIM_URL = path.resolve(
 
 export default defineConfig({
   testDir: "./e2e",
-  testMatch: ["specs/**/*.spec.ts"],
+  testMatch: ["specs/**/*.spec.ts", "specs/**/*.receiver-served.spec.ts"],
   timeout: 30_000,
   retries: process.env["CI"] ? 2 : 0,
   reporter: process.env["CI"] ? "github" : "list",
