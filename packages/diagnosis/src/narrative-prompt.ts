@@ -96,8 +96,12 @@ ${absenceSummary}
 ### Available Evidence Surfaces
   ${availableKinds}
 
-### Known Evidence IDs (you may ONLY reference these)
+### Known Evidence IDs — ONLY these IDs are valid
   ${knownIdsStr}
+
+⚠️ HARD RULE: You MUST NOT reference any evidence ID that is not in the list above.
+Do not invent IDs. Do not guess IDs. Do not combine IDs. Do not use metric or field names as IDs.
+If you cannot find a matching ID, omit the reference entirely or set noAnswerReason.
 
 ---
 
