@@ -514,6 +514,7 @@ export function createApiRouter(
             diagnosisResult: incident.diagnosisResult,
             evidence,
             locale,
+            isSystemFollowup: parsed.data.isSystemFollowup ?? false,
           });
           return c.json(wsResult.result);
         } catch (error) {
@@ -539,6 +540,7 @@ export function createApiRouter(
             diagnosisResult: incident.diagnosisResult,
             evidence,
             locale,
+            isSystemFollowup: parsed.data.isSystemFollowup ?? false,
           });
           if (doResponse.type === "error_response") {
             return c.json({
@@ -576,6 +578,7 @@ export function createApiRouter(
             diagnosisResult: incident.diagnosisResult,
             evidence,
             locale,
+            isSystemFollowup: parsed.data.isSystemFollowup ?? false,
           }),
         });
         if (!bridgeResponse.ok) {
@@ -601,6 +604,7 @@ export function createApiRouter(
       parsed.data.isFollowup ?? false,
       locale,
       parsed.data.history ?? [],
+      parsed.data.isSystemFollowup ?? false,
     );
     return c.json(result);
   });

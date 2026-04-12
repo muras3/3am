@@ -379,6 +379,55 @@ describe('POST /api/incidents/:id/evidence/query', () => {
     expect(res.status).toBe(400)
   })
 
+  it('does not return clarification when isSystemFollowup is true', async () => {
+    generateEvidencePlanMock.mockResolvedValueOnce({
+      mode: 'clarification' as const,
+      rewrittenQuestion: 'Which trace path first shows this failure within the incident window?',
+      preferredSurfaces: ['traces'] as const,
+      clarificationQuestion: 'Which failure do you mean?',
+    })
+
+    const cookie = await getSessionCookie(app)
+    const incidentId = await seedIncident(app, true)
+
+    const res = await app.request(`/api/incidents/${incidentId}/evidence/query`, {
+      method: 'POST',
+      headers: queryHeaders(cookie),
+      body: JSON.stringify({
+        question: '障害期間の中で、この失敗が最初に出たトレース経路はどれ？',
+        isSystemFollowup: true,
+      }),
+    })
+
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as Record<string, unknown>
+    expect(body['status']).not.toBe('clarification')
+  })
+
+  it('returns clarification normally when isSystemFollowup is false or absent', async () => {
+    generateEvidencePlanMock.mockResolvedValueOnce({
+      mode: 'clarification' as const,
+      rewrittenQuestion: 'Clarify which service you mean.',
+      preferredSurfaces: ['traces'] as const,
+      clarificationQuestion: 'Which service do you mean?',
+    })
+
+    const cookie = await getSessionCookie(app)
+    const incidentId = await seedIncident(app, true)
+
+    const res = await app.request(`/api/incidents/${incidentId}/evidence/query`, {
+      method: 'POST',
+      headers: queryHeaders(cookie),
+      body: JSON.stringify({
+        question: 'What is happening?',
+      }),
+    })
+
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as Record<string, unknown>
+    expect(body['status']).toBe('clarification')
+  })
+
   it('passes conversation history through to evidence query generation', async () => {
     const cookie = await getSessionCookie(app)
     const incidentId = await seedIncident(app, true)

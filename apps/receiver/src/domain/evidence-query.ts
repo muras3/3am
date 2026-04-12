@@ -732,6 +732,7 @@ export async function buildEvidenceQueryAnswer(
   isFollowup: boolean,
   locale: "en" | "ja" = "en",
   history: EvidenceConversationTurn[] = [],
+  isSystemFollowup = false,
 ): Promise<EvidenceQueryResponse> {
   const diagnosisState = determineDiagnosisState(incident);
   const curatedEvidence = await buildCuratedEvidence(incident, telemetryStore);
@@ -783,6 +784,7 @@ export async function buildEvidenceQueryAnswer(
     const plan = await generateEvidencePlan(
       {
         question,
+        isSystemFollowup,
         history,
         diagnosis: incident.diagnosisResult
           ? {
@@ -802,7 +804,7 @@ export async function buildEvidenceQueryAnswer(
       },
     );
 
-    if (plan.mode === "clarification") {
+    if (plan.mode === "clarification" && !isSystemFollowup) {
       return {
         question,
         status: "clarification",
@@ -813,9 +815,11 @@ export async function buildEvidenceQueryAnswer(
       };
     }
 
+    // When isSystemFollowup is true and the planner still chose clarification,
+    // treat the rewritten question as an "answer" mode — never surface clarification.
     effectiveQuestion = plan.rewrittenQuestion;
-    answerMode = plan.mode;
-    intent = intentFromMode(plan.mode);
+    answerMode = plan.mode === "clarification" ? "answer" : plan.mode;
+    intent = intentFromMode(answerMode);
     intent.preferredSurfaces = plan.preferredSurfaces;
   } catch {
     if (/^(hi|hello|hey|こんにちは|こんばんは|おはよう)/i.test(question.trim())) {
