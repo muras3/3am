@@ -135,7 +135,7 @@ The bridge connects to the deployed Receiver via WebSocket (Durable Objects on C
 - if you run the Console separately in dev, its Vite proxy expects the Receiver at `http://localhost:3333` by default
 - override with `VITE_RECEIVER_BASE_URL` only when your Receiver is on a different port
 - `npx 3am-cli local` sets `ALLOW_INSECURE_DEV_MODE=true`, so Console API requests do not require a token
-- if you run the Receiver without `ALLOW_INSECURE_DEV_MODE=true`, API routes require `RECEIVER_AUTH_TOKEN` and the Console will prompt for that token through Setup Gate
+- if you run the Receiver without `ALLOW_INSECURE_DEV_MODE=true`, API routes require `RECEIVER_AUTH_TOKEN` and the Console expects a secure one-time sign-in link
 
 </details>
 
@@ -168,6 +168,8 @@ npx 3am-cli deploy cloudflare --yes
 
 </details>
 
+After deploy, the CLI prints a short-lived one-time sign-in link for the Console. Mint another later with `npx 3am-cli auth-link [receiver-url]`.
+
 ---
 
 ## How It Works
@@ -199,7 +201,7 @@ The receiver ingests OTLP/HTTP telemetry. When anomalies cross thresholds, it fo
 
 ### Retention
 
-`RETENTION_HOURS` controls how long telemetry and closed incidents are kept. Default: `1` hour.
+`RETENTION_HOURS` controls how long telemetry and closed incidents are kept. Default: `48` hours.
 
 Open incidents are never deleted regardless of retention setting.
 
@@ -221,7 +223,7 @@ Requires a structured logger (pino, winston, bunyan) wired through `@opentelemet
 <summary><strong>Security</strong></summary>
 
 - Set an [Anthropic spending limit](https://console.anthropic.com/settings/billing) before deploying — diagnosis runs on every incident
-- `AUTH_TOKEN` is stored in `localStorage` after first access. Recover from `RECEIVER_AUTH_TOKEN` in your deployment env vars
+- Deploy prints a short-lived one-time sign-in link. Mint a fresh one later with `npx 3am auth-link`
 - API keys are server-side only, never exposed to the browser
 
 </details>
@@ -236,6 +238,7 @@ npx 3am-cli init --mode manual --provider claude-code  # manual mode (subscripti
 npx 3am-cli local                                   # start local receiver
 npx 3am-cli local demo                              # run demo incident
 npx 3am-cli deploy vercel|cloudflare                # deploy to platform
+npx 3am-cli auth-link [receiver-url]                # mint a fresh sign-in link
 npx 3am-cli diagnose --incident-id inc_000001       # manual diagnosis
 npx 3am-cli bridge                                  # start local diagnosis bridge (local receiver)
 npx 3am-cli bridge --receiver-url <url>             # connect bridge to a remote deployed receiver via WebSocket

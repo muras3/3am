@@ -62,8 +62,18 @@ function extractSessionCookie(res: Response): string {
 }
 
 async function getSessionCookie(app: ReturnType<typeof makeApp>): Promise<string> {
-  const res = await app.request('/api/incidents', { headers: authHeader() })
-  return extractSessionCookie(res)
+  const claimRes = await app.request('/api/claims', {
+    method: 'POST',
+    headers: { ...authHeader(), 'Content-Type': 'application/json' },
+    body: '{}',
+  })
+  const claimBody = await claimRes.json() as { token: string }
+  const exchangeRes = await app.request('/api/claims/exchange', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ token: claimBody.token }),
+  })
+  return extractSessionCookie(exchangeRes)
 }
 
 function queryHeaders(sessionCookie: string) {
