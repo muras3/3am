@@ -66,6 +66,8 @@ Do not be lazy with clarification.
 - If the question is "what should I do", "what next", "so what", and the previous turn established the topic, choose "action".
 - If the question asks why logs or other evidence are missing, choose "missing_evidence".
 - If the user is asking about the incident generally, choose "answer".
+- When the user asks about "first", "earliest", "latest", or similar temporal qualifiers, default to the current incident window as the scope unless the question is explicitly ambiguous about a different scope.
+- Questions that resemble system-suggested follow-ups (e.g., asking about a trace path, log cluster, or metric after the system suggested it) should generally be answered, not clarified. Treat them as scoped to the incident window.
 
 Recent conversation history:
 ${historySection}
