@@ -1,3 +1,7 @@
+extensions:
+  health_check:
+    endpoint: 0.0.0.0:13133
+
 receivers:
   otlp:
     protocols:
@@ -14,19 +18,24 @@ exporters:
     path: /var/lib/otel/logs.jsonl
   file/metrics:
     path: /var/lib/otel/metrics.json
+  otlphttp/receiver:
+    endpoint: "${env:RECEIVER_ENDPOINT}"
+    headers:
+      Authorization: "Bearer ${env:RECEIVER_AUTH_TOKEN}"
 
 service:
+  extensions: [health_check]
   pipelines:
     traces:
       receivers: [otlp]
       processors: [batch]
-      exporters: [file/traces]
+      exporters: [file/traces, otlphttp/receiver]
     logs:
       receivers: [otlp]
       processors: [batch]
-      exporters: [file/logs]
+      exporters: [file/logs, otlphttp/receiver]
     metrics:
       receivers: [otlp]
       processors: [batch]
-      exporters: [file/metrics]
+      exporters: [file/metrics, otlphttp/receiver]
 

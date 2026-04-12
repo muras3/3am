@@ -1,4 +1,4 @@
-const { SpanStatusCode } = require("@opentelemetry/api");
+const { SpanKind, SpanStatusCode } = require("@opentelemetry/api");
 
 async function handleOrder(res, orderId, ctx) {
   const { state, config, counters, histograms, enqueueWork, sendJson, log, runAttrs, sleep } = ctx;
@@ -6,7 +6,7 @@ async function handleOrder(res, orderId, ctx) {
   state.stats.orderRequests += 1;
   counters.orderRequestCounter.add(1, runAttrs({ route: "/orders/:id" }));
   const startedAt = Date.now();
-  return ctx.tracer.startActiveSpan("orders.request", async (span) => {
+  return ctx.tracer.startActiveSpan("orders.request", { kind: SpanKind.SERVER }, async (span) => {
     span.setAttributes({
       "app.route": "/orders/:id",
       "app.order_id": orderId,
@@ -31,10 +31,10 @@ async function handleOrder(res, orderId, ctx) {
         await sleep(15);
         const order = state.orders.get(orderId);
         if (!order) {
-          span.setAttributes({ "http.status_code": 404 });
+          span.setAttributes({ "http.response.status_code": 404 });
           return { statusCode: 404, payload: { error: "order not found", orderId } };
         }
-        span.setAttributes({ "http.status_code": 200 });
+        span.setAttributes({ "http.response.status_code": 200 });
         return { statusCode: 200, payload: order };
       }, config.orderTimeoutMs);
       histograms.orderDuration.record(Date.now() - startedAt, runAttrs({ route: "/orders/:id" }));

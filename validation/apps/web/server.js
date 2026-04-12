@@ -2,11 +2,11 @@ const http = require("http");
 const net = require("net");
 const fs = require("fs");
 const { URL } = require("url");
-const { trace, metrics, SpanStatusCode } = require("@opentelemetry/api");
+const { trace, metrics, SpanKind, SpanStatusCode } = require("@opentelemetry/api");
 const { logs } = require("@opentelemetry/api-logs");
 const { OTLPLogExporter } = require("@opentelemetry/exporter-logs-otlp-http");
 const { NodeSDK } = require("@opentelemetry/sdk-node");
-const { LoggerProvider, BatchLogRecordProcessor } = require("@opentelemetry/sdk-logs");
+const { BatchLogRecordProcessor } = require("@opentelemetry/sdk-logs");
 const { OTLPTraceExporter } = require("@opentelemetry/exporter-trace-otlp-http");
 const { OTLPMetricExporter } = require("@opentelemetry/exporter-metrics-otlp-http");
 const { PeriodicExportingMetricReader } = require("@opentelemetry/sdk-metrics");
@@ -118,7 +118,9 @@ function log(level, message, fields = {}) {
     state.logStream.write(JSON.stringify(payload) + "\n");
   }
   if (otelLogger) {
+    const severityNumber = { trace: 1, debug: 5, info: 9, warn: 13, error: 17, fatal: 21 }[level] ?? 0;
     otelLogger.emit({
+      severityNumber,
       severityText: level.toUpperCase(),
       body: message,
       attributes: runAttrs(fields)
@@ -230,7 +232,7 @@ function requestJson(method, urlString, body) {
 }
 
 async function callPayment(orderId) {
-  return tracer.startActiveSpan("payment.charge", async (span) => {
+  return tracer.startActiveSpan("payment.charge", { kind: SpanKind.CLIENT }, async (span) => {
     let attempt = 0;
     try {
       for (;;) {
@@ -242,8 +244,9 @@ async function callPayment(orderId) {
         span.addEvent("payment_attempt", runAttrs({ attempt, status_code: response.statusCode }));
         if (response.statusCode !== 429) {
           span.setAttributes({
+            "server.address": "api.stripe.com",
             "payment.attempts": attempt,
-            "http.status_code": response.statusCode
+            "http.response.status_code": response.statusCode
           });
           return { attempt, response };
         }
@@ -254,8 +257,9 @@ async function callPayment(orderId) {
         log("warn", "payment dependency rate limited", { orderId, attempt, statusCode: 429 });
         if (attempt >= retryMaxAttempts) {
           span.setAttributes({
+            "server.address": "api.stripe.com",
             "payment.attempts": attempt,
-            "http.status_code": response.statusCode,
+            "http.response.status_code": response.statusCode,
             "retry.exhausted": true
           });
           return { attempt, response };
@@ -298,16 +302,14 @@ function resetState(runId) {
 
 async function main() {
   state.logStream = initLogStream(appLogFile);
-  const loggerProvider = new LoggerProvider({
-    processors: [new BatchLogRecordProcessor(new OTLPLogExporter({ url: `${otlpEndpoint}/v1/logs` }))]
-  });
-  logs.setGlobalLoggerProvider(loggerProvider);
   const sdk = new NodeSDK({
+    serviceName: "validation-web",
     traceExporter: new OTLPTraceExporter({ url: `${otlpEndpoint}/v1/traces` }),
     metricReader: new PeriodicExportingMetricReader({
       exporter: new OTLPMetricExporter({ url: `${otlpEndpoint}/v1/metrics` }),
       exportIntervalMillis: 2000
-    })
+    }),
+    logRecordProcessor: new BatchLogRecordProcessor(new OTLPLogExporter({ url: `${otlpEndpoint}/v1/logs` }))
   });
   await sdk.start();
 

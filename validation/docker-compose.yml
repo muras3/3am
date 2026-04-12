@@ -25,11 +25,17 @@ services:
       RETRY_BACKOFF_MODE: fixed
     ports:
       - "3000:3000"
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/health"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+      start_period: 15s
     depends_on:
       postgres:
         condition: service_healthy
       mock-stripe:
-        condition: service_started
+        condition: service_healthy
       otel-collector:
         condition: service_started
     volumes:
@@ -66,6 +72,8 @@ services:
       interval: 5s
       timeout: 3s
       retries: 5
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
 
   mock-stripe:
     build:
@@ -76,9 +84,19 @@ services:
       DEFAULT_LATENCY_MS: "120"
       RATE_LIMIT_STATUS: "429"
       RATE_LIMIT_LATENCY_MS: "250"
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
       APP_LOG_FILE: /workspace/out/service-logs/mock-stripe.jsonl
     ports:
       - "4000:4000"
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:4000/__admin/state"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+    depends_on:
+      otel-collector:
+        condition: service_started
     volumes:
       - ./out:/workspace/out
 
@@ -91,12 +109,20 @@ services:
       PORT: "7001"
       SLOW_LATENCY_MS: "8000"
       DEFAULT_LATENCY_MS: "100"
+      OTEL_SERVICE_NAME: mock-notification-svc
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
       APP_LOG_FILE: /workspace/out/service-logs/mock-notification-svc.jsonl
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:7001/__admin/health"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
     volumes:
       - ./out:/workspace/out
     depends_on:
-      - otel-collector
+      otel-collector:
+        condition: service_started
     profiles: [cascading-timeout]
 
   mock-cdn:
@@ -111,11 +137,19 @@ services:
       OTEL_SERVICE_NAME: mock-cdn
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
       APP_LOG_FILE: /workspace/out/service-logs/mock-cdn.jsonl
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3001/__admin/health"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
     volumes:
       - ./out:/workspace/out
     depends_on:
-      - web
-      - otel-collector
+      web:
+        condition: service_healthy
+      otel-collector:
+        condition: service_started
     profiles:
       - cdn-cache
 
@@ -130,10 +164,17 @@ services:
       KEY_V2: key_v2
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
       APP_LOG_FILE: /workspace/out/service-logs/mock-sendgrid.jsonl
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:6001/__admin/health"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
     volumes:
       - ./out:/workspace/out
     depends_on:
-      - otel-collector
+      otel-collector:
+        condition: service_started
     profiles: [secrets-rotation]
 
   web-v2:
@@ -161,6 +202,12 @@ services:
       RETRY_MAX_ATTEMPTS: "5"
       RETRY_INTERVAL_MS: "100"
       RETRY_BACKOFF_MODE: fixed
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/health"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+      start_period: 15s
     volumes:
       - ./out:/workspace/out
     depends_on:
@@ -169,12 +216,17 @@ services:
       otel-collector:
         condition: service_started
       mock-sendgrid:
-        condition: service_started
+        condition: service_healthy
     profiles: [secrets-rotation]
 
   otel-collector:
     image: otel/opentelemetry-collector-contrib:0.101.0
     command: ["--config=/etc/otelcol/config.yaml"]
+    environment:
+      # Receiver running on host machine. Override with RECEIVER_ENDPOINT env var.
+      # On Linux: use host gateway IP instead of host.docker.internal.
+      RECEIVER_ENDPOINT: "${RECEIVER_ENDPOINT:-http://host.docker.internal:4319}"
+      RECEIVER_AUTH_TOKEN: "${RECEIVER_AUTH_TOKEN:-}"
     volumes:
       - ./otel/collector-config.yaml:/etc/otelcol/config.yaml:ro
       - ./out/collector:/var/lib/otel
@@ -191,8 +243,15 @@ services:
       LOADGEN_PROFILE: stop
       LOADGEN_SEED: "42"
       APP_LOG_FILE: /workspace/out/service-logs/loadgen.jsonl
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080/health"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
     depends_on:
-      - web
+      web:
+        condition: service_healthy
     ports:
       - "8080:8080"
     volumes:
@@ -214,12 +273,31 @@ services:
       SENDGRID_ADMIN_URL: http://mock-sendgrid:6001
       WEB_V2_BASE_URL: http://web-v2:3000
       OTEL_COLLECTOR_DIR: /workspace/out/collector
+      FAST_MODE: "${FAST_MODE:-0}"
     volumes:
       - ./scenarios:/workspace/scenarios:ro
       - ./out:/workspace/out
     depends_on:
-      - web
-      - mock-stripe
-      - loadgen
-      - otel-collector
+      web:
+        condition: service_healthy
+      mock-stripe:
+        condition: service_healthy
+      loadgen:
+        condition: service_healthy
+      otel-collector:
+        condition: service_started
     command: ["node", "/app/run.js", "third_party_api_rate_limit_cascade"]
+
+  webhook-receiver:
+    image: node:20-slim
+    working_dir: /app
+    volumes:
+      - ./tools/webhook-receiver:/app:ro
+    command: ["node", "server.js"]
+    ports:
+      - "3099:3099"
+    environment:
+      PORT: "3099"
+
+volumes:
+  postgres_data:

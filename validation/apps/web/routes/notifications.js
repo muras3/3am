@@ -1,6 +1,6 @@
 const http = require("http");
 const { URL } = require("url");
-const { SpanStatusCode } = require("@opentelemetry/api");
+const { SpanKind, SpanStatusCode } = require("@opentelemetry/api");
 
 function handleNotificationsSend(req, res, ctx) {
   const deploymentId = req.headers["x-deployment-id"] || process.env.DEPLOYMENT_ID || "default";
@@ -13,7 +13,7 @@ function handleNotificationsSend(req, res, ctx) {
   }
 
   ctx.enqueueWork(async () => {
-    return ctx.tracer.startActiveSpan("sendgrid.send", async (span) => {
+    return ctx.tracer.startActiveSpan("sendgrid.send", { kind: SpanKind.CLIENT }, async (span) => {
       try {
         const url = new URL("/v3/mail/send", sendgridBaseUrl);
         const payload = JSON.stringify({
@@ -56,7 +56,8 @@ function handleNotificationsSend(req, res, ctx) {
         });
 
         span.setAttributes({
-          "sendgrid.status_code": response.statusCode,
+          "server.address": "api.sendgrid.com",
+          "http.response.status_code": response.statusCode,
           "deployment.id": deploymentId,
           "sendgrid.key_revoked": response.statusCode === 401
         });

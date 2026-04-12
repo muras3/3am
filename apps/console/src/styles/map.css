@@ -1,0 +1,736 @@
+/* ═══════════════════════════════════════════════════════════════
+   LEVEL 0 — RUNTIME DEPENDENCY MAP
+   ═══════════════════════════════════════════════════════════════ */
+
+/* ── Layout ─────────────────────────────────────────────────── */
+.l0-content {
+  padding: 16px 24px 80px;
+}
+
+.l0-section-title {
+  font-size: var(--fs-xxs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--ink-3);
+  margin-bottom: 8px;
+  margin-top: 0;
+}
+
+/* ── Stats bar ───────────────────────────────────────────────── */
+.l0-stats {
+  display: flex;
+  gap: 24px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+
+.stat-block {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.stat-value {
+  font-family: var(--mono);
+  font-size: var(--fs-xl);
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  line-height: 1;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.stat-value.critical {
+  color: var(--accent-text);
+}
+
+.stat-value.warn {
+  color: var(--amber);
+}
+
+.stat-label {
+  font-size: var(--fs-xs);
+  color: var(--ink-3);
+  font-weight: 500;
+}
+
+/* ── System map container ────────────────────────────────────── */
+.system-map {
+  position: relative;
+  max-width: 1100px;
+  margin: 0 auto 12px;
+  border-radius: var(--radius);
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   ZONED LAYOUT — services (left) | edges (center) | deps (right)
+   ═══════════════════════════════════════════════════════════════ */
+.map-zoned {
+  display: flex;
+  align-items: flex-start;
+  gap: 0;
+  padding: 12px 0 16px;
+  position: relative;
+}
+
+/* ── Services zone (left, primary) ────────────────────────────── */
+.zone-services {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: 420px;
+}
+
+/* ── Relationship zone (center, connectors) ───────────────────── */
+.zone-edges {
+  flex: 0 0 72px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 0;
+  position: relative;
+  min-height: 100%;
+}
+
+.zone-edges svg {
+  width: 72px;
+}
+
+/* ── Dependencies zone (right, secondary) ─────────────────────── */
+.zone-deps {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  flex: 0 0 auto;
+  min-width: 170px;
+  max-width: 220px;
+}
+
+/* Collapse dep zone and edge zone when no dependencies exist */
+.zone-deps:empty {
+  display: none;
+}
+
+.zone-edges.is-hidden {
+  display: none;
+}
+
+/* ── Service card ─────────────────────────────────────────────── */
+.svc-card {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel);
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.svc-card:hover {
+  border-color: var(--line-strong);
+  box-shadow: 0 1px 3px var(--line), 0 4px 12px color-mix(in srgb, var(--ink) 8%, transparent);
+}
+
+.svc-card.has-error {
+  border-color: color-mix(in srgb, var(--accent) 30%, transparent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+  animation: pulse-error 3s ease-in-out infinite;
+}
+
+/* Subtle glow pulse on critical service cards — signals live severity */
+@keyframes pulse-error {
+  0%, 100% { box-shadow: 0 0 0 3px var(--accent-soft); }
+  50%       { box-shadow: 0 0 0 5px color-mix(in srgb, var(--accent) 14%, transparent); }
+}
+
+.svc-card.has-warn {
+  border-color: color-mix(in srgb, var(--amber) 30%, transparent);
+  box-shadow: 0 0 0 3px var(--amber-soft);
+}
+
+.svc-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px 8px;
+  border-bottom: 1px solid var(--line);
+}
+
+.svc-name {
+  font-size: var(--fs-md);
+  font-weight: 700;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.svc-meta {
+  font-family: var(--mono);
+  font-size: var(--fs-xxs);
+  color: var(--ink-3);
+  display: flex;
+  gap: 10px;
+}
+
+/* ── Status dot ───────────────────────────────────────────────── */
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.dot.ok {
+  background: var(--good);
+}
+
+.dot.crit {
+  background: var(--accent);
+  border-radius: 1px;
+  transform: rotate(45deg);
+}
+
+.dot.deg {
+  background: var(--amber);
+  border-radius: 0;
+  clip-path: polygon(50% 0%, 100% 100%, 0% 100%);
+}
+
+/* ── Route rows ───────────────────────────────────────────────── */
+.route-list {
+  padding: 4px 0;
+  max-height: 280px;
+  overflow-y: auto;
+}
+
+.route-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 14px;
+  font-family: var(--mono);
+  font-size: var(--fs-xs);
+  cursor: default;
+  transition: background 0.12s;
+  border-left: 3px solid transparent;
+}
+
+.route-row:hover {
+  background: var(--panel-2);
+}
+
+.route-row .dot {
+  width: 6px;
+  height: 6px;
+}
+
+.route-label {
+  flex: 1;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.route-err {
+  color: var(--accent-text);
+  font-weight: 600;
+  font-size: var(--fs-xxs);
+}
+
+.route-err.warn {
+  color: var(--amber);
+}
+
+.route-rps {
+  color: var(--ink-3);
+  font-size: var(--fs-xxs);
+}
+
+/* Critical route emphasis — left accent border + subtle tint */
+.route-row.is-critical {
+  border-left-color: var(--accent);
+  background: var(--accent-soft);
+  cursor: pointer;
+}
+
+.route-row.is-critical:hover {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+.route-row.is-degraded {
+  border-left-color: var(--amber);
+  cursor: pointer;
+}
+
+.route-row.clickable {
+  cursor: pointer;
+}
+
+.route-row.clickable:active,
+.route-row.is-critical:active,
+.route-row.is-degraded:active {
+  background: var(--panel-2);
+}
+
+.route-row:focus-visible {
+  outline: 2px solid var(--teal);
+  outline-offset: 2px;
+}
+
+/* ── Dependency card — PILL SHAPE ─────────────────────────────── */
+.dep-card {
+  border: 1.5px dashed var(--line-strong);
+  border-radius: 24px;
+  background: var(--panel-2);
+  padding: 12px 18px;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.dep-card.has-error {
+  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+  background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 5%, transparent), var(--panel-2));
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.dep-card.clickable {
+  cursor: pointer;
+}
+
+.dep-card.clickable:hover {
+  border-color: var(--line-strong);
+  box-shadow: 0 1px 2px var(--line), 0 4px 12px color-mix(in srgb, var(--ink) 8%, transparent);
+}
+
+.dep-card.has-error.clickable:hover {
+  box-shadow: 0 1px 2px var(--line), 0 4px 12px color-mix(in srgb, var(--ink) 8%, transparent), 0 0 0 3px var(--accent-soft);
+}
+
+.dep-card:focus-visible {
+  outline: 2px solid var(--teal);
+  outline-offset: 2px;
+}
+
+.dep-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.dep-name {
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dep-tag {
+  font-size: var(--fs-xxs);
+  font-weight: 700;
+  text-transform: uppercase;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--amber-soft);
+  color: var(--amber);
+  letter-spacing: 0.06em;
+}
+
+.dep-metrics {
+  font-family: var(--mono);
+  font-size: var(--fs-xxs);
+  color: var(--ink-3);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-left: 16px;
+}
+
+.dep-metrics .bad {
+  color: var(--accent-text);
+  font-weight: 600;
+}
+
+/* ── Map legend ──────────────────────────────────────────────── */
+.map-legend {
+  display: flex;
+  gap: 16px;
+  font-size: var(--fs-xxs);
+  color: var(--ink-3);
+  margin-top: 12px;
+  max-width: 1100px;
+  margin-left: auto;
+  margin-right: auto;
+  flex-wrap: wrap;
+}
+
+.map-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.legend-swatch {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+
+/* FIX(normalize): legend swatch colors — moved from inline style={{}} in TSX to CSS classes. */
+.legend-swatch.healthy {
+  background: var(--good);
+}
+
+.legend-swatch.degraded {
+  background: var(--amber);
+}
+
+.legend-swatch.errors {
+  background: var(--accent);
+}
+.legend-line-dashed {
+  display: inline-block;
+  width: 20px;
+  height: 0;
+  border-top: 1.5px dashed var(--ink-3);
+}
+
+.map-empty-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--panel) 82%, transparent), color-mix(in srgb, var(--bg) 92%, transparent));
+}
+
+/* ── Incident strip ──────────────────────────────────────────── */
+.incident-strip {
+  max-width: 1100px;
+  margin: 0 auto;
+}
+
+.health-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: var(--good);
+}
+
+.health-dot.critical {
+  background: var(--accent);
+  border-radius: 1px;
+  transform: rotate(45deg);
+}
+
+.health-dot.degraded {
+  background: var(--amber);
+  border-radius: 0;
+  clip-path: polygon(50% 0%, 100% 100%, 0% 100%);
+}
+
+.incident-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 14px;
+  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.incident-row:hover {
+  background: var(--panel-2);
+  border-color: var(--line);
+}
+
+.incident-row:focus-visible {
+  outline: 2px solid var(--teal);
+  outline-offset: 2px;
+}
+
+.ir-id {
+  font-family: var(--mono);
+  font-size: var(--fs-xs);
+  color: var(--ink-3);
+  min-width: 76px;
+}
+
+.ir-name {
+  font-weight: 600;
+  font-size: var(--fs-md);
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ir-sev {
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: var(--radius-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.ir-sev.critical {
+  background: var(--accent-soft);
+  color: var(--accent-text);
+}
+
+.ir-sev.high {
+  background: var(--accent-soft);
+  color: var(--accent-text);
+}
+
+.ir-sev.medium {
+  background: var(--amber-soft);
+  color: var(--amber);
+}
+
+.ir-sev.low {
+  background: var(--good-soft);
+  color: var(--good);
+}
+
+.ir-sev.empty {
+  background: var(--panel-2);
+  color: var(--ink-3);
+}
+
+.ir-time {
+  font-family: var(--mono);
+  font-size: var(--fs-xs);
+  color: var(--ink-3);
+}
+
+.incident-row-empty {
+  cursor: default;
+  background: var(--panel);
+  border-color: var(--line);
+}
+
+.incident-row-empty:hover {
+  background: var(--panel);
+}
+
+/* ── Empty state ─────────────────────────────────────────────── */
+.map-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 200px;
+  gap: 8px;
+  color: var(--ink-3);
+  font-size: var(--fs-sm);
+  text-align: center;
+}
+
+.map-empty-shell {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 14px;
+  max-width: 720px;
+  min-height: 100%;
+  margin: 0 auto;
+  padding: 48px 32px 40px 52px;
+  text-align: left;
+}
+
+.map-empty-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  color: var(--ink);
+}
+
+.map-empty-kicker,
+.map-status-kicker {
+  font-size: var(--fs-xxs);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+.map-empty-copy strong {
+  font-size: clamp(24px, 4vw, 34px);
+  line-height: 1.05;
+  letter-spacing: -0.03em;
+}
+
+.map-empty-copy p {
+  margin: 0;
+  max-width: 62ch;
+  color: var(--ink-2);
+  font-size: var(--fs-md);
+  line-height: 1.45;
+}
+
+.map-empty-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.map-empty-meta span {
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--panel) 78%, transparent);
+  color: var(--ink-2);
+  font-family: var(--mono);
+  font-size: var(--fs-xxs);
+}
+
+.map-status-banner {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-width: 1100px;
+  margin: 0 auto 12px;
+  padding: 12px 14px;
+  border: 1px solid color-mix(in srgb, var(--amber) 24%, transparent);
+  border-radius: var(--radius-sm);
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--amber-soft) 92%, transparent), color-mix(in srgb, var(--panel) 94%, transparent));
+  color: var(--ink);
+}
+
+.map-status-banner strong {
+  font-size: var(--fs-sm);
+}
+
+.map-status-banner span:last-child {
+  color: var(--ink-2);
+  font-size: var(--fs-xs);
+}
+
+/* ── Reduced motion ──────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  .svc-card,
+  .dep-card,
+  .route-row,
+  .incident-row {
+    transition: none;
+    animation: none;
+  }
+
+  .zone-edges circle {
+    display: none;
+  }
+}
+
+/* ── Responsive ──────────────────────────────────────────────── */
+@media (max-width: 720px) {
+  .map-zoned {
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .zone-services {
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  .zone-edges {
+    flex-direction: row;
+    padding: 0 16px;
+    min-height: auto;
+    /* Override the flex: 0 0 72px so it doesn't take up the full 72px as a column */
+    flex: 0 0 auto;
+  }
+
+  .zone-edges svg {
+    /* Let CSS control width; override any inline style via max-width */
+    max-width: 48px !important;
+    width: 48px !important;
+    transform: rotate(90deg);
+  }
+
+  .zone-deps {
+    flex-flow: row wrap;
+    gap: 10px;
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  .dep-card {
+    min-width: 140px;
+    flex: 1 1 140px;
+  }
+
+  .svc-card {
+    min-width: 0;
+  }
+}
+
+@media (max-width: 480px) {
+  .l0-content {
+    padding-inline: 12px;
+  }
+
+  .svc-header {
+    gap: 6px;
+    padding: 8px 10px 6px;
+  }
+
+  .svc-meta {
+    /* Stack req/s and p95 vertically on very small screens to avoid overflow */
+    flex-direction: column;
+    gap: 0;
+    align-items: flex-end;
+  }
+
+  .route-row {
+    padding: 5px 10px;
+    gap: 6px;
+  }
+
+  .dep-card {
+    min-width: 120px;
+    flex: 1 1 120px;
+    padding: 10px 14px;
+  }
+
+  .map-legend {
+    gap: 10px;
+  }
+
+  /* stat-value uses --fs-xl at all breakpoints — no override needed */
+}
+
+@media (max-width: 900px) {
+  .l0-content {
+    padding-inline: 16px;
+  }
+
+  .map-empty-shell {
+    padding: 44px 20px 32px 40px;
+  }
+
+  .incident-row {
+    display: grid;
+    grid-template-columns: auto auto 1fr;
+    align-items: center;
+  }
+
+  .ir-sev,
+  .ir-time {
+    grid-column: 2 / 4;
+  }
+}

@@ -1,5 +1,5 @@
 const { Pool } = require("pg");
-const { SpanStatusCode } = require("@opentelemetry/api");
+const { SpanKind, SpanStatusCode } = require("@opentelemetry/api");
 
 let pool = null;
 
@@ -13,6 +13,7 @@ function getPool() {
 function handleDbRecentOrders(req, res, ctx) {
   const timeoutMs = (ctx.config && ctx.config.orderTimeoutMs) || 30000;
   return ctx.tracer.startActiveSpan("db.recent_orders.request", {
+    kind: SpanKind.SERVER,
     attributes: {
       "app.route": "/db/recent-orders",
       "validation.run_id": ctx.state.currentRunId
@@ -20,9 +21,11 @@ function handleDbRecentOrders(req, res, ctx) {
   }, async (requestSpan) => {
     ctx.enqueueWork(async () => {
       return ctx.tracer.startActiveSpan("db.query", {
+        kind: SpanKind.CLIENT,
         attributes: {
-          "db.system": "postgresql",
-          "db.statement": "SELECT id, status FROM orders ORDER BY id DESC LIMIT 10",
+          "server.address": "postgres",
+          "db.system.name": "postgresql",
+          "db.query.text": "SELECT id, status FROM orders ORDER BY id DESC LIMIT 10",
           "db.operation": "select"
         }
       }, async (span) => {

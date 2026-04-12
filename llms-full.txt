@@ -1,0 +1,243 @@
+# 3am — Complete Setup Guide for AI Agents
+
+Diagnose serverless app incidents in under 5 minutes using OTel data + LLM.
+
+## What is 3am?
+
+3am is an open-source incident diagnosis tool for serverless applications. It:
+
+1. Collects OpenTelemetry (OTel) spans, logs, and metrics via OTLP/HTTP
+2. Detects anomalies and forms incident packets automatically
+3. Runs LLM-powered root cause analysis (supports multiple providers)
+4. Presents results in a real-time console with AI copilot
+
+## Install & Run (Local)
+
+Prerequisites: Docker running, Node.js 20+
+
+```bash
+# Step 1: Set up OTel SDK in the user's app (interactive — detects framework, installs deps)
+npx 3am init
+
+# Step 2: Start local Receiver (pulls and runs Docker image)
+npx 3am local
+
+# Step 3: (Optional) Run a demo incident to verify everything works
+npx 3am local demo
+
+# Step 4: Open the console
+open http://localhost:3333
+```
+
+### What `3am init` does
+
+- Detects runtime: Node.js, Next.js/Vercel, or Cloudflare Workers
+- Node.js/Vercel: installs OTel dependencies, creates `instrumentation.ts`, writes `OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:3333` to `.env`
+- Cloudflare Workers: updates `wrangler.toml` or `wrangler.jsonc` to enable Workers Observability
+- Prompts for diagnosis mode (`automatic` or `manual`) and LLM provider
+
+### What `3am local` does
+
+- Pulls and runs the 3am Receiver Docker image
+- Receiver listens on port 3333 for OTLP ingest and serves the console UI
+
+### What `3am local demo` does
+
+- Injects a synthetic downstream-timeout scenario
+- Runs a real LLM diagnosis (~¥10/run with Anthropic)
+- Uses `service.name=3am-demo` (won't mix with real app telemetry)
+
+## LLM Provider Configuration
+
+3am supports pluggable LLM providers. When no `--provider` flag is given, auto-detection runs in this order:
+
+| Priority | Condition | Provider | API key required |
+|----------|-----------|----------|-----------------|
+| 1 | `ANTHROPIC_API_KEY` in env | anthropic | Yes |
+| 2 | `claude` CLI in PATH | claude-code | No (uses subscription) |
+| 3 | `codex` CLI in PATH | codex | No (uses subscription) |
+| 4 | `OPENAI_API_KEY` in env | openai | Yes |
+| 5 | Ollama on localhost:11434 | ollama | No (free, local) |
+
+### Which mode should I use?
+
+| Situation | Mode | Provider flag |
+|-----------|------|--------------|
+| You have `ANTHROPIC_API_KEY` | `auto` | `--provider anthropic` |
+| You have `OPENAI_API_KEY` | `auto` | `--provider openai` |
+| You use Claude Code subscription (no API key) | `manual` | `--provider claude-code` |
+| You use Codex subscription (no API key) | `manual` | `--provider codex` |
+| You run Ollama locally (no API key) | `manual` | `--provider ollama` |
+
+**IMPORTANT:** `--mode manual --provider anthropic` is a contradiction. Manual mode is for when you do NOT have a server-side API key. If you have `ANTHROPIC_API_KEY`, use `--mode auto --provider anthropic`.
+
+### Automatic mode setup (API key path — most common for production)
+
+```bash
+npx 3am init --mode auto --provider anthropic
+export ANTHROPIC_API_KEY=sk-ant-...
+npx 3am deploy vercel
+```
+
+### Diagnosis modes
+
+- **automatic** (alias: `auto`): Receiver runs diagnosis server-side when an incident is detected. Requires a server-side API key (`ANTHROPIC_API_KEY` or `OPENAI_API_KEY`).
+- **manual**: Diagnosis is triggered from the Console UI or CLI. Routes through a local bridge (`npx 3am bridge`). Supports Claude Code, Codex, Ollama, or any provider without a server-side API key.
+
+### Manual mode workflow (local receiver)
+
+1. Configure manual mode during init:
+   ```bash
+   npx 3am init --mode manual --provider claude-code
+   ```
+2. Start the local bridge:
+   ```bash
+   npx 3am bridge
+   ```
+3. Start the Receiver in a way that does not let a server-side API key take precedence over manual execution.
+   - For local dev, `npx 3am local` already sets `ALLOW_INSECURE_DEV_MODE=true`.
+   - If you run the Receiver separately, set `ALLOW_INSECURE_DEV_MODE=true` yourself for token-free Console access.
+   - Remove `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` from the Receiver process if you want provider resolution to happen only through the bridge-side manual workflow.
+4. If the Console runs separately in dev, point it at the Receiver:
+   ```bash
+   VITE_RECEIVER_BASE_URL=http://localhost:3333 pnpm --filter @3am/console dev
+   ```
+5. Trigger reruns or chat from the Console, or run manual diagnosis directly from the CLI.
+
+### Remote manual mode (bridge to a deployed receiver)
+
+Use this when the Receiver is deployed (Vercel or Cloudflare) but you want diagnosis to run locally through your Claude Code or Codex subscription:
+
+```bash
+npx 3am bridge --receiver-url https://your-3am-receiver.vercel.app
+```
+
+- The bridge connects to the deployed Receiver via WebSocket
+- On Cloudflare Workers: uses Durable Objects to maintain the connection
+- On Vercel: uses the Node.js HTTP server upgrade path
+- Auth token is auto-detected from credentials saved by `npx 3am deploy`; pass `--receiver-url` explicitly to override
+
+### Manual diagnosis via CLI
+
+```bash
+npx 3am diagnose \
+  --incident-id inc_000001 \
+  --receiver-url http://localhost:3333 \
+  --provider claude-code
+```
+
+## Deploy to Production
+
+### Vercel
+
+```bash
+npx 3am deploy vercel
+# Non-interactive (for CI / AI agents):
+npx 3am deploy vercel --yes --no-interactive --json
+```
+
+- Neon Postgres is auto-provisioned via Vercel integration
+- After deploy, the first-access Console screen displays the `AUTH_TOKEN`
+- Set `ANTHROPIC_API_KEY` (or another provider credential) as a Vercel environment variable for automatic mode
+
+### Cloudflare Workers
+
+```bash
+# Requires a Cloudflare API Token with these permissions:
+#   Account Settings:Read, Workers Scripts:Edit, D1:Edit,
+#   Cloudflare Queues:Edit, Workers Observability:Edit
+export CLOUDFLARE_API_TOKEN=your-cloudflare-api-token
+npx 3am deploy cloudflare --yes
+```
+
+What it does:
+1. Deploys the 3am receiver Worker
+2. Creates/updates OTLP destinations for traces and logs
+3. Updates the user's `wrangler.toml` or `wrangler.jsonc`
+4. Deploys the user's Worker so telemetry starts flowing
+
+## Environment Variables
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `ANTHROPIC_API_KEY` | For automatic mode with Anthropic | — | Anthropic API key |
+| `OPENAI_API_KEY` | For automatic mode with OpenAI | — | OpenAI API key |
+| `RECEIVER_AUTH_TOKEN` | Production | Auto-generated | Bearer token for Receiver auth |
+| `RETENTION_HOURS` | No | `1` | Hours to retain telemetry and closed incidents |
+| `NOTIFICATION_WEBHOOK_URL` | No | — | Slack or Discord webhook URL for incident alerts |
+| `CLOUDFLARE_API_TOKEN` | CF Workers deploy | — | Cloudflare API token |
+
+## Connecting Your App
+
+After `3am init`, start your app with instrumentation loaded:
+
+```bash
+# Node.js
+node --require ./instrumentation.js your-app.js
+
+# Next.js / Vercel — instrumentation.ts is auto-loaded by Next.js
+```
+
+Logs require a structured logger (pino, winston, or bunyan) wired through `@opentelemetry/auto-instrumentations-node`. `console.log` is not captured.
+
+## Monorepo Structure
+
+```
+apps/
+  receiver/     # Hono — OTLP ingest, anomaly detection, packetizer, console API
+  console/      # React + Vite SPA — incident board, evidence explorer, AI copilot
+packages/
+  core/         # @3am/core — incident packet Zod schemas, formation types
+  diagnosis/    # @3am/diagnosis — LLM diagnosis engine
+  cli/          # @3am/cli — CLI commands (init, local, deploy, diagnose, bridge, demo)
+```
+
+## CLI Reference
+
+```bash
+# Instrumentation setup
+npx 3am init                                          # interactive setup
+npx 3am init --mode auto --provider anthropic         # auto mode (API key)
+npx 3am init --mode manual --provider claude-code     # manual mode (subscription)
+npx 3am init --api-key <key> --no-interactive         # CI/scripted setup
+
+# Local development
+npx 3am local                                         # start local receiver on :3333
+npx 3am local demo                                    # inject demo incident + run diagnosis
+npx 3am local demo --yes                              # skip cost prompt
+
+# Deployment
+npx 3am deploy vercel                                 # deploy receiver to Vercel (interactive)
+npx 3am deploy vercel --yes --no-interactive --json   # CI deploy
+npx 3am deploy cloudflare --yes                       # deploy to Cloudflare Workers
+
+# Bridge (manual mode)
+npx 3am bridge                                        # local bridge on :4269
+npx 3am bridge --receiver-url <url>                   # WebSocket bridge to remote receiver
+npx 3am bridge --port 4270                            # custom port
+
+# Manual diagnosis
+npx 3am diagnose --incident-id inc_000001 --receiver-url http://localhost:3333 --provider claude-code
+```
+
+### Flag summary
+
+| Command | Key flags |
+|---------|-----------|
+| `init` | `--mode auto\|manual`, `--provider anthropic\|openai\|claude-code\|codex\|ollama`, `--api-key`, `--model`, `--lang en\|ja`, `--no-interactive` |
+| `local` | `--port` (default 3333), `--yes`, `--no-interactive`, `--receiver-url` |
+| `deploy` | `vercel\|cloudflare`, `--yes`, `--no-interactive`, `--json`, `--project-name`, `--auth-token` |
+| `bridge` | `--port` (default 4269), `--receiver-url` (remote WS target; auto-detected from credentials) |
+| `diagnose` | `--incident-id`, `--receiver-url`, `--provider`, `--model` |
+
+## Notification Setup
+
+```bash
+# Set via environment variable
+export NOTIFICATION_WEBHOOK_URL="https://hooks.slack.com/services/..."
+
+# Or configure during init
+npx 3am init
+```
+
+Supported: Slack Incoming Webhooks (`hooks.slack.com`) and Discord Webhooks (`discord.com/api/webhooks`).

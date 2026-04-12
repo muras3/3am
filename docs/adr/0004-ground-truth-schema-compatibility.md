@@ -5,14 +5,14 @@
 
 ## Context
 
-検証 fixture は 3amoncall 内部の資料で完結するだけでなく、`probe-investigate` 側の評価パイプラインにも将来的に接続したい。
+検証 fixture は 3am 内部の資料で完結するだけでなく、`probe-investigate` 側の評価パイプラインにも将来的に接続したい。
 
 一方で、`probe-investigate` の `scenario.schema.json` は厳密であり、`ground_truth` に任意の拡張フィールドを直接追加すると schema validation に失敗する。
 
 また、検証で必要な情報には 2 種類ある。
 
 - probe-investigate 互換の必須 ground truth
-- 3amoncall の検証で使う追加情報
+- 3am の検証で使う追加情報
 
 ## Decision
 
@@ -39,11 +39,11 @@
 
 ## Consequences
 
-- 3amoncall 側の fixture は将来的に probe-investigate の評価パイプラインへ接続しやすくなる
+- 3am 側の fixture は将来的に probe-investigate の評価パイプラインへ接続しやすくなる
 - `scenario.schema.json` 側に `validation_extensions` の optional 追加が必要になる
 - `trigger` と `detail.trigger_signal` は意味が異なるため、用語を混同しない
 
 ## Related
 
-- [validation-mvp-v0.1.md](/Users/murase/project/3amoncall/docs/validation-mvp-v0.1.md)
-- [compose-and-scenario-draft-v0.1.md](/Users/murase/project/3amoncall/docs/compose-and-scenario-draft-v0.1.md)
+- [validation-mvp-v0.1.md](/Users/murase/project/3am/docs/validation-mvp-v0.1.md)
+- [compose-and-scenario-draft-v0.1.md](/Users/murase/project/3am/docs/compose-and-scenario-draft-v0.1.md)

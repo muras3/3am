@@ -1,9 +1,10 @@
-# 3amoncall
+# 3am
 
 OSS tool that diagnoses serverless app incidents in under 5 minutes using OTel data + LLM.
 
 ## Quick Start
 
+**Local:**
 ```bash
 cd validation
 docker compose up -d
@@ -11,7 +12,40 @@ docker compose exec scenario-runner node run.js third_party_api_rate_limit_casca
 ls validation/out/runs/
 ```
 
-## Architecture
+**Staging (CF Workers receiver):**
+```bash
+cd validation
+# First time: cp .env.staging.example .env.staging  →  fill RECEIVER_ENDPOINT + RECEIVER_AUTH_TOKEN
+make check-env
+make cf
+# or step-by-step: make cf-up && make cf-run SCENARIO=<id> && make cf-down
+```
+See `validation/Makefile` for all targets (`make help`).
+
+## Product Architecture (Monorepo)
+
+```
+apps/
+  receiver/     # Hono backend — OTLP ingest / anomaly detection / packetizer / console API
+  console/      # React + Vite SPA
+packages/
+  core/         # 3am-core — incident packet Zod schema, formation types
+  diagnosis/    # 3am-diagnosis — LLM diagnosis engine (Anthropic SDK)
+  cli/          # 3am-cli — thin wrapper around diagnosis
+  config-typescript/ config-eslint/  # shared config (private)
+```
+
+## Commands
+
+```bash
+pnpm build       # build all packages (Turborepo)
+pnpm test        # run all tests
+pnpm lint        # lint all packages
+pnpm typecheck   # typecheck all packages
+pnpm dev         # start dev servers
+```
+
+## Validation Stack
 
 ```
 validation/
@@ -37,7 +71,15 @@ docs/
   compose-and-scenario-draft-v0.1.md
 ```
 
-## Tech Stack
+## Tech Stack (Product)
+
+- **Package manager**: pnpm@10.31.0 + Turborepo
+- **Receiver / Console API**: Hono
+- **Console UI**: React 19 + Vite 7 (SPA), TanStack Router + Query
+- **Storage**: Drizzle ORM (CF D1 / Vercel Postgres / Memory)
+- **Diagnosis**: Anthropic SDK, GitHub Actions runtime
+
+## Tech Stack (Validation)
 
 - **Runtime**: Node.js + TypeScript (ESM)
 - **Web**: Express
@@ -87,12 +129,109 @@ Mapping to probe-investigate 10pt scale: 7-8 = 8-10, 5-6 = 5-7, 0-4 = 0-4
 - `probe-investigate` (`/Users/murase/project/probe-investigate/`): Validated diagnosis accuracy with synthetic fixtures (10 fixtures, avg 9.7/10, Sonnet 4.6 + v5 prompt)
 - probe-investigate's `bench/schema/scenario.schema.json` is the canonical ground_truth schema
 
+## Branching Strategy
+
+- `main`: リリース専用。直接コミット禁止。`develop` からのマージのみ
+- `develop`: 開発統合ブランチ。全フィーチャーブランチのマージ先
+- `feat/*`, `fix/*`, `docs/*` 等: `develop` base で作成し `develop` へ PR
+
+**Claude への厳禁事項（絶対に破るな）:**
+- `develop` または `main` への直接コミット禁止。必ず `feat/*` 等のブランチを切って PR を出し、ユーザーの明示的な承認を得てからマージすること
+- ユーザーの確認なしに PR をマージすること禁止
+
 ## ADR (Architecture Decision Records)
 
-- ADRs live in `docs/adr/`. Numbered sequentially (e.g. `0009-...`).
+- ADRs live in `docs/adr/`. Numbered sequentially (e.g. `0011-...`).
 - **Record architectural decisions proactively** — if you're making a non-obvious choice (data format, component boundary, evaluation strategy, tooling), write an ADR before or immediately after implementing it.
 - When in doubt, err on the side of writing one. ADRs are cheap; undocumented decisions are expensive.
-- Existing ADRs: 0001–0009. Check them before re-litigating settled decisions.
+- Existing ADRs: 0001–0026. Check them before re-litigating settled decisions.
+
+## Completion Discipline
+
+実装完了とフェーズ完了を混同しないこと。
+
+- 自分が実装したコードについて、自分で `Phase A/B/C complete` と判断しない
+- `tests passed` は完了の根拠として不十分
+- 追加したテストが narrow で、本質的な欠陥を見逃している可能性を必ず考える
+- コードが増えたことと、フェーズが完了したことは別
+
+### Prompts For Murase
+
+Murase 自身への促しとして、以下を毎回確認すること。
+
+- 設計や部分テストが正しくても、最後に「ユーザーが実際に使う 1 コマンド / 1 画面 / 1 導線」を自分で通したか
+- AI やレビュー担当に依頼するとき、受け入れ条件と failure path を最初に明示したか
+- ADR にする前に、まだ仮説段階のものを重い意思決定として固定しすぎていないか
+
+Murase の最も強い点は、抽象設計を実装可能な contract に落として、境界を崩さず前進できること。そこは維持しつつ、最後の 5% の運用導線確認を甘くしないこと。
+
+### Required Self-Check Before Claiming Progress
+
+実装後は、必ず以下を列挙すること。
+
+1. ADR 準拠で未達の点
+2. security 上の未解決事項
+3. contract がまだ緩い箇所
+4. local では通るが platform では未検証の箇所
+5. まだ存在しないテスト
+6. なぜこの変更だけでは `Phase X complete` と言えないか
+
+### Phase Completion Rule
+
+フェーズ完了は、実装者が宣言してはいけない。
+フェーズ完了は、以下を満たしたときにのみ、人間または別レビュー担当が判定する。
+
+- ADR 準拠
+- contract tests green
+- required integration tests green
+- security review で blocker なし
+- non-functional requirements に重大未達なし
+
+### Testing Discipline
+
+- unit test が通っても安心しない
+- memory adapter だけで通っても安心しない
+- `200 OK` を返すだけの stub で green でも安心しない
+- local happy path だけでなく、failure path と boundary path があるか確認する
+- auth, payload size, strict validation, persistence, callback を必ず疑う
+- テストのアサーションは設計ドキュメント（shared-assumptions, data-requirements）の contract に準拠すること。実装の現在の挙動に合わせてはならない
+- optional 依存（LLM, 外部 API, Stage 2 結果）を持つ関数は、依存なしで deterministic fallback が動作するテストを必須とする
+- 「依存なし → 空配列 → green」は degraded path テストとして認めない。設計が非空を要求するならテストも非空をアサートする
+
+### Anti-Pattern To Avoid
+
+以下の状態で `done` と言わないこと。
+
+- TODO が残っている
+- auth が未実装
+- platform-specific behavior が未検証
+- unknown fields を silently strip している
+- strict validation がない
+- thin event / packet / diagnosis result の責務が曖昧
+- required tests が存在しない
+- review 観点が narrow すぎる
+
+### Required Final Output Style
+
+実装後の報告では、必ず以下の順で書くこと。
+
+1. 実装したこと
+2. 実行したテスト
+3. 未解決のリスク
+4. 未達の ADR / contract / security 項目
+5. 次に進んでよいかどうかの保留条件
+
+`done`, `complete`, `Phase X finished` という表現は、人間が明示的に確認するまで使わないこと。
+
+## Session Hygiene (ユーザーへの促し)
+
+セッション開始時または長くなってきたタイミングで、以下をユーザーに確認すること：
+
+- **今日のスコープを明示してもらう** — 「今日はどこまでやりますか？」と聞く。「Phase X まで」が決まっていれば、Claude が勝手に先へ進まない
+- **成功条件を合意する** — コマンドを実行する前に「どういう状態になったら OK か」を確認する
+- **重要な制約は CLAUDE.md か ADR に書いてもらう** — 「検証用コードは validation/ に」のような判断は会話の中に埋めず、ここに残す
+
+コンテキストが長くなっていると感じたら `/compact` を提案すること。
 
 ## Gotchas
 
@@ -100,3 +239,69 @@ Mapping to probe-investigate 10pt scale: 7-8 = 8-10, 5-6 = 5-7, 0-4 = 0-4
 - loadgen is an HTTP server, not a script. Use `/__admin/profile` for runtime profile switching
 - `trigger` (external cause: "flash sale") and `trigger_signal` (first observable symptom: "Stripe 429") are distinct concepts
 - probe-investigate schema has `additionalProperties: false`. Extension fields MUST go in `validation_extensions`
+
+## Design System (console UI)
+
+Source of truth: `docs/mock/incident-console-v3.html`
+
+### Aesthetic direction
+
+**Tone:** editorial-utilitarian — a technical ops tool with precision and restraint. Not playful, not corporate. Think: a Bloomberg terminal that a designer cleaned up.
+
+**The one thing to remember:** warm neutral canvas + single aggressive accent (#E85D3A) + monospaced data. Everything else recedes.
+
+### Tokens (HARD CONSTRAINTS — never deviate)
+
+```css
+/* Surfaces */
+--bg: #FAFAF8;        /* app background */
+--panel: #FFFFFF;
+--panel-2: #F5F5F2;
+--panel-3: #EEEEE8;
+
+/* Ink */
+--ink: #1A1A1A;
+--ink-2: #4A4A48;
+--ink-3: #6F6F68;
+
+/* Borders */
+--line: rgba(26,26,26,0.14);
+--line-strong: rgba(26,26,26,0.24);
+
+/* Semantic colors */
+--accent: #E85D3A;              /* alerts, CTAs, critical */
+--accent-soft: rgba(232,93,58,0.08);
+--teal: #0D7377;                /* system/internal indicators */
+--teal-soft: rgba(13,115,119,0.08);
+--amber: #B8860B;               /* external dependency */
+--amber-soft: rgba(184,134,11,0.08);
+--good: #2E7D52;                /* healthy/resolved */
+--good-soft: rgba(46,125,82,0.08);
+
+/* Typography */
+--font: 'DM Sans', system-ui, sans-serif;
+--mono: 'JetBrains Mono', ui-monospace, monospace;
+
+/* Shape */
+--radius: 6px; --radius-sm: 4px; --radius-xs: 2px;
+
+/* Type scale */
+--fs-xxs: 10px; --fs-xs: 11px; --fs-sm: 12px;
+--fs-md: 13px; --fs-lg: 16px; --fs-xl: 20px;
+```
+
+### Rules
+
+- **NEVER** introduce color values not in this token list
+- **NEVER** use Inter, Roboto, Arial, or system-ui as the primary font
+- All spacing from 4px grid
+- Data/metrics/IDs always use `--mono`; prose/labels use `--font`
+- Motion: subtle only — pulse animations, fade-ins. No bouncy or playful effects
+- Density: information-dense. Prefer compact rows over cards with lots of whitespace
+
+### Layout (3-column)
+
+```
+Left rail 180px  |  Center (flex-1)  |  Right rail 220px
+Incident list    |  Incident Board   |  AI Copilot
+```

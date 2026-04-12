@@ -1,8 +1,6 @@
 FROM node:20-alpine
-
 WORKDIR /app
-
-COPY server.js /app/server.js
-
-CMD ["node", "/app/server.js"]
-
+COPY package.json .
+RUN npm install
+COPY server.js .
+CMD ["node", "server.js"]

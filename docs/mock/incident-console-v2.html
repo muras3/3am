@@ -1,0 +1,1247 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>3am — Incident Console v2</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300..800;1,9..40,300..800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet"/>
+<style>
+/* ── Design tokens ─────────────────────────────────────────── */
+:root {
+  --bg: #FAFAF8;
+  --ink: #1A1A1A;
+  --ink-2: #4A4A48;
+  --ink-3: #808078;
+  --panel: #FFFFFF;
+  --panel-2: #F5F5F2;
+  --panel-3: #EEEEE8;
+  --line: rgba(26,26,26,0.10);
+  --line-strong: rgba(26,26,26,0.18);
+  --accent: #E85D3A;
+  --accent-soft: rgba(232,93,58,0.08);
+  --accent-text: #C34425;
+  --teal: #0D7377;
+  --teal-soft: rgba(13,115,119,0.08);
+  --amber: #B8860B;
+  --amber-soft: rgba(184,134,11,0.08);
+  --good: #2E7D52;
+  --good-soft: rgba(46,125,82,0.08);
+  --font: 'DM Sans', system-ui, sans-serif;
+  --mono: 'JetBrains Mono', ui-monospace, monospace;
+  --radius: 6px;
+  --radius-sm: 4px;
+  --radius-xs: 2px;
+}
+
+/* ── Reset ─────────────────────────────────────────────────── */
+*,*::before,*::after { box-sizing:border-box; margin:0; padding:0; }
+html,body { width:100%; height:100%; overflow:hidden; font-family:var(--font); font-size:13px; color:var(--ink); background:var(--bg); -webkit-font-smoothing:antialiased; }
+button { font:inherit; cursor:pointer; border:none; background:none; }
+
+/* ── App shell ─────────────────────────────────────────────── */
+.app {
+  width:100%; height:100%;
+  display:grid;
+  grid-template-rows: 44px 1fr;
+}
+
+/* ── Topbar ────────────────────────────────────────────────── */
+.topbar {
+  display:flex; align-items:center; gap:16px;
+  padding:0 16px;
+  background:var(--panel);
+  border-bottom:1px solid var(--line);
+}
+.topbar-logo {
+  font-size:14px; font-weight:700; letter-spacing:-0.03em;
+  color:var(--ink);
+  display:flex; align-items:center; gap:6px;
+}
+.topbar-logo .pulse {
+  width:6px; height:6px; border-radius:50%;
+  background:var(--accent);
+  animation: pulse-glow 2s ease-in-out infinite;
+}
+@keyframes pulse-glow {
+  0%,100% { box-shadow: 0 0 0 0 rgba(232,93,58,0.5); }
+  50%     { box-shadow: 0 0 0 4px rgba(232,93,58,0); }
+}
+.topbar-sep { width:1px; height:20px; background:var(--line); }
+.topbar-incident {
+  display:flex; align-items:center; gap:10px;
+  font-size:13px; font-weight:600;
+}
+.topbar-incident .id { color:var(--ink-3); font-weight:500; }
+.severity-badge {
+  display:inline-flex; align-items:center; gap:4px;
+  padding:2px 8px; border-radius:var(--radius-sm);
+  background:var(--accent-soft);
+  color:var(--accent-text);
+  font-size:11px; font-weight:600; text-transform:uppercase;
+}
+.severity-badge::before {
+  content:''; width:6px; height:6px; border-radius:50%;
+  background:var(--accent);
+}
+.topbar-time {
+  margin-left:auto;
+  font-family:var(--mono); font-size:12px; color:var(--ink-3);
+}
+.topbar-status {
+  padding:4px 10px; border-radius:var(--radius-sm);
+  background:var(--accent-soft);
+  color:var(--accent-text);
+  font-size:11px; font-weight:600;
+}
+
+/* ── Main grid ─────────────────────────────────────────────── */
+.main-grid {
+  display:grid;
+  grid-template-columns: 180px 1fr 220px;
+  height:100%; min-height:0;
+}
+
+/* ── Left rail ─────────────────────────────────────────────── */
+.left-rail {
+  border-right:1px solid var(--line);
+  background:var(--panel);
+  display:flex; flex-direction:column;
+  overflow-y:auto;
+}
+.rail-header {
+  padding:12px 14px 8px;
+  font-size:10px; font-weight:600; text-transform:uppercase; letter-spacing:0.12em;
+  color:var(--ink-3);
+}
+.incident-item {
+  padding:8px 14px;
+  border-bottom:1px solid var(--line);
+  cursor:pointer;
+  transition: background 0.15s;
+}
+.incident-item:hover { background:var(--panel-2); }
+.incident-item.active {
+  border-left:2px solid var(--accent);
+  background:var(--accent-soft);
+}
+.incident-item .name { font-size:12px; font-weight:600; }
+.incident-item .meta { font-size:10px; color:var(--ink-3); margin-top:2px; }
+.incident-item .stat { font-size:10px; font-weight:600; color:var(--accent-text); margin-top:3px; }
+.incident-item .sev {
+  display:inline-block; font-size:9px; font-weight:600; text-transform:uppercase;
+  padding:1px 5px; border-radius:var(--radius-xs);
+  margin-left:4px;
+}
+.sev-critical { background:var(--accent-soft); color:var(--accent-text); }
+.sev-high { background:var(--amber-soft); color:var(--amber); }
+.sev-medium { background:var(--panel-2); color:var(--ink-3); }
+
+.rail-meta {
+  margin-top:auto;
+  padding:10px 14px;
+  border-top:1px solid var(--line);
+  font-size:10px; color:var(--ink-3);
+}
+.rail-meta-row { display:flex; justify-content:space-between; padding:2px 0; }
+.rail-meta-row strong { color:var(--ink-2); }
+
+/* ── Center: Incident board ────────────────────────────────── */
+.center-board {
+  overflow-y:auto;
+  padding:16px 20px;
+  display:flex; flex-direction:column; gap:14px;
+}
+
+/* Section: What happened */
+.section-what {
+  padding-bottom:14px;
+  border-bottom:1px solid var(--line);
+}
+.section-what .headline {
+  font-size:15px; font-weight:700; letter-spacing:-0.02em; line-height:1.3;
+}
+.impact-chips {
+  display:flex; gap:6px; margin-top:8px; flex-wrap:wrap;
+}
+.chip {
+  display:inline-flex; align-items:center; gap:4px;
+  padding:3px 8px; border-radius:var(--radius-sm);
+  font-size:10px; font-weight:600;
+  border:1px solid var(--line);
+  background:var(--panel);
+}
+.chip-critical { border-color:rgba(232,93,58,0.2); color:var(--accent-text); background:var(--accent-soft); }
+.chip-system { border-color:rgba(13,115,119,0.2); color:var(--teal); background:var(--teal-soft); }
+.chip-external { border-color:rgba(184,134,11,0.2); color:var(--amber); background:var(--amber-soft); }
+
+/* Section: Immediate action */
+.section-action {
+  padding:12px 14px;
+  border-radius:var(--radius);
+  background: linear-gradient(135deg, rgba(232,93,58,0.06) 0%, rgba(232,93,58,0.03) 100%);
+  border:1px solid rgba(232,93,58,0.15);
+}
+.section-action .eyebrow {
+  font-size:10px; font-weight:600; text-transform:uppercase; letter-spacing:0.1em;
+  color:var(--accent-text); margin-bottom:6px;
+}
+.section-action .action-text {
+  font-size:17px; font-weight:700; letter-spacing:-0.02em; line-height:1.3;
+  color:var(--ink);
+}
+.section-action .action-why {
+  font-size:11px; color:var(--ink-2); margin-top:6px; line-height:1.45;
+}
+
+/* Section: Causal chain */
+.section-chain {
+  padding-bottom:14px;
+  border-bottom:1px solid var(--line);
+}
+.section-chain .label {
+  font-size:10px; font-weight:600; text-transform:uppercase; letter-spacing:0.1em;
+  color:var(--ink-3); margin-bottom:10px;
+}
+.chain-flow {
+  display:flex; align-items:center; gap:0;
+  position:relative;
+}
+.chain-step {
+  flex:1;
+  padding:8px 10px;
+  border:1px solid var(--line);
+  border-radius:var(--radius-sm);
+  background:var(--panel);
+  position:relative;
+  z-index:1;
+}
+.chain-step .step-tag {
+  font-size:9px; font-weight:600; text-transform:uppercase; letter-spacing:0.08em;
+  margin-bottom:3px;
+}
+.chain-step .step-main { font-size:12px; font-weight:600; }
+.chain-step .step-meta { font-size:10px; color:var(--ink-3); margin-top:1px; }
+.chain-step[data-type="external"] .step-tag { color:var(--amber); }
+.chain-step[data-type="system"] .step-tag { color:var(--teal); }
+.chain-step[data-type="incident"] .step-tag { color:var(--ink-2); }
+.chain-step[data-type="impact"] .step-tag { color:var(--accent-text); }
+.chain-step[data-type="impact"] { border-color:rgba(232,93,58,0.2); }
+
+.chain-connector {
+  width:28px; flex-shrink:0;
+  display:flex; align-items:center; justify-content:center;
+}
+.chain-connector svg { overflow:visible; }
+.chain-connector line {
+  stroke:var(--ink-3); stroke-width:1.5;
+  stroke-dasharray: 20;
+  stroke-dashoffset: 20;
+  animation: draw-line 0.8s ease forwards;
+}
+.chain-connector polygon { fill:var(--ink-3); }
+@keyframes draw-line {
+  to { stroke-dashoffset:0; }
+}
+.chain-step:nth-child(1) .chain-connector line,
+.chain-connector line { animation-delay: 0.2s; }
+.chain-flow > :nth-child(4) .chain-connector line { animation-delay: 0.4s; }
+.chain-flow > :nth-child(6) .chain-connector line { animation-delay: 0.6s; }
+
+/* Section: Bottom 3-column grid */
+.bottom-grid {
+  display:grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap:12px;
+}
+.bottom-card {
+  border:1px solid var(--line);
+  border-radius:var(--radius);
+  padding:10px 12px;
+  background:var(--panel);
+}
+.bottom-card .card-title {
+  font-size:10px; font-weight:600; text-transform:uppercase; letter-spacing:0.1em;
+  color:var(--ink-3); margin-bottom:8px;
+}
+.watch-row {
+  display:grid; grid-template-columns:60px 1fr auto;
+  gap:4px; align-items:center;
+  padding:3px 0;
+  font-size:11px;
+  border-bottom:1px solid var(--line);
+}
+.watch-row:last-child { border-bottom:none; }
+.watch-row .wl { font-weight:600; }
+.watch-row .wv { color:var(--ink-2); }
+.watch-row .ws {
+  font-size:9px; font-weight:600; text-transform:uppercase;
+  padding:1px 5px; border-radius:var(--radius-xs);
+}
+.ws-watch { background:var(--teal-soft); color:var(--teal); }
+.ws-next { background:var(--amber-soft); color:var(--amber); }
+.ws-lagging { background:var(--panel-2); color:var(--ink-3); }
+
+.timeline-row {
+  display:flex; gap:8px; align-items:baseline;
+  padding:3px 0;
+  font-size:11px;
+  border-bottom:1px solid var(--line);
+}
+.timeline-row:last-child { border-bottom:none; }
+.timeline-row .tt { font-family:var(--mono); font-size:10px; color:var(--ink-3); white-space:nowrap; }
+.timeline-row .te { color:var(--ink-2); }
+
+.evidence-preview-row {
+  display:flex; gap:6px; align-items:baseline;
+  padding:3px 0; font-size:11px;
+  border-bottom:1px solid var(--line);
+}
+.evidence-preview-row:last-child { border-bottom:none; }
+.evidence-preview-row .ep-label { font-weight:600; min-width:52px; }
+.evidence-preview-row .ep-value { color:var(--ink-2); }
+
+.btn-evidence {
+  display:flex; align-items:center; justify-content:center; gap:6px;
+  width:100%; margin-top:10px;
+  padding:8px 12px;
+  border-radius:var(--radius-sm);
+  background:var(--ink);
+  color:#fff;
+  font-size:11px; font-weight:600;
+  transition: background 0.15s;
+}
+.btn-evidence:hover { background:#333; }
+.btn-evidence .dot {
+  width:5px; height:5px; border-radius:50%;
+  background:var(--accent);
+}
+
+/* ── Right rail: AI Copilot ────────────────────────────────── */
+.right-rail {
+  border-left:1px solid var(--line);
+  background:var(--panel);
+  display:flex; flex-direction:column;
+  overflow-y:auto;
+}
+.copilot-header {
+  padding:12px 14px 8px;
+  display:flex; align-items:center; gap:6px;
+}
+.copilot-header h3 {
+  font-size:12px; font-weight:700;
+}
+.copilot-header .grounded {
+  font-size:9px; color:var(--teal); font-weight:500;
+  padding:2px 6px; border-radius:var(--radius-xs);
+  background:var(--teal-soft);
+}
+.copilot-body { padding:0 14px; flex:1; overflow-y:auto; }
+
+.diagnosis-card {
+  padding:10px 12px;
+  border:1px solid var(--line);
+  border-radius:var(--radius);
+  margin-bottom:8px;
+  background:var(--panel);
+}
+.diagnosis-card.primary {
+  border-color:rgba(13,115,119,0.2);
+  background:linear-gradient(135deg, rgba(13,115,119,0.04) 0%, var(--panel) 100%);
+}
+.diagnosis-card .d-label {
+  font-size:9px; font-weight:600; text-transform:uppercase; letter-spacing:0.1em;
+  color:var(--ink-3); margin-bottom:4px;
+}
+.diagnosis-card .d-main {
+  font-size:12px; font-weight:500; line-height:1.45;
+}
+.diagnosis-card .d-sub {
+  font-size:11px; color:var(--ink-2); margin-top:4px; line-height:1.4;
+}
+
+.copilot-footer {
+  margin-top:auto;
+  padding:10px 14px;
+  border-top:1px solid var(--line);
+}
+.ask-label {
+  font-size:9px; font-weight:600; text-transform:uppercase; letter-spacing:0.1em;
+  color:var(--ink-3); margin-bottom:6px;
+}
+.ask-chips { display:flex; flex-direction:column; gap:4px; margin-bottom:10px; }
+.ask-chip {
+  font-size:11px; color:var(--teal);
+  padding:5px 8px;
+  border:1px solid rgba(13,115,119,0.15);
+  border-radius:var(--radius-sm);
+  background:var(--teal-soft);
+  cursor:pointer;
+  transition: background 0.15s;
+  text-align:left;
+}
+.ask-chip:hover { background:rgba(13,115,119,0.14); }
+
+.chat-input {
+  display:flex; align-items:center; gap:6px;
+  border:1px solid var(--line);
+  border-radius:var(--radius-sm);
+  padding:6px 8px;
+}
+.chat-input .input-text {
+  flex:1; font-size:11px; color:var(--ink-3);
+}
+.chat-input .send-btn {
+  font-size:10px; font-weight:600; color:var(--teal);
+  padding:3px 8px; border-radius:var(--radius-xs);
+}
+.chat-input .send-btn:hover { background:var(--teal-soft); }
+
+/* ── Evidence Studio overlay ───────────────────────────────── */
+.overlay {
+  position:fixed; inset:0;
+  background:rgba(26,26,26,0.3);
+  backdrop-filter:blur(4px);
+  display:none; align-items:center; justify-content:center;
+  z-index:100;
+}
+.overlay.show { display:flex; }
+
+.evidence-modal {
+  width:1380px; max-width:calc(100vw - 40px);
+  max-height:760px; height:calc(100vh - 80px);
+  background:rgba(250,250,248,0.97);
+  border:1px solid var(--line-strong);
+  border-radius:var(--radius);
+  display:flex; flex-direction:column;
+  animation: slide-up 0.3s ease;
+  overflow:hidden;
+}
+@keyframes slide-up {
+  from { opacity:0; transform:translateY(12px); }
+  to   { opacity:1; transform:translateY(0); }
+}
+
+.modal-header {
+  display:flex; align-items:center; justify-content:space-between;
+  padding:12px 20px;
+  border-bottom:1px solid var(--line);
+}
+.modal-header .mh-left { display:flex; flex-direction:column; gap:2px; }
+.modal-header .mh-eyebrow {
+  font-size:10px; font-weight:600; text-transform:uppercase; letter-spacing:0.1em;
+  color:var(--ink-3);
+}
+.modal-header .mh-title { font-size:15px; font-weight:700; }
+.btn-close {
+  padding:6px 14px;
+  border:1px solid var(--line);
+  border-radius:var(--radius-sm);
+  font-size:11px; font-weight:600; color:var(--ink-2);
+  background:var(--panel);
+  transition: background 0.15s;
+}
+.btn-close:hover { background:var(--panel-2); }
+
+/* Tabs */
+.evidence-tabs {
+  display:flex; gap:0;
+  padding:0 20px;
+  border-bottom:1px solid var(--line);
+}
+.ev-tab {
+  padding:10px 16px;
+  font-size:12px; font-weight:500; color:var(--ink-3);
+  border-bottom:2px solid transparent;
+  transition: color 0.15s, border-color 0.15s;
+}
+.ev-tab:hover { color:var(--ink-2); }
+.ev-tab.active {
+  color:var(--ink); font-weight:600;
+  border-bottom-color:var(--ink);
+}
+
+/* Evidence content area */
+.evidence-content {
+  flex:1; min-height:0;
+  display:grid;
+  grid-template-columns:1fr 260px;
+  overflow:hidden;
+}
+.evidence-main { overflow-y:auto; padding:16px 20px; }
+.evidence-side {
+  border-left:1px solid var(--line);
+  padding:16px;
+  overflow-y:auto;
+  background:var(--panel-2);
+}
+
+/* Evidence view switching */
+.ev-view { display:none; }
+.ev-view.active { display:block; }
+
+/* ── Metrics view ──────────────────────────────────────────── */
+.explorer-bar {
+  display:flex; align-items:center; gap:8px;
+  padding:6px 10px;
+  border:1px solid var(--line);
+  border-radius:var(--radius-sm);
+  background:var(--panel-2);
+  margin-bottom:12px;
+}
+.explorer-bar .query {
+  flex:1; font-family:var(--mono); font-size:10px; color:var(--ink-2);
+}
+.explorer-bar .time-chip {
+  font-family:var(--mono); font-size:10px; font-weight:500;
+  padding:2px 8px; border-radius:var(--radius-xs);
+  border:1px solid var(--line);
+  background:var(--panel);
+  color:var(--ink-2);
+}
+
+.facets-bar {
+  display:flex; gap:6px; margin-bottom:14px; flex-wrap:wrap;
+}
+.facet {
+  font-family:var(--mono); font-size:10px; font-weight:500;
+  padding:3px 8px; border-radius:var(--radius-xs);
+  background:var(--panel);
+  border:1px solid var(--line);
+  color:var(--ink-2);
+}
+
+/* Chart */
+.chart-container {
+  position:relative;
+  border:1px solid var(--line);
+  border-radius:var(--radius-sm);
+  background:var(--panel);
+  padding:8px 0 0 0;
+  margin-bottom:12px;
+}
+.chart-legend {
+  display:flex; gap:16px;
+  padding:0 12px 8px;
+  font-size:10px; font-weight:500;
+}
+.chart-legend span { display:inline-flex; align-items:center; gap:4px; }
+.legend-dot { width:8px; height:8px; border-radius:2px; display:inline-block; }
+
+.chart-area {
+  position:relative;
+  height:180px;
+  padding:0 40px 24px 50px;
+}
+/* Y-axis labels */
+.y-axis {
+  position:absolute; left:0; top:0; bottom:24px; width:48px;
+  display:flex; flex-direction:column; justify-content:space-between;
+  padding:4px 0;
+}
+.y-axis span {
+  font-family:var(--mono); font-size:9px; color:var(--ink-3);
+  text-align:right; padding-right:6px;
+}
+/* X-axis labels */
+.x-axis {
+  position:absolute; left:50px; right:40px; bottom:0; height:22px;
+  display:flex; justify-content:space-between;
+}
+.x-axis span {
+  font-family:var(--mono); font-size:9px; color:var(--ink-3);
+}
+/* Grid lines */
+.chart-grid {
+  position:absolute; left:50px; right:40px; top:4px; bottom:24px;
+}
+.chart-grid line {
+  stroke:var(--line); stroke-width:1;
+  stroke-dasharray:3 3;
+}
+/* SVG chart */
+.chart-svg {
+  position:absolute; left:50px; right:40px; top:4px; bottom:24px;
+}
+.chart-svg svg { width:100%; height:100%; overflow:visible; }
+
+/* Marker lines */
+.chart-svg .marker { stroke-width:1.5; stroke-dasharray:6 4; }
+
+/* Metric cards strip */
+.metrics-strip {
+  display:grid; grid-template-columns:repeat(4,1fr); gap:8px;
+}
+.metric-card {
+  border:1px solid var(--line);
+  border-radius:var(--radius-sm);
+  padding:8px 10px;
+  background:var(--panel);
+}
+.metric-card .mc-label {
+  font-size:10px; font-weight:500; color:var(--ink-3);
+}
+.metric-card .mc-value {
+  font-family:var(--mono); font-size:16px; font-weight:600;
+  margin-top:2px;
+}
+.mc-value.danger { color:var(--accent-text); }
+.mc-value.accent { color:var(--amber); }
+.mc-value.system { color:var(--teal); }
+
+/* ── Side notes ────────────────────────────────────────────── */
+.note-card {
+  padding:10px 12px;
+  border:1px solid var(--line);
+  border-radius:var(--radius-sm);
+  margin-bottom:8px;
+  background:var(--panel);
+  font-size:11px; line-height:1.45;
+}
+.note-card strong {
+  font-size:10px; display:block; margin-bottom:3px;
+  font-family:var(--mono);
+}
+.note-card .note-text { color:var(--ink-2); }
+
+/* ── Traces view ───────────────────────────────────────────── */
+.waterfall {
+  border:1px solid var(--line);
+  border-radius:var(--radius-sm);
+  background:var(--panel);
+  overflow:hidden;
+}
+.wf-header {
+  display:flex; align-items:center; justify-content:space-between;
+  padding:8px 12px;
+  border-bottom:1px solid var(--line);
+  background:var(--panel-2);
+}
+.wf-header .wf-trace-id {
+  font-family:var(--mono); font-size:11px; font-weight:500;
+}
+.wf-header .wf-status {
+  font-size:11px; font-weight:600; color:var(--accent-text);
+}
+.wf-ruler {
+  display:grid;
+  grid-template-columns: 200px 1fr 64px;
+  padding:4px 12px;
+  border-bottom:1px solid var(--line);
+  background:var(--panel-2);
+  font-size:9px; color:var(--ink-3); font-family:var(--mono);
+}
+.wf-ruler .ruler-ticks {
+  display:flex; justify-content:space-between;
+}
+.wf-row {
+  display:grid;
+  grid-template-columns: 200px 1fr 64px;
+  align-items:center;
+  padding:0 12px;
+  height:28px;
+  border-bottom:1px solid var(--line);
+  font-size:11px;
+  transition: background 0.1s;
+}
+.wf-row:last-child { border-bottom:none; }
+.wf-row:hover { background:var(--panel-2); }
+.wf-span-name {
+  display:flex; align-items:center; gap:4px;
+  font-family:var(--mono); font-size:10px; font-weight:500;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+.wf-span-name .indent { flex-shrink:0; }
+.wf-span-name .svc-dot {
+  width:6px; height:6px; border-radius:2px; flex-shrink:0;
+}
+.wf-span-name .err-icon {
+  color:var(--accent-text); font-size:10px; margin-left:2px;
+}
+.wf-bar-area {
+  position:relative; height:14px;
+}
+.wf-bar {
+  position:absolute; height:10px; top:2px;
+  border-radius:var(--radius-xs);
+  min-width:3px;
+}
+.wf-bar-root { background:var(--ink); opacity:0.7; }
+.wf-bar-http { background:var(--teal); }
+.wf-bar-db { background:var(--amber); }
+.wf-bar-cache { background:var(--good); }
+.wf-bar-err { background:var(--accent); }
+.wf-bar-wait { background:var(--ink-3); opacity:0.4; }
+.wf-duration {
+  font-family:var(--mono); font-size:10px; color:var(--ink-2);
+  text-align:right;
+}
+
+/* Trace attributes table */
+.trace-attrs {
+  margin-top:12px;
+  border:1px solid var(--line);
+  border-radius:var(--radius-sm);
+  overflow:hidden;
+}
+.trace-attrs-head {
+  display:grid; grid-template-columns: 140px 80px 1fr;
+  padding:6px 12px;
+  background:var(--panel-2);
+  font-size:10px; font-weight:600; color:var(--ink-3);
+  text-transform:uppercase; letter-spacing:0.08em;
+  border-bottom:1px solid var(--line);
+}
+.trace-attrs-row {
+  display:grid; grid-template-columns: 140px 80px 1fr;
+  padding:5px 12px;
+  font-size:11px;
+  border-bottom:1px solid var(--line);
+  transition: background 0.1s;
+}
+.trace-attrs-row:last-child { border-bottom:none; }
+.trace-attrs-row:hover { background:var(--panel-2); }
+.trace-attrs-row .ta-span { font-family:var(--mono); font-size:10px; font-weight:500; }
+.trace-attrs-row .ta-svc { color:var(--ink-2); }
+.trace-attrs-row .ta-attrs { font-family:var(--mono); font-size:10px; color:var(--ink-3); }
+
+/* ── Logs view ─────────────────────────────────────────────── */
+.logs-table {
+  border:1px solid var(--line);
+  border-radius:var(--radius-sm);
+  overflow:hidden;
+}
+.logs-head {
+  display:grid; grid-template-columns: 100px 56px 72px 1fr;
+  gap:8px;
+  padding:6px 12px;
+  background:var(--panel-2);
+  font-size:10px; font-weight:600; color:var(--ink-3);
+  text-transform:uppercase; letter-spacing:0.08em;
+  border-bottom:1px solid var(--line);
+}
+.log-row {
+  display:grid; grid-template-columns: 100px 56px 72px 1fr;
+  gap:8px;
+  padding:4px 12px;
+  font-size:11px;
+  border-bottom:1px solid var(--line);
+  align-items:center;
+  transition: background 0.1s;
+}
+.log-row:last-child { border-bottom:none; }
+.log-row:hover { background:var(--panel-2); }
+.log-row .lr-time { font-family:var(--mono); font-size:10px; color:var(--ink-3); }
+.log-row .lr-level {
+  font-size:9px; font-weight:600; text-transform:uppercase;
+  padding:1px 5px; border-radius:var(--radius-xs);
+  text-align:center; white-space:nowrap;
+}
+.lr-error { background:var(--accent-soft); color:var(--accent-text); }
+.lr-warn { background:var(--amber-soft); color:var(--amber); }
+.lr-info { background:var(--teal-soft); color:var(--teal); }
+.log-row .lr-svc { font-size:10px; color:var(--ink-2); font-weight:500; }
+.log-row .lr-msg { font-size:11px; color:var(--ink-2); line-height:1.35; }
+
+/* ── Platform Logs view ────────────────────────────────────── */
+.pflogs-container { background:var(--panel-2); border-radius:var(--radius-sm); padding:2px; }
+.pflogs-table {
+  border:1px solid var(--line);
+  border-radius:var(--radius-sm);
+  overflow:hidden;
+  background:#F0F0EE;
+}
+.pflogs-head {
+  display:grid; grid-template-columns: 100px 80px 1fr 80px;
+  gap:8px;
+  padding:6px 12px;
+  background:#E8E8E4;
+  font-size:10px; font-weight:600; color:var(--ink-3);
+  text-transform:uppercase; letter-spacing:0.08em;
+  border-bottom:1px solid var(--line);
+}
+.pf-row {
+  display:grid; grid-template-columns: 100px 80px 1fr 80px;
+  gap:8px;
+  padding:5px 12px;
+  font-size:11px;
+  border-bottom:1px solid rgba(26,26,26,0.08);
+  align-items:center;
+  transition: background 0.1s;
+}
+.pf-row:last-child { border-bottom:none; }
+.pf-row:hover { background:#E8E8E4; }
+.pf-row .pf-time { font-family:var(--mono); font-size:10px; color:var(--ink-3); }
+.pf-row .pf-plane {
+  font-size:9px; font-weight:600; text-transform:uppercase;
+  padding:1px 5px; border-radius:var(--radius-xs);
+  text-align:center; white-space:nowrap;
+}
+.pf-traffic { background:var(--panel); color:var(--ink-2); border:1px solid var(--line); }
+.pf-deploy { background:var(--teal-soft); color:var(--teal); }
+.pf-routing { background:var(--amber-soft); color:var(--amber); }
+.pf-config { background:var(--panel); color:var(--ink-3); border:1px solid var(--line); }
+.pf-row .pf-details { color:var(--ink-2); line-height:1.35; }
+.pf-row .pf-role { font-size:10px; font-weight:500; }
+</style>
+</head>
+<body>
+<div class="app">
+  <!-- ── Topbar ──────────────────────────────────────────── -->
+  <header class="topbar">
+    <div class="topbar-logo"><span class="pulse"></span> 3am</div>
+    <div class="topbar-sep"></div>
+    <div class="topbar-incident">
+      <span class="id">INC-2847</span>
+      Checkout cascade
+    </div>
+    <div class="severity-badge">Critical</div>
+    <div class="topbar-time">03:14:22 UTC</div>
+    <div class="topbar-status">Active</div>
+  </header>
+
+  <!-- ── Main grid ───────────────────────────────────────── -->
+  <div class="main-grid">
+
+    <!-- Left rail -->
+    <aside class="left-rail">
+      <div class="rail-header">Open Incidents</div>
+
+      <div class="incident-item active">
+        <div class="name">Checkout cascade <span class="sev sev-critical">critical</span></div>
+        <div class="meta">web / stripe / /checkout / payments</div>
+        <div class="stat">18.2% failing</div>
+      </div>
+      <div class="incident-item">
+        <div class="name">Search latency burst <span class="sev sev-high">high</span></div>
+        <div class="meta">search / cache / background rebuild</div>
+      </div>
+      <div class="incident-item">
+        <div class="name">Webhook backlog <span class="sev sev-medium">medium</span></div>
+        <div class="meta">worker / queue / outbound events</div>
+      </div>
+
+      <div class="rail-meta">
+        <div class="rail-meta-row"><span>Selected</span><strong>Checkout cascade</strong></div>
+        <div class="rail-meta-row"><span>Severity</span><strong>critical</strong></div>
+        <div class="rail-meta-row"><span>Route</span><strong>/checkout</strong></div>
+        <div class="rail-meta-row"><span>Owner</span><strong>payments</strong></div>
+        <div class="rail-meta-row"><span>Open now</span><strong>3 incidents</strong></div>
+      </div>
+    </aside>
+
+    <!-- Center board -->
+    <main class="center-board">
+
+      <!-- What happened -->
+      <section class="section-what">
+        <div class="headline">Stripe 429s spilled into queue saturation and checkout 504s.</div>
+        <div class="impact-chips">
+          <div class="chip chip-critical">customer-facing</div>
+          <div class="chip chip-external">no deploy in window</div>
+          <div class="chip chip-system">confidence: high</div>
+        </div>
+      </section>
+
+      <!-- Immediate action -->
+      <section class="section-action">
+        <div class="eyebrow">Immediate Action</div>
+        <div class="action-text">Kill fixed retries. Shed checkout traffic.</div>
+        <div class="action-why">The local system is amplifying an external failure. Retry suppression is the fastest control point to reduce blast radius before the upstream rate limit recovers.</div>
+      </section>
+
+      <!-- Causal chain -->
+      <section class="section-chain">
+        <div class="label">Causal Chain</div>
+        <div class="chain-flow">
+          <div class="chain-step" data-type="external">
+            <div class="step-tag">External</div>
+            <div class="step-main">Stripe 429</div>
+            <div class="step-meta">rate limit begins</div>
+          </div>
+          <div class="chain-connector">
+            <svg width="28" height="12" viewBox="0 0 28 12">
+              <line x1="0" y1="6" x2="22" y2="6"/>
+              <polygon points="20,2 28,6 20,10"/>
+            </svg>
+          </div>
+          <div class="chain-step" data-type="system">
+            <div class="step-tag">System</div>
+            <div class="step-main">Retry loop</div>
+            <div class="step-meta">shared pool</div>
+          </div>
+          <div class="chain-connector">
+            <svg width="28" height="12" viewBox="0 0 28 12">
+              <line x1="0" y1="6" x2="22" y2="6"/>
+              <polygon points="20,2 28,6 20,10"/>
+            </svg>
+          </div>
+          <div class="chain-step" data-type="incident">
+            <div class="step-tag">Incident</div>
+            <div class="step-main">Queue climbs</div>
+            <div class="step-meta">local overload</div>
+          </div>
+          <div class="chain-connector">
+            <svg width="28" height="12" viewBox="0 0 28 12">
+              <line x1="0" y1="6" x2="22" y2="6"/>
+              <polygon points="20,2 28,6 20,10"/>
+            </svg>
+          </div>
+          <div class="chain-step" data-type="impact">
+            <div class="step-tag">Impact</div>
+            <div class="step-main">Checkout 504</div>
+            <div class="step-meta">user-visible</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Bottom 3-column grid -->
+      <div class="bottom-grid">
+        <!-- Watchlist -->
+        <div class="bottom-card">
+          <div class="card-title">Mitigation Watch</div>
+          <div class="watch-row"><div class="wl">Queue</div><div class="wv">must flatten first</div><div class="ws ws-watch">watch</div></div>
+          <div class="watch-row"><div class="wl">504 rate</div><div class="wv">should stop rising</div><div class="ws ws-next">next</div></div>
+          <div class="watch-row"><div class="wl">429 rate</div><div class="wv">may remain noisy</div><div class="ws ws-lagging">lagging</div></div>
+        </div>
+        <!-- Blast radius + timeline -->
+        <div class="bottom-card">
+          <div class="card-title">Blast Radius &amp; Timeline</div>
+          <div class="timeline-row"><div class="tt">03:11:55</div><div class="te">traffic step-up</div></div>
+          <div class="timeline-row"><div class="tt">03:12:08</div><div class="te">first Stripe 429</div></div>
+          <div class="timeline-row"><div class="tt">03:12:10</div><div class="te">retry loop starts</div></div>
+          <div class="timeline-row"><div class="tt">03:12:14</div><div class="te">504 visible</div></div>
+          <div style="margin-top:6px; font-size:10px; color:var(--ink-3);">
+            Surface: checkout revenue path, web, stripe
+          </div>
+        </div>
+        <!-- Evidence preview -->
+        <div class="bottom-card">
+          <div class="card-title">Evidence Preview</div>
+          <div class="evidence-preview-row"><div class="ep-label">Metrics</div><div class="ep-value">queue and 504 curves bend together</div></div>
+          <div class="evidence-preview-row"><div class="ep-label">Trace</div><div class="ep-value">429 &rarr; retry &rarr; wait &rarr; timeout</div></div>
+          <div class="evidence-preview-row"><div class="ep-label">Logs</div><div class="ep-value">retry exhausted, worker saturation</div></div>
+          <div class="evidence-preview-row"><div class="ep-label">Platform</div><div class="ep-value">no deploy or config shift in window</div></div>
+          <button class="btn-evidence" id="openEvidence"><span class="dot"></span> Open Evidence Studio</button>
+        </div>
+      </div>
+
+    </main>
+
+    <!-- Right rail: AI Copilot -->
+    <aside class="right-rail">
+      <div class="copilot-header">
+        <h3>AI Copilot</h3>
+        <span class="grounded">grounded</span>
+      </div>
+      <div class="copilot-body">
+        <div class="diagnosis-card primary">
+          <div class="d-label">Initial Read</div>
+          <div class="d-main">Dependency rate limiting amplified by local retry behavior, not a rollout-origin incident.</div>
+          <div class="d-sub">Strongest evidence: Stripe 429 starts first, retry loop occupies shared workers, queue rises, then checkout 504s become user-visible.</div>
+        </div>
+        <div class="diagnosis-card">
+          <div class="d-label">Recommended First Move</div>
+          <div class="d-main">Disable fixed retries and shed checkout traffic.</div>
+          <div class="d-sub">If correct, queue depth should flatten before the upstream 429 rate fully recovers.</div>
+        </div>
+        <div class="diagnosis-card">
+          <div class="d-label">Uncertainty</div>
+          <div class="d-main">Traffic step-up is clear, but dependency quota behavior may still vary by bucket.</div>
+        </div>
+      </div>
+      <div class="copilot-footer">
+        <div class="ask-label">Ask About</div>
+        <div class="ask-chips">
+          <button class="ask-chip">Could this still be deploy-related?</button>
+          <button class="ask-chip">What tells us the action worked?</button>
+          <button class="ask-chip">What competing hypothesis remains?</button>
+        </div>
+        <div class="chat-input">
+          <div class="input-text">Ask about this incident...</div>
+          <button class="send-btn">Send</button>
+        </div>
+      </div>
+    </aside>
+
+  </div>
+</div>
+
+<!-- ── Evidence Studio overlay ──────────────────────────────── -->
+<div class="overlay" id="overlay">
+  <div class="evidence-modal">
+    <div class="modal-header">
+      <div class="mh-left">
+        <div class="mh-eyebrow">Evidence Studio</div>
+        <div class="mh-title">Checkout cascade evidence</div>
+      </div>
+      <button class="btn-close" id="closeOverlay">Close</button>
+    </div>
+    <div class="evidence-tabs">
+      <button class="ev-tab active" data-tab="metrics">Metrics</button>
+      <button class="ev-tab" data-tab="traces">Traces</button>
+      <button class="ev-tab" data-tab="logs">Logs</button>
+      <button class="ev-tab" data-tab="pflogs">Platform Logs</button>
+    </div>
+    <div class="evidence-content">
+      <div class="evidence-main">
+
+        <!-- Metrics view -->
+        <div class="ev-view active" data-view="metrics">
+          <div class="explorer-bar">
+            <div class="query">avg:http.request.errors{route:/checkout} · avg:stripe.429.count · max:worker.queue.depth</div>
+            <div class="time-chip">last 15m</div>
+          </div>
+          <div class="facets-bar">
+            <div class="facet">service:web</div>
+            <div class="facet">route:/checkout</div>
+            <div class="facet">dependency:stripe</div>
+            <div class="facet">env:production</div>
+          </div>
+          <div class="chart-container">
+            <div class="chart-legend">
+              <span><span class="legend-dot" style="background:#E85D3A;"></span> 504 rate</span>
+              <span><span class="legend-dot" style="background:#0D7377;"></span> Latency P99</span>
+              <span><span class="legend-dot" style="background:#B8860B;"></span> Queue depth</span>
+            </div>
+            <div class="chart-area">
+              <div class="y-axis">
+                <span>100%</span>
+                <span>75%</span>
+                <span>50%</span>
+                <span>25%</span>
+                <span>0%</span>
+              </div>
+              <div class="x-axis">
+                <span>03:00</span>
+                <span>03:03</span>
+                <span>03:06</span>
+                <span>03:09</span>
+                <span>03:12</span>
+                <span>03:15</span>
+              </div>
+              <div class="chart-grid">
+                <svg width="100%" height="100%" preserveAspectRatio="none">
+                  <line x1="0" y1="25%" x2="100%" y2="25%"/>
+                  <line x1="0" y1="50%" x2="100%" y2="50%"/>
+                  <line x1="0" y1="75%" x2="100%" y2="75%"/>
+                </svg>
+              </div>
+              <div class="chart-svg">
+                <svg viewBox="0 0 780 156" preserveAspectRatio="none">
+                  <!-- Trigger marker: first 429 at ~03:12 -->
+                  <line x1="624" y1="0" x2="624" y2="156" class="marker" stroke="#B8860B" opacity="0.4"/>
+                  <!-- Impact marker: first 504 at ~03:12:14 -->
+                  <line x1="650" y1="0" x2="650" y2="156" class="marker" stroke="#E85D3A" opacity="0.3"/>
+                  <!-- 504 rate: flat then spike -->
+                  <polyline fill="none" stroke="#E85D3A" stroke-width="2.5" stroke-linejoin="round"
+                    points="0,150 130,148 260,146 390,142 520,134 580,118 620,96 650,62 680,36 720,24 760,20 780,20"/>
+                  <!-- Latency P99: flat then ramp -->
+                  <polyline fill="none" stroke="#0D7377" stroke-width="2.5" stroke-linejoin="round"
+                    points="0,148 130,146 260,144 390,140 520,130 580,112 620,88 650,58 680,34 720,22 760,18 780,16"/>
+                  <!-- Queue depth: gradual then steep -->
+                  <polyline fill="none" stroke="#B8860B" stroke-width="2.5" stroke-linejoin="round"
+                    points="0,152 130,150 260,148 390,144 520,136 580,120 620,94 650,66 680,40 720,20 760,14 780,12"/>
+                  <!-- Marker dots -->
+                  <circle cx="624" cy="134" r="4" fill="#B8860B"/>
+                  <circle cx="650" cy="62" r="4" fill="#E85D3A"/>
+                </svg>
+              </div>
+            </div>
+          </div>
+          <div class="metrics-strip">
+            <div class="metric-card"><div class="mc-label">504 rate</div><div class="mc-value danger">18.2%</div></div>
+            <div class="metric-card"><div class="mc-label">429 count</div><div class="mc-value accent">241</div></div>
+            <div class="metric-card"><div class="mc-label">Queue depth</div><div class="mc-value system">+382</div></div>
+            <div class="metric-card"><div class="mc-label">P95 latency</div><div class="mc-value">12.4s</div></div>
+          </div>
+        </div>
+
+        <!-- Traces view -->
+        <div class="ev-view" data-view="traces">
+          <div class="explorer-bar">
+            <div class="query">service:web resource_name:"POST /checkout" status:error @dependency:stripe</div>
+            <div class="time-chip">trace view</div>
+          </div>
+          <div class="waterfall">
+            <div class="wf-header">
+              <div class="wf-trace-id">POST /checkout &middot; trace_71af2c</div>
+              <div class="wf-status">504 &middot; 12.1s</div>
+            </div>
+            <div class="wf-ruler">
+              <div>Span</div>
+              <div class="ruler-ticks"><span>0ms</span><span>2s</span><span>4s</span><span>6s</span><span>8s</span><span>10s</span><span>12s</span></div>
+              <div style="text-align:right;">Duration</div>
+            </div>
+            <!-- Row 1: root -->
+            <div class="wf-row">
+              <div class="wf-span-name"><span class="svc-dot" style="background:var(--ink);"></span> web.request</div>
+              <div class="wf-bar-area"><div class="wf-bar wf-bar-root" style="left:0; width:92%;"></div></div>
+              <div class="wf-duration">12.1s</div>
+            </div>
+            <!-- Row 2: router -->
+            <div class="wf-row">
+              <div class="wf-span-name"><span class="indent" style="width:12px;"></span><span class="svc-dot" style="background:var(--teal);"></span> router.dispatch</div>
+              <div class="wf-bar-area"><div class="wf-bar wf-bar-http" style="left:1%; width:18%;"></div></div>
+              <div class="wf-duration">2.4s</div>
+            </div>
+            <!-- Row 3: db.query SELECT cart -->
+            <div class="wf-row">
+              <div class="wf-span-name"><span class="indent" style="width:24px;"></span><span class="svc-dot" style="background:var(--amber);"></span> db.query</div>
+              <div class="wf-bar-area"><div class="wf-bar wf-bar-db" style="left:1.5%; width:1.2%;"></div></div>
+              <div class="wf-duration">14ms</div>
+            </div>
+            <!-- Row 4: redis.get session -->
+            <div class="wf-row">
+              <div class="wf-span-name"><span class="indent" style="width:24px;"></span><span class="svc-dot" style="background:var(--good);"></span> redis.get</div>
+              <div class="wf-bar-area"><div class="wf-bar wf-bar-cache" style="left:1%; width:0.4%;"></div></div>
+              <div class="wf-duration">4ms</div>
+            </div>
+            <!-- Row 5: stripe.charge (error) -->
+            <div class="wf-row">
+              <div class="wf-span-name"><span class="indent" style="width:12px;"></span><span class="svc-dot" style="background:var(--accent);"></span> stripe.charge <span class="err-icon">!</span></div>
+              <div class="wf-bar-area"><div class="wf-bar wf-bar-err" style="left:2%; width:46%;"></div></div>
+              <div class="wf-duration">5.6s</div>
+            </div>
+            <!-- Row 6: retry attempt 1 -->
+            <div class="wf-row">
+              <div class="wf-span-name"><span class="indent" style="width:24px;"></span><span class="svc-dot" style="background:var(--accent);"></span> retry #1 <span class="err-icon">!</span></div>
+              <div class="wf-bar-area"><div class="wf-bar wf-bar-err" style="left:4%; width:10%;"></div></div>
+              <div class="wf-duration">1.2s</div>
+            </div>
+            <!-- Row 7: retry attempt 2 -->
+            <div class="wf-row">
+              <div class="wf-span-name"><span class="indent" style="width:24px;"></span><span class="svc-dot" style="background:var(--accent);"></span> retry #2 <span class="err-icon">!</span></div>
+              <div class="wf-bar-area"><div class="wf-bar wf-bar-err" style="left:15%; width:10%;"></div></div>
+              <div class="wf-duration">1.2s</div>
+            </div>
+            <!-- Row 8: retry attempt 3 -->
+            <div class="wf-row">
+              <div class="wf-span-name"><span class="indent" style="width:24px;"></span><span class="svc-dot" style="background:var(--accent);"></span> retry #3 <span class="err-icon">!</span></div>
+              <div class="wf-bar-area"><div class="wf-bar wf-bar-err" style="left:26%; width:10%;"></div></div>
+              <div class="wf-duration">1.2s</div>
+            </div>
+            <!-- Row 9: retry.loop (wait) -->
+            <div class="wf-row">
+              <div class="wf-span-name"><span class="indent" style="width:12px;"></span><span class="svc-dot" style="background:var(--ink-3);"></span> retry.loop</div>
+              <div class="wf-bar-area"><div class="wf-bar wf-bar-wait" style="left:2%; width:44%;"></div></div>
+              <div class="wf-duration">4.3s</div>
+            </div>
+            <!-- Row 10: queue.wait -->
+            <div class="wf-row">
+              <div class="wf-span-name"><span class="indent" style="width:12px;"></span><span class="svc-dot" style="background:var(--ink-3);"></span> queue.wait</div>
+              <div class="wf-bar-area"><div class="wf-bar wf-bar-wait" style="left:48%; width:28%;"></div></div>
+              <div class="wf-duration">3.7s</div>
+            </div>
+            <!-- Row 11: edge.timeout (error) -->
+            <div class="wf-row">
+              <div class="wf-span-name"><span class="indent" style="width:12px;"></span><span class="svc-dot" style="background:var(--accent);"></span> edge.timeout <span class="err-icon">!</span></div>
+              <div class="wf-bar-area"><div class="wf-bar wf-bar-err" style="left:80%; width:12%;"></div></div>
+              <div class="wf-duration">1.3s</div>
+            </div>
+          </div>
+
+          <div class="trace-attrs" style="margin-top:12px;">
+            <div class="trace-attrs-head"><div>Span</div><div>Service</div><div>Attributes</div></div>
+            <div class="trace-attrs-row"><div class="ta-span">stripe.charge</div><div class="ta-svc">stripe</div><div class="ta-attrs">http.status=429, quota.bucket=checkout, attempt=1</div></div>
+            <div class="trace-attrs-row"><div class="ta-span">retry.loop</div><div class="ta-svc">web</div><div class="ta-attrs">retry.policy=fixed, attempts=4, backoff=none</div></div>
+            <div class="trace-attrs-row"><div class="ta-span">queue.wait</div><div class="ta-svc">worker</div><div class="ta-attrs">worker.pool=shared, wait.ms=3700, saturation=0.96</div></div>
+            <div class="trace-attrs-row"><div class="ta-span">edge.timeout</div><div class="ta-svc">edge</div><div class="ta-attrs">http.status=504, duration.ms=12100</div></div>
+          </div>
+        </div>
+
+        <!-- Logs view -->
+        <div class="ev-view" data-view="logs">
+          <div class="explorer-bar">
+            <div class="query">service:web @route:/checkout status:(error OR warn) @trace_id:71af2c*</div>
+            <div class="time-chip">logs explorer</div>
+          </div>
+          <div class="facets-bar">
+            <div class="facet">env:prod</div>
+            <div class="facet">service:web</div>
+            <div class="facet">status:error</div>
+            <div class="facet">route:/checkout</div>
+          </div>
+          <div class="logs-table">
+            <div class="logs-head"><div>Timestamp</div><div>Level</div><div>Service</div><div>Message</div></div>
+            <div class="log-row"><div class="lr-time">03:12:08.114</div><div class="lr-level lr-error">error</div><div class="lr-svc">web</div><div class="lr-msg">stripe.charge returned 429 — rate limit hit for checkout payment attempt</div></div>
+            <div class="log-row"><div class="lr-time">03:12:08.920</div><div class="lr-level lr-warn">warn</div><div class="lr-svc">web</div><div class="lr-msg">retry policy engaged: fixed backoff, attempt 1/4 for stripe.charge</div></div>
+            <div class="log-row"><div class="lr-time">03:12:09.445</div><div class="lr-level lr-error">error</div><div class="lr-svc">stripe</div><div class="lr-msg">429 Too Many Requests — quota.bucket=checkout, retry-after=1s</div></div>
+            <div class="log-row"><div class="lr-time">03:12:10.102</div><div class="lr-level lr-warn">warn</div><div class="lr-svc">worker</div><div class="lr-msg">retry attempt queued behind shared worker pool — active backlog rising</div></div>
+            <div class="log-row"><div class="lr-time">03:12:10.880</div><div class="lr-level lr-error">error</div><div class="lr-svc">stripe</div><div class="lr-msg">429 Too Many Requests — retry attempt 2/4 rejected</div></div>
+            <div class="log-row"><div class="lr-time">03:12:11.990</div><div class="lr-level lr-error">error</div><div class="lr-svc">stripe</div><div class="lr-msg">429 Too Many Requests — retry attempt 3/4 rejected</div></div>
+            <div class="log-row"><div class="lr-time">03:12:12.450</div><div class="lr-level lr-warn">warn</div><div class="lr-svc">worker</div><div class="lr-msg">shared worker pool saturation at 0.87 — checkout requests competing for capacity</div></div>
+            <div class="log-row"><div class="lr-time">03:12:13.200</div><div class="lr-level lr-error">error</div><div class="lr-svc">web</div><div class="lr-msg">retry exhausted after 4 attempts — stripe.charge permanently failed</div></div>
+            <div class="log-row"><div class="lr-time">03:12:14.010</div><div class="lr-level lr-error">error</div><div class="lr-svc">edge</div><div class="lr-msg">POST /checkout responded 504 — 12.1s timeout budget exceeded</div></div>
+            <div class="log-row"><div class="lr-time">03:12:18.330</div><div class="lr-level lr-warn">warn</div><div class="lr-svc">worker</div><div class="lr-msg">queue depth +142 in last 10s — worker pool saturation at 0.93</div></div>
+            <div class="log-row"><div class="lr-time">03:12:29.670</div><div class="lr-level lr-warn">warn</div><div class="lr-svc">worker</div><div class="lr-msg">shared checkout worker pool saturation crossed 96% — queue depth continues to rise</div></div>
+            <div class="log-row"><div class="lr-time">03:12:44.120</div><div class="lr-level lr-error">error</div><div class="lr-svc">edge</div><div class="lr-msg">POST /checkout 504 — concurrent timeouts from 3 different user sessions</div></div>
+            <div class="log-row"><div class="lr-time">03:13:02.880</div><div class="lr-level lr-info">info</div><div class="lr-svc">agent</div><div class="lr-msg">incident agent grouped timeout, retry, and saturation signals into checkout-cascade</div></div>
+            <div class="log-row"><div class="lr-time">03:13:15.440</div><div class="lr-level lr-warn">warn</div><div class="lr-svc">web</div><div class="lr-msg">circuit breaker threshold approaching — stripe dependency error rate at 78%</div></div>
+          </div>
+        </div>
+
+        <!-- Platform Logs view -->
+        <div class="ev-view" data-view="pflogs">
+          <div class="explorer-bar">
+            <div class="query">platform:(traffic OR deploy OR config OR routing) incident:checkout-cascade</div>
+            <div class="time-chip">platform facts</div>
+          </div>
+          <div class="pflogs-container">
+            <div class="pflogs-table">
+              <div class="pflogs-head"><div>Timestamp</div><div>Plane</div><div>Details</div><div>Role</div></div>
+              <div class="pf-row"><div class="pf-time">03:11:55.200</div><div><span class="pf-plane pf-traffic">traffic</span></div><div class="pf-details">Flash-sale traffic profile enabled — request volume shifted upward before the first dependency error</div><div class="pf-role" style="color:var(--good);">context</div></div>
+              <div class="pf-row"><div class="pf-time">03:12:00.000</div><div><span class="pf-plane pf-config">config</span></div><div class="pf-details">Retry policy: fixed, max_attempts=4, backoff=none — no recent config changes detected</div><div class="pf-role" style="color:var(--ink-3);">baseline</div></div>
+              <div class="pf-row"><div class="pf-time">03:12:41.330</div><div><span class="pf-plane pf-deploy">deploy</span></div><div class="pf-details">No deploy, rollback, or config drift detected in the last 30 minutes across checkout services</div><div class="pf-role" style="color:var(--ink-3);">rule-out</div></div>
+              <div class="pf-row"><div class="pf-time">03:13:00.000</div><div><span class="pf-plane pf-config">config</span></div><div class="pf-details">Environment variables stable — STRIPE_API_KEY rotation last occurred 14 days ago</div><div class="pf-role" style="color:var(--ink-3);">rule-out</div></div>
+              <div class="pf-row"><div class="pf-time">03:13:18.110</div><div><span class="pf-plane pf-routing">routing</span></div><div class="pf-details">Edge traffic mode remained stable — no canary split or regional rebalance introduced in the window</div><div class="pf-role" style="color:var(--ink-3);">guardrail</div></div>
+              <div class="pf-row"><div class="pf-time">03:13:45.000</div><div><span class="pf-plane pf-traffic">traffic</span></div><div class="pf-details">Checkout request rate: 340 req/s (baseline: 120 req/s) — 2.8x above normal during flash-sale window</div><div class="pf-role" style="color:var(--amber);">amplifier</div></div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Side notes -->
+      <div class="evidence-side">
+        <div class="note-card">
+          <strong>03:12:08 trigger</strong>
+          <div class="note-text">First Stripe 429 appears. Chart marker aligned to the first external symptom.</div>
+        </div>
+        <div class="note-card">
+          <strong>03:13:41 amplification</strong>
+          <div class="note-text">Queue depth steepens first, then 504 rate follows. That shape is why local retry suppression is the first move.</div>
+        </div>
+        <div class="note-card">
+          <strong>Success criteria</strong>
+          <div class="note-text">Queue depth should flatten before 429s fully recover. If it does not, the hypothesis is weak.</div>
+        </div>
+        <div class="note-card">
+          <strong>Current hypothesis</strong>
+          <div class="note-text">Stripe rate limiting is the external trigger. Retry policy is the internal amplifier.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// Evidence Studio open/close
+const overlay = document.getElementById('overlay');
+document.getElementById('openEvidence').addEventListener('click', () => overlay.classList.add('show'));
+document.getElementById('closeOverlay').addEventListener('click', () => overlay.classList.remove('show'));
+overlay.addEventListener('click', e => { if (e.target === overlay) overlay.classList.remove('show'); });
+
+// Tab switching
+document.querySelectorAll('.ev-tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.ev-tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.ev-view').forEach(v => v.classList.remove('active'));
+    tab.classList.add('active');
+    document.querySelector(`.ev-view[data-view="${tab.dataset.tab}"]`).classList.add('active');
+  });
+});
+</script>
+</body>
+</html>

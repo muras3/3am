@@ -1,0 +1,20 @@
+# Compose override for staging: swaps the OTel Collector config to one that
+# includes Bearer auth for the staging Receiver.
+#
+# Usage (all commands must use the same flags):
+#   docker compose -f docker-compose.yml -f docker-compose.staging.yml --env-file .env.staging up -d
+#   docker compose -f docker-compose.yml -f docker-compose.staging.yml --env-file .env.staging exec scenario-runner node run.js <scenario>
+#   docker compose -f docker-compose.yml -f docker-compose.staging.yml --env-file .env.staging down
+services:
+  otel-collector:
+    volumes:
+      - ./otel/collector-config.staging.yaml:/etc/otelcol/config.yaml:ro
+      - ./out/collector:/var/lib/otel
+    environment:
+      # No fallback — .env.staging must provide both values explicitly.
+      RECEIVER_ENDPOINT: "${RECEIVER_ENDPOINT}"
+      RECEIVER_AUTH_TOKEN: "${RECEIVER_AUTH_TOKEN}"
+  scenario-runner:
+    environment:
+      RECEIVER_ENDPOINT: "${RECEIVER_ENDPOINT}"
+      RECEIVER_AUTH_TOKEN: "${RECEIVER_AUTH_TOKEN}"

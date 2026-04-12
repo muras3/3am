@@ -5,7 +5,7 @@
 
 ## Context
 
-3amoncall のユーザー向け MVP は `Receiver -> トリガー -> 診断 -> 通知` を前提にしている。  
+3am のユーザー向け MVP は `Receiver -> トリガー -> 診断 -> 通知` を前提にしている。  
 一方で、現時点では実インシデント由来の OTel データがなく、LLM 診断の品質をどう改善するかが別の問題として存在する。
 
 この 2 つを同時に解こうとすると、診断品質の問題と導入体験の問題が混ざり、改善ループが遅くなる。
@@ -29,5 +29,5 @@
 
 ## Related
 
-- [validation-mvp-v0.1.md](/Users/murase/project/3amoncall/docs/validation-mvp-v0.1.md)
-- [product-concept-v0.1.md](/Users/murase/project/3amoncall/docs/product-concept-v0.1.md)
+- [validation-mvp-v0.1.md](/Users/murase/project/3am/docs/validation-mvp-v0.1.md)
+- [product-concept-v0.1.md](/Users/murase/project/3am/docs/product-concept-v0.1.md)

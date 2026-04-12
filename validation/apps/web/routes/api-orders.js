@@ -1,6 +1,6 @@
 const http = require("http");
 const { URL } = require("url");
-const { SpanStatusCode } = require("@opentelemetry/api");
+const { SpanKind, SpanStatusCode } = require("@opentelemetry/api");
 
 const NOTIFICATION_SVC_URL = process.env.NOTIFICATION_SVC_URL || "http://mock-notification-svc:7001";
 
@@ -58,7 +58,7 @@ async function handleApiOrders(req, res, ctx) {
     const orderId = `ord_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
     const startedAt = Date.now();
 
-    ctx.tracer.startActiveSpan("api_orders.request", async (span) => {
+    ctx.tracer.startActiveSpan("api_orders.request", { kind: SpanKind.SERVER }, async (span) => {
       span.setAttributes({
         "app.route": "/api/orders",
         "app.order_id": orderId,
@@ -70,7 +70,7 @@ async function handleApiOrders(req, res, ctx) {
           span.setAttribute("queue.wait_ms", queueWaitMs);
 
           const notifyStartedAt = Date.now();
-          await ctx.tracer.startActiveSpan("notification.send", async (notifySpan) => {
+          await ctx.tracer.startActiveSpan("notification.send", { kind: SpanKind.CLIENT }, async (notifySpan) => {
             try {
               const response = await requestNotification({
                 orderId,
@@ -79,15 +79,19 @@ async function handleApiOrders(req, res, ctx) {
               });
               const latencyMs = Date.now() - notifyStartedAt;
               notifySpan.setAttributes({
+                "server.address": "notification-svc.internal",
                 "notification.latency_ms": latencyMs,
-                "notification.status_code": response.statusCode
+                "http.response.status_code": response.statusCode
               });
               log("info", "notification sent", { orderId, latencyMs });
               notifySpan.end();
               return response;
             } catch (error) {
               const latencyMs = Date.now() - notifyStartedAt;
-              notifySpan.setAttributes({ "notification.latency_ms": latencyMs });
+              notifySpan.setAttributes({
+                "server.address": "notification-svc.internal",
+                "notification.latency_ms": latencyMs
+              });
               notifySpan.recordException(error);
               notifySpan.setStatus({ code: SpanStatusCode.ERROR, message: error.message });
               notifySpan.end();
@@ -99,7 +103,7 @@ async function handleApiOrders(req, res, ctx) {
         }, config.checkoutTimeoutMs || 30000);
 
         histograms.orderDuration.record(Date.now() - startedAt, runAttrs({ route: "/api/orders" }));
-        span.setAttributes({ "http.status_code": result.statusCode });
+        span.setAttributes({ "http.response.status_code": result.statusCode });
         sendJson(res, result.statusCode, {
           ...result.payload,
           durationMs: Date.now() - startedAt

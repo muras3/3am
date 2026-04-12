@@ -1,0 +1,47 @@
+/**
+ * Curated API types — re-exported from 3am-core.
+ *
+ * Single source of truth for receiver, diagnosis, and frontend.
+ * See packages/core/src/schemas/runtime-map.ts,
+ * packages/core/src/schemas/incident-detail-extension.ts,
+ * and packages/core/src/schemas/curated-evidence.ts.
+ */
+export type {
+  CuratedState,
+  RuntimeMapState,
+  RuntimeMapResponse,
+  RuntimeMapSummary,
+  RuntimeMapService as MapService,
+  RuntimeMapRoute as MapRoute,
+  RuntimeMapDependency as MapDependency,
+  RuntimeMapServiceEdge as MapEdge,
+  RuntimeMapIncident as MapIncident,
+  ExtendedIncident,
+  IncidentChip,
+  IncidentAction,
+  CausalStep,
+  ImpactSummary,
+  BlastRadiusEntry,
+  ConfidenceSummary,
+  EvidenceCounts,
+  EvidenceResponse,
+  EvidenceQueryResponse,
+  ProofCard,
+  EvidenceRef,
+  QABlock,
+  EvidenceQueryRef,
+  EvidenceQuerySegment,
+  EvidenceSurfaces,
+  TraceSurface,
+  TraceGroup,
+  TraceSpan,
+  CorrelatedLog,
+  MetricsSurface,
+  HypothesisGroup,
+  HypothesisMetric,
+  LogsSurface,
+  LogClaim,
+  LogEntry,
+  SideNote,
+  Followup,
+} from "3am-core";

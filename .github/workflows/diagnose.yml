@@ -1,0 +1,68 @@
+name: Diagnose Incident
+
+on:
+  workflow_dispatch:
+    inputs:
+      event_id:
+        description: "Thin event ID"
+        required: true
+        type: string
+      incident_id:
+        description: "Incident ID to diagnose"
+        required: true
+        type: string
+      packet_id:
+        description: "Packet ID to fetch from Receiver"
+        required: true
+        type: string
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Build packages
+        run: |
+          pnpm --filter 3am-core build
+          pnpm --filter 3am-diagnosis build
+          pnpm --filter 3am-cli build
+
+      - name: Fetch incident packet
+        env:
+          PACKET_ID: ${{ inputs.packet_id }}
+          RECEIVER_BASE_URL: ${{ secrets.RECEIVER_BASE_URL }}
+          RECEIVER_AUTH_TOKEN: ${{ secrets.RECEIVER_AUTH_TOKEN }}
+        run: |
+          if ! [[ "$PACKET_ID" =~ ^[a-zA-Z0-9_-]+$ ]]; then
+            echo "Invalid packet_id format" && exit 1
+          fi
+          curl --fail-with-body \
+            -H "Authorization: Bearer $RECEIVER_AUTH_TOKEN" \
+            "$RECEIVER_BASE_URL/api/packets/$PACKET_ID" \
+            -o packet.json
+
+      - name: Run diagnosis and send result
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          INCIDENT_ID: ${{ inputs.incident_id }}
+          RECEIVER_BASE_URL: ${{ secrets.RECEIVER_BASE_URL }}
+          RECEIVER_AUTH_TOKEN: ${{ secrets.RECEIVER_AUTH_TOKEN }}
+        run: |
+          if ! [[ "$INCIDENT_ID" =~ ^[a-zA-Z0-9_-]+$ ]]; then
+            echo "Invalid incident_id format" && exit 1
+          fi
+          node packages/cli/dist/index.js \
+            --packet packet.json \
+            --callback-url "$RECEIVER_BASE_URL/api/diagnosis/$INCIDENT_ID" \
+            --callback-token "$RECEIVER_AUTH_TOKEN"

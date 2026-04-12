@@ -1,0 +1,933 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>3am — Lens Prototype v1</title>
+<meta name="theme-color" content="#FAFAF8"/>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300..800;1,9..40,300..800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet"/>
+<style>
+/* ═══════════════════════════════════════════════════════════════
+   DESIGN TOKENS — apps/console/src/styles/tokens.css
+   ═══════════════════════════════════════════════════════════════ */
+:root {
+  --bg:#FAFAF8; --panel:#FFFFFF; --panel-2:#F5F5F2; --panel-3:#EEEEE8;
+  --ink:#1A1A1A; --ink-2:#4A4A48; --ink-3:#6F6F68;
+  --line:rgba(26,26,26,0.14); --line-strong:rgba(26,26,26,0.24);
+  --accent:#E85D3A; --accent-soft:rgba(232,93,58,0.08); --accent-text:#C34425;
+  --teal:#0D7377; --teal-soft:rgba(13,115,119,0.08);
+  --amber:#B8860B; --amber-soft:rgba(184,134,11,0.08);
+  --good:#2E7D52; --good-soft:rgba(46,125,82,0.08);
+  --font:'DM Sans',system-ui,sans-serif; --mono:'JetBrains Mono',ui-monospace,monospace;
+  --radius:6px; --radius-sm:4px; --radius-xs:2px;
+  --fs-xxs:10px; --fs-xs:11px; --fs-sm:12px; --fs-md:13px; --fs-lg:16px; --fs-xl:20px;
+  --lh-tight:1.2; --lh-ui:1.35; --lh-read:1.5;
+  --zoom-dur:0.55s; --zoom-ease:cubic-bezier(0.32,0.72,0,1);
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{width:100%;height:100%;overflow:hidden;font-family:var(--font);font-size:var(--fs-md);color:var(--ink);background:var(--bg);-webkit-font-smoothing:antialiased;font-feature-settings:"tnum" 1,"ss01" 1;font-variant-numeric:tabular-nums}
+button{font:inherit;cursor:pointer;border:none;background:none;color:inherit}
+
+/* ── Zoom levels ────────────────────────────────────────────── */
+.world{position:relative;width:100%;height:100%}
+.level{position:fixed;inset:0;overflow-y:auto;overflow-x:hidden;background:var(--bg);opacity:0;pointer-events:none;transform:scale(0.96);filter:blur(2px);transition:opacity var(--zoom-dur) var(--zoom-ease),transform var(--zoom-dur) var(--zoom-ease),filter var(--zoom-dur) var(--zoom-ease);will-change:transform,opacity,filter;z-index:1}
+.level.active{opacity:1;pointer-events:auto;transform:scale(1);filter:blur(0);z-index:2}
+.level.zoomed-past{opacity:0;pointer-events:none;transform:scale(1.08);filter:blur(4px);z-index:1}
+
+/* ── Shared ─────────────────────────────────────────────────── */
+.level-header{position:sticky;top:0;z-index:10;display:flex;align-items:center;gap:12px;padding:0 16px;height:46px;background:var(--panel);border-bottom:1px solid var(--line);box-shadow:inset 0 -1px 0 rgba(255,255,255,0.7)}
+.logo{font-size:14px;font-weight:700;letter-spacing:-0.03em;display:flex;align-items:center;gap:6px}
+.logo .dot{width:6px;height:6px;border-radius:50%;background:var(--good)}
+.logo .dot.alert{background:var(--accent);animation:pulse-glow 2s ease-in-out infinite}
+.sep{width:1px;height:20px;background:var(--line)}
+.env-tag{font-family:var(--mono);font-size:var(--fs-xs);color:var(--ink-3)}
+.clock{margin-left:auto;font-family:var(--mono);font-size:var(--fs-sm);color:var(--ink-3)}
+.back-btn{display:flex;align-items:center;gap:4px;font-size:var(--fs-sm);font-weight:500;color:var(--ink-2);padding:4px 8px;border-radius:var(--radius-sm);transition:background .15s}
+.back-btn:hover{background:var(--panel-2);color:var(--ink)}
+.back-btn:focus-visible{outline:2px solid var(--teal);outline-offset:2px}
+.back-btn svg{width:14px;height:14px}
+.sev{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:var(--radius-sm);font-size:var(--fs-xs);font-weight:600;text-transform:uppercase}
+.sev-critical{background:var(--accent-soft);color:var(--accent-text)}
+.sev-medium{background:var(--panel-2);color:var(--ink-3)}
+.sev::before{content:'';width:6px;height:6px;border-radius:50%}
+.sev-critical::before{background:var(--accent)}
+.sev-medium::before{background:var(--ink-3)}
+.health-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.health-dot.ok{background:var(--good)}
+.health-dot.critical{background:var(--accent);animation:pulse-glow 2s ease-in-out infinite}
+.health-dot.degraded{background:var(--amber)}
+.chip{display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:var(--radius-sm);font-size:var(--fs-xxs);font-weight:600;border:1px solid var(--line);background:var(--panel)}
+.chip-critical{border-color:rgba(232,93,58,0.2);color:var(--accent-text);background:var(--accent-soft)}
+.chip-system{border-color:rgba(13,115,119,0.2);color:var(--teal);background:var(--teal-soft)}
+.chip-external{border-color:rgba(184,134,11,0.2);color:var(--amber);background:var(--amber-soft)}
+.card{border:1px solid var(--line);border-radius:var(--radius);background:var(--panel);transition:border-color .2s,box-shadow .2s}
+.card:hover{border-color:var(--line-strong);box-shadow:0 1px 2px rgba(26,26,26,0.04),0 4px 12px rgba(26,26,26,0.06)}
+.card-title{font-size:var(--fs-xxs);font-weight:600;text-transform:uppercase;letter-spacing:0.06em;color:var(--ink-3)}
+.section-label{font-size:var(--fs-xxs);font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--ink-3)}
+
+/* ═══════════════════════════════════════════════════════════════
+   LEVEL 0 — SYSTEM TOPOLOGY MAP
+   ═══════════════════════════════════════════════════════════════ */
+.l0-content{padding:16px 24px 80px}
+.l0-stats{display:flex;gap:24px;margin-bottom:16px}
+.stat-block{display:flex;flex-direction:column;gap:2px}
+.stat-value{font-size:28px;font-weight:800;letter-spacing:-0.03em;line-height:1}
+.stat-value.critical{color:var(--accent-text)}
+.stat-value.warn{color:var(--amber)}
+.stat-label{font-size:var(--fs-xs);color:var(--ink-3);font-weight:500}
+
+.l0-section-title{font-size:var(--fs-xxs);font-weight:600;text-transform:uppercase;letter-spacing:0.06em;color:var(--ink-3);margin-bottom:8px}
+
+/* Runtime dependency map — 3-tier: Entry Points → Runtime Units → Dependencies */
+.system-map{position:relative;max-width:1100px;margin:0 auto 12px;height:380px}
+.map-tier-label{position:absolute;font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:var(--ink-3);writing-mode:vertical-rl;transform:rotate(180deg)}
+.map-tier-label.t0{left:2px;top:30px}
+.map-tier-label.t1{left:2px;top:160px}
+.map-tier-label.t2{left:2px;top:290px}
+.map-tier-border{position:absolute;left:20px;right:0;border-top:1px dashed var(--line);z-index:0}
+/* Node type differentiation */
+.map-node.n-entry{border-left:3px solid var(--ink);font-weight:600}
+.map-node.n-unit{border-radius:20px;border-style:solid}
+.map-node.n-dep{border-style:dashed;background:var(--panel-2)}
+.map-edges{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+.map-node{position:absolute;width:155px;padding:8px 10px;border:1px solid var(--line);border-radius:var(--radius);background:var(--panel);z-index:2;transition:border-color .2s,box-shadow .2s,transform .1s}
+.map-node.clickable{cursor:pointer}
+.map-node.clickable:hover{border-color:var(--line-strong);box-shadow:0 1px 2px rgba(26,26,26,0.04),0 4px 12px rgba(26,26,26,0.08);transform:translateY(-1px)}
+.map-node.clickable:focus-visible{outline:2px solid var(--teal);outline-offset:2px}
+.map-node.n-critical{border-color:rgba(232,93,58,0.35);box-shadow:0 0 0 3px var(--accent-soft)}
+.map-node.n-degraded{border-color:rgba(184,134,11,0.35);box-shadow:0 0 0 3px var(--amber-soft)}
+.map-node.n-external{border-style:dashed;background:var(--panel-2)}
+.mn-top{display:flex;align-items:center;gap:6px;margin-bottom:6px}
+.mn-name{font-size:var(--fs-xs);font-weight:600;flex:1}
+.mn-tag{font-size:8px;font-weight:600;text-transform:uppercase;padding:1px 4px;border-radius:var(--radius-xs);background:var(--amber-soft);color:var(--amber)}
+.mn-badge{font-size:8px;font-weight:600;padding:1px 5px;border-radius:var(--radius-xs);background:var(--accent-soft);color:var(--accent-text)}
+.mn-metrics{display:flex;gap:6px;font-family:var(--mono);font-size:var(--fs-xxs);color:var(--ink-3)}
+.mn-metrics .bad{color:var(--accent-text);font-weight:600}
+.mn-metrics .warn{color:var(--amber);font-weight:600}
+.mn-detail{font-size:var(--fs-xxs);color:var(--ink-2);margin-top:2px}
+
+/* Map legend */
+.map-legend{display:flex;gap:16px;font-size:var(--fs-xxs);color:var(--ink-3);margin-top:8px;max-width:1200px;margin-left:auto;margin-right:auto}
+.map-legend span{display:inline-flex;align-items:center;gap:4px}
+.legend-line{width:20px;height:2px;border-radius:1px}
+
+/* Incident strip below map */
+.incident-row{display:flex;align-items:center;gap:12px;padding:8px 14px;border-radius:var(--radius-sm);cursor:pointer;transition:background .15s}
+.incident-row:hover{background:var(--panel-2)}
+.incident-row:focus-visible{outline:2px solid var(--teal);outline-offset:2px}
+.ir-id{font-family:var(--mono);font-size:var(--fs-xs);color:var(--ink-3);min-width:76px}
+.ir-name{font-weight:600;font-size:var(--fs-md);flex:1}
+.ir-time{font-family:var(--mono);font-size:var(--fs-xs);color:var(--ink-3)}
+
+/* ═══════════════════════════════════════════════════════════════
+   LEVEL 1 — INCIDENT BOARD
+   ═══════════════════════════════════════════════════════════════ */
+.l1-content{max-width:860px;margin:0 auto;padding:16px 24px 80px}
+.incident-headline{font-size:15px;font-weight:700;letter-spacing:-0.02em;line-height:1.3;margin-bottom:8px}
+.incident-chips{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px}
+
+/* Action Hero */
+.action-hero{padding:16px 18px;border-radius:var(--radius);background:linear-gradient(135deg,rgba(232,93,58,0.07),rgba(232,93,58,0.02));border:1px solid rgba(232,93,58,0.2);border-left:3px solid var(--accent);margin-bottom:14px}
+.action-eyebrow{font-size:var(--fs-xxs);font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--accent-text);margin-bottom:8px;display:flex;align-items:center;gap:5px}
+.action-eyebrow svg{width:14px;height:14px}
+.action-text{font-size:var(--fs-xl);font-weight:800;letter-spacing:-0.03em;line-height:var(--lh-tight)}
+.action-why{font-size:var(--fs-xs);color:var(--ink-2);margin-top:8px;line-height:var(--lh-read)}
+.action-donot{margin-top:10px;padding:6px 10px;border-radius:var(--radius-sm);background:var(--panel-2);border:1px solid var(--line);font-size:var(--fs-xs);color:var(--ink-2);line-height:var(--lh-read)}
+.action-donot strong{color:var(--amber);font-weight:600}
+
+/* Blast Radius + Diagnosis Quality + Operator Check */
+.l1-context-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:14px}
+.blast-row{display:flex;align-items:center;gap:6px;padding:3px 0;font-size:var(--fs-xs);border-bottom:1px solid var(--line)}
+.blast-row:last-child{border-bottom:none}
+.blast-row .health-dot{width:6px;height:6px}
+.blast-svc{min-width:100px;font-weight:500}
+.blast-bar{flex:1;height:6px;background:var(--panel-2);border-radius:3px;overflow:hidden}
+.blast-fill{height:100%;border-radius:3px;background:var(--accent);transition:width .4s}
+.blast-fill.amber{background:var(--amber)}
+.blast-fill.good{background:var(--good)}
+.blast-pct{font-family:var(--mono);font-size:var(--fs-xxs);color:var(--ink-3);min-width:32px;text-align:right}
+.blast-pct.bad{color:var(--accent-text);font-weight:600}
+.blast-pct.warn{color:var(--amber);font-weight:600}
+
+/* Diagnosis Quality Score */
+.score-header{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+.score-ring{width:40px;height:40px;position:relative;flex-shrink:0}
+.score-ring svg{width:100%;height:100%;transform:rotate(-90deg)}
+.score-ring circle{fill:none;stroke-width:3}
+.score-ring .track{stroke:var(--panel-3)}
+.score-ring .fill{stroke:var(--good);stroke-linecap:round;transition:stroke-dashoffset .6s var(--zoom-ease)}
+.score-ring .fill.high{stroke:var(--good)}
+.score-ring .fill.mid{stroke:var(--amber)}
+.score-ring .fill.low{stroke:var(--accent)}
+.score-num{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:var(--fs-sm);font-weight:700}
+.score-label{font-size:var(--fs-xs);color:var(--ink-2);line-height:var(--lh-ui)}
+.score-axis{display:flex;align-items:center;gap:6px;padding:3px 0;font-size:var(--fs-xxs);border-bottom:1px solid var(--line)}
+.score-axis:last-child{border-bottom:none}
+.axis-name{flex:1;color:var(--ink-2)}
+.axis-bar{display:flex;gap:2px}
+.axis-pip{width:12px;height:6px;border-radius:2px;background:var(--panel-3)}
+.axis-pip.filled{background:var(--good)}
+.axis-pip.filled.partial{background:var(--amber)}
+.axis-val{font-family:var(--mono);font-size:9px;color:var(--ink-3);min-width:20px;text-align:right}
+.score-reason{font-size:var(--fs-xxs);color:var(--ink-3);margin-top:4px;padding-top:4px;border-top:1px solid var(--line);line-height:var(--lh-read);font-style:italic}
+
+.check-item{display:flex;align-items:baseline;gap:6px;padding:4px 0;font-size:var(--fs-xs);color:var(--ink-2);border-bottom:1px solid var(--line);line-height:var(--lh-read)}
+.check-item:last-child{border-bottom:none}
+.check-box{width:13px;height:13px;border:1.5px solid var(--line-strong);border-radius:var(--radius-xs);flex-shrink:0;margin-top:1px}
+
+/* Root cause + chain */
+.root-cause{padding:12px 14px;border-radius:var(--radius);background:var(--panel);border:1px solid var(--line);margin-bottom:14px}
+.root-cause .section-label{margin-bottom:6px}
+.root-cause-text{font-size:var(--fs-md);line-height:var(--lh-read)}
+.chain-section{margin-bottom:16px}
+.chain-flow{display:flex;align-items:stretch;gap:0;overflow-x:auto;padding:4px 0}
+.chain-step{flex:1;min-width:140px;padding:10px 12px;border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--panel);transition:border-color .2s,box-shadow .2s}
+.chain-step:hover{border-color:var(--line-strong);box-shadow:0 2px 8px rgba(26,26,26,0.06)}
+.chain-step[data-type="external"]{border-left:2px solid var(--amber)}
+.chain-step[data-type="system"]{border-left:2px solid var(--teal)}
+.chain-step[data-type="incident"]{border-left:2px solid var(--ink-3)}
+.chain-step[data-type="impact"]{border-left:2px solid var(--accent)}
+.step-tag{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px}
+.chain-step[data-type="external"] .step-tag{color:var(--amber)}
+.chain-step[data-type="system"] .step-tag{color:var(--teal)}
+.chain-step[data-type="incident"] .step-tag{color:var(--ink-2)}
+.chain-step[data-type="impact"] .step-tag{color:var(--accent-text)}
+.step-title{font-size:var(--fs-sm);font-weight:700;line-height:1.3}
+.step-detail{font-size:var(--fs-xxs);color:var(--ink-3);margin-top:2px}
+.chain-arrow{width:28px;flex-shrink:0;display:flex;align-items:center;justify-content:center}
+.chain-arrow svg{overflow:visible}
+.chain-arrow line{stroke:var(--ink-3);stroke-width:1.5;stroke-dasharray:4 6;animation:flow-arrow 1.6s linear infinite}
+.chain-arrow polygon{fill:var(--ink-3)}
+
+/* Bottom grid */
+.l1-bottom{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.bottom-card{padding:10px 12px}
+.bottom-card .card-title{margin-bottom:8px}
+.timeline-row{display:flex;gap:8px;align-items:baseline;padding:3px 0;font-size:var(--fs-xs);border-bottom:1px solid var(--line)}
+.timeline-row:last-child{border-bottom:none}
+.tl-time{font-family:var(--mono);font-size:var(--fs-xxs);color:var(--ink-3);white-space:nowrap;min-width:48px}
+.tl-event{color:var(--ink-2)}
+.evidence-row{display:flex;gap:8px;align-items:baseline;padding:3px 0;font-size:var(--fs-xs);border-bottom:1px solid var(--line)}
+.evidence-row:last-child{border-bottom:none}
+.ev-label{font-weight:600;min-width:52px}
+.ev-value{font-family:var(--mono);font-size:var(--fs-xs);color:var(--ink-2)}
+.btn-evidence{display:flex;align-items:center;justify-content:center;gap:6px;width:100%;margin-top:10px;padding:8px 12px;border-radius:var(--radius-sm);background:linear-gradient(180deg,#2A2A2A,var(--ink));color:#fff;font-size:var(--fs-xs);font-weight:600;border:1px solid rgba(255,255,255,0.06);transition:background .15s,transform .1s}
+.btn-evidence:hover{background:linear-gradient(180deg,#333,#222)}
+.btn-evidence:active{transform:scale(0.98)}
+.btn-evidence:focus-visible{outline:2px solid var(--teal);outline-offset:2px}
+.btn-evidence .dot{width:5px;height:5px;border-radius:50%;background:var(--accent)}
+
+/* ═══════════════════════════════════════════════════════════════
+   LEVEL 2 — EVIDENCE EXPLORER
+   ═══════════════════════════════════════════════════════════════ */
+.l2-content{padding:0 24px 80px}
+
+/* Context bar — keeps incident visible */
+.l2-context-bar{display:flex;align-items:center;gap:10px;padding:8px 16px;margin:12px 0;border-radius:var(--radius-sm);background:var(--accent-soft);border:1px solid rgba(232,93,58,0.15);font-size:var(--fs-xs)}
+.ctx-id{font-family:var(--mono);font-weight:600;color:var(--accent-text)}
+.ctx-sep{color:var(--ink-3)}
+.ctx-headline{color:var(--ink-2);flex:1}
+.ctx-action{font-weight:600;color:var(--accent-text)}
+
+/* Proof cards */
+.proof-cards{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px}
+.proof-card{padding:12px 14px;cursor:pointer}
+.proof-card:focus-visible{outline:2px solid var(--teal);outline-offset:2px}
+.pc-top{display:flex;align-items:center;gap:8px;margin-bottom:5px}
+.pc-icon{width:26px;height:26px;border-radius:var(--radius-sm);display:flex;align-items:center;justify-content:center;font-size:13px}
+.pc-icon.trigger{background:var(--accent-soft);color:var(--accent-text)}
+.pc-icon.design{background:var(--amber-soft);color:var(--amber)}
+.pc-icon.recovery{background:var(--good-soft);color:var(--good)}
+.pc-label{font-size:var(--fs-sm);font-weight:600}
+.pc-status{margin-left:auto;font-size:9px;font-weight:600;text-transform:uppercase;padding:2px 6px;border-radius:var(--radius-xs)}
+.pc-status.confirmed{background:var(--good-soft);color:var(--good)}
+.pc-status.inferred{background:var(--amber-soft);color:var(--amber)}
+.pc-summary{font-size:var(--fs-xs);color:var(--ink-2);line-height:var(--lh-read)}
+
+/* Tabs */
+.ev-tabs{display:flex;gap:0;border-bottom:1px solid var(--line);margin-bottom:12px}
+.ev-tab{padding:10px 16px;font-size:var(--fs-sm);font-weight:500;color:var(--ink-3);border-bottom:2px solid transparent;transition:color .15s,border-color .15s}
+.ev-tab:hover{color:var(--ink-2)}
+.ev-tab:focus-visible{outline:2px solid var(--teal);outline-offset:-2px}
+.ev-tab.active{color:var(--ink);font-weight:600;border-bottom-color:var(--ink)}
+.ev-tab .count{font-family:var(--mono);font-size:var(--fs-xxs);color:var(--ink-3);margin-left:4px}
+
+.l2-grid{display:grid;grid-template-columns:1fr 240px;gap:12px}
+.ev-main{min-width:0}
+.ev-view{display:none}
+.ev-view.active{display:block;animation:tab-fade .15s ease forwards}
+
+/* Side notes */
+.ev-side{display:flex;flex-direction:column;gap:8px}
+.side-note{padding:10px 12px;border-radius:var(--radius-sm);background:var(--panel);border:1px solid var(--line)}
+.side-note .card-title{margin-bottom:4px}
+.side-note p{font-size:var(--fs-xs);color:var(--ink-2);line-height:var(--lh-read)}
+.side-note.primary{border-color:rgba(13,115,119,0.2)}
+.side-note.primary .card-title{color:var(--teal)}
+
+/* ── Traces — forensic hierarchy ─────────────────────────── */
+.trace-group{margin-bottom:16px;border:1px solid var(--line);border-radius:var(--radius-sm);overflow:hidden}
+.trace-group.muted{opacity:0.5;border-style:dashed}
+.trace-group.muted:hover{opacity:0.85}
+.trace-header{display:flex;align-items:center;gap:8px;padding:6px 12px;background:var(--panel-2);font-size:var(--fs-xs)}
+.trace-header.error-header{background:var(--accent-soft);border-bottom:2px solid var(--accent)}
+.trace-id{font-family:var(--mono);font-size:var(--fs-xxs);color:var(--ink-3)}
+.trace-dur{font-family:var(--mono);font-size:var(--fs-xxs);color:var(--ink-2);margin-left:auto}
+.trace-dur.anomalous{color:var(--accent-text);font-weight:700;font-size:var(--fs-xs)}
+.trace-status{font-size:var(--fs-xxs);font-weight:600}
+.trace-status.error{color:var(--accent-text);font-weight:700;font-size:var(--fs-xs)}
+.trace-status.ok{color:var(--good)}
+.span-row{display:grid;grid-template-columns:180px 1fr 60px;gap:0;align-items:center;padding:4px 12px;border-bottom:1px solid var(--line);font-size:var(--fs-xs)}
+.span-row:last-child{border-bottom:none}
+.span-row.highlighted{background:rgba(232,93,58,0.06)}
+.span-row.smoking-gun{background:rgba(232,93,58,0.12);border-left:3px solid var(--accent)}
+.span-row.smoking-gun .span-name{color:var(--accent-text);font-weight:600}
+.span-row.smoking-gun .span-dur{color:var(--accent-text);font-weight:700}
+.span-row.proof-highlight{background:rgba(232,93,58,0.15);border-left:2px solid var(--accent);animation:highlight-pulse 1.8s ease}
+.span-name{font-family:var(--mono);font-size:var(--fs-xxs);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.span-bar-track{height:16px;position:relative;background:var(--panel-3);border-radius:var(--radius-xs)}
+.span-bar{position:absolute;top:3px;bottom:3px;border-radius:var(--radius-xs);min-width:2px;animation:bar-grow .4s var(--zoom-ease) forwards;transform-origin:left}
+.span-bar.ok{background:var(--teal);opacity:0.5}
+.span-bar.error{background:var(--accent);box-shadow:0 0 4px rgba(232,93,58,0.3)}
+.span-bar.slow{background:var(--amber);opacity:0.7}
+.span-dur{font-family:var(--mono);font-size:var(--fs-xxs);color:var(--ink-3);text-align:right}
+/* Collapsed baseline toggle */
+.baseline-toggle{padding:8px 12px;font-size:var(--fs-xxs);color:var(--ink-3);cursor:pointer;border:1px dashed var(--line);border-radius:var(--radius-sm);text-align:center;transition:background .15s}
+.baseline-toggle:hover{background:var(--panel-2);color:var(--ink-2)}
+
+/* ── Metrics — anomaly context ──────────────────────────── */
+.chart-container{border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--panel);padding:10px;margin-bottom:10px}
+.chart-legend{display:flex;gap:16px;margin-bottom:6px;font-size:var(--fs-xxs);font-weight:500;color:var(--ink-2)}
+.chart-legend span{display:inline-flex;align-items:center;gap:5px}
+.legend-dot{width:8px;height:3px;border-radius:2px;display:inline-block}
+.chart-area{position:relative;height:140px}
+.chart-area svg{width:100%;height:100%}
+.metric-card{padding:10px 12px;border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--panel)}
+.metric-card.anomalous{border-color:rgba(232,93,58,0.25);background:linear-gradient(135deg,rgba(232,93,58,0.04),var(--panel))}
+.mc-value{font-family:var(--mono);font-size:20px;font-weight:700}
+.mc-context{font-family:var(--mono);font-size:9px;color:var(--ink-3);margin-top:2px}
+.mc-delta{font-size:var(--fs-xxs);font-weight:600;margin-top:2px}
+.mc-delta.bad{color:var(--accent-text)}
+.mc-delta.warn{color:var(--amber)}
+
+/* Hypothesis metric group */
+.hyp-group{margin-bottom:14px;border:1px solid var(--line);border-radius:var(--radius-sm);overflow:hidden}
+.hyp-header{display:flex;align-items:center;gap:8px;padding:8px 12px;font-size:var(--fs-xs)}
+.hyp-header.trigger{background:var(--accent-soft);border-bottom:2px solid var(--accent)}
+.hyp-header.trigger .hyp-claim{color:var(--accent-text)}
+.hyp-header.cascade{background:var(--amber-soft);border-bottom:2px solid var(--amber)}
+.hyp-header.cascade .hyp-claim{color:var(--amber)}
+.hyp-header.recovery{background:var(--good-soft);border-bottom:2px solid var(--good)}
+.hyp-header.recovery .hyp-claim{color:var(--good)}
+.hyp-claim{font-weight:700;font-size:var(--fs-xs)}
+.hyp-verdict{margin-left:auto;font-size:9px;font-weight:600;text-transform:uppercase;padding:2px 6px;border-radius:var(--radius-xs)}
+.hyp-body{padding:10px 12px}
+.hyp-metric-row{display:flex;align-items:center;gap:12px;padding:4px 0;font-size:var(--fs-xs);border-bottom:1px solid var(--line)}
+.hyp-metric-row:last-child{border-bottom:none}
+.hyp-metric-name{min-width:120px;color:var(--ink-2)}
+.hyp-metric-val{font-family:var(--mono);font-weight:600;min-width:70px}
+.hyp-metric-context{font-family:var(--mono);font-size:var(--fs-xxs);color:var(--ink-3)}
+.hyp-metric-bar{flex:1;height:8px;background:var(--panel-3);border-radius:4px;overflow:hidden;max-width:120px}
+.hyp-metric-fill{height:100%;border-radius:4px}
+
+/* Claim-clustered logs */
+.claim-cluster{margin-bottom:14px;border:1px solid var(--line);border-radius:var(--radius-sm);overflow:hidden}
+.claim-header{display:flex;align-items:center;gap:8px;padding:6px 12px;font-size:var(--fs-xs)}
+.claim-header .claim-label{font-weight:700}
+.claim-header .claim-count{font-family:var(--mono);font-size:var(--fs-xxs);color:var(--ink-3);margin-left:auto}
+.hyp-group.proof-highlight,.claim-cluster.proof-highlight{box-shadow:0 0 0 2px var(--accent);animation:highlight-pulse 1.8s ease}
+
+/* ── Logs — signal vs noise ─────────────────────────────── */
+.log-row{display:grid;grid-template-columns:70px 44px 1fr;gap:6px;padding:5px 10px;font-size:var(--fs-xs);border-bottom:1px solid var(--line);transition:background .1s,opacity .15s}
+.log-row:hover{background:var(--panel-2)}
+.log-row.noise{opacity:0.4}
+.log-row.noise:hover{opacity:0.8}
+.log-row.signal{border-left:3px solid var(--accent);background:rgba(232,93,58,0.04)}
+.log-row.signal .log-body{color:var(--ink);font-weight:500}
+.log-row.proof-highlight{background:rgba(232,93,58,0.15);border-left:2px solid var(--accent);animation:highlight-pulse 1.8s ease}
+.log-time{font-family:var(--mono);font-size:var(--fs-xxs);color:var(--ink-3)}
+.log-sev{font-size:var(--fs-xxs);font-weight:600;text-align:center}
+.log-sev.error{color:#fff;background:var(--accent);padding:1px 4px;border-radius:var(--radius-xs)}
+.log-sev.warn{color:var(--amber);background:var(--amber-soft);padding:1px 4px;border-radius:var(--radius-xs)}
+.log-sev.info{color:var(--teal)}
+.log-body{font-family:var(--mono);font-size:var(--fs-xxs);color:var(--ink-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* Question + Answer frame */
+.qa-frame{margin-bottom:12px}
+.qa-question-row{display:flex;align-items:center;gap:8px;padding:8px 12px;background:var(--panel);border:1px solid var(--line);border-radius:var(--radius-sm) var(--radius-sm) 0 0;transition:border-color .2s,box-shadow .2s}
+.qa-question-row:focus-within{border-color:var(--teal);box-shadow:0 0 0 3px var(--teal-soft)}
+.qa-icon{font-size:14px;color:var(--teal);flex-shrink:0}
+.qa-input{flex:1;border:none;background:none;font-family:var(--font);font-size:var(--fs-md);font-weight:600;color:var(--ink);outline:none}
+.qa-input::placeholder{color:var(--ink-3);font-weight:400}
+.qa-time{font-family:var(--mono);font-size:9px;color:var(--ink-3);padding:3px 8px;background:var(--panel-2);border-radius:var(--radius-xs);flex-shrink:0}
+.qa-answer{padding:10px 12px;background:var(--teal-soft);border:1px solid rgba(13,115,119,0.12);border-top:none;border-radius:0 0 var(--radius-sm) var(--radius-sm);font-size:var(--fs-sm);color:var(--ink);line-height:var(--lh-read)}
+.qa-answer strong{color:var(--teal);font-weight:600}
+.qa-answer .qa-evidence-note{font-size:var(--fs-xxs);color:var(--ink-3);margin-top:4px}
+.qa-followups{display:flex;gap:4px;margin-top:8px;flex-wrap:wrap}
+.qa-chip{font-size:var(--fs-xxs);padding:4px 10px;border-radius:12px;background:var(--panel);border:1px solid var(--line);color:var(--ink-2);cursor:pointer;transition:border-color .15s,background .15s}
+.qa-chip:hover{border-color:var(--line-strong);background:var(--panel-2)}
+.qa-chip:focus-visible{outline:2px solid var(--teal);outline-offset:2px}
+
+/* Span expansion */
+.span-row.expandable{cursor:pointer}
+.span-row.expandable:hover{background:var(--panel-2)}
+.span-detail{display:none;grid-column:1/-1;padding:8px 10px 10px;background:var(--panel-2);border-bottom:1px solid var(--line)}
+.span-detail.open{display:block}
+.sd-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.sd-section-title{font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;color:var(--ink-3);margin-bottom:4px}
+.sd-attr{display:grid;grid-template-columns:110px 1fr;gap:2px 8px;font-size:var(--fs-xxs)}
+.sd-attr dt{font-family:var(--mono);color:var(--ink-3)}
+.sd-attr dd{font-family:var(--mono);color:var(--ink);word-break:break-all}
+.sd-linked-log{padding:3px 6px;font-family:var(--mono);font-size:9px;border-left:2px solid var(--teal);margin-bottom:3px;color:var(--ink-2);background:var(--panel)}
+
+/* Evidence annotation (why this matters) */
+.ev-annotation{padding:6px 10px;margin:4px 0 8px;border-radius:var(--radius-sm);background:linear-gradient(135deg,rgba(232,93,58,0.06),rgba(232,93,58,0.02));border:1px solid rgba(232,93,58,0.15);border-left:3px solid var(--accent);font-size:var(--fs-xxs);color:var(--ink-2);line-height:var(--lh-read)}
+.ev-annotation strong{color:var(--accent-text);font-weight:600}
+.ev-annotation.teal{background:linear-gradient(135deg,rgba(13,115,119,0.06),rgba(13,115,119,0.02));border-color:rgba(13,115,119,0.15);border-left-color:var(--teal)}
+.ev-annotation.teal strong{color:var(--teal)}
+
+/* ═══════════════════════════════════════════════════════════════
+   CHAT PANEL
+   ═══════════════════════════════════════════════════════════════ */
+/* Chat styles removed — AI lives in Evidence Studio Q&A frame */
+
+/* ═══════════════════════════════════════════════════════════════
+   ZOOM NAV
+   ═══════════════════════════════════════════════════════════════ */
+.zoom-nav{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);z-index:50;display:flex;align-items:center;gap:0;padding:5px 12px;background:rgba(255,255,255,0.92);backdrop-filter:blur(8px);border:1px solid var(--line);border-radius:20px;box-shadow:0 2px 12px rgba(26,26,26,0.08)}
+.zn-item{display:flex;align-items:center;gap:5px;padding:3px 10px;font-size:var(--fs-xs);font-weight:500;color:var(--ink-3);border-radius:14px;transition:color .2s,background .2s}
+.zn-item:hover{color:var(--ink-2)}
+.zn-item:focus-visible{outline:2px solid var(--teal);outline-offset:2px}
+.zn-item.active{color:var(--ink);font-weight:600;background:var(--panel-2)}
+.zn-item .zn-dot{width:5px;height:5px;border-radius:50%;background:var(--ink-3);transition:background .2s}
+.zn-item.active .zn-dot{background:var(--ink)}
+.zn-chevron{margin:0 1px;font-size:var(--fs-xxs);color:var(--ink-3)}
+
+/* ═══════════════════════════════════════════════════════════════
+   ANIMATIONS
+   ═══════════════════════════════════════════════════════════════ */
+@keyframes pulse-glow{0%,100%{box-shadow:0 0 0 0 rgba(232,93,58,0.5)}50%{box-shadow:0 0 0 4px rgba(232,93,58,0)}}
+@keyframes flow-arrow{to{stroke-dashoffset:-20}}
+@keyframes bar-grow{from{transform:scaleX(0)}to{transform:scaleX(1)}}
+@keyframes tab-fade{from{opacity:0;transform:translateY(2px)}to{opacity:1;transform:translateY(0)}}
+@keyframes highlight-pulse{0%{background:rgba(232,93,58,0.25)}100%{background:rgba(232,93,58,0.08)}}
+@keyframes stagger-in{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+.level.active .stagger>*{animation:stagger-in .35s var(--zoom-ease) both}
+.level.active .stagger>*:nth-child(1){animation-delay:.04s}
+.level.active .stagger>*:nth-child(2){animation-delay:.08s}
+.level.active .stagger>*:nth-child(3){animation-delay:.12s}
+.level.active .stagger>*:nth-child(4){animation-delay:.16s}
+.level.active .stagger>*:nth-child(5){animation-delay:.20s}
+.level.active .stagger>*:nth-child(6){animation-delay:.24s}
+.level.active .stagger>*:nth-child(7){animation-delay:.28s}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;transition-duration:.15s!important}.level{filter:none!important}}
+</style>
+</head>
+<body>
+<a href="#main-content" style="position:absolute;left:-9999px;top:0;z-index:999;padding:8px 16px;background:var(--panel);color:var(--ink);font-size:var(--fs-sm);border:1px solid var(--line);border-radius:var(--radius-sm);" onfocus="this.style.left='16px'" onblur="this.style.left='-9999px'">Skip to content</a>
+<div class="world" id="main-content">
+
+<!-- ═══════════════════════════════════════════════════════════════
+     LEVEL 0 — SYSTEM TOPOLOGY MAP
+     ═══════════════════════════════════════════════════════════════ -->
+<section class="level active" id="level-0">
+  <header class="level-header">
+    <div class="logo"><span class="dot alert"></span> 3am</div>
+    <div class="sep"></div>
+    <span class="env-tag">production</span>
+    <span class="clock">2026-03-20 14:31 UTC</span>
+  </header>
+  <div class="l0-content">
+    <div class="l0-stats stagger">
+      <div class="stat-block"><span class="stat-value critical">2</span><span class="stat-label">Active Incidents</span></div>
+      <div class="stat-block"><span class="stat-value warn">2</span><span class="stat-label">Degraded Services</span></div>
+      <div class="stat-block"><span class="stat-value">866</span><span class="stat-label">Req/s (cluster)</span></div>
+      <div class="stat-block"><span class="stat-value">89ms</span><span class="stat-label">P95 Latency</span></div>
+    </div>
+
+    <h2 class="l0-section-title">Runtime Dependency Map <span style="font-weight:400;text-transform:none;letter-spacing:0;font-size:var(--fs-xxs);color:var(--ink-3);">— observed from recent spans (last&nbsp;30m)</span></h2>
+    <div class="system-map">
+      <!-- Tier labels -->
+      <span class="map-tier-label t0">Entry Points</span>
+      <span class="map-tier-label t1">Runtime Units</span>
+      <span class="map-tier-label t2">Dependencies</span>
+      <!-- Tier dividers -->
+      <div class="map-tier-border" style="top:120px;"></div>
+      <div class="map-tier-border" style="top:252px;"></div>
+
+      <svg class="map-edges" viewBox="0 0 1100 380" preserveAspectRatio="xMidYMid meet">
+        <!-- /checkout → StripeClient (error) -->
+        <path id="e1" d="M200,60 L420,170" stroke="var(--accent)" stroke-width="2.5" opacity="0.22" fill="none"/>
+        <circle r="3" fill="var(--accent)" opacity="0.7"><animateMotion dur="0.9s" repeatCount="indefinite"><mpath href="#e1"/></animateMotion></circle>
+        <circle r="3" fill="var(--accent)" opacity="0.7"><animateMotion dur="0.9s" begin="0.3s" repeatCount="indefinite"><mpath href="#e1"/></animateMotion></circle>
+        <circle r="3" fill="var(--accent)" opacity="0.7"><animateMotion dur="0.9s" begin="0.6s" repeatCount="indefinite"><mpath href="#e1"/></animateMotion></circle>
+
+        <!-- /checkout → OrderProcessor (amber, cascade) -->
+        <path id="e2" d="M200,75 L650,170" stroke="var(--amber)" stroke-width="2" opacity="0.18" fill="none"/>
+        <circle r="2.5" fill="var(--amber)" opacity="0.5"><animateMotion dur="1.5s" repeatCount="indefinite"><mpath href="#e2"/></animateMotion></circle>
+        <text x="420" y="110" font-size="8" fill="var(--ink-3)" font-family="var(--mono)" text-anchor="middle">timeout</text>
+
+        <!-- /orders → OrderProcessor (amber) -->
+        <path id="e3" d="M460,60 L680,170" stroke="var(--amber)" stroke-width="1.8" opacity="0.16" fill="none"/>
+        <circle r="2.5" fill="var(--amber)" opacity="0.45"><animateMotion dur="1.8s" repeatCount="indefinite"><mpath href="#e3"/></animateMotion></circle>
+
+        <!-- /health → (nothing, standalone) -->
+
+        <!-- StripeClient → stripe-api (error, dashed for external) -->
+        <path id="e4" d="M420,220 L420,290" stroke="var(--accent)" stroke-width="2.5" opacity="0.22" stroke-dasharray="6 4" fill="none"/>
+        <circle r="3" fill="var(--accent)" opacity="0.7"><animateMotion dur="0.6s" repeatCount="indefinite"><mpath href="#e4"/></animateMotion></circle>
+        <circle r="3" fill="var(--accent)" opacity="0.7"><animateMotion dur="0.6s" begin="0.3s" repeatCount="indefinite"><mpath href="#e4"/></animateMotion></circle>
+
+        <!-- OrderProcessor → postgres (healthy, dashed) -->
+        <path id="e5" d="M700,220 L820,290" stroke="var(--good)" stroke-width="1.5" opacity="0.16" stroke-dasharray="6 4" fill="none"/>
+        <circle r="2.5" fill="var(--good)" opacity="0.4"><animateMotion dur="2.5s" repeatCount="indefinite"><mpath href="#e5"/></animateMotion></circle>
+      </svg>
+
+      <!-- TIER 0: Entry Points (routes) — top row, left-aligned square cards -->
+      <div class="map-node n-entry n-critical clickable" style="left:40px;top:20px;width:160px;" onclick="zoomTo(1)" tabindex="0" role="button">
+        <div class="mn-top"><span class="health-dot critical"></span><span class="mn-name">POST /checkout</span></div>
+        <div class="mn-metrics"><span>189&nbsp;req/s</span><span class="bad">68%&nbsp;err</span></div>
+      </div>
+      <div class="map-node n-entry n-degraded" style="left:300px;top:20px;width:160px;">
+        <div class="mn-top"><span class="health-dot degraded"></span><span class="mn-name">GET /orders</span></div>
+        <div class="mn-metrics"><span>156&nbsp;req/s</span><span class="warn">23%&nbsp;err</span></div>
+      </div>
+      <div class="map-node n-entry" style="left:560px;top:20px;width:140px;">
+        <div class="mn-top"><span class="health-dot ok"></span><span class="mn-name">GET /health</span></div>
+        <div class="mn-metrics"><span>12&nbsp;req/s</span><span>0%</span></div>
+      </div>
+
+      <!-- TIER 1: Runtime Units — middle row, rounded pill cards -->
+      <div class="map-node n-unit n-critical" style="left:300px;top:150px;width:200px;">
+        <div class="mn-top"><span class="health-dot critical"></span><span class="mn-name">StripeClient</span><span class="mn-badge">no batching</span></div>
+        <div class="mn-detail" style="color:var(--accent-text);">189&nbsp;calls/s — 1:1 per&nbsp;tx</div>
+      </div>
+      <div class="map-node n-unit n-degraded" style="left:570px;top:150px;width:200px;">
+        <div class="mn-top"><span class="health-dot degraded"></span><span class="mn-name">OrderProcessor</span></div>
+        <div class="mn-detail" style="color:var(--amber);">waiting on payment — 30s&nbsp;timeout</div>
+      </div>
+
+      <!-- TIER 2: Dependencies — bottom row, dashed cards -->
+      <div class="map-node n-dep n-critical" style="left:300px;top:280px;width:200px;">
+        <div class="mn-top"><span class="health-dot critical"></span><span class="mn-name">Stripe API</span><span class="mn-tag">external</span></div>
+        <div class="mn-detail" style="color:var(--accent-text);font-weight:600;">429 — quota 0/100</div>
+      </div>
+      <div class="map-node n-dep" style="left:700px;top:280px;width:180px;">
+        <div class="mn-top"><span class="health-dot ok"></span><span class="mn-name">PostgreSQL</span><span class="mn-tag">external</span></div>
+        <div class="mn-metrics"><span>ok</span><span>12&nbsp;ms</span></div>
+      </div>
+    </div>
+    <div class="map-legend">
+      <span style="color:var(--ink-2);">Observed from spans</span>
+      <span>&#9644; entry point</span>
+      <span>&#9673; runtime unit</span>
+      <span>&#9634; dependency</span>
+      <span><span class="legend-line" style="background:var(--accent)"></span> errors</span>
+      <span><span class="legend-line" style="background:var(--amber)"></span> degraded</span>
+      <span><span class="legend-line" style="background:var(--good)"></span> healthy</span>
+    </div>
+
+    <h2 class="l0-section-title" style="margin-top:12px">Active Incidents</h2>
+    <div class="stagger">
+      <div class="incident-row" onclick="zoomTo(1)" tabindex="0" role="button">
+        <span class="health-dot critical"></span><span class="ir-id">INC-0892</span><span class="ir-name">Stripe Rate Limit Cascade</span><span class="sev sev-critical">Critical</span><span class="ir-time">8m ago</span>
+      </div>
+      <div class="incident-row" tabindex="0" role="button">
+        <span class="health-dot degraded"></span><span class="ir-id">INC-0890</span><span class="ir-name">Elevated latency on order-service</span><span class="sev sev-medium">Medium</span><span class="ir-time">12m ago</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════════
+     LEVEL 1 — INCIDENT BOARD
+     ═══════════════════════════════════════════════════════════════ -->
+<section class="level" id="level-1">
+  <header class="level-header">
+    <button class="back-btn" onclick="zoomTo(0)"><svg viewBox="0 0 16 16" fill="none"><path d="M10 3L5 8l5 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>Map</button>
+    <div class="sep"></div><span style="font-weight:600;font-size:13px;">INC-0892</span><span class="sev sev-critical">Critical</span>
+    <span class="clock" style="font-size:var(--fs-xxs);color:var(--ink-3);margin-left:0;">Duration: 8m 14s</span><span class="clock">14:31 UTC</span>
+  </header>
+  <div class="l1-content stagger">
+    <div style="margin-bottom:12px;">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px;"><span style="font-family:var(--mono);font-size:var(--fs-sm);color:var(--ink-3);">INC-0892</span><span class="sev sev-critical">Critical</span></div>
+      <h1 class="incident-headline">Stripe API rate limit cascade causing payment failures across all checkout flows</h1>
+      <div class="incident-chips">
+        <span class="chip chip-critical">68%&nbsp;checkout errors</span><span class="chip chip-external">Stripe 429</span><span class="chip chip-system">payment-service</span><span class="chip chip-system">order-service</span>
+      </div>
+    </div>
+
+    <div class="action-hero">
+      <h2 class="action-eyebrow"><svg viewBox="0 0 16 16" fill="none"><path d="M8 1l2.5 5 5.5.8-4 3.9.9 5.3L8 13.3 3.1 16l.9-5.3-4-3.9 5.5-.8z" fill="currentColor"/></svg>Immediate Action</h2>
+      <div class="action-text">Enable request batching on StripeClient and add exponential backoff with jitter</div>
+      <div class="action-why">Stripe is returning 429 because payment-service sends one API call per transaction with no batching. During the current 3x traffic surge, this exceeded Stripe's 100&nbsp;req/sec rate limit. Batching + backoff will reduce call volume by ~80%.</div>
+      <div class="action-donot"><strong>Do not:</strong> Request a Stripe rate limit increase &mdash; this masks the underlying design flaw.</div>
+    </div>
+
+    <!-- NEW: Blast Radius + Operator Check -->
+    <div class="l1-context-grid">
+      <div class="card" style="padding:10px 12px;">
+        <div class="card-title" style="margin-bottom:6px;">Blast Radius</div>
+        <div class="blast-row"><span class="health-dot critical" style="width:6px;height:6px;"></span><span class="blast-svc">payment-service</span><div class="blast-bar"><div class="blast-fill" style="width:68%"></div></div><span class="blast-pct bad">68%</span></div>
+        <div class="blast-row"><span class="health-dot degraded" style="width:6px;height:6px;"></span><span class="blast-svc">order-service</span><div class="blast-bar"><div class="blast-fill amber" style="width:23%"></div></div><span class="blast-pct warn">23%</span></div>
+        <div class="blast-row"><span class="health-dot ok" style="width:6px;height:6px;"></span><span class="blast-svc">4 other services</span><div class="blast-bar"><div class="blast-fill good" style="width:1%"></div></div><span class="blast-pct">ok</span></div>
+      </div>
+      <div class="card" style="padding:10px 12px;">
+        <div class="card-title" style="margin-bottom:6px;">Confidence</div>
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+          <div style="font-size:18px;font-weight:700;color:var(--good);">85%</div>
+          <div style="font-size:var(--fs-xxs);color:var(--ink-2);line-height:var(--lh-ui);">High confidence<br/>Stripe 429 ↔ traffic r=0.97</div>
+        </div>
+        <div style="font-size:var(--fs-xxs);color:var(--ink-3);padding-top:4px;border-top:1px solid var(--line);line-height:var(--lh-read);">
+          <span style="color:var(--amber);font-weight:600;">Risk:</span> Backoff rollout without rate limiter guard may cause retry storm
+        </div>
+      </div>
+      <div class="card" style="padding:10px 12px;">
+        <div class="card-title" style="margin-bottom:6px;">Operator Check</div>
+        <div class="check-item"><span class="check-box"></span> Verify StripeClient config in payment-service</div>
+        <div class="check-item"><span class="check-box"></span> Check STRIPE_API_KEY type (restricted vs unrestricted)</div>
+        <div class="check-item"><span class="check-box"></span> Review Stripe batch mode docs (API v2024-12)</div>
+      </div>
+    </div>
+
+    <div class="root-cause">
+      <h2 class="section-label">Root Cause Hypothesis</h2>
+      <div class="root-cause-text">Payment service makes unbatched Stripe API calls per transaction. During 3x traffic surge from flash sale, exceeded Stripe's per-account 100&nbsp;req/sec rate limit. No backoff or circuit breaker, causing cascading failures.</div>
+    </div>
+
+    <div class="chain-section">
+      <h2 class="section-label" style="margin-bottom:10px;">Causal Chain</h2>
+      <div class="chain-flow">
+        <div class="chain-step" data-type="external"><div class="step-tag">External Trigger</div><div class="step-title">Stripe API &rarr; 429</div><div class="step-detail">Rate limit at 14:23:15</div></div>
+        <div class="chain-arrow"><svg width="28" height="20"><line x1="0" y1="10" x2="20" y2="10"/><polygon points="20,6 28,10 20,14"/></svg></div>
+        <div class="chain-step" data-type="system"><div class="step-tag">Design Gap</div><div class="step-title">No batching / backoff</div><div class="step-detail">1:1 call per transaction</div></div>
+        <div class="chain-arrow"><svg width="28" height="20"><line x1="0" y1="10" x2="20" y2="10"/><polygon points="20,6 28,10 20,14"/></svg></div>
+        <div class="chain-step" data-type="incident"><div class="step-tag">Cascade</div><div class="step-title">Payment &rarr; order timeout</div><div class="step-detail">30s&nbsp;timeout propagation</div></div>
+        <div class="chain-arrow"><svg width="28" height="20"><line x1="0" y1="10" x2="20" y2="10"/><polygon points="20,6 28,10 20,14"/></svg></div>
+        <div class="chain-step" data-type="impact"><div class="step-tag">User Impact</div><div class="step-title">68%&nbsp;checkout errors</div><div class="step-detail">500s on /checkout</div></div>
+      </div>
+    </div>
+
+    <div class="card" style="padding:10px 12px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+        <div class="card-title">Evidence</div>
+        <div style="font-family:var(--mono);font-size:var(--fs-xxs);color:var(--ink-3);">Started 14:23:15 · Full cascade 14:25:30 · Diagnosed 14:27:45</div>
+      </div>
+      <div style="display:flex;gap:16px;margin-bottom:10px;">
+        <div class="evidence-row" style="border:none;padding:0;"><span class="ev-label">Traces</span><span class="ev-value">47 (12 errors)</span></div>
+        <div class="evidence-row" style="border:none;padding:0;"><span class="ev-label">Metrics</span><span class="ev-value">6 anomalous</span></div>
+        <div class="evidence-row" style="border:none;padding:0;"><span class="ev-label">Logs</span><span class="ev-value">234 (89 errors)</span></div>
+      </div>
+      <button class="btn-evidence" onclick="zoomTo(2)"><span class="dot"></span> Open Evidence Studio</button>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════════
+     LEVEL 2 — EVIDENCE EXPLORER
+     ═══════════════════════════════════════════════════════════════ -->
+<section class="level" id="level-2">
+  <header class="level-header">
+    <button class="back-btn" onclick="zoomTo(1)"><svg viewBox="0 0 16 16" fill="none"><path d="M10 3L5 8l5 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>INC-0892</button>
+    <div class="sep"></div><span style="font-size:14px;font-weight:700;">Evidence Studio</span><span class="sev sev-critical">Critical</span><span class="clock">14:31 UTC</span>
+  </header>
+  <div class="l2-content">
+    <!-- Incident context bar -->
+    <div class="l2-context-bar">
+      <span class="health-dot critical" style="width:6px;height:6px;"></span>
+      <span class="ctx-id">INC-0892</span>
+      <span class="ctx-sep">&mdash;</span>
+      <span class="ctx-headline">Stripe rate limit cascade</span>
+      <span class="ctx-action">Action: Enable batching + backoff</span>
+    </div>
+
+    <div class="proof-cards stagger">
+      <div class="card proof-card" tabindex="0" onclick="showProof('trigger')"><div class="pc-top"><div class="pc-icon trigger">&#9889;</div><span class="pc-label">External Trigger</span><span class="pc-status confirmed">Confirmed</span></div><div class="pc-summary">Stripe API 429 responses starting at 14:23:15. Rate limit header shows 0/100 remaining.</div></div>
+      <div class="card proof-card" tabindex="0" onclick="showProof('design')"><div class="pc-top"><div class="pc-icon design">&#9888;</div><span class="pc-label">Design Gap</span><span class="pc-status confirmed">Confirmed</span></div><div class="pc-summary">No request batching in StripeClient. Error rate correlates 1:1 with traffic volume (r=0.97).</div></div>
+      <div class="card proof-card" tabindex="0" onclick="showProof('recovery')"><div class="pc-top"><div class="pc-icon recovery">&#10003;</div><span class="pc-label">Recovery Signal</span><span class="pc-status inferred">Inferred</span></div><div class="pc-summary">Retry traces with backoff show successful Stripe calls at reduced rate. Batching ~80% reduction.</div></div>
+    </div>
+
+    <!-- Question → Answer → Evidence -->
+    <div class="qa-frame">
+      <div class="qa-question-row">
+        <span class="qa-icon">?</span>
+        <input class="qa-input" id="qa-input" type="text" value="Why are checkout payments failing?" placeholder="Ask a question about this incident..." aria-label="Ask a question about this incident" />
+        <span class="qa-time">14:23 — 14:31</span>
+      </div>
+      <div class="qa-answer" id="qa-answer">
+        <strong>Answer:</strong> Stripe API rate limit exceeded. payment-service sends unbatched API calls (1 call per transaction). During 3x traffic surge, this exceeded the 100 req/sec quota. The 429 responses cascade to order-service via timeout.
+        <div class="qa-evidence-note">&#8595; Evidence below supports this answer (12 traces, 3 metrics, 28 logs)</div>
+      </div>
+      <div class="qa-followups">
+        <button class="qa-chip" onclick="askQuestion('retry')">Is there retry logic?</button>
+        <button class="qa-chip" onclick="askQuestion('when')">When exactly did this start?</button>
+        <button class="qa-chip" onclick="askQuestion('blast')">What's the full blast radius?</button>
+        <button class="qa-chip" onclick="askQuestion('fix')">Will batching actually fix this?</button>
+      </div>
+    </div>
+
+    <div class="ev-tabs">
+      <button class="ev-tab active" data-tab="traces" onclick="switchTab('traces')">Traces</button>
+      <button class="ev-tab" data-tab="metrics" onclick="switchTab('metrics')">Metrics</button>
+      <button class="ev-tab" data-tab="logs" onclick="switchTab('logs')">Logs</button>
+    </div>
+
+    <div class="l2-grid">
+      <div class="ev-main">
+        <div class="ev-view active" id="ev-traces">
+          <!-- Annotation: why this trace matters -->
+          <div class="ev-annotation"><strong>&#9889; Observed (incident):</strong> stripe-api returned 429 with <code style="font-family:var(--mono);font-size:9px;background:var(--panel-2);padding:1px 3px;border-radius:2px;">x-ratelimit-remaining: 0</code>. Expected: 200 with quota available. This deviation confirms rate limit exhaustion as trigger.</div>
+
+          <div class="trace-group">
+            <div class="trace-header error-header"><span class="health-dot critical" style="width:6px;height:6px;"></span><span style="font-weight:700;">POST /checkout</span><span class="trace-id">tid:a3f8...c91d</span><span class="trace-status error">500</span><span class="trace-dur anomalous">2,340ms</span><span style="font-size:9px;color:var(--ink-3);margin-left:4px;">expected:&nbsp;245ms</span></div>
+            <div class="span-row highlighted" data-proof="trigger"><span class="span-name">POST /checkout</span><div class="span-bar-track"><div class="span-bar error" style="left:0%;width:100%;"></div></div><span class="span-dur">2,340ms</span></div>
+            <div class="span-row highlighted" data-proof="trigger"><span class="span-name">&nbsp;&nbsp;StripeClient.charge</span><div class="span-bar-track"><div class="span-bar error" style="left:2%;width:85%;animation-delay:.05s;"></div></div><span class="span-dur">1,990ms</span></div>
+
+            <!-- Smoking gun span — visually dominant -->
+            <div class="span-row smoking-gun" data-proof="trigger"><span class="span-name">&nbsp;&nbsp;&nbsp;&nbsp;stripe-api POST /v1/charges</span><div class="span-bar-track"><div class="span-bar error" style="left:5%;width:60%;animation-delay:.1s;"></div></div><span class="span-dur">1,405ms</span></div>
+            <div class="span-detail open">
+              <div class="sd-grid">
+                <div>
+                  <div class="sd-section-title">Span Attributes</div>
+                  <dl class="sd-attr">
+                    <dt>http.method</dt><dd>POST</dd>
+                    <dt>http.url</dt><dd>api.stripe.com/v1/charges</dd>
+                    <dt>http.status_code</dt><dd style="color:var(--accent-text);font-weight:600;">429</dd>
+                    <dt>x-ratelimit-limit</dt><dd>100</dd>
+                    <dt>x-ratelimit-remaining</dt><dd style="color:var(--accent-text);font-weight:600;">0</dd>
+                    <dt>retry-after</dt><dd>1</dd>
+                    <dt>span.status</dt><dd style="color:var(--accent-text);">ERROR</dd>
+                  </dl>
+                </div>
+                <div>
+                  <div class="sd-section-title">Correlated Logs (±2s)</div>
+                  <div class="sd-linked-log">14:23:15 ERROR Stripe API returned 429: rate limit exceeded</div>
+                  <div class="sd-linked-log">14:23:16 ERROR Payment processing failed: StripeRateLimitError</div>
+                  <div class="sd-linked-log">14:23:18 ERROR Stripe API returned 429: x-ratelimit-remaining: 0</div>
+                  <div style="margin-top:6px;font-size:9px;color:var(--teal);cursor:pointer;">View all 12 correlated logs →</div>
+                </div>
+              </div>
+            </div>
+
+            <div class="span-row expandable" data-proof="design" onclick="toggleSpan(this)"><span class="span-name">&nbsp;&nbsp;OrderProcessor</span><div class="span-bar-track"><div class="span-bar slow" style="left:88%;width:12%;animation-delay:.15s;"></div></div><span class="span-dur">280ms</span></div>
+          </div>
+
+          <!-- Baseline: collapsed by default -->
+          <div class="baseline-toggle" onclick="this.nextElementSibling.classList.toggle('muted');this.textContent=this.textContent.includes('Show')?'Hide expected trace':'Show expected trace (200, 245ms — 14:20:02)'">Show expected trace (200, 245ms — 14:20:02)</div>
+          <div class="trace-group muted">
+            <div class="trace-header"><span class="health-dot ok" style="width:6px;height:6px;"></span><span style="font-weight:500;">POST /checkout</span><span class="trace-id">tid:b7e2...4f0a</span><span class="trace-status ok">200</span><span class="trace-dur">245ms</span><span style="font-size:9px;color:var(--teal);margin-left:4px;">expected behavior</span></div>
+            <div class="span-row"><span class="span-name">POST /checkout</span><div class="span-bar-track"><div class="span-bar ok" style="left:0%;width:100%;"></div></div><span class="span-dur">245ms</span></div>
+            <div class="span-row"><span class="span-name">&nbsp;&nbsp;StripeClient.charge</span><div class="span-bar-track"><div class="span-bar ok" style="left:5%;width:70%;"></div></div><span class="span-dur">172ms</span></div>
+            <div class="span-row"><span class="span-name">&nbsp;&nbsp;&nbsp;&nbsp;stripe-api POST /v1/charges</span><div class="span-bar-track"><div class="span-bar ok" style="left:10%;width:45%;"></div></div><span class="span-dur">110ms</span></div>
+            <div class="span-row"><span class="span-name">&nbsp;&nbsp;OrderProcessor</span><div class="span-bar-track"><div class="span-bar ok" style="left:76%;width:22%;"></div></div><span class="span-dur">54ms</span></div>
+          </div>
+        </div>
+
+        <div class="ev-view" id="ev-metrics">
+          <!-- Hypothesis 1: Trigger -->
+          <div class="hyp-group" data-proof="trigger">
+            <div class="hyp-header trigger"><span>&#9889;</span><span class="hyp-claim">Stripe rate limit is the trigger</span><span class="hyp-verdict" style="background:var(--good-soft);color:var(--good);">Confirmed</span></div>
+            <div class="hyp-body">
+              <div class="hyp-metric-row">
+                <span class="hyp-metric-name">Stripe 429 rate</span>
+                <span class="hyp-metric-val" style="color:var(--accent-text);">68.2%</span>
+                <div class="hyp-metric-bar"><div class="hyp-metric-fill" style="width:68%;background:var(--accent);"></div></div>
+                <span class="hyp-metric-context">expected:&nbsp;0%</span>
+              </div>
+              <div class="hyp-metric-row">
+                <span class="hyp-metric-name">x-ratelimit-remaining</span>
+                <span class="hyp-metric-val" style="color:var(--accent-text);">0</span>
+                <div class="hyp-metric-bar"><div class="hyp-metric-fill" style="width:0%;background:var(--accent);"></div></div>
+                <span class="hyp-metric-context">limit:&nbsp;100</span>
+              </div>
+              <div class="hyp-metric-row">
+                <span class="hyp-metric-name">Traffic volume</span>
+                <span class="hyp-metric-val">189&nbsp;req/s</span>
+                <div class="hyp-metric-bar"><div class="hyp-metric-fill" style="width:100%;background:var(--accent);opacity:0.6;"></div></div>
+                <span class="hyp-metric-context">3x expected (63&nbsp;req/s)</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Hypothesis 2: Cascade -->
+          <div class="hyp-group" data-proof="design">
+            <div class="hyp-header cascade"><span>&#9888;</span><span class="hyp-claim">Failure cascades to order-service</span><span class="hyp-verdict" style="background:var(--good-soft);color:var(--good);">Confirmed</span></div>
+            <div class="hyp-body">
+              <div class="hyp-metric-row">
+                <span class="hyp-metric-name">order-service err%</span>
+                <span class="hyp-metric-val" style="color:var(--amber);">23.1%</span>
+                <div class="hyp-metric-bar"><div class="hyp-metric-fill" style="width:23%;background:var(--amber);"></div></div>
+                <span class="hyp-metric-context">expected:&nbsp;0.1%</span>
+              </div>
+              <div class="hyp-metric-row">
+                <span class="hyp-metric-name">P95 latency</span>
+                <span class="hyp-metric-val" style="color:var(--amber);">2,340ms</span>
+                <div class="hyp-metric-bar"><div class="hyp-metric-fill" style="width:95%;background:var(--amber);"></div></div>
+                <span class="hyp-metric-context">expected:&nbsp;45ms (52x deviation)</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Hypothesis 3: Recovery signal -->
+          <div class="hyp-group" data-proof="recovery">
+            <div class="hyp-header recovery"><span>&#10003;</span><span class="hyp-claim">Batching will reduce call volume below limit</span><span class="hyp-verdict" style="background:var(--amber-soft);color:var(--amber);">Inferred</span></div>
+            <div class="hyp-body">
+              <div class="hyp-metric-row">
+                <span class="hyp-metric-name">Observed call rate</span>
+                <span class="hyp-metric-val">189&nbsp;/s</span>
+                <div class="hyp-metric-bar"><div class="hyp-metric-fill" style="width:100%;background:var(--accent);opacity:0.5;"></div></div>
+                <span class="hyp-metric-context">observed: over limit (100/s)</span>
+              </div>
+              <div class="hyp-metric-row">
+                <span class="hyp-metric-name">With 10x batching</span>
+                <span class="hyp-metric-val" style="color:var(--good);">~19&nbsp;/s</span>
+                <div class="hyp-metric-bar"><div class="hyp-metric-fill" style="width:19%;background:var(--good);"></div></div>
+                <span class="hyp-metric-context">projected: under limit</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="ev-view" id="ev-logs">
+          <!-- Claim cluster 1: Trigger logs -->
+          <div class="claim-cluster" data-proof="trigger">
+            <div class="claim-header trigger"><span>&#9889;</span><span class="claim-label" style="color:var(--accent-text);">Trigger: Stripe rate limit hit</span><span class="claim-count">3&nbsp;entries</span></div>
+            <div class="log-row signal"><span class="log-time">14:23:15</span><span class="log-sev error">ERROR</span><span class="log-body">Stripe API returned 429: rate limit exceeded. x-ratelimit-remaining: 0</span></div>
+            <div class="log-row noise"><span class="log-time">14:23:16</span><span class="log-sev error">ERROR</span><span class="log-body">Payment processing failed for order ord_8f2a: StripeRateLimitError</span></div>
+            <div class="log-row signal"><span class="log-time">14:25:01</span><span class="log-sev error">ERROR</span><span class="log-body">Stripe API returned 429: rate limit exceeded. Retry-After: 1</span></div>
+          </div>
+
+          <!-- Claim cluster 2: Cascade logs -->
+          <div class="claim-cluster" data-proof="design">
+            <div class="claim-header cascade"><span>&#9888;</span><span class="claim-label" style="color:var(--amber);">Cascade: payment → order timeout</span><span class="claim-count">2&nbsp;entries</span></div>
+            <div class="log-row signal"><span class="log-time">14:24:02</span><span class="log-sev error">ERROR</span><span class="log-body">order-service: upstream timeout calling payment-service POST /v1/charges (30s)</span></div>
+            <div class="log-row signal"><span class="log-time">14:25:30</span><span class="log-sev error">ERROR</span><span class="log-body">order-service cascade: 23%&nbsp;of requests failing with upstream dependency error</span></div>
+          </div>
+
+          <!-- Claim cluster 3: No retry evidence -->
+          <div class="claim-cluster" data-proof="recovery">
+            <div class="claim-header" style="background:var(--teal-soft);border-bottom:2px solid var(--teal);"><span>&#128269;</span><span class="claim-label" style="color:var(--teal);">Absence evidence: no retry / backoff</span><span class="claim-count">0&nbsp;entries</span></div>
+            <div style="padding:10px 12px;font-size:var(--fs-xxs);color:var(--ink-3);font-style:italic;">Expected: retry or backoff log entries during 429 responses. Observed: none. No entries matching retry, backoff, or circuit_breaker. This absence confirms the design gap.</div>
+          </div>
+        </div>
+
+      </div>
+
+      <div class="ev-side">
+        <div class="side-note primary"><div class="card-title" style="color:var(--teal);">Confidence</div><p>High (85%) &mdash; Stripe 429 errors correlate strongly with traffic increase. Clear 1:1 mapping between request volume and error rate.</p></div>
+        <div class="side-note"><div class="card-title">Uncertainty</div><p>Cannot confirm if Stripe rate limit is per-account or per-API-key. If per-key, rotating keys could temporarily relieve pressure.</p></div>
+        <div class="side-note"><div class="card-title">Affected Dependencies</div><p style="font-family:var(--mono);font-size:var(--fs-xxs);">stripe-api (external)<br/>order-service (internal)</p></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+</div>
+
+<!-- Chat panel removed — AI lives in Evidence Studio query bar -->
+
+<nav class="zoom-nav" id="zoom-nav" aria-label="Zoom level navigation">
+  <button class="zn-item active" data-level="0" onclick="zoomTo(0)"><span class="zn-dot"></span> Map</button>
+  <span class="zn-chevron">&rsaquo;</span>
+  <button class="zn-item" data-level="1" onclick="zoomTo(1)"><span class="zn-dot"></span> Incident</button>
+  <span class="zn-chevron">&rsaquo;</span>
+  <button class="zn-item" data-level="2" onclick="zoomTo(2)"><span class="zn-dot"></span> Evidence</button>
+</nav>
+
+<script>
+(function(){
+  'use strict';
+  var currentLevel=0;
+  var levels=['level-0','level-1','level-2'];
+
+  window.zoomTo=function(level){
+    if(level===currentLevel||level<0||level>2)return;
+    var goingDeeper=level>currentLevel;
+    var cur=document.getElementById(levels[currentLevel]);
+    var tgt=document.getElementById(levels[level]);
+    cur.classList.remove('active');
+    if(goingDeeper)cur.classList.add('zoomed-past');
+    tgt.classList.remove('zoomed-past');
+    tgt.classList.add('active');
+    tgt.scrollTop=0;
+    currentLevel=level;
+    updateZoomNav();
+    setTimeout(function(){levels.forEach(function(id,i){var el=document.getElementById(id);if(i!==currentLevel)el.classList.remove('active','zoomed-past')})},600);
+  };
+  function updateZoomNav(){
+    document.querySelectorAll('.zn-item').forEach(function(i){i.classList.toggle('active',parseInt(i.dataset.level)===currentLevel)});
+    var params=new URLSearchParams(window.location.search);
+    params.set('level',currentLevel);
+    history.replaceState(null,'',window.location.pathname+'?'+params.toString());
+  }
+  // Restore state from URL on load
+  (function(){
+    var params=new URLSearchParams(window.location.search);
+    var level=parseInt(params.get('level'));
+    if(level>0&&level<=2){
+      document.getElementById(levels[0]).classList.remove('active');
+      document.getElementById(levels[level]).classList.add('active');
+      currentLevel=level;
+      updateZoomNav();
+    }
+  })();
+
+// Question → Answer demo
+  window.askQuestion=function(q){
+    var input=document.getElementById('qa-input');
+    var answer=document.getElementById('qa-answer');
+    var qa={
+      'retry':{q:'Is there retry logic in payment-service?',a:'<strong>Answer:</strong> No. StripeClient has no retry, backoff, or circuit breaker logic. Every failed call immediately returns an error. Confirmed by zero retry spans and immediate StripeRateLimitError propagation in logs.<div class="qa-evidence-note">&#8595; Evidence: 0 retry spans, 89 immediate error logs</div>'},
+      'when':{q:'When exactly did this start?',a:'<strong>Answer:</strong> First Stripe 429 at 14:23:15 UTC. Error rate crossed 50% at 14:24:02. order-service cascade at 14:25:30. First signal to full cascade: 2m 15s.<div class="qa-evidence-note">&#8595; Evidence: timeline from 47 traces + 234 logs</div>'},
+      'blast':{q:'What is the full blast radius?',a:'<strong>Answer:</strong> 2 services affected: payment-service (68% errors) and order-service (23% via timeout). 1,247 requests impacted. postgres and other routes unaffected \u2014 failure isolated to the Stripe call path.<div class="qa-evidence-note">&#8595; Evidence: error rates by service, unaffected traces for comparison</div>'},
+      'fix':{q:'Will batching actually fix this?',a:'<strong>Answer:</strong> Yes (high confidence). 189 individual calls/sec \u2192 batching at 10/batch = ~19 calls/sec, well under 100/sec limit. Baseline traces confirm successful calls at reduced rate. Backoff adds safety margin.<div class="qa-evidence-note">&#8595; Evidence: baseline traces, rate limit headers, traffic volume</div>'}
+    };
+    var data=qa[q];
+    if(data){input.value=data.q;answer.innerHTML=data.a;}
+  };
+  window.switchTab=function(tab){
+    document.querySelectorAll('.ev-tab').forEach(function(t){t.classList.toggle('active',t.dataset.tab===tab)});
+    document.querySelectorAll('.ev-view').forEach(function(v){v.classList.remove('active')});
+    var view=document.getElementById('ev-'+tab);if(view)view.classList.add('active');
+    document.querySelectorAll('.proof-highlight').forEach(function(el){el.classList.remove('proof-highlight')});
+    var params=new URLSearchParams(window.location.search);
+    params.set('tab',tab);
+    history.replaceState(null,'',window.location.pathname+'?'+params.toString());
+  };
+
+  // Proof card → evidence highlight connection
+  window.showProof=function(proofType){
+    // Switch to appropriate tab
+    var tabMap={trigger:'traces',design:'metrics',recovery:'traces'};
+    if(proofType==='design')switchTab('metrics');
+    else switchTab('traces');
+    // Highlight matching evidence
+    setTimeout(function(){
+      document.querySelectorAll('.proof-highlight').forEach(function(el){el.classList.remove('proof-highlight')});
+      document.querySelectorAll('[data-proof="'+proofType+'"]').forEach(function(el){
+        el.classList.add('proof-highlight');
+      });
+      // Scroll first highlighted into view
+      var first=document.querySelector('.proof-highlight');
+      if(first)first.scrollIntoView({behavior:'smooth',block:'center'});
+    },200);
+  };
+
+  // Span expansion toggle
+  window.toggleSpan=function(row){
+    var detail=row.nextElementSibling;
+    if(detail&&detail.classList.contains('span-detail')){
+      detail.classList.toggle('open');
+    }
+  };
+
+  document.addEventListener('keydown',function(e){
+    if(e.key==='Escape'){if(currentLevel>0)zoomTo(currentLevel-1)}
+    if(e.key==='Enter'&&document.activeElement){var el=document.activeElement;if(el.classList.contains('clickable')||el.classList.contains('incident-row'))el.click()}
+  });
+})();
+</script>
+</body>
+</html>

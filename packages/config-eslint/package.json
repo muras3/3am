@@ -1,0 +1,18 @@
+{
+  "name": "@3am/config-eslint",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./eslint.config.js",
+  "exports": {
+    ".": "./eslint.config.js"
+  },
+  "files": [
+    "eslint.config.js"
+  ],
+  "peerDependencies": {
+    "@eslint/js": "^9.x",
+    "eslint": "^9.x",
+    "typescript-eslint": "^8.x"
+  }
+}
