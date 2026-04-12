@@ -114,9 +114,13 @@ export function shouldAllowRediagnosis(
   // Legacy record without packet_generation: treat conservatively — do not re-diagnose.
   if (storedGeneration === undefined) return false;
 
-  // Allow re-diagnosis only if the packet has advanced beyond the stored generation.
-  // This gates exactly one re-diagnosis per generation gap (once re-diagnosed, the new
-  // result will carry the updated generation and this predicate will return false again).
+  // Allow re-diagnosis when the packet has advanced beyond the stored generation.
+  // Design note (Codex review finding): this permits one re-diagnosis per generation
+  // advance. Long-lived incidents with many rebuilds could trigger multiple re-diagnoses
+  // if the packet keeps advancing. This is the "簡易版" (simplified) approach from the
+  // investigation doc — a strict rediagnosis_count cap requires a DB column and is
+  // deferred to Fix 5.4. The generation-gap gate is a meaningful improvement over the
+  // previous permanent freeze (which never allowed re-diagnosis at all).
   return currentGeneration > storedGeneration;
 }
 

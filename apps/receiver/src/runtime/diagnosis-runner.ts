@@ -25,7 +25,10 @@ export class DiagnosisRunner {
 
     try {
       // Pre-diagnosis materialization: ensure snapshots are fresh before reading the incident.
-      // Best-effort — returns false on lease contention or rebuild failure, but we still proceed.
+      // Best-effort — returns false when already fresh, lease is contended, or rebuild fails.
+      // Known limitation (Codex review finding): when contended, the re-fetch below may still
+      // read the pre-materialization packet. Accepted as a best-effort constraint; Fix 5.4 will
+      // address the no-read path with a stricter retry strategy.
       await ensureIncidentMaterialized(incidentId, this.storage, this.telemetryStore);
 
       // Re-fetch after materialization to pick up any packet updates from the rebuild.
