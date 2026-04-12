@@ -25,13 +25,18 @@ function checkStr(path: string, value: string, max: number): void {
 }
 
 /**
- * Validates that all evidence ref IDs in evidenceBindings exist in the
- * proofRefs provided by the receiver. Rejects invented IDs.
+ * Strips evidence ref IDs from narrative that are not present in proofRefs.
+ * Emits a warning per invalid ref instead of throwing.
+ * Returns a new narrative with all invalid refs removed.
+ *
+ * Rationale: LLMs occasionally hallucinate ref IDs even when instructed not to.
+ * Failing the entire diagnose command over a wording artifact would be worse than
+ * returning a partial narrative (degraded mode). Stage 1 diagnosis is unaffected.
  */
-function validateEvidenceRefIds(
+function stripInvalidEvidenceRefIds(
   narrative: ConsoleNarrative,
   context: ReasoningStructure,
-): void {
+): ConsoleNarrative {
   const knownIds = new Set<string>();
   for (const ref of context.proofRefs) {
     for (const er of ref.evidenceRefs) {
@@ -39,23 +44,45 @@ function validateEvidenceRefIds(
     }
   }
 
-  for (const ref of narrative.qa.answerEvidenceRefs) {
-    if (!knownIds.has(ref.id)) {
-      throw new Error(
-        `NarrativeValidationError: answerEvidenceRef "${ref.id}" is not in proofRefs. Diagnosis must not invent IDs.`,
+  const warnedIds = new Set<string>();
+  const warnOnce = (id: string, location: string): void => {
+    if (!warnedIds.has(id)) {
+      warnedIds.add(id);
+      console.warn(
+        `[parse-narrative] NarrativeValidationWarning: evidence ref "${id}" (${location}) is not in proofRefs — stripped from narrative. Diagnosis must not invent IDs.`,
       );
     }
-  }
+  };
 
-  for (const binding of narrative.qa.evidenceBindings) {
-    for (const ref of binding.evidenceRefs) {
-      if (!knownIds.has(ref.id)) {
-        throw new Error(
-          `NarrativeValidationError: evidence ref "${ref.id}" is not in proofRefs. Diagnosis must not invent IDs.`,
-        );
-      }
+  const cleanAnswerRefs = narrative.qa.answerEvidenceRefs.filter((ref) => {
+    if (!knownIds.has(ref.id)) {
+      warnOnce(ref.id, "answerEvidenceRefs");
+      return false;
     }
-  }
+    return true;
+  });
+
+  const cleanBindings = narrative.qa.evidenceBindings
+    .map((binding) => ({
+      ...binding,
+      evidenceRefs: binding.evidenceRefs.filter((ref) => {
+        if (!knownIds.has(ref.id)) {
+          warnOnce(ref.id, `evidenceBinding "${binding.claim}"`);
+          return false;
+        }
+        return true;
+      }),
+    }))
+    .filter((binding) => binding.evidenceRefs.length > 0);
+
+  return {
+    ...narrative,
+    qa: {
+      ...narrative.qa,
+      answerEvidenceRefs: cleanAnswerRefs,
+      evidenceBindings: cleanBindings,
+    },
+  };
 }
 
 function normalizeEvidenceRefIds(narrative: ConsoleNarrative): ConsoleNarrative {
@@ -171,9 +198,9 @@ export function parseNarrative(
     },
   };
 
-  const result = normalizeEvidenceRefIds(ConsoleNarrativeSchema.parse(withMeta));
-  validateOutputSize(result);
-  validateEvidenceRefIds(result, context);
+  const normalized = normalizeEvidenceRefIds(ConsoleNarrativeSchema.parse(withMeta));
+  validateOutputSize(normalized);
+  const result = stripInvalidEvidenceRefIds(normalized, context);
 
   return result;
 }

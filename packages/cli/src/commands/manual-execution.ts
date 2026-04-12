@@ -757,7 +757,7 @@ function buildChatSystemPrompt(dr: DiagnosisResult, locale?: "en" | "ja"): strin
 
 export async function runManualDiagnosis(options: ManualExecutionOptions): Promise<{
   diagnosis: DiagnosisResult;
-  narrative: ConsoleNarrative;
+  narrative: ConsoleNarrative | undefined;
 }> {
   const headers = authHeaders(options.authToken);
   const packet = await fetchJson<IncidentPacket>(
@@ -780,11 +780,22 @@ export async function runManualDiagnosis(options: ManualExecutionOptions): Promi
     model,
     locale,
   });
-  const narrative = await generateConsoleNarrative(diagnosis, reasoning, {
-    provider: options.provider,
-    model,
-    locale,
-  });
+
+  // Stage 2: narrative generation — graceful degradation.
+  // A NarrativeValidationError or any other narrative failure must NOT cause
+  // the diagnose command to fail. Stage 1 result is always returned.
+  let narrative: ConsoleNarrative | undefined;
+  try {
+    narrative = await generateConsoleNarrative(diagnosis, reasoning, {
+      provider: options.provider,
+      model,
+      locale,
+    });
+  } catch (narrativeErr) {
+    console.warn(
+      `[manual-execution] narrative generation failed (stage 1 result preserved): ${String(narrativeErr)}`,
+    );
+  }
 
   await fetchJson<{ status: string }>(
     `${options.receiverUrl}/api/diagnosis/${encodeURIComponent(options.incidentId)}`,
@@ -794,14 +805,17 @@ export async function runManualDiagnosis(options: ManualExecutionOptions): Promi
       body: JSON.stringify(diagnosis),
     },
   );
-  await fetchJson<{ status: string }>(
-    `${options.receiverUrl}/api/incidents/${encodeURIComponent(options.incidentId)}/console-narrative`,
-    {
-      method: "POST",
-      headers,
-      body: JSON.stringify(narrative),
-    },
-  );
+
+  if (narrative) {
+    await fetchJson<{ status: string }>(
+      `${options.receiverUrl}/api/incidents/${encodeURIComponent(options.incidentId)}/console-narrative`,
+      {
+        method: "POST",
+        headers,
+        body: JSON.stringify(narrative),
+      },
+    );
+  }
 
   return { diagnosis, narrative };
 }
