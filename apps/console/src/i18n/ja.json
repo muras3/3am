@@ -11,7 +11,7 @@
     "tokenPlaceholder": "auth token をここに貼り付け",
     "saveAndContinueShort": "保存して続行",
     "claimTitle": "サインインリンクを開いてください",
-    "claimBody": "この receiver は、再利用できる auth token をブラウザに表示する代わりに、安全なワンタイムのサインインリンクを使います。",
+    "claimBody": "このコンソールは安全なワンタイムのサインインリンクで保護されています。各リンクは1回限り有効で、使用後に無効になります。",
     "claimFooter": "<code>npx 3am deploy</code> が表示したサインインリンクを開くか、信頼できるマシンで <code>npx 3am auth-link</code> を実行して新しいリンクを発行してください。",
     "failed": "セットアップ失敗",
     "failedBody": "receiver に接続できませんでした。セットアップを完了できません。",
