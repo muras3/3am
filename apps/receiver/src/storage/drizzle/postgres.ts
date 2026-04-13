@@ -18,6 +18,7 @@ import type {
   TelemetryScope,
 } from "../interface.js";
 import { MAX_ANOMALOUS_SIGNALS, MAX_SPAN_MEMBERSHIP } from "../interface.js";
+import type { IncidentNotificationState } from "../../notification/types.js";
 import type { LegacyRawState } from "./lazy-migration.js";
 import {
   deriveTelemetryScopeFromPacket,
@@ -31,6 +32,7 @@ import {
   parseAnomalousSignals,
   parseConsoleNarrative,
   parseDiagnosisResult,
+  parseIncidentNotificationState,
   parseIncidentPacket,
   parsePlatformEvents,
   parseSpanMembership,
@@ -49,6 +51,7 @@ const pgIncidents = pgTable("incidents", {
   packet: jsonb("packet").notNull(),
   diagnosisResult: jsonb("diagnosis_result"),
   consoleNarrative: jsonb("console_narrative"),
+  notificationState: jsonb("notification_state"),
   rawState: jsonb("raw_state"),                   // kept nullable for lazy migration (DJ-6)
   telemetryScope: jsonb("telemetry_scope"),
   spanMembership: jsonb("span_membership"),
@@ -109,6 +112,7 @@ export class PostgresAdapter implements StorageDriver {
         packet             JSONB NOT NULL,
         diagnosis_result   JSONB,
         console_narrative  JSONB,
+        notification_state JSONB,
         raw_state          JSONB,
         telemetry_scope    JSONB,
         span_membership    JSONB,
@@ -126,6 +130,9 @@ export class PostgresAdapter implements StorageDriver {
     `);
     await this.db.execute(drizzleSql`
       ALTER TABLE incidents ADD COLUMN IF NOT EXISTS console_narrative JSONB
+    `);
+    await this.db.execute(drizzleSql`
+      ALTER TABLE incidents ADD COLUMN IF NOT EXISTS notification_state JSONB
     `);
     await this.db.execute(drizzleSql`
       ALTER TABLE incidents ADD COLUMN IF NOT EXISTS telemetry_scope JSONB
@@ -215,6 +222,9 @@ export class PostgresAdapter implements StorageDriver {
     if (row.consoleNarrative) {
       incident.consoleNarrative = parseConsoleNarrative(row.consoleNarrative);
     }
+    if (row.notificationState) {
+      incident.notificationState = parseIncidentNotificationState(row.notificationState);
+    }
     if (row.diagnosisScheduledAt) {
       incident.diagnosisScheduledAt = row.diagnosisScheduledAt.toISOString();
     }
@@ -303,6 +313,13 @@ export class PostgresAdapter implements StorageDriver {
       .update(pgIncidents)
       .set({ consoleNarrative: narrative, updatedAt: new Date() })
       .where(eq(pgIncidents.incidentId, id));
+  }
+
+  async updateNotificationState(incidentId: string, state: IncidentNotificationState): Promise<void> {
+    await this.db
+      .update(pgIncidents)
+      .set({ notificationState: state, updatedAt: new Date() })
+      .where(eq(pgIncidents.incidentId, incidentId));
   }
 
   async expandTelemetryScope(

@@ -7,6 +7,7 @@ import {
 } from "3am-core";
 import { z } from "zod";
 import type { AnomalousSignal, TelemetryScope } from "../interface.js";
+import { IncidentNotificationStateSchema } from "../../notification/types.js";
 
 const TelemetryScopeSchema = z.object({
   windowStartMs: z.number(),
@@ -50,6 +51,10 @@ export function parseDiagnosisResult(value: unknown) {
 
 export function parseConsoleNarrative(value: unknown) {
   return ConsoleNarrativeSchema.parse(value);
+}
+
+export function parseIncidentNotificationState(value: unknown) {
+  return IncidentNotificationStateSchema.parse(value);
 }
 
 export function parseThinEvent(value: unknown) {

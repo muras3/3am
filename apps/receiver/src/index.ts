@@ -24,6 +24,9 @@ import { recordSelfTelemetryMetrics } from "./self-telemetry/metrics.js";
 import type { WsBridgeManager } from "./transport/ws-bridge.js";
 import type { BridgeJobQueue } from "./runtime/bridge-job-queue.js";
 import { sessionOrBearerAuth } from "./middleware/session-cookie.js";
+import { getNotificationConfig, setNotificationConfig } from "./notification/config.js";
+import { sendNotificationTest } from "./notification/index.js";
+import { NotificationConfigSchema } from "./notification/types.js";
 
 export type { StorageDriver } from "./storage/interface.js";
 export type { Incident, IncidentPage } from "./storage/interface.js";
@@ -322,6 +325,35 @@ export function createApp(storage?: StorageDriver, options?: AppOptions): Hono {
     }
 
     return c.json(await getReceiverLlmSettings(store));
+  });
+
+  app.get("/api/integrations/notifications", async (c) => {
+    return c.json(await getNotificationConfig(store));
+  });
+
+  app.put("/api/integrations/notifications", async (c) => {
+    let body: unknown;
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ error: "invalid body" }, 400);
+    }
+
+    try {
+      const config = NotificationConfigSchema.parse(body);
+      await setNotificationConfig(store, config);
+      return c.json(config);
+    } catch {
+      return c.json({ error: "invalid notification config" }, 400);
+    }
+  });
+
+  app.post("/api/integrations/notifications/test", async (c) => {
+    const result = await sendNotificationTest(store);
+    if (!result.ok) {
+      return c.json(result, 502);
+    }
+    return c.json(result);
   });
 
   // WebSocket bridge manager for remote manual mode (#331)

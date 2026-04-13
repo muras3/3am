@@ -208,10 +208,10 @@ Open incidents are never deleted regardless of retention setting.
 ### Notifications
 
 ```bash
-export NOTIFICATION_WEBHOOK_URL="https://hooks.slack.com/services/..."
+npx 3am-cli integrations notifications
 ```
 
-Posts to Slack or Discord when an incident is detected. Fire-and-forget — never blocks incident processing.
+Connects Slack and/or Discord to your deployed Receiver. Once configured, 3am posts a parent incident notification and follows up in the same Slack thread / Discord reply chain when diagnosis completes.
 
 ### Logs
 
@@ -249,6 +249,7 @@ npx 3am-cli init --mode manual --provider claude-code  # manual mode (subscripti
 npx 3am-cli local                                   # start local receiver
 npx 3am-cli local demo                              # run demo incident
 npx 3am-cli deploy vercel|cloudflare                # deploy to platform
+npx 3am-cli integrations notifications              # connect Slack/Discord notifications
 npx 3am-cli auth-link [receiver-url]                # mint a fresh sign-in link
 npx 3am-cli diagnose --incident-id inc_000001       # manual diagnosis
 npx 3am-cli bridge                                  # start local diagnosis bridge (local receiver)
@@ -260,6 +261,8 @@ npx 3am-cli bridge --receiver-url <url>             # connect bridge to a remote
 `bridge` flags: `--port` (default 4269), `--receiver-url` (remote WebSocket target; auto-detected from credentials if omitted)
 
 `deploy` flags: `--yes`, `--no-interactive`, `--json`, `--project-name`, `--auth-token`
+
+`integrations notifications` flags: `--receiver-url`, `--auth-token`, `--provider slack|discord|both`, `--slack-bot-token`, `--slack-channel-id`, `--discord-webhook-url`
 
 </details>
 

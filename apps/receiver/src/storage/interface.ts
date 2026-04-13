@@ -1,4 +1,5 @@
 import type { IncidentPacket, DiagnosisResult, ConsoleNarrative, PlatformEvent, ThinEvent } from "3am-core";
+import type { IncidentNotificationState } from "../notification/types.js";
 
 export interface AnomalousSignal {
   signal: string;       // e.g., "http_429", "http_500", "span_error", "slow_span", "exception"
@@ -75,6 +76,7 @@ export interface Incident {
   spanMembership: string[];          // "traceId:spanId" compact ref set
   anomalousSignals: AnomalousSignal[];
   platformEvents: PlatformEvent[];
+  notificationState?: IncidentNotificationState;
 }
 
 export interface IncidentPage {
@@ -111,6 +113,8 @@ export interface StorageDriver {
   appendDiagnosis(id: string, result: DiagnosisResult): Promise<void>;
 
   appendConsoleNarrative(id: string, narrative: ConsoleNarrative): Promise<void>;
+
+  updateNotificationState(incidentId: string, state: IncidentNotificationState): Promise<void>;
 
   listIncidents(opts: { limit: number; cursor?: string }): Promise<IncidentPage>;
 

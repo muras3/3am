@@ -1,67 +1,120 @@
-import type { NotificationPayload } from "./types.js";
+import type {
+  DiagnosisNotificationPayload,
+  DiscordTargetConfig,
+  IncidentCreatedNotificationPayload,
+} from "./types.js";
 
-const EMBED_COLOR = 0xe85d3a; // #E85D3A as integer
-
+const EMBED_COLOR = 0xe85d3a;
 const MAX_SIGNALS = 5;
+const MAX_CHAIN = 4;
 
-// Discord embed field limits (per Discord API spec)
-const FIELD_VALUE_MAX = 1024;
-const EMBED_TOTAL_MAX = 6000;
+export interface DiscordPostResult {
+  ok: boolean;
+  error?: string;
+  messageId?: string;
+}
 
-export function formatDiscord(payload: NotificationPayload): Record<string, unknown> {
-  const severityLabel = payload.severity.toUpperCase();
-  const title = `[${severityLabel}] Incident ${payload.incidentId}`;
-  const description = `**${payload.service}** · ${payload.environment}`;
-  const footer = { text: "3am" };
-
-  const signals = payload.triggerSignals;
-  const shown = signals.slice(0, MAX_SIGNALS);
-  const overflow = signals.length - shown.length;
-
-  const fields: Array<Record<string, unknown>> = shown.map((signal, idx) => ({
-    name: `Signal ${idx + 1}`,
-    value: signal.slice(0, FIELD_VALUE_MAX),
-    inline: true,
+export function formatDiscordIncidentCreated(
+  payload: IncidentCreatedNotificationPayload,
+): Record<string, unknown> {
+  const shown = payload.triggerSignals.slice(0, MAX_SIGNALS);
+  const overflow = payload.triggerSignals.length - shown.length;
+  const fields: Array<Record<string, unknown>> = shown.map((signal, index) => ({
+    name: `Signal ${index + 1}`,
+    value: signal,
+    inline: false,
   }));
-
   if (overflow > 0) {
-    fields.push({
-      name: "More",
-      value: `...and ${overflow} more`,
-      inline: false,
-    });
+    fields.push({ name: "More", value: `...and ${overflow} more`, inline: false });
   }
-
-  // Guard: ensure total embed content stays under 6000 chars
-  const totalContentLength =
-    title.length +
-    description.length +
-    footer.text.length +
-    fields.reduce((sum, f) => sum + String(f["name"]).length + String(f["value"]).length, 0);
-
-  if (totalContentLength > EMBED_TOTAL_MAX) {
-    // Truncate field values proportionally by trimming the last field until within limit
-    let excess = totalContentLength - EMBED_TOTAL_MAX;
-    for (let i = fields.length - 1; i >= 0 && excess > 0; i--) {
-      const fieldValue = String(fields[i]!["value"]);
-      const trim = Math.min(excess, fieldValue.length);
-      fields[i]!["value"] = fieldValue.slice(0, fieldValue.length - trim);
-      excess -= trim;
-    }
-  }
-
-  const embed: Record<string, unknown> = {
-    color: EMBED_COLOR,
-    title,
-    description,
-    url: payload.consoleUrl,
-    fields,
-    footer,
-    timestamp: payload.openedAt,
-  };
 
   return {
-    content: title,
-    embeds: [embed],
+    content: `Incident ${payload.incidentId} detected`,
+    embeds: [
+      {
+        color: EMBED_COLOR,
+        title: `[${payload.severity.toUpperCase()}] Incident ${payload.incidentId}`,
+        description: `**${payload.service}** · ${payload.environment}`,
+        url: payload.consoleUrl,
+        fields: [
+          ...fields,
+          {
+            name: "Diagnosis",
+            value: "Diagnosing now. Follow-up will be posted as a reply to this message.",
+            inline: false,
+          },
+        ],
+        timestamp: payload.openedAt,
+        footer: { text: "3am" },
+      },
+    ],
   };
+}
+
+export const formatDiscord = formatDiscordIncidentCreated;
+
+export function formatDiscordDiagnosisComplete(
+  payload: DiagnosisNotificationPayload,
+): Record<string, unknown> {
+  const chain = payload.causalChain.slice(0, MAX_CHAIN).map((step, index) => `${index + 1}. ${step}`).join("\n");
+
+  return {
+    content: `Diagnosis complete for ${payload.incidentId}`,
+    embeds: [
+      {
+        color: EMBED_COLOR,
+        title: payload.rootCauseHypothesis,
+        description: chain || "No causal chain available.",
+        url: payload.consoleUrl,
+        fields: [
+          { name: "Immediate action", value: payload.immediateAction, inline: false },
+          { name: "Do not", value: payload.doNot, inline: false },
+          { name: "Confidence", value: payload.confidence, inline: false },
+        ],
+        footer: { text: "3am diagnosis" },
+      },
+    ],
+  };
+}
+
+export async function postDiscordMessage(
+  target: DiscordTargetConfig,
+  body: Record<string, unknown>,
+  replyToMessageId?: string,
+): Promise<DiscordPostResult> {
+  try {
+    const url = new URL(target.webhookUrl);
+    url.searchParams.set("wait", "true");
+    const payload = replyToMessageId
+      ? {
+          ...body,
+          message_reference: { message_id: replyToMessageId },
+          allowed_mentions: { parse: [] },
+        }
+      : body;
+
+    const response = await fetch(url.toString(), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+
+    const json = await response.json() as Record<string, unknown>;
+    if (!response.ok) {
+      return {
+        ok: false,
+        error: typeof json["message"] === "string" ? json["message"] : `http_${response.status}`,
+      };
+    }
+
+    return {
+      ok: true,
+      messageId: typeof json["id"] === "string" ? json["id"] : undefined,
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
 }
