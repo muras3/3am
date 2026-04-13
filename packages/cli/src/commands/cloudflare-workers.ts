@@ -419,6 +419,11 @@ function buildDestinationName(workerName: string, kind: "traces" | "logs"): stri
   return `${workerName}-3am-${kind}`;
 }
 
+function buildDestinationUrl(receiverUrl: string, path: "/v1/traces" | "/v1/logs"): string {
+  const normalizedReceiverUrl = receiverUrl.replace(/\/+$/, "");
+  return `${normalizedReceiverUrl}${path}`;
+}
+
 async function listDestinations(auth: CloudflareApiAuth, accountId: string): Promise<CloudflareDestination[]> {
   return cloudflareApiFetch<CloudflareDestination[]>(
     auth,
@@ -547,7 +552,7 @@ export async function connectCloudflareWorkerToReceiver(
     account.accountId,
     workerName,
     "traces",
-    `${receiverUrl}/v1/traces`,
+    buildDestinationUrl(receiverUrl, "/v1/traces"),
     authToken,
   );
   const logDestination = await ensureDestination(
@@ -555,7 +560,7 @@ export async function connectCloudflareWorkerToReceiver(
     account.accountId,
     workerName,
     "logs",
-    `${receiverUrl}/v1/logs`,
+    buildDestinationUrl(receiverUrl, "/v1/logs"),
     authToken,
   );
 
