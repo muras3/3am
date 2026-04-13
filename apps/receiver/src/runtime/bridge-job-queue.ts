@@ -23,6 +23,7 @@ export interface PendingJob {
 interface JobEntry {
   request: BridgeRequest;
   enqueuedAt: number;
+  dequeuedAt?: number; // set when a bridge picks up the job
   resolve: (response: BridgeResponse) => void;
   reject: (error: Error) => void;
   settled: boolean;
@@ -30,7 +31,8 @@ interface JobEntry {
 }
 
 const DEFAULT_TTL_MS = 120_000; // 2 minutes — jobs older than this are discarded
-const CLEANUP_INTERVAL_MS = 30_000;
+const LEASE_TIMEOUT_MS = 30_000; // 30s — if bridge doesn't resolve, re-enqueue
+const CLEANUP_INTERVAL_MS = 10_000;
 
 let idCounter = 0;
 
@@ -109,6 +111,7 @@ export class BridgeJobQueue {
         continue;
       }
 
+      entry.dequeuedAt = Date.now();
       return {
         jobId,
         request: entry.request,
@@ -145,15 +148,28 @@ export class BridgeJobQueue {
     return count;
   }
 
-  /** Remove stale jobs that have exceeded the TTL. */
+  /** Remove stale jobs and re-enqueue dequeued-but-unresolved jobs whose lease expired. */
   private cleanup(): void {
     const now = Date.now();
     for (const [jobId, entry] of this.jobs) {
+      // TTL expiry — reject and remove
       if (now - entry.enqueuedAt > this.ttlMs) {
         if (!entry.settled) {
           entry.reject(new Error(`job ${jobId} expired during cleanup`));
         }
         this.jobs.delete(jobId);
+        continue;
+      }
+
+      // Lease expiry — re-enqueue dequeued-but-unresolved jobs
+      if (
+        entry.dequeuedAt &&
+        !entry.settled &&
+        now - entry.dequeuedAt > LEASE_TIMEOUT_MS &&
+        !this.pendingQueue.includes(jobId)
+      ) {
+        entry.dequeuedAt = undefined; // reset lease
+        this.pendingQueue.push(jobId);
       }
     }
     // Clean up stale entries in pending queue

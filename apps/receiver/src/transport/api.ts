@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import type { MiddlewareHandler } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import {
   ConsoleNarrativeSchema,
@@ -926,23 +927,41 @@ export function createApiRouter(
   });
 
   // ── Bridge job queue endpoints (Vercel Fluid Compute long-poll) ──────────────
+  // These endpoints are restricted to Bearer token auth only (not session cookies)
+  // because they handle sensitive bridge payloads. The authToken is stripped from
+  // the job payload to prevent leaking the receiver secret to bridge clients.
 
   if (bridgeJobQueue) {
-    app.get("/api/bridge/jobs", async (c) => {
+    // Bearer-only auth guard — reject session cookie auth for bridge endpoints
+    const requireBearerAuth: MiddlewareHandler = async (c, next) => {
+      if (!authToken) {
+        if (allowInsecure) return next();
+        return c.json({ error: "bridge endpoints require auth token" }, 401);
+      }
+      const header = c.req.header("Authorization");
+      if (!header || header !== `Bearer ${authToken}`) {
+        return c.json({ error: "unauthorized — bearer token required" }, 401);
+      }
+      return next();
+    };
+
+    app.get("/api/bridge/jobs", requireBearerAuth, async (c) => {
       const job = bridgeJobQueue.dequeue();
       if (!job) {
         return c.json({ job: null }, 200);
       }
+      // Strip authToken from the request payload to prevent leaking the receiver secret
+      const { authToken: _stripped, ...safeRequest } = job.request as unknown as Record<string, unknown>;
       return c.json({
         job: {
           jobId: job.jobId,
-          request: job.request,
+          request: safeRequest,
         },
       });
     });
 
-    app.post("/api/bridge/results/:jobId", apiBodyLimit(64 * 1024), async (c) => {
-      const jobId = c.req.param("jobId");
+    app.post("/api/bridge/results/:jobId", requireBearerAuth, apiBodyLimit(64 * 1024), async (c) => {
+      const jobId = c.req.param("jobId")!;
 
       let body: unknown;
       try {

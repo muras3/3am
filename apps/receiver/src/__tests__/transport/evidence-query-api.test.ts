@@ -740,4 +740,71 @@ describe('POST /api/incidents/:id/evidence/query (bridgeJobQueue path)', () => {
     })
     expect(res.status).toBe(400)
   })
+
+  it('GET /api/bridge/jobs rejects session-only auth (requires bearer token)', async () => {
+    const cookie = await getSessionCookie(app)
+    const res = await app.request('/api/bridge/jobs', {
+      method: 'GET',
+      headers: { Cookie: `${COOKIE_NAME}=${cookie}` },
+    })
+    expect(res.status).toBe(401)
+  })
+
+  it('POST /api/bridge/results/:jobId rejects session-only auth', async () => {
+    const cookie = await getSessionCookie(app)
+    const res = await app.request('/api/bridge/results/some-job', {
+      method: 'POST',
+      headers: {
+        Cookie: `${COOKIE_NAME}=${cookie}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ type: 'evidence_query_response', id: 'some-job', result: {} }),
+    })
+    expect(res.status).toBe(401)
+  })
+
+  it('GET /api/bridge/jobs strips authToken from the returned job payload', async () => {
+    await app.request('/api/settings/diagnosis', {
+      method: 'PUT',
+      headers: { ...authHeader(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        mode: 'manual',
+        provider: 'codex',
+        bridgeUrl: 'http://127.0.0.1:4269',
+      }),
+    })
+
+    const cookie = await getSessionCookie(app)
+    const incidentId = await seedIncident(app, true)
+
+    // Trigger evidence query (enqueues a job with authToken in the request)
+    const queryPromise = app.request(
+      `https://receiver-example.vercel.app/api/incidents/${incidentId}/evidence/query`,
+      {
+        method: 'POST',
+        headers: queryHeaders(cookie),
+        body: JSON.stringify({ question: 'What happened?' }),
+      },
+    )
+
+    await new Promise((r) => setTimeout(r, 10))
+
+    const jobRes = await app.request('/api/bridge/jobs', {
+      method: 'GET',
+      headers: authHeader(),
+    })
+    const jobBody = (await jobRes.json()) as { job: { jobId: string; request: Record<string, unknown> } }
+    expect(jobBody.job).not.toBeNull()
+    // authToken should be stripped
+    expect(jobBody.job.request['authToken']).toBeUndefined()
+    expect(jobBody.job.request['type']).toBe('evidence_query_request')
+
+    // Resolve so queryPromise doesn't hang
+    jobQueue.resolve(jobBody.job.jobId, {
+      type: 'evidence_query_response',
+      id: jobBody.job.jobId,
+      result: { question: 'What happened?', status: 'answered', segments: [] },
+    })
+    await queryPromise
+  })
 })

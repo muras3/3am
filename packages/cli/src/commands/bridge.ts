@@ -53,6 +53,12 @@ function isRemoteUrl(url: string): boolean {
   }
 }
 
+/**
+ * Detect Vercel receiver URLs. Currently hostname-based (*.vercel.app).
+ * Limitation: Vercel receivers behind custom domains are not detected and will
+ * attempt the WebSocket path, which fails on Vercel. A future enhancement could
+ * probe the receiver's /api/bridge/status to detect platform capabilities.
+ */
 function isVercelReceiverUrl(url: string): boolean {
   try {
     return new URL(url).hostname.includes("vercel.app");
