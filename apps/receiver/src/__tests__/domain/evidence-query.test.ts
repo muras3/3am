@@ -493,10 +493,10 @@ describe('buildEvidenceQueryAnswer', () => {
     expect(result.noAnswerReason).toContain('質問を別の言い方')
   })
 
-  it('frustration during clarification falls back to original question best-effort', async () => {
+  it('frustration words during clarification reply are treated as free text, not frustration', async () => {
     generateEvidencePlanMock.mockResolvedValueOnce({
       mode: 'answer',
-      rewrittenQuestion: 'What went wrong?',
+      rewrittenQuestion: 'What went wrong? (答えろ)',
       preferredSurfaces: ['traces', 'metrics', 'logs'],
     })
     const incident = makeIncident({ diagnosisResult: makeDiagnosisResult() })
@@ -515,9 +515,35 @@ describe('buildEvidenceQueryAnswer', () => {
       },
     )
 
-    // Should attempt to answer the original question instead of showing frustration message
+    // Should treat as clarification reply, not frustration — skip detectFrustration when replyToClarification present
     expect(result.status).toBe('answered')
     expect(result.segments.length).toBeGreaterThan(0)
+  })
+
+  it('"yes" reply to clarification is NOT treated as frustration', async () => {
+    generateEvidencePlanMock.mockResolvedValueOnce({
+      mode: 'answer',
+      rewrittenQuestion: 'Should I focus on latency? (yes)',
+      preferredSurfaces: ['traces', 'metrics', 'logs'],
+    })
+    const incident = makeIncident({ diagnosisResult: makeDiagnosisResult() })
+
+    const result = await buildEvidenceQueryAnswer(
+      incident,
+      makeMockStore(),
+      'yes',
+      true,
+      'en',
+      [],
+      false,
+      {
+        originalQuestion: 'Should I focus on latency?',
+        clarificationText: 'Do you want me to focus on latency metrics?',
+      },
+    )
+
+    // "yes" is in the frustration pattern but should not trigger when replying to clarification
+    expect(result.status).toBe('answered')
   })
 
   // ── Phase 4 false-positive protection ───────────────────────────────

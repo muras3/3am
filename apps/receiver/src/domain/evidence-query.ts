@@ -869,20 +869,9 @@ export async function buildEvidenceQueryAnswer(
   }
 
   // Phase 4: Detect frustration/meta-speech
-  if (detectFrustration(question)) {
-    // If there's a pending clarification, try to answer the original question best-effort
-    if (replyToClarification) {
-      // Re-process the original question with forced answer mode
-      return buildEvidenceQueryAnswer(
-        incident,
-        telemetryStore,
-        replyToClarification.originalQuestion,
-        isFollowup,
-        locale,
-        history,
-        true, // treat as system followup to suppress clarification
-      );
-    }
+  // Skip frustration detection when replying to a clarification — "yes", "no", "ok"
+  // are valid clarification replies, not frustration.
+  if (!replyToClarification && detectFrustration(question)) {
     return buildDeterministicNoAnswer(
       question,
       curatedEvidence,

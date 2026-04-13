@@ -738,17 +738,9 @@ async function buildManualEvidenceQueryAnswer(
   }
 
   // Phase 4: Detect frustration/meta-speech
-  if (detectFrustration(question)) {
-    if (options.replyToClarification) {
-      // Re-process the original question with forced answer mode
-      return buildManualEvidenceQueryAnswer(
-        diagnosisResult,
-        evidence,
-        options.replyToClarification.originalQuestion,
-        history,
-        { ...options, isSystemFollowup: true, replyToClarification: undefined },
-      );
-    }
+  // Skip frustration detection when replying to a clarification — "yes", "no", "ok"
+  // are valid clarification replies, not frustration.
+  if (!options.replyToClarification && detectFrustration(question)) {
     return buildDeterministicNoAnswer(
       question,
       evidence,
