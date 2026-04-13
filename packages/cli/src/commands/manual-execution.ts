@@ -627,7 +627,13 @@ async function buildManualEvidenceQueryAnswer(
   evidence: EvidenceResponse,
   question: string,
   history: EvidenceConversationTurn[],
-  options: { provider?: ProviderName; model?: string; locale: "en" | "ja"; isSystemFollowup?: boolean },
+  options: {
+    provider?: ProviderName;
+    model?: string;
+    locale: "en" | "ja";
+    isSystemFollowup?: boolean;
+    replyToClarification?: { originalQuestion: string; clarificationText: string };
+  },
 ): Promise<EvidenceQueryResponse> {
   if (/^(hi|hello|hey|こんにちは|こんばんは|おはよう)/i.test(question.trim())) {
     return buildDeterministicNoAnswer(
@@ -637,10 +643,17 @@ async function buildManualEvidenceQueryAnswer(
     );
   }
 
+  // When replying to a clarification, enrich the question with the original context
+  // so the LLM can understand what the user is responding to
+  let effectiveQuestionInput = question;
+  if (options.replyToClarification) {
+    effectiveQuestionInput = `${options.replyToClarification.originalQuestion} (${question})`;
+  }
+
   const catalog = buildEvidenceCatalog(evidence, options.locale);
   const planningIntent: IntentProfile = { kind: "general", preferredSurfaces: ["traces", "metrics", "logs"] };
-  const planningCandidates = retrieveEvidence(question, catalog, planningIntent).slice(0, 8);
-  const explanatoryTerm = detectExplanatoryTerm(question, options.locale);
+  const planningCandidates = retrieveEvidence(effectiveQuestionInput, catalog, planningIntent).slice(0, 8);
+  const explanatoryTerm = detectExplanatoryTerm(effectiveQuestionInput, options.locale);
   if (explanatoryTerm) {
     return buildExplanatoryAnswer(
       question,
@@ -652,14 +665,14 @@ async function buildManualEvidenceQueryAnswer(
     );
   }
 
-  let effectiveQuestion = question;
+  let effectiveQuestion = effectiveQuestionInput;
   let intent: IntentProfile = planningIntent;
   let answerMode: "answer" | "action" | "missing_evidence" = "answer";
 
   try {
     const plan = await generateEvidencePlan(
       {
-        question,
+        question: effectiveQuestionInput,
         isSystemFollowup: options.isSystemFollowup,
         history,
         diagnosis: {
@@ -710,7 +723,7 @@ async function buildManualEvidenceQueryAnswer(
   try {
     const generated = await generateEvidenceQuery(
       {
-        question,
+        question: effectiveQuestionInput,
         answerMode,
         history,
         intent: intent.kind,
@@ -876,6 +889,7 @@ export async function runManualEvidenceQuery(options: ManualExecutionOptions & {
   diagnosisResult?: DiagnosisResult;
   evidence?: EvidenceResponse;
   isSystemFollowup?: boolean;
+  replyToClarification?: { originalQuestion: string; clarificationText: string };
 }): Promise<EvidenceQueryResponse> {
   let diagnosisResult = options.diagnosisResult;
   let evidence = options.evidence;
@@ -919,6 +933,7 @@ export async function runManualEvidenceQuery(options: ManualExecutionOptions & {
       model,
       locale,
       isSystemFollowup: options.isSystemFollowup,
+      replyToClarification: options.replyToClarification,
     },
   );
 }
