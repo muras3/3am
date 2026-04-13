@@ -1,36 +1,80 @@
-# E2E Notification Verification — 2026-04-01
+# E2E Notification Verification
 
-## Test method
+This document captures the current production-shape notification behavior for OSS/self-hosted 3am.
 
-Real receiver process started with `NOTIFICATION_WEBHOOK_URL` set.
-OTLP error spans sent via `POST /v1/traces` to trigger incident creation.
-Full pipeline: OTLP ingest → anomaly detection → incident creation → `void notifyIncidentCreated()` → Slack/Discord webhook POST.
+## Integration model
 
-## Slack test
+- Slack: user-owned Slack app + bot token
+- Discord: user-owned Discord bot for threaded delivery
+- 3am stores those credentials in the Receiver and automates parent notification + threaded follow-up after setup
 
-- **Receiver config**: `NOTIFICATION_WEBHOOK_URL=https://hooks.slack.com/services/T.../B.../...`
-- **OTLP span**: service=checkout-api, env=production, status=ERROR, route=/checkout, HTTP 500
-- **Ingest response**: `{"status":"ok","incidentId":"inc_000001","packetId":"b7b55158-..."}`
-- **Webhook result**: HTTP 200 (Slack accepted the payload)
-- **Channel**: Notification received in Slack channel (see screenshot)
+## Slack verification
 
-## Discord test
+### API connectivity
 
-- **Receiver config**: `NOTIFICATION_WEBHOOK_URL=https://discordapp.com/api/webhooks/...`
-- **OTLP span**: service=payment-svc, env=staging, status=ERROR, route=/pay, HTTP 502
-- **Ingest response**: `{"status":"ok","incidentId":"inc_000001","packetId":"3948f446-..."}`
-- **Webhook result**: HTTP 204 (Discord accepted the payload)
-- **Channel**: Notification received in Discord #通知 channel (see screenshot)
+`chat.postMessage(channel=C0AQ04B1RK5)` returned:
 
-## What was verified
+- `ok: true`
+- `channel: C0AQ04B1RK5`
+- `ts: 1776075386.282879`
 
-1. URL detection: `hooks.slack.com` → slack, `discordapp.com` → discord
-2. Payload formatting: Block Kit (Slack), Embed (Discord) — both accepted by platform
-3. Full pipeline: OTLP span → ingest → incident → notification (no direct formatter call)
-4. Fire-and-forget: ingest returned 200 before notification completion
-5. Console link: `http://localhost:3333/incidents/inc_000001` included in notification
+### Thread verification
 
-## What was NOT verified (requires manual check)
+Parent message:
 
-- Console link click → actual incident page navigation (localhost not publicly routed)
-- Notification appearance/rendering in Slack/Discord clients (awaiting user screenshots)
+- `ts: 1776075532.044279`
+- `text: [HIGH] Incident inc_slack_verify. Diagnosing now.`
+
+Follow-up message:
+
+- `ts: 1776075532.352089`
+- `thread_ts: 1776075532.044279`
+- `parent_user_id: U0AQ33SJWKF`
+
+Result: Slack follow-up was posted into the same thread as the parent incident message.
+
+## Discord verification
+
+### Webhook connectivity
+
+Webhook POST returned:
+
+- `status: 200`
+- `channel_id: 1488797264653586472`
+- `id: 1493184936008745061`
+
+This verifies webhook delivery only. It does **not** satisfy the "single thread per incident" requirement.
+
+### Bot thread verification
+
+Bot parent message:
+
+- `status: 200`
+- `id: 1493206572418207894`
+- `channel_id: 1488797264653586472`
+
+Thread creation from parent message:
+
+- `status: 201`
+- `type: 11`
+- `id: 1493206572418207894`
+- `parent_id: 1488797264653586472`
+
+Follow-up in thread:
+
+- `status: 200`
+- `id: 1493206577262624838`
+- `channel_id: 1493206572418207894`
+
+Result: Discord created a real thread from the parent incident message and the diagnosis follow-up was posted inside that thread.
+
+## Product conclusion
+
+For OSS/self-hosted 3am, the correct integration pattern is:
+
+1. user creates Slack app / Discord bot once
+2. user provides the resulting bot credentials to `npx 3am integrations notifications`
+3. 3am verifies connectivity and stores them
+4. 3am fully automates threaded incident delivery from then on
+
+This is the highest-leverage automation level that does not require a centrally hosted vendor-managed app.

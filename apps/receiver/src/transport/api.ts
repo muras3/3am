@@ -36,6 +36,7 @@ import type { EnqueueDiagnosisFn } from "../runtime/diagnosis-dispatch.js";
 import { ensureIncidentMaterialized } from "../runtime/materialization.js";
 import { getReceiverLlmSettings } from "../runtime/llm-settings.js";
 import { maybeCleanup } from "../retention/lazy-cleanup.js";
+import { notifyDiagnosisComplete } from "../notification/index.js";
 import type { WsBridgeManager } from "./ws-bridge.js";
 import type { BridgeRequest, BridgeResponse } from "./ws-bridge.js";
 import type { BridgeJobQueue } from "../runtime/bridge-job-queue.js";
@@ -733,6 +734,7 @@ export function createApiRouter(
 
     await storage.appendDiagnosis(id, result);
     await storage.releaseDiagnosisDispatch(id);
+    await notifyDiagnosisComplete(storage, incident.packet, id, result);
     return c.json({ status: "ok" });
   });
 

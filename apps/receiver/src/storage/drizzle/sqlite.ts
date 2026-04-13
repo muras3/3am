@@ -21,6 +21,7 @@ import type {
   TelemetryScope,
 } from "../interface.js";
 import { MAX_ANOMALOUS_SIGNALS, MAX_SPAN_MEMBERSHIP } from "../interface.js";
+import type { IncidentNotificationState } from "../../notification/types.js";
 import type { LegacyRawState } from "./lazy-migration.js";
 import {
   deriveTelemetryScopeFromPacket,
@@ -32,6 +33,7 @@ import {
   parseAnomalousSignals,
   parseConsoleNarrative,
   parseDiagnosisResult,
+  parseIncidentNotificationState,
   parseIncidentPacket,
   parsePlatformEvents,
   parseSpanMembership,
@@ -70,6 +72,7 @@ export class SQLiteAdapter implements StorageDriver {
         packet            TEXT NOT NULL,
         diagnosis_result  TEXT,
         console_narrative TEXT,
+        notification_state TEXT,
         raw_state         TEXT,
         telemetry_scope   TEXT,
         span_membership   TEXT,
@@ -92,6 +95,7 @@ export class SQLiteAdapter implements StorageDriver {
       "diagnosis_dispatched_at TEXT",
       "materialization_claimed_at TEXT",
       "console_narrative TEXT",
+      "notification_state TEXT",
       "last_activity_at TEXT",
     ]) {
       try {
@@ -154,6 +158,9 @@ export class SQLiteAdapter implements StorageDriver {
     }
     if (row.consoleNarrative) {
       incident.consoleNarrative = parseConsoleNarrative(JSON.parse(row.consoleNarrative));
+    }
+    if (row.notificationState) {
+      incident.notificationState = parseIncidentNotificationState(JSON.parse(row.notificationState));
     }
     if (row.diagnosisScheduledAt) {
       incident.diagnosisScheduledAt = row.diagnosisScheduledAt;
@@ -252,6 +259,16 @@ export class SQLiteAdapter implements StorageDriver {
       .update(incidents)
       .set({ consoleNarrative: JSON.stringify(narrative), updatedAt: new Date().toISOString() })
       .where(eq(incidents.incidentId, id));
+  }
+
+  async updateNotificationState(incidentId: string, state: IncidentNotificationState): Promise<void> {
+    await this.db
+      .update(incidents)
+      .set({
+        notificationState: JSON.stringify(state),
+        updatedAt: new Date().toISOString(),
+      })
+      .where(eq(incidents.incidentId, incidentId));
   }
 
   async expandTelemetryScope(

@@ -424,7 +424,8 @@ export async function runDeploy(
     process.stdout.write("Next steps:\n");
     process.stdout.write("  1. Trigger requests against your Cloudflare Worker\n");
     process.stdout.write(`  2. Open ${claimUrl ?? deployedUrl}\n`);
-    process.stdout.write("  3. Generate a fresh sign-in link any time with `npx 3am auth-link`\n\n");
+    process.stdout.write("  3. Run `npx 3am integrations notifications` to connect Slack/Discord\n");
+    process.stdout.write("  4. Generate a fresh sign-in link any time with `npx 3am auth-link`\n\n");
     return;
   }
 
@@ -515,9 +516,11 @@ export async function runDeploy(
       );
       process.stdout.write("  2. Restart your app\n");
       process.stdout.write(`  3. Open ${claimUrl ?? consoleUrl}\n`);
+      process.stdout.write("  4. Run `npx 3am integrations notifications`\n");
     } else {
       process.stdout.write("  1. Restart your app to pick up the new .env\n");
       process.stdout.write(`  2. Open ${claimUrl ?? consoleUrl}\n`);
+      process.stdout.write("  3. Run `npx 3am integrations notifications`\n");
     }
     process.stdout.write("  Use `npx 3am auth-link` from a trusted machine to mint a fresh sign-in link later\n\n");
   }

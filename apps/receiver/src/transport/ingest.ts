@@ -356,7 +356,7 @@ export function createIngestRouter(
       await storage.touchIncidentActivity(incidentId);
 
       // Fire-and-forget notification to Slack/Discord (if configured)
-      void notifyIncidentCreated(packet, incidentId);
+      void notifyIncidentCreated(storage, packet, incidentId);
 
       // Schedule delayed diagnosis. Generation threshold is checked via on-read materialization.
       if (enqueueDiagnosis) {

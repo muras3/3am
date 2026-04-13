@@ -164,7 +164,6 @@ What it does:
 | `OPENAI_API_KEY` | For automatic mode with OpenAI | — | OpenAI API key |
 | `RECEIVER_AUTH_TOKEN` | Production | Must be configured before public exposure | Bearer token for Receiver auth |
 | `RETENTION_HOURS` | No | `48` | Hours to retain telemetry and closed incidents |
-| `NOTIFICATION_WEBHOOK_URL` | No | — | Slack or Discord webhook URL for incident alerts |
 | `CLOUDFLARE_API_TOKEN` | CF Workers deploy | — | Cloudflare API token |
 
 ## Connecting Your App
@@ -235,11 +234,62 @@ npx 3am diagnose --incident-id inc_000001 --receiver-url http://localhost:3333 -
 ## Notification Setup
 
 ```bash
-# Set via environment variable
-export NOTIFICATION_WEBHOOK_URL="https://hooks.slack.com/services/..."
-
-# Or configure during init
-npx 3am init
+npx 3am integrations notifications
 ```
 
-Supported: Slack Incoming Webhooks (`hooks.slack.com`) and Discord Webhooks (`discord.com/api/webhooks`).
+3am is OSS and self-hosted. The recommended integration model is:
+
+1. The user creates their own Slack app and/or Discord bot
+2. The user grants the minimum permissions for threaded delivery
+3. The user runs `npx 3am integrations notifications`
+4. 3am stores the credentials and automates notifications after that
+
+### Slack (OSS best practice)
+
+Use a user-owned Slack app, not a shared vendor-managed app.
+
+Required scopes:
+- `chat:write`
+- `channels:read`
+- `groups:read` when private channels must be selectable
+
+Recommended flow:
+
+```bash
+npx 3am integrations notifications \
+  --provider slack \
+  --slack-bot-token xoxb-... \
+  --slack-channel-id C...
+```
+
+What 3am does after setup:
+- sends the parent incident notification
+- stores the parent `ts`
+- posts diagnosis follow-ups into the same Slack thread with `thread_ts`
+
+### Discord (OSS best practice)
+
+Use a user-owned Discord bot when threaded delivery is required.
+
+Required permissions:
+- `View Channels`
+- `Send Messages`
+- `Create Public Threads`
+- `Send Messages in Threads`
+- `Read Message History`
+
+Recommended flow:
+
+```bash
+npx 3am integrations notifications \
+  --provider discord \
+  --discord-bot-token ... \
+  --discord-channel-id ...
+```
+
+What 3am does after setup:
+- sends the parent incident notification
+- creates a Discord thread from that parent message
+- posts diagnosis follow-ups inside that thread
+
+Webhook mode still exists for Discord, but bot mode is the correct path when the product requirement is "one thread per incident".

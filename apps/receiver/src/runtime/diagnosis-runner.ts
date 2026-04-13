@@ -3,6 +3,7 @@ import type { StorageDriver, Incident } from "../storage/interface.js";
 import type { TelemetryStoreDriver } from "../telemetry/interface.js";
 import { buildReasoningStructure } from "../domain/reasoning-structure-builder.js";
 import { getReceiverLlmSettings } from "./llm-settings.js";
+import { notifyDiagnosisComplete } from "../notification/index.js";
 
 export class DiagnosisRunner {
   constructor(
@@ -48,6 +49,7 @@ export class DiagnosisRunner {
             allowLocalHttpProviders: false,
           });
       await this.storage.appendDiagnosis(incidentId, result);
+      await notifyDiagnosisComplete(this.storage, incident.packet, incidentId, result);
 
       // Stage 2: console narrative generation (graceful degradation — failure does not affect stage 1)
       await this.runNarrativeGeneration(incident, result, locale);

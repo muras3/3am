@@ -78,7 +78,7 @@ describe("notification hook in ingest", () => {
     expect(body.incidentId).toBeDefined();
 
     expect(mockNotify).toHaveBeenCalledTimes(1);
-    expect(mockNotify.mock.calls[0]![1]).toBe(body.incidentId);
+    expect(mockNotify.mock.calls[0]![2]).toBe(body.incidentId);
   });
 
   it("does NOT call notifyIncidentCreated for existing-attach path", async () => {
