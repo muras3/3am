@@ -144,7 +144,8 @@ function resolveNumberedReply(
   if (options.size === 0) return null;
 
   const trimmed = reply.trim();
-  const numberPattern = /^[\s(]*(\d+)[\s)]*(?:[,、とand\s]+[\s(]*(\d+)[\s)]*)*$/i;
+  // Use alternation for multi-char separators; reject bare "1 2" or "1and2" without proper delimiters
+  const numberPattern = /^[\s(]*\d+[\s)]*(?:(?:\s*(?:,|、|と|\band\b)\s*)[\s(]*\d+[\s)]*)*$/i;
   if (!numberPattern.test(trimmed)) return null;
 
   const numbers: number[] = [];
@@ -169,13 +170,16 @@ function resolveNumberedReply(
 // ── Phase 4: Meta-speech (frustration/off-topic) detection ──────
 
 const FRUSTRATION_PATTERNS_EN = [
-  /\b(answer|just answer|tell me|stop asking|quit asking|enough|frustrated|annoyed|irritated)\b/i,
+  /^just answer/i,
+  /\bstop asking\b/i,
+  /\bquit asking\b/i,
   /\b(are you (stupid|dumb|broken|crazy|insane|nuts))\b/i,
-  /\b(wtf|wth|omg|ffs|damn|hell|crap)\b/i,
-  /\b(useless|pointless|waste of time|not helpful|unhelpful)\b/i,
+  /^(wtf|wth|omg|ffs)$/i,
+  /^(useless|pointless|whatever)$/i,
+  /\bwaste of time\b/i,
   /\b(i (already|just) (said|told|answered|explained))\b/i,
-  /\b(read my (question|message|input))\b/i,
-  /^(no|yes|ok|okay|sure|fine|whatever)$/i,
+  /\bread my (question|message|input)\b/i,
+  /^(no|yes|ok|okay|sure|fine)$/i,
 ];
 
 const FRUSTRATION_PATTERNS_JA = [

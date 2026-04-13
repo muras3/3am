@@ -227,9 +227,9 @@ const CATEGORIES: Array<{
   {
     name: "meta_speech",
     questions: [
-      { text: "just answer me already" },
+      { text: "just answer the question" },
       { text: "are you broken?" },
-      { text: "wtf is wrong with you" },
+      { text: "wtf" },
       { text: "useless" },
       { text: "答えてくれ" },
       { text: "いかれてる" },

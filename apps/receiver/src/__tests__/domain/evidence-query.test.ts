@@ -520,6 +520,134 @@ describe('buildEvidenceQueryAnswer', () => {
     expect(result.segments.length).toBeGreaterThan(0)
   })
 
+  // ── Phase 4 false-positive protection ───────────────────────────────
+
+  it('does NOT treat "tell me about the error" as frustration', async () => {
+    const incident = makeIncident({ diagnosisResult: makeDiagnosisResult() })
+
+    const result = await buildEvidenceQueryAnswer(
+      incident,
+      makeMockStore(),
+      'tell me about the error',
+      false,
+      'en',
+    )
+
+    // Should be answered, not rejected as frustration
+    expect(result.status).toBe('answered')
+    expect(result.segments.length).toBeGreaterThan(0)
+  })
+
+  it('does NOT treat "tell me the root cause" as frustration', async () => {
+    const incident = makeIncident({ diagnosisResult: makeDiagnosisResult() })
+
+    const result = await buildEvidenceQueryAnswer(
+      incident,
+      makeMockStore(),
+      'tell me the root cause',
+      false,
+      'en',
+    )
+
+    expect(result.status).toBe('answered')
+  })
+
+  it('does NOT treat "what the hell is rate limiting" as frustration', async () => {
+    const incident = makeIncident({ diagnosisResult: makeDiagnosisResult() })
+
+    const result = await buildEvidenceQueryAnswer(
+      incident,
+      makeMockStore(),
+      'what the hell is rate limiting',
+      false,
+      'en',
+    )
+
+    // Should be answered (possibly as an explanatory term), not rejected
+    expect(result.status).toBe('answered')
+  })
+
+  it('does NOT treat "answer: what is the error rate?" as frustration', async () => {
+    const incident = makeIncident({ diagnosisResult: makeDiagnosisResult() })
+
+    const result = await buildEvidenceQueryAnswer(
+      incident,
+      makeMockStore(),
+      'answer: what is the error rate?',
+      false,
+      'en',
+    )
+
+    expect(result.status).toBe('answered')
+  })
+
+  it('does NOT treat "this is not helpful for debugging" as frustration', async () => {
+    const incident = makeIncident({ diagnosisResult: makeDiagnosisResult() })
+
+    const result = await buildEvidenceQueryAnswer(
+      incident,
+      makeMockStore(),
+      'this is not helpful for debugging',
+      false,
+      'en',
+    )
+
+    expect(result.status).toBe('answered')
+  })
+
+  // ── Phase 3 edge cases ────────────────────────────────────────────
+
+  it('rejects "1and2" as invalid numbered reference (no delimiter)', async () => {
+    generateEvidencePlanMock.mockResolvedValueOnce({
+      mode: 'answer',
+      rewrittenQuestion: 'What went wrong? (1and2)',
+      preferredSurfaces: ['traces', 'logs', 'metrics'],
+    })
+    const incident = makeIncident({ diagnosisResult: makeDiagnosisResult() })
+
+    const result = await buildEvidenceQueryAnswer(
+      incident,
+      makeMockStore(),
+      '1and2',
+      true,
+      'en',
+      [],
+      false,
+      {
+        originalQuestion: 'What went wrong?',
+        clarificationText: '1. Trace path\n2. Metric anomaly',
+      },
+    )
+
+    // Should treat as free text, not resolve numbers
+    expect(result.status).toBe('answered')
+  })
+
+  it('rejects "1 2" as invalid numbered reference (space only, no delimiter)', async () => {
+    generateEvidencePlanMock.mockResolvedValueOnce({
+      mode: 'answer',
+      rewrittenQuestion: 'What went wrong? (1 2)',
+      preferredSurfaces: ['traces', 'logs', 'metrics'],
+    })
+    const incident = makeIncident({ diagnosisResult: makeDiagnosisResult() })
+
+    const result = await buildEvidenceQueryAnswer(
+      incident,
+      makeMockStore(),
+      '1 2',
+      true,
+      'en',
+      [],
+      false,
+      {
+        originalQuestion: 'What went wrong?',
+        clarificationText: '1. Trace path\n2. Metric anomaly',
+      },
+    )
+
+    expect(result.status).toBe('answered')
+  })
+
   // ── Phase 5: Clarification escape after 2 consecutive clarifications ───
 
   it('forces best-effort answer when clarificationChainLength >= 2', async () => {

@@ -156,21 +156,28 @@ export function LensEvidenceStudio({ incidentId }: Props) {
       lastEntry?.response?.status === "clarification" &&
       lastEntry?.response?.clarificationQuestion;
 
-    // Count consecutive clarification turns in the chain
+    // Count consecutive clarification turns and find the root question
     let clarificationChainLength = 0;
+    let rootQuestion = lastEntry?.question ?? question;
     if (isReplyToClarification) {
       for (let i = history.length - 1; i >= 0; i--) {
         if (history[i]?.response?.status === "clarification") {
           clarificationChainLength++;
         } else {
+          // The entry just before the clarification chain is the root question
+          rootQuestion = history[i]?.question ?? question;
           break;
+        }
+        // If we reached the beginning, the first entry is the root
+        if (i === 0) {
+          rootQuestion = history[0]?.question ?? question;
         }
       }
     }
 
     const replyToClarification = isReplyToClarification
       ? {
-          originalQuestion: lastEntry.question,
+          originalQuestion: rootQuestion,
           clarificationText: lastEntry.response!.clarificationQuestion!,
         }
       : undefined;
