@@ -22,6 +22,7 @@ import {
 import { emitSelfTelemetryLog, isSelfTelemetryActive } from "./self-telemetry/log.js";
 import { recordSelfTelemetryMetrics } from "./self-telemetry/metrics.js";
 import type { WsBridgeManager } from "./transport/ws-bridge.js";
+import type { BridgeJobQueue } from "./runtime/bridge-job-queue.js";
 import { sessionOrBearerAuth } from "./middleware/session-cookie.js";
 
 export type { StorageDriver } from "./storage/interface.js";
@@ -30,6 +31,7 @@ export { MemoryAdapter } from "./storage/adapters/memory.js";
 export type { TelemetryStoreDriver } from "./telemetry/interface.js";
 export { WsBridgeManager } from "./transport/ws-bridge.js";
 export type { BridgeDoForwarder } from "./transport/api.js";
+export { BridgeJobQueue } from "./runtime/bridge-job-queue.js";
 
 const SETTINGS_KEY_AUTH_TOKEN = "receiver_auth_token";
 const SETTINGS_KEY_SETUP_COMPLETE = "setup_complete";
@@ -77,6 +79,8 @@ export interface AppOptions {
   bridgeDoForwarder?: BridgeDoForwarder | undefined;
   /** Returns whether the DO bridge has a connected WebSocket. CF Workers only. */
   bridgeDoStatus?: () => Promise<boolean>;
+  /** In-memory bridge job queue for Vercel Fluid Compute long-poll. */
+  bridgeJobQueue?: BridgeJobQueue | undefined;
 }
 
 export function createApp(storage?: StorageDriver, options?: AppOptions): Hono {
@@ -324,7 +328,7 @@ export function createApp(storage?: StorageDriver, options?: AppOptions): Hono {
   const wsBridge = options?.wsBridge;
 
   app.route("/", createIngestRouter(store, spanBuffer, telemetryStore, diagnosisConfig, runner, options?.enqueueDiagnosis));
-  app.route("/", createApiRouter(store, spanBuffer, telemetryStore, diagnosisConfig, runner, options?.enqueueDiagnosis, wsBridge, options?.bridgeDoForwarder));
+  app.route("/", createApiRouter(store, spanBuffer, telemetryStore, diagnosisConfig, runner, options?.enqueueDiagnosis, wsBridge, options?.bridgeDoForwarder, options?.bridgeJobQueue, authToken));
 
   // Bridge status endpoint — protected by Bearer auth (under /api/*)
   const bridgeDoStatus = options?.bridgeDoStatus;
