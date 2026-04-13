@@ -82,7 +82,7 @@ const TELEMETRY_LOGS_CONTEXTUAL_DEFAULT_LIMIT = 50;
 const TELEMETRY_MAX_LIMIT = 200;
 const AMBIENT_LIVE_WINDOW_MS = 5 * 60 * 1000;
 const AMBIENT_INCIDENT_FALLBACK_LIMIT = 50;
-const CLAIM_SETTINGS_KEY = "receiver_claim_state";
+const CLAIM_KEY_PREFIX = "claim:";
 const SETUP_COMPLETE_SETTINGS_KEY = "setup_complete";
 const CLAIM_TTL_MS = 10 * 60 * 1000;
 
@@ -294,14 +294,22 @@ export function createApiRouter(
       return c.json({ error: "claims unavailable in insecure dev mode" }, 404);
     }
 
+    // Validate Bearer token — only the holder of the receiver auth token may mint claims.
+    const authHeader = c.req.header("Authorization");
+    if (!authHeader || authHeader !== `Bearer ${authToken}`) {
+      return c.json({ error: "unauthorized" }, 401);
+    }
+
     const tokenBytes = crypto.getRandomValues(new Uint8Array(32));
     const token = base64UrlEncode(tokenBytes);
     const expiresAt = new Date(Date.now() + CLAIM_TTL_MS).toISOString();
     const tokenHash = await sha256(token);
 
+    // Store under a per-claim key so multiple pending claims can coexist.
+    // A new mint no longer invalidates a previously issued sign-in link.
     await storage.setSettings(
-      CLAIM_SETTINGS_KEY,
-      JSON.stringify({ tokenHash, expiresAt }),
+      CLAIM_KEY_PREFIX + tokenHash,
+      JSON.stringify({ expiresAt }),
     );
 
     return c.json({ token, expiresAt });
@@ -325,29 +333,28 @@ export function createApiRouter(
       return c.json({ error: "invalid token" }, 400);
     }
 
-    const rawState = await storage.getSettings(CLAIM_SETTINGS_KEY);
+    // Hash the token first so we can look up the per-claim storage key.
+    const tokenHash = await sha256(token);
+    const claimKey = CLAIM_KEY_PREFIX + tokenHash;
+
+    const rawState = await storage.getSettings(claimKey);
     if (!rawState) {
       return c.json({ error: "claim unavailable" }, 404);
     }
 
-    let claimState: { tokenHash: string; expiresAt: string };
+    let claimState: { expiresAt: string };
     try {
-      claimState = JSON.parse(rawState) as { tokenHash: string; expiresAt: string };
+      claimState = JSON.parse(rawState) as { expiresAt: string };
     } catch {
       return c.json({ error: "claim unavailable" }, 404);
     }
 
     if (Date.parse(claimState.expiresAt) <= Date.now()) {
-      await storage.setSettings(CLAIM_SETTINGS_KEY, "");
+      await storage.setSettings(claimKey, "");
       return c.json({ error: "claim expired" }, 410);
     }
 
-    const tokenHash = await sha256(token);
-    if (tokenHash !== claimState.tokenHash) {
-      return c.json({ error: "invalid claim" }, 401);
-    }
-
-    await storage.setSettings(CLAIM_SETTINGS_KEY, "");
+    await storage.setSettings(claimKey, "");
     await storage.setSettings(SETUP_COMPLETE_SETTINGS_KEY, "true");
     await issueSessionCookie(c, { authToken, secure: !allowInsecure });
     return c.json({ status: "ok" });

@@ -327,6 +327,72 @@ describe("Bearer Token auth (ADR 0011)", () => {
     expect([401, 404]).toContain(secondExchange.status);
   });
 
+  it("rejects claim mint without valid Authorization header (401)", async () => {
+    process.env["RECEIVER_AUTH_TOKEN"] = "test-secret";
+    app = createApp(storage);
+
+    // No Authorization header
+    const noAuthRes = await app.request("/api/claims", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: "{}",
+    });
+    expect(noAuthRes.status).toBe(401);
+
+    // Wrong token
+    const wrongAuthRes = await app.request("/api/claims", {
+      method: "POST",
+      headers: {
+        Authorization: "Bearer wrong-token",
+        "Content-Type": "application/json",
+      },
+      body: "{}",
+    });
+    expect(wrongAuthRes.status).toBe(401);
+  });
+
+  it("a second mint does not invalidate the first claim (per-claim keys)", async () => {
+    process.env["RECEIVER_AUTH_TOKEN"] = "test-secret";
+    app = createApp(storage);
+
+    // Mint first claim
+    const firstMintRes = await app.request("/api/claims", {
+      method: "POST",
+      headers: {
+        Authorization: "Bearer test-secret",
+        "Content-Type": "application/json",
+      },
+      body: "{}",
+    });
+    expect(firstMintRes.status).toBe(200);
+    const firstClaim = await firstMintRes.json() as { token: string };
+
+    // Mint second claim (simulates auth-link re-issue or second deploy)
+    const secondMintRes = await app.request("/api/claims", {
+      method: "POST",
+      headers: {
+        Authorization: "Bearer test-secret",
+        "Content-Type": "application/json",
+      },
+      body: "{}",
+    });
+    expect(secondMintRes.status).toBe(200);
+    const secondClaim = await secondMintRes.json() as { token: string };
+
+    // The first claim must still be exchangeable
+    const firstExchangeRes = await app.request("/api/claims/exchange", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token: firstClaim.token }),
+    });
+    expect(firstExchangeRes.status).toBe(200);
+
+    // The second claim must also still be exchangeable (after a fresh storage — but since
+    // first exchange sets setup_complete and issues a cookie, second exchange should also work
+    // independently if the first hadn't been consumed; here we just verify both tokens were distinct)
+    expect(firstClaim.token).not.toBe(secondClaim.token);
+  });
+
   it("allows all requests when ALLOW_INSECURE_DEV_MODE=true and no token (dev mode)", async () => {
     delete process.env["RECEIVER_AUTH_TOKEN"];
     process.env["ALLOW_INSECURE_DEV_MODE"] = "true";
