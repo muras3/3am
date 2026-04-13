@@ -325,6 +325,64 @@ describe("POST /api/chat/:incidentId", () => {
     );
   });
 
+  // ── Vercel regression: automatic mode with subprocess-only stored provider ──
+
+  it("does not 500 when stored provider is 'claude-code' in automatic mode (Vercel regression)", async () => {
+    // Simulate the Vercel scenario: LLM_PROVIDER=claude-code is stored but automatic mode is active.
+    // The chat endpoint must fall back to autodetect (provider: undefined) instead of throwing
+    // PROVIDER_DISABLED.
+    await app.request("/api/settings/diagnosis", {
+      method: "PUT",
+      headers: { ...authHeader(), "Content-Type": "application/json" },
+      body: JSON.stringify({
+        mode: "automatic",
+        provider: "claude-code",
+      }),
+    });
+
+    const cookie = await getSessionCookie(app);
+    const incidentId = await seedIncidentWithDiagnosis(app);
+    const res = await app.request(`/api/chat/${incidentId}`, {
+      method: "POST",
+      headers: chatHeaders(cookie),
+      body: JSON.stringify({ message: "What should I do?", history: [] }),
+    });
+
+    expect(res.status).toBe(200);
+    // callModelMessages should be called with provider: undefined (autodetect), not claude-code
+    expect(mockCallModelMessages).toHaveBeenCalledOnce();
+    expect(mockCallModelMessages).toHaveBeenCalledWith(
+      expect.any(Array),
+      expect.objectContaining({ provider: undefined }),
+    );
+  });
+
+  it("does not 500 when stored provider is 'codex' in automatic mode (Vercel regression)", async () => {
+    await app.request("/api/settings/diagnosis", {
+      method: "PUT",
+      headers: { ...authHeader(), "Content-Type": "application/json" },
+      body: JSON.stringify({
+        mode: "automatic",
+        provider: "codex",
+      }),
+    });
+
+    const cookie = await getSessionCookie(app);
+    const incidentId = await seedIncidentWithDiagnosis(app);
+    const res = await app.request(`/api/chat/${incidentId}`, {
+      method: "POST",
+      headers: chatHeaders(cookie),
+      body: JSON.stringify({ message: "What should I do?", history: [] }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(mockCallModelMessages).toHaveBeenCalledOnce();
+    expect(mockCallModelMessages).toHaveBeenCalledWith(
+      expect.any(Array),
+      expect.objectContaining({ provider: undefined }),
+    );
+  });
+
   it("routes manual mode chat through the bridge instead of the direct provider layer", async () => {
     await app.request("/api/settings/diagnosis", {
       method: "PUT",
