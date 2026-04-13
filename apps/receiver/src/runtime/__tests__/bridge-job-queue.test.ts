@@ -240,6 +240,115 @@ describe("BridgeJobQueue", () => {
     expect(job!.request.id).toBe(job!.jobId);
   });
 
+  it("re-enqueues dequeued jobs after lease timeout", async () => {
+    // Use short lease timeout (50ms) for testing
+    queue = new BridgeJobQueue(120_000, 50);
+    const jobId = queue.enqueue({
+      type: "evidence_query_request",
+      id: "",
+      incidentId: "inc_1",
+      receiverUrl: "http://localhost",
+      question: "Q",
+      history: [],
+    });
+
+    // Dequeue the job (bridge picks it up)
+    const job1 = queue.dequeue();
+    expect(job1).not.toBeNull();
+    expect(job1!.jobId).toBe(jobId);
+
+    // Second dequeue should return null (job is being processed)
+    expect(queue.dequeue()).toBeNull();
+
+    // Wait for lease to expire
+    await new Promise((r) => setTimeout(r, 80));
+
+    // Force cleanup to trigger re-enqueue
+    queue.forceCleanup();
+
+    // Job should be available again
+    const job2 = queue.dequeue();
+    expect(job2).not.toBeNull();
+    expect(job2!.jobId).toBe(jobId);
+  });
+
+  it("first resolve wins after lease re-enqueue (at-least-once delivery)", async () => {
+    queue = new BridgeJobQueue(120_000, 50);
+    const jobId = queue.enqueue({
+      type: "evidence_query_request",
+      id: "",
+      incidentId: "inc_1",
+      receiverUrl: "http://localhost",
+      question: "Q",
+      history: [],
+    });
+
+    const resultPromise = queue.waitForResult(jobId, 5_000);
+
+    // Bridge 1 picks up the job
+    const job1 = queue.dequeue();
+    expect(job1).not.toBeNull();
+
+    // Wait for lease expiry + cleanup
+    await new Promise((r) => setTimeout(r, 80));
+    queue.forceCleanup();
+
+    // Bridge 2 picks up the re-enqueued job
+    const job2 = queue.dequeue();
+    expect(job2).not.toBeNull();
+    expect(job2!.jobId).toBe(jobId);
+
+    // Bridge 1 finally resolves (slow but not crashed)
+    const resolved1 = queue.resolve(jobId, {
+      type: "evidence_query_response",
+      id: jobId,
+      result: { answer: "from bridge 1" },
+    });
+    expect(resolved1).toBe(true);
+
+    // Bridge 2 also tries to resolve — should be a no-op
+    const resolved2 = queue.resolve(jobId, {
+      type: "evidence_query_response",
+      id: jobId,
+      result: { answer: "from bridge 2" },
+    });
+    expect(resolved2).toBe(false);
+
+    // The waiter should get bridge 1's result
+    const result = await resultPromise;
+    expect(result.type).toBe("evidence_query_response");
+  });
+
+  it("handles chat request through the queue", async () => {
+    queue = new BridgeJobQueue();
+    const jobId = queue.enqueue({
+      type: "chat_request",
+      id: "",
+      incidentId: "inc_1",
+      receiverUrl: "http://localhost",
+      message: "Hello",
+      history: [{ role: "user" as const, content: "Hi" }],
+    });
+
+    const resultPromise = queue.waitForResult(jobId, 5_000);
+
+    const job = queue.dequeue();
+    expect(job).not.toBeNull();
+    expect(job!.request.type).toBe("chat_request");
+
+    queue.resolve(job!.jobId, {
+      type: "chat_response",
+      id: job!.jobId,
+      reply: "Hello back!",
+    });
+
+    const result = await resultPromise;
+    expect(result.type).toBe("chat_response");
+    if (result.type === "chat_response") {
+      expect(result.reply).toBe("Hello back!");
+    }
+  });
+
   it("concurrent enqueue and resolve work correctly", async () => {
     queue = new BridgeJobQueue();
 

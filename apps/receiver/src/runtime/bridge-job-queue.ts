@@ -37,7 +37,7 @@ interface JobEntry {
 }
 
 const DEFAULT_TTL_MS = 120_000; // 2 minutes — jobs older than this are discarded
-const LEASE_TIMEOUT_MS = 30_000; // 30s — if bridge doesn't resolve, re-enqueue
+const DEFAULT_LEASE_TIMEOUT_MS = 30_000; // 30s — if bridge doesn't resolve, re-enqueue
 const CLEANUP_INTERVAL_MS = 10_000;
 
 let idCounter = 0;
@@ -47,9 +47,11 @@ export class BridgeJobQueue {
   private pendingQueue: string[] = []; // FIFO queue of jobIds awaiting pickup
   private cleanupTimer: ReturnType<typeof setInterval> | null = null;
   private readonly ttlMs: number;
+  private readonly leaseTimeoutMs: number;
 
-  constructor(ttlMs = DEFAULT_TTL_MS) {
+  constructor(ttlMs = DEFAULT_TTL_MS, leaseTimeoutMs = DEFAULT_LEASE_TIMEOUT_MS) {
     this.ttlMs = ttlMs;
+    this.leaseTimeoutMs = leaseTimeoutMs;
     this.cleanupTimer = setInterval(() => this.cleanup(), CLEANUP_INTERVAL_MS);
     // Unref the timer so it doesn't keep the process alive
     if (this.cleanupTimer && typeof this.cleanupTimer === "object" && "unref" in this.cleanupTimer) {
@@ -154,6 +156,11 @@ export class BridgeJobQueue {
     return count;
   }
 
+  /** Force a cleanup cycle. Exposed for testing. */
+  forceCleanup(): void {
+    this.cleanup();
+  }
+
   /** Remove stale jobs and re-enqueue dequeued-but-unresolved jobs whose lease expired. */
   private cleanup(): void {
     const now = Date.now();
@@ -171,7 +178,7 @@ export class BridgeJobQueue {
       if (
         entry.dequeuedAt &&
         !entry.settled &&
-        now - entry.dequeuedAt > LEASE_TIMEOUT_MS &&
+        now - entry.dequeuedAt > this.leaseTimeoutMs &&
         !this.pendingQueue.includes(jobId)
       ) {
         entry.dequeuedAt = undefined; // reset lease
