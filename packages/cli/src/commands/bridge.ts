@@ -439,14 +439,112 @@ export function runBridge(options: BridgeOptions = {}): { close: () => void } {
       process.on("SIGTERM", shutdown);
     }
     return { close: shutdown };
-  } else {
-    if (receiverUrl && isVercelReceiverUrl(receiverUrl)) {
-      process.stdout.write(
-        `[bridge-ws] skipping WebSocket bridge for Vercel receiver: ${receiverUrl}\n` +
-        "[bridge-ws] use a public LLM_BRIDGE_URL reachable from the deployed receiver, or switch to a runtime with bridge relay support.\n",
-      );
+  } else if (receiverUrl && isVercelReceiverUrl(receiverUrl)) {
+    // ── Vercel long-poll bridge ───────────────────────────────────────
+    // Vercel has no WS upgrade. Instead, poll GET /api/bridge/jobs and
+    // POST results back to /api/bridge/results/:jobId.
+    process.stdout.write(
+      `[bridge-poll] starting long-poll bridge for Vercel receiver: ${receiverUrl}\n`,
+    );
+
+    const POLL_INTERVAL_MS = 2_000;
+    let pollStopped = false;
+    let pollTimer: ReturnType<typeof setTimeout> | null = null;
+
+    async function pollOnce(): Promise<void> {
+      if (pollStopped) return;
+      try {
+        const jobRes = await fetch(`${receiverUrl}/api/bridge/jobs`, {
+          method: "GET",
+          headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
+        });
+        if (!jobRes.ok) {
+          if (jobRes.status !== 401 && jobRes.status !== 403) {
+            process.stderr.write(
+              `[bridge-poll] poll returned HTTP ${jobRes.status}\n`,
+            );
+          } else {
+            process.stderr.write(
+              `[bridge-poll] auth error (HTTP ${jobRes.status}) — check RECEIVER_AUTH_TOKEN\n`,
+            );
+          }
+          return;
+        }
+
+        const payload = (await jobRes.json()) as {
+          job: { jobId: string; request: WsMessage } | null;
+        };
+
+        if (!payload.job) return; // no pending jobs
+
+        const { jobId, request } = payload.job;
+        process.stdout.write(
+          `[bridge-poll] picked up job ${jobId} (type=${request.type})\n`,
+        );
+
+        // Reuse the same dispatch logic as the WS bridge
+        await handleWsMessage(request, async (response) => {
+          try {
+            const resultRes = await fetch(
+              `${receiverUrl}/api/bridge/results/${encodeURIComponent(jobId)}`,
+              {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  ...(authToken
+                    ? { Authorization: `Bearer ${authToken}` }
+                    : {}),
+                },
+                body: JSON.stringify(response),
+              },
+            );
+            if (!resultRes.ok) {
+              process.stderr.write(
+                `[bridge-poll] failed to post result for ${jobId}: HTTP ${resultRes.status}\n`,
+              );
+            }
+          } catch (err) {
+            process.stderr.write(
+              `[bridge-poll] failed to post result for ${jobId}: ${err instanceof Error ? err.message : String(err)}\n`,
+            );
+          }
+        });
+      } catch (err) {
+        if (!pollStopped) {
+          process.stderr.write(
+            `[bridge-poll] poll error: ${err instanceof Error ? err.message : String(err)}\n`,
+          );
+        }
+      }
     }
-    // No WS client — still register shutdown for the claude pool
+
+    function schedulePoll(): void {
+      if (pollStopped) return;
+      pollTimer = setTimeout(async () => {
+        await pollOnce();
+        schedulePoll();
+      }, POLL_INTERVAL_MS);
+    }
+
+    // Start first poll immediately
+    void pollOnce().then(() => schedulePoll());
+
+    const shutdown = () => {
+      pollStopped = true;
+      if (pollTimer) {
+        clearTimeout(pollTimer);
+        pollTimer = null;
+      }
+      shutdownClaudePool();
+      server.close();
+    };
+    if (registerSignalHandlers) {
+      process.on("SIGINT", shutdown);
+      process.on("SIGTERM", shutdown);
+    }
+    return { close: shutdown };
+  } else {
+    // No WS client, no Vercel poll — still register shutdown for the claude pool
     const shutdown = () => {
       shutdownClaudePool();
       server.close();

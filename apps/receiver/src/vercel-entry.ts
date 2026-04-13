@@ -10,14 +10,18 @@
  * - Diagnosis debouncer uses waitUntil (@vercel/functions) for serverless-safe deferred execution
  * - consoleDist NOT passed — Vercel serves console SPA as static files
  * - server.ts (Node.js entry) is preserved for local/Docker use
- * - No WebSocket upgrade handler is installed here; /bridge/ws exists only in the
- *   Node/CF entrypoints, not in the deployed Vercel function
+ * - BridgeJobQueue: in-memory job queue for manual mode evidence query / chat.
+ *   Fluid Compute ensures the same instance handles concurrent requests,
+ *   so enqueue + poll requests share the module-level queue.
  */
 import type { Hono } from "hono";
-import { createApp, resolveAuthToken } from "./index.js";
+import { createApp, resolveAuthToken, BridgeJobQueue } from "./index.js";
 import { createPostgresClient } from "./storage/drizzle/postgres-client.js";
 import { PostgresAdapter } from "./storage/drizzle/postgres.js";
 import { PostgresTelemetryAdapter } from "./telemetry/drizzle/postgres.js";
+
+/** Module-level singleton — shared across concurrent Fluid Compute requests. */
+const bridgeJobQueue = new BridgeJobQueue();
 
 let appPromise: Promise<Hono> | null = null;
 
@@ -39,7 +43,7 @@ async function getApp(): Promise<Hono> {
         ? await resolveAuthToken(storage)
         : null;
 
-      return createApp(storage, { telemetryStore, resolvedAuthToken });
+      return createApp(storage, { telemetryStore, resolvedAuthToken, bridgeJobQueue });
     })();
   }
   return appPromise;

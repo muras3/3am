@@ -67,6 +67,14 @@ describe("bridge origin guard", () => {
     const originalWebSocket = globalThis.WebSocket;
     vi.stubGlobal("WebSocket", webSocketSpy);
 
+    // Mock fetch to prevent real HTTP calls from the poll loop
+    const originalFetch = globalThis.fetch;
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ job: null }),
+    }));
+
     const bridge = runBridge({
       port,
       receiverUrl: "https://receiver-example.vercel.app",
@@ -79,6 +87,42 @@ describe("bridge origin guard", () => {
     } finally {
       bridge.close();
       vi.stubGlobal("WebSocket", originalWebSocket);
+      vi.stubGlobal("fetch", originalFetch);
+    }
+  });
+
+  it("starts poll loop for Vercel receivers and calls GET /api/bridge/jobs", async () => {
+    const port = 5370 + Math.floor(Math.random() * 1000);
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ job: null }),
+    });
+    const originalFetch = globalThis.fetch;
+    vi.stubGlobal("fetch", fetchMock);
+
+    const bridge = runBridge({
+      port,
+      receiverUrl: "https://receiver-example.vercel.app",
+      registerSignalHandlers: false,
+    });
+
+    try {
+      // Wait for the initial poll to fire
+      await new Promise((resolve) => setTimeout(resolve, 100));
+
+      // Check that the poll hit GET /api/bridge/jobs
+      const bridgeCalls = fetchMock.mock.calls.filter(
+        (call: unknown[]) => typeof call[0] === "string" && (call[0] as string).includes("/api/bridge/jobs"),
+      );
+      expect(bridgeCalls.length).toBeGreaterThanOrEqual(1);
+
+      const [url, opts] = bridgeCalls[0] as [string, { method: string; headers: Record<string, string> }];
+      expect(url).toBe("https://receiver-example.vercel.app/api/bridge/jobs");
+      expect(opts.method).toBe("GET");
+    } finally {
+      bridge.close();
+      vi.stubGlobal("fetch", originalFetch);
     }
   });
 });

@@ -37,6 +37,7 @@ import { getReceiverLlmSettings } from "../runtime/llm-settings.js";
 import { maybeCleanup } from "../retention/lazy-cleanup.js";
 import type { WsBridgeManager } from "./ws-bridge.js";
 import type { BridgeRequest, BridgeResponse } from "./ws-bridge.js";
+import type { BridgeJobQueue } from "../runtime/bridge-job-queue.js";
 
 /**
  * Function that forwards a bridge request through a Durable Object.
@@ -295,6 +296,7 @@ export function createApiRouter(
   enqueueDiagnosis?: EnqueueDiagnosisFn,
   wsBridge?: WsBridgeManager,
   bridgeDoForwarder?: BridgeDoForwarder,
+  bridgeJobQueue?: BridgeJobQueue,
 ): Hono {
   const app = new Hono();
 
@@ -589,6 +591,45 @@ export function createApiRouter(
         }
       }
 
+      // Vercel Fluid Compute: long-poll via in-memory job queue
+      if (bridgeJobQueue) {
+        const jobId = bridgeJobQueue.enqueue({
+          type: "evidence_query_request",
+          id: "",
+          incidentId: id,
+          receiverUrl: new URL(c.req.url).origin,
+          authToken,
+          question: parsed.data.question,
+          history: parsed.data.history ?? [],
+          provider: llmSettings.provider,
+          diagnosisResult: incident.diagnosisResult,
+          evidence,
+          locale,
+          isSystemFollowup: parsed.data.isSystemFollowup ?? false,
+        });
+        try {
+          const jobResult = await bridgeJobQueue.waitForResult(jobId, 60_000);
+          if (jobResult.type === "error_response") {
+            return c.json({
+              error: "manual evidence query bridge failed",
+              details: jobResult.error,
+            }, 502);
+          }
+          if (jobResult.type === "evidence_query_response") {
+            return c.json(jobResult.result);
+          }
+          return c.json({
+            error: "manual evidence query bridge failed",
+            details: `unexpected response type: ${jobResult.type}`,
+          }, 502);
+        } catch (error) {
+          return c.json({
+            error: "manual evidence query bridge failed",
+            details: error instanceof Error ? error.message : String(error),
+          }, 504);
+        }
+      }
+
       // Fall back to HTTP proxy (only works when bridge is on localhost)
       const receiverOrigin = new URL(c.req.url).origin;
       if (isLoopbackUrl(llmSettings.bridgeUrl) && !isLoopbackUrl(receiverOrigin)) {
@@ -790,6 +831,42 @@ export function createApiRouter(
         }
       }
 
+      // Vercel Fluid Compute: long-poll via in-memory job queue
+      if (bridgeJobQueue) {
+        const jobId = bridgeJobQueue.enqueue({
+          type: "chat_request",
+          id: "",
+          incidentId: id,
+          receiverUrl: new URL(c.req.url).origin,
+          authToken,
+          message,
+          history,
+          provider: llmSettings.provider,
+          systemPrompt,
+        });
+        try {
+          const jobResult = await bridgeJobQueue.waitForResult(jobId, 60_000);
+          if (jobResult.type === "error_response") {
+            return c.json({
+              error: "manual chat bridge failed",
+              details: jobResult.error,
+            }, 502);
+          }
+          if (jobResult.type === "chat_response") {
+            return c.json({ reply: jobResult.reply });
+          }
+          return c.json({
+            error: "manual chat bridge failed",
+            details: `unexpected response type: ${jobResult.type}`,
+          }, 502);
+        } catch (error) {
+          return c.json({
+            error: "manual chat bridge failed",
+            details: error instanceof Error ? error.message : String(error),
+          }, 504);
+        }
+      }
+
       // Fall back to HTTP proxy (only works when bridge is on localhost)
       const receiverOrigin = new URL(c.req.url).origin;
       if (isLoopbackUrl(llmSettings.bridgeUrl) && !isLoopbackUrl(receiverOrigin)) {
@@ -847,6 +924,50 @@ export function createApiRouter(
 
     return c.json({ reply });
   });
+
+  // ── Bridge job queue endpoints (Vercel Fluid Compute long-poll) ──────────────
+
+  if (bridgeJobQueue) {
+    app.get("/api/bridge/jobs", async (c) => {
+      const job = bridgeJobQueue.dequeue();
+      if (!job) {
+        return c.json({ job: null }, 200);
+      }
+      return c.json({
+        job: {
+          jobId: job.jobId,
+          request: job.request,
+        },
+      });
+    });
+
+    app.post("/api/bridge/results/:jobId", apiBodyLimit(64 * 1024), async (c) => {
+      const jobId = c.req.param("jobId");
+
+      let body: unknown;
+      try {
+        body = await c.req.json();
+      } catch {
+        return c.json({ error: "invalid body" }, 400);
+      }
+
+      if (typeof body !== "object" || body === null) {
+        return c.json({ error: "invalid body" }, 400);
+      }
+
+      const result = body as BridgeResponse;
+      if (!result.type) {
+        return c.json({ error: "missing type field" }, 400);
+      }
+
+      const resolved = bridgeJobQueue.resolve(jobId, { ...result, id: jobId });
+      if (!resolved) {
+        return c.json({ error: "job not found or already resolved" }, 404);
+      }
+
+      return c.json({ status: "ok" });
+    });
+  }
 
   // ── Ambient read-model routes (ADR 0029) ─────────────────────────────────────
 

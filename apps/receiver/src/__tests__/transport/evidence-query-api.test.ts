@@ -5,9 +5,10 @@
  * Anthropic SDK is mocked so no real API key is required.
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { MemoryAdapter } from '../../storage/adapters/memory.js'
 import { createApp } from '../../index.js'
+import { BridgeJobQueue } from '../../runtime/bridge-job-queue.js'
 import { COOKIE_NAME } from '../../middleware/session-cookie.js'
 import { EvidenceQueryResponseSchema } from '3am-core/schemas/curated-evidence'
 import type { DiagnosisResult } from '3am-core'
@@ -490,5 +491,253 @@ describe('POST /api/incidents/:id/evidence/query', () => {
         'remote receiver https://receiver-example.vercel.app cannot reach loopback bridge URL http://127.0.0.1:4269. Vercel Functions do not expose the /bridge/ws upgrade path used by the local bridge client. Set LLM_BRIDGE_URL to a public bridge endpoint reachable from the receiver runtime, or switch manual mode to a supported relay runtime.',
     })
     expect(bridgeFetch).not.toHaveBeenCalled()
+  })
+})
+
+// ── Vercel long-poll bridge job queue tests ───────────────────────────────
+
+describe('POST /api/incidents/:id/evidence/query (bridgeJobQueue path)', () => {
+  let app: ReturnType<typeof makeApp>
+  let jobQueue: BridgeJobQueue
+
+  function makeAppWithQueue() {
+    process.env['RECEIVER_AUTH_TOKEN'] = TOKEN
+    jobQueue = new BridgeJobQueue()
+    return createApp(new MemoryAdapter(), { bridgeJobQueue: jobQueue })
+  }
+
+  beforeEach(() => {
+    seedCounter = 0
+    generateEvidenceQueryMock.mockClear()
+    app = makeAppWithQueue()
+  })
+
+  afterEach(() => {
+    jobQueue?.destroy()
+  })
+
+  it('routes manual evidence query through job queue when bridgeJobQueue is provided', async () => {
+    // Set manual mode
+    await app.request('/api/settings/diagnosis', {
+      method: 'PUT',
+      headers: { ...authHeader(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        mode: 'manual',
+        provider: 'codex',
+        bridgeUrl: 'http://127.0.0.1:4269',
+      }),
+    })
+
+    const cookie = await getSessionCookie(app)
+    const incidentId = await seedIncident(app, true)
+
+    // Start the evidence query — it will enqueue and wait
+    const queryPromise = app.request(
+      `https://receiver-example.vercel.app/api/incidents/${incidentId}/evidence/query`,
+      {
+        method: 'POST',
+        headers: queryHeaders(cookie),
+        body: JSON.stringify({ question: 'What happened?' }),
+      },
+    )
+
+    // Simulate bridge picking up the job
+    await new Promise((r) => setTimeout(r, 10))
+    const job = jobQueue.dequeue()
+    expect(job).not.toBeNull()
+    expect(job!.request.type).toBe('evidence_query_request')
+
+    // Simulate bridge posting the result
+    jobQueue.resolve(job!.jobId, {
+      type: 'evidence_query_response',
+      id: job!.jobId,
+      result: {
+        question: 'What happened?',
+        status: 'answered',
+        segments: [{ id: 'seg-1', kind: 'fact', text: 'Answer.', evidenceRefs: [] }],
+      },
+    })
+
+    const res = await queryPromise
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as Record<string, unknown>
+    expect(body['question']).toBe('What happened?')
+    expect(body['status']).toBe('answered')
+  })
+
+  it('returns 502 when bridge resolves with error_response', async () => {
+    await app.request('/api/settings/diagnosis', {
+      method: 'PUT',
+      headers: { ...authHeader(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        mode: 'manual',
+        provider: 'codex',
+        bridgeUrl: 'http://127.0.0.1:4269',
+      }),
+    })
+
+    const cookie = await getSessionCookie(app)
+    const incidentId = await seedIncident(app, true)
+
+    const queryPromise = app.request(
+      `https://receiver-example.vercel.app/api/incidents/${incidentId}/evidence/query`,
+      {
+        method: 'POST',
+        headers: queryHeaders(cookie),
+        body: JSON.stringify({ question: 'What happened?' }),
+      },
+    )
+
+    await new Promise((r) => setTimeout(r, 10))
+    const job = jobQueue.dequeue()
+    expect(job).not.toBeNull()
+
+    jobQueue.resolve(job!.jobId, {
+      type: 'error_response',
+      id: job!.jobId,
+      error: 'LLM call failed',
+    })
+
+    const res = await queryPromise
+    expect(res.status).toBe(502)
+    const body = (await res.json()) as Record<string, unknown>
+    expect(body['error']).toBe('manual evidence query bridge failed')
+    expect(body['details']).toBe('LLM call failed')
+  })
+
+  it('GET /api/bridge/jobs returns null when no pending jobs', async () => {
+    const res = await app.request('/api/bridge/jobs', {
+      method: 'GET',
+      headers: authHeader(),
+    })
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as Record<string, unknown>
+    expect(body['job']).toBeNull()
+  })
+
+  it('GET /api/bridge/jobs returns a pending job', async () => {
+    // Set manual mode and enqueue a job by triggering an evidence query
+    await app.request('/api/settings/diagnosis', {
+      method: 'PUT',
+      headers: { ...authHeader(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        mode: 'manual',
+        provider: 'codex',
+        bridgeUrl: 'http://127.0.0.1:4269',
+      }),
+    })
+
+    const cookie = await getSessionCookie(app)
+    const incidentId = await seedIncident(app, true)
+
+    // Trigger evidence query in background (it will hold)
+    const queryPromise = app.request(
+      `https://receiver-example.vercel.app/api/incidents/${incidentId}/evidence/query`,
+      {
+        method: 'POST',
+        headers: queryHeaders(cookie),
+        body: JSON.stringify({ question: 'What happened?' }),
+      },
+    )
+
+    await new Promise((r) => setTimeout(r, 10))
+
+    // Poll for jobs
+    const jobRes = await app.request('/api/bridge/jobs', {
+      method: 'GET',
+      headers: authHeader(),
+    })
+    expect(jobRes.status).toBe(200)
+    const jobBody = (await jobRes.json()) as { job: { jobId: string; request: { type: string } } }
+    expect(jobBody.job).not.toBeNull()
+    expect(jobBody.job.request.type).toBe('evidence_query_request')
+
+    // Resolve so queryPromise doesn't hang
+    jobQueue.resolve(jobBody.job.jobId, {
+      type: 'evidence_query_response',
+      id: jobBody.job.jobId,
+      result: { question: 'What happened?', status: 'answered', segments: [] },
+    })
+    await queryPromise
+  })
+
+  it('POST /api/bridge/results/:jobId resolves the waiting job', async () => {
+    await app.request('/api/settings/diagnosis', {
+      method: 'PUT',
+      headers: { ...authHeader(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        mode: 'manual',
+        provider: 'codex',
+        bridgeUrl: 'http://127.0.0.1:4269',
+      }),
+    })
+
+    const cookie = await getSessionCookie(app)
+    const incidentId = await seedIncident(app, true)
+
+    const queryPromise = app.request(
+      `https://receiver-example.vercel.app/api/incidents/${incidentId}/evidence/query`,
+      {
+        method: 'POST',
+        headers: queryHeaders(cookie),
+        body: JSON.stringify({ question: 'What happened?' }),
+      },
+    )
+
+    await new Promise((r) => setTimeout(r, 10))
+
+    // Get the job
+    const jobRes = await app.request('/api/bridge/jobs', {
+      method: 'GET',
+      headers: authHeader(),
+    })
+    const jobBody = (await jobRes.json()) as { job: { jobId: string } }
+
+    // Post result via the API endpoint
+    const resultRes = await app.request(
+      `/api/bridge/results/${jobBody.job.jobId}`,
+      {
+        method: 'POST',
+        headers: { ...authHeader(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'evidence_query_response',
+          id: jobBody.job.jobId,
+          result: {
+            question: 'What happened?',
+            status: 'answered',
+            segments: [{ id: 'seg-1', kind: 'fact', text: 'Resolved via API.', evidenceRefs: [] }],
+          },
+        }),
+      },
+    )
+    expect(resultRes.status).toBe(200)
+
+    // The evidence query should now resolve
+    const res = await queryPromise
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as Record<string, unknown>
+    expect(body['status']).toBe('answered')
+  })
+
+  it('POST /api/bridge/results/:jobId returns 404 for unknown job', async () => {
+    const res = await app.request('/api/bridge/results/nonexistent', {
+      method: 'POST',
+      headers: { ...authHeader(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        type: 'evidence_query_response',
+        id: 'nonexistent',
+        result: {},
+      }),
+    })
+    expect(res.status).toBe(404)
+  })
+
+  it('POST /api/bridge/results/:jobId returns 400 for invalid body', async () => {
+    const res = await app.request('/api/bridge/results/some-job', {
+      method: 'POST',
+      headers: { ...authHeader(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    })
+    expect(res.status).toBe(400)
   })
 })
