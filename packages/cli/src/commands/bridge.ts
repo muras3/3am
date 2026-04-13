@@ -53,12 +53,71 @@ function isRemoteUrl(url: string): boolean {
   }
 }
 
+/**
+ * Detect Vercel receiver URLs via hostname (fast path for *.vercel.app).
+ * Custom-domain Vercel receivers are NOT detected here — use probeWsSupport()
+ * for those, which actually attempts the WS connection and detects failure.
+ */
 function isVercelReceiverUrl(url: string): boolean {
   try {
     return new URL(url).hostname.includes("vercel.app");
   } catch {
     return false;
   }
+}
+
+/**
+ * Probe whether a WebSocket endpoint is reachable and stays connected.
+ * Returns true if the connection remains open for at least timeoutMs.
+ * Returns false if the connection closes/errors within timeoutMs (e.g. Vercel
+ * rejects WS upgrades with code 1006).
+ *
+ * The probe WebSocket is always closed before this function returns.
+ *
+ * Exported for testing.
+ */
+export function probeWsSupport(wsUrl: string, timeoutMs = 3_000): Promise<boolean> {
+  return new Promise((resolve) => {
+    let settled = false;
+    let ws: WebSocket | null = null;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+
+    const settle = (result: boolean) => {
+      if (settled) return;
+      settled = true;
+      if (timer) {
+        clearTimeout(timer);
+        timer = null;
+      }
+      if (ws) {
+        try { ws.close(1000, "probe done"); } catch { /* ignore */ }
+        ws = null;
+      }
+      resolve(result);
+    };
+
+    try {
+      ws = new WebSocket(wsUrl);
+    } catch {
+      settle(false);
+      return;
+    }
+
+    ws.addEventListener("open", () => {
+      // Connection opened — wait for timeoutMs to confirm it stays up
+      timer = setTimeout(() => settle(true), timeoutMs);
+    });
+
+    ws.addEventListener("close", () => {
+      // Closed before timeout (or before open) — WS not supported
+      settle(false);
+    });
+
+    ws.addEventListener("error", () => {
+      // Error event always precedes close; settle false here too
+      settle(false);
+    });
+  });
 }
 
 function httpToWs(url: string): string {
@@ -418,20 +477,156 @@ export function runBridge(options: BridgeOptions = {}): { close: () => void } {
     : undefined;
   const authToken = matchedReceiver?.authToken ?? creds.receiverAuthToken;
 
+  // ── Poll mode implementation (shared by Vercel and WS-fallback paths) ──
+
+  function startPollMode(label: string): { close: () => void } {
+    process.stdout.write(
+      `[bridge-poll] starting long-poll bridge for ${label}: ${receiverUrl}\n`,
+    );
+
+    const POLL_INTERVAL_MS = 2_000;
+    let pollStopped = false;
+    let pollTimer: ReturnType<typeof setTimeout> | null = null;
+
+    async function pollOnce(): Promise<void> {
+      if (pollStopped) return;
+      try {
+        const jobRes = await fetch(`${receiverUrl}/api/bridge/jobs`, {
+          method: "GET",
+          headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
+        });
+        if (!jobRes.ok) {
+          if (jobRes.status !== 401 && jobRes.status !== 403) {
+            process.stderr.write(
+              `[bridge-poll] poll returned HTTP ${jobRes.status}\n`,
+            );
+          } else {
+            process.stderr.write(
+              `[bridge-poll] auth error (HTTP ${jobRes.status}) — check RECEIVER_AUTH_TOKEN\n`,
+            );
+          }
+          return;
+        }
+
+        const payload = (await jobRes.json()) as {
+          job: { jobId: string; request: WsMessage } | null;
+        };
+
+        if (!payload.job) return; // no pending jobs
+
+        const { jobId, request } = payload.job;
+        process.stdout.write(
+          `[bridge-poll] picked up job ${jobId} (type=${request.type})\n`,
+        );
+
+        // Reuse the same dispatch logic as the WS bridge
+        await handleWsMessage(request, async (response) => {
+          try {
+            const resultRes = await fetch(
+              `${receiverUrl}/api/bridge/results/${encodeURIComponent(jobId)}`,
+              {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  ...(authToken
+                    ? { Authorization: `Bearer ${authToken}` }
+                    : {}),
+                },
+                body: JSON.stringify(response),
+              },
+            );
+            if (!resultRes.ok) {
+              process.stderr.write(
+                `[bridge-poll] failed to post result for ${jobId}: HTTP ${resultRes.status}\n`,
+              );
+            }
+          } catch (err) {
+            process.stderr.write(
+              `[bridge-poll] failed to post result for ${jobId}: ${err instanceof Error ? err.message : String(err)}\n`,
+            );
+          }
+        });
+      } catch (err) {
+        if (!pollStopped) {
+          process.stderr.write(
+            `[bridge-poll] poll error: ${err instanceof Error ? err.message : String(err)}\n`,
+          );
+        }
+      }
+    }
+
+    function schedulePoll(): void {
+      if (pollStopped) return;
+      pollTimer = setTimeout(async () => {
+        await pollOnce();
+        schedulePoll();
+      }, POLL_INTERVAL_MS);
+    }
+
+    // Start first poll immediately
+    void pollOnce().then(() => schedulePoll());
+
+    return {
+      close: () => {
+        pollStopped = true;
+        if (pollTimer) {
+          clearTimeout(pollTimer);
+          pollTimer = null;
+        }
+      },
+    };
+  }
+
   if (receiverUrl && isRemoteUrl(receiverUrl) && !isVercelReceiverUrl(receiverUrl)) {
+    // ── Non-Vercel remote receiver: try WS first, fall back to poll ───────
+    // Custom-domain Vercel receivers will fail the WS probe (code 1006) and
+    // automatically fall back to poll mode. Standard Node.js receivers will
+    // stay connected and continue in WS mode.
     const wsUrl = `${httpToWs(receiverUrl)}/bridge/ws${authToken ? `?token=${encodeURIComponent(authToken)}` : ""}`;
     process.stdout.write(`[bridge-ws] connecting to remote receiver: ${receiverUrl}\n`);
 
-    const wsClient = new WsBridgeClient(wsUrl, (msg) => {
-      // Handle incoming request from receiver
-      void handleWsMessage(msg, (response) => wsClient.send(response));
+    let activePollHandle: { close: () => void } | null = null;
+    let wsClient: WsBridgeClient | null = null;
+
+    // Probe WS support: if the connection closes within 3s, switch to poll mode
+    void probeWsSupport(wsUrl).then((wsSupported) => {
+      if (!wsSupported) {
+        process.stdout.write(
+          `[bridge-ws] WebSocket not supported (probe closed within 3s) — switching to poll mode\n`,
+        );
+        activePollHandle = startPollMode("custom-domain receiver");
+        return;
+      }
+
+      // WS probe passed — create the real WsBridgeClient
+      process.stdout.write(`[bridge-ws] WebSocket probe succeeded — using WS mode\n`);
+      const client = new WsBridgeClient(wsUrl, (msg) => {
+        void handleWsMessage(msg, (response) => client.send(response));
+      });
+      wsClient = client;
+      client.connect();
     });
-    wsClient.connect();
 
     // Graceful shutdown
     const shutdown = () => {
       shutdownClaudePool();
-      wsClient.close();
+      if (wsClient) wsClient.close();
+      if (activePollHandle) activePollHandle.close();
+      server.close();
+    };
+    if (registerSignalHandlers) {
+      process.on("SIGINT", shutdown);
+      process.on("SIGTERM", shutdown);
+    }
+    return { close: shutdown };
+  } else if (receiverUrl && isVercelReceiverUrl(receiverUrl)) {
+    // ── Vercel long-poll bridge (fast path for *.vercel.app) ─────────────
+    // Vercel has no WS upgrade. Skip the WS probe and go directly to poll.
+    const pollHandle = startPollMode("Vercel receiver");
+
+    const shutdown = () => {
+      pollHandle.close();
+      shutdownClaudePool();
       server.close();
     };
     if (registerSignalHandlers) {
@@ -440,13 +635,7 @@ export function runBridge(options: BridgeOptions = {}): { close: () => void } {
     }
     return { close: shutdown };
   } else {
-    if (receiverUrl && isVercelReceiverUrl(receiverUrl)) {
-      process.stdout.write(
-        `[bridge-ws] skipping WebSocket bridge for Vercel receiver: ${receiverUrl}\n` +
-        "[bridge-ws] use a public LLM_BRIDGE_URL reachable from the deployed receiver, or switch to a runtime with bridge relay support.\n",
-      );
-    }
-    // No WS client — still register shutdown for the claude pool
+    // No WS client, no Vercel poll — still register shutdown for the claude pool
     const shutdown = () => {
       shutdownClaudePool();
       server.close();
