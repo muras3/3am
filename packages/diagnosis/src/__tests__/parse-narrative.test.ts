@@ -157,6 +157,59 @@ describe("parseNarrative", () => {
     expect(result.qa.answerEvidenceRefs[1]?.id).toBe("worker_pool_in_use::checkout-orchestrator");
   });
 
+  it("sets noAnswerReason when all evidence refs are hallucinated and stripped", () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    const allHallucinated = {
+      ...validOutput,
+      qa: {
+        ...validOutput.qa,
+        answerEvidenceRefs: [
+          { kind: "span", id: "payment_failed_504" },        // invented
+          { kind: "metric", id: "eventloop.utilization" },   // invented
+        ],
+        evidenceBindings: [
+          { claim: "All invented", evidenceRefs: [{ kind: "span", id: "payment_failed_504" }] },
+        ],
+        noAnswerReason: null,
+      },
+    };
+
+    const result = parseNarrative(JSON.stringify(allHallucinated), meta, rsFixture);
+
+    // All refs should be stripped
+    expect(result.qa.answerEvidenceRefs).toHaveLength(0);
+    expect(result.qa.evidenceBindings).toHaveLength(0);
+
+    // noAnswerReason must be set to surface the degradation (not null/undefined)
+    expect(result.qa.noAnswerReason).not.toBeNull();
+    expect(typeof result.qa.noAnswerReason).toBe("string");
+    expect(result.qa.noAnswerReason).toContain("invalid");
+
+    warnSpy.mockRestore();
+  });
+
+  it("does not overwrite noAnswerReason when already set and refs are stripped", () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    const alreadyUnanswerable = {
+      ...validOutput,
+      qa: {
+        ...validOutput.qa,
+        answerEvidenceRefs: [{ kind: "span", id: "invented_id" }],
+        evidenceBindings: [],
+        noAnswerReason: "Insufficient trace data.",
+      },
+    };
+
+    const result = parseNarrative(JSON.stringify(alreadyUnanswerable), meta, rsFixture);
+
+    // Existing noAnswerReason must not be overwritten by the fallback
+    expect(result.qa.noAnswerReason).toBe("Insufficient trace data.");
+
+    warnSpy.mockRestore();
+  });
+
   it("accepts empty evidenceBindings when noAnswerReason is set", () => {
     const unanswerable = {
       ...validOutput,

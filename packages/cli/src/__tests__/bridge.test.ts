@@ -60,4 +60,25 @@ describe("bridge origin guard", () => {
       bridge.close();
     }
   });
+
+  it("does not attempt a remote WebSocket connection for Vercel receivers", async () => {
+    const port = 5270 + Math.floor(Math.random() * 1000);
+    const webSocketSpy = vi.fn();
+    const originalWebSocket = globalThis.WebSocket;
+    vi.stubGlobal("WebSocket", webSocketSpy);
+
+    const bridge = runBridge({
+      port,
+      receiverUrl: "https://receiver-example.vercel.app",
+      registerSignalHandlers: false,
+    });
+
+    try {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(webSocketSpy).not.toHaveBeenCalled();
+    } finally {
+      bridge.close();
+      vi.stubGlobal("WebSocket", originalWebSocket);
+    }
+  });
 });
