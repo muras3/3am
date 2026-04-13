@@ -457,4 +457,38 @@ describe('POST /api/incidents/:id/evidence/query', () => {
       expect.any(Object),
     )
   })
+
+  it('returns 503 for manual evidence query when a remote Vercel receiver is configured with a loopback bridge URL', async () => {
+    await app.request('/api/settings/diagnosis', {
+      method: 'PUT',
+      headers: { ...authHeader(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        mode: 'manual',
+        provider: 'codex',
+        bridgeUrl: 'http://127.0.0.1:4269',
+      }),
+    })
+
+    const originalFetch = globalThis.fetch
+    const bridgeFetch = vi.fn()
+    globalThis.fetch = bridgeFetch as typeof fetch
+
+    const cookie = await getSessionCookie(app)
+    const incidentId = await seedIncident(app, true)
+    const res = await app.request(`https://receiver-example.vercel.app/api/incidents/${incidentId}/evidence/query`, {
+      method: 'POST',
+      headers: queryHeaders(cookie),
+      body: JSON.stringify({ question: 'What happened?' }),
+    })
+
+    globalThis.fetch = originalFetch
+
+    expect(res.status).toBe(503)
+    expect(await res.json()).toEqual({
+      error: 'manual evidence query bridge unavailable',
+      details:
+        'remote receiver https://receiver-example.vercel.app cannot reach loopback bridge URL http://127.0.0.1:4269. Vercel Functions do not expose the /bridge/ws upgrade path used by the local bridge client. Set LLM_BRIDGE_URL to a public bridge endpoint reachable from the receiver runtime, or switch manual mode to a supported relay runtime.',
+    })
+    expect(bridgeFetch).not.toHaveBeenCalled()
+  })
 })

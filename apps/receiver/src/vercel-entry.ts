@@ -10,6 +10,8 @@
  * - Diagnosis debouncer uses waitUntil (@vercel/functions) for serverless-safe deferred execution
  * - consoleDist NOT passed — Vercel serves console SPA as static files
  * - server.ts (Node.js entry) is preserved for local/Docker use
+ * - No WebSocket upgrade handler is installed here; /bridge/ws exists only in the
+ *   Node/CF entrypoints, not in the deployed Vercel function
  */
 import type { Hono } from "hono";
 import { createApp, resolveAuthToken } from "./index.js";

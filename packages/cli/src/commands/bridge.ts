@@ -53,6 +53,14 @@ function isRemoteUrl(url: string): boolean {
   }
 }
 
+function isVercelReceiverUrl(url: string): boolean {
+  try {
+    return new URL(url).hostname.includes("vercel.app");
+  } catch {
+    return false;
+  }
+}
+
 function httpToWs(url: string): string {
   return url.replace(/^http/, "ws");
 }
@@ -410,7 +418,7 @@ export function runBridge(options: BridgeOptions = {}): { close: () => void } {
     : undefined;
   const authToken = matchedReceiver?.authToken ?? creds.receiverAuthToken;
 
-  if (receiverUrl && isRemoteUrl(receiverUrl)) {
+  if (receiverUrl && isRemoteUrl(receiverUrl) && !isVercelReceiverUrl(receiverUrl)) {
     const wsUrl = `${httpToWs(receiverUrl)}/bridge/ws${authToken ? `?token=${encodeURIComponent(authToken)}` : ""}`;
     process.stdout.write(`[bridge-ws] connecting to remote receiver: ${receiverUrl}\n`);
 
@@ -432,6 +440,12 @@ export function runBridge(options: BridgeOptions = {}): { close: () => void } {
     }
     return { close: shutdown };
   } else {
+    if (receiverUrl && isVercelReceiverUrl(receiverUrl)) {
+      process.stdout.write(
+        `[bridge-ws] skipping WebSocket bridge for Vercel receiver: ${receiverUrl}\n` +
+        "[bridge-ws] use a public LLM_BRIDGE_URL reachable from the deployed receiver, or switch to a runtime with bridge relay support.\n",
+      );
+    }
     // No WS client — still register shutdown for the claude pool
     const shutdown = () => {
       shutdownClaudePool();
