@@ -133,6 +133,8 @@ program
   .option("--provider <provider>", "slack, discord, or both")
   .option("--slack-bot-token <token>", "Slack Bot User OAuth Token")
   .option("--slack-channel-id <id>", "Slack channel ID")
+  .option("--discord-bot-token <token>", "Discord bot token")
+  .option("--discord-channel-id <id>", "Discord channel ID")
   .option("--discord-webhook-url <url>", "Discord webhook URL")
   .option("--yes", "Skip confirmation prompts")
   .action(async (options: {
@@ -141,6 +143,8 @@ program
     provider?: string;
     slackBotToken?: string;
     slackChannelId?: string;
+    discordBotToken?: string;
+    discordChannelId?: string;
     discordWebhookUrl?: string;
     yes?: boolean;
   }) => {

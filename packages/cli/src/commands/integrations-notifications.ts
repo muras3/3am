@@ -23,7 +23,17 @@ type NotificationConfig = {
         provider: "discord";
         label: string;
         enabled: boolean;
+        mode: "webhook";
         webhookUrl: string;
+      }
+    | {
+        id: string;
+        provider: "discord";
+        label: string;
+        enabled: boolean;
+        mode: "bot";
+        botToken: string;
+        channelId: string;
       }
   >;
 };
@@ -92,6 +102,8 @@ export async function runIntegrationsNotifications(options: {
   slackBotToken?: string;
   slackChannelId?: string;
   discordWebhookUrl?: string;
+  discordBotToken?: string;
+  discordChannelId?: string;
   yes?: boolean;
 }): Promise<void> {
   const { receiverUrl, authToken } = await resolveReceiver(options);
@@ -123,17 +135,38 @@ export async function runIntegrationsNotifications(options: {
   }
 
   if (provider === "discord" || provider === "both") {
-    const webhookUrl = options.discordWebhookUrl ?? await prompt("Discord Webhook URL: ");
-    if (!webhookUrl) {
-      throw new Error("Discord configuration requires a webhook URL");
+    const modeAnswer = (options.discordBotToken || options.discordChannelId)
+      ? "bot"
+      : (await prompt("Discord mode [bot|webhook] (default: bot): ") || "bot");
+    if (modeAnswer === "webhook") {
+      const webhookUrl = options.discordWebhookUrl ?? await prompt("Discord Webhook URL: ");
+      if (!webhookUrl) {
+        throw new Error("Discord configuration requires a webhook URL");
+      }
+      config.targets.push({
+        id: "discord-default",
+        provider: "discord",
+        label: "Discord default",
+        enabled: true,
+        mode: "webhook",
+        webhookUrl,
+      });
+    } else {
+      const botToken = options.discordBotToken ?? await prompt("Discord Bot Token: ");
+      const channelId = options.discordChannelId ?? await prompt("Discord Channel ID: ");
+      if (!botToken || !channelId) {
+        throw new Error("Discord bot configuration requires bot token and channel ID");
+      }
+      config.targets.push({
+        id: "discord-default",
+        provider: "discord",
+        label: "Discord default",
+        enabled: true,
+        mode: "bot",
+        botToken,
+        channelId,
+      });
     }
-    config.targets.push({
-      id: "discord-default",
-      provider: "discord",
-      label: "Discord default",
-      enabled: true,
-      webhookUrl,
-    });
   }
 
   process.stdout.write(`Saving notification integrations to ${receiverUrl} ...\n`);

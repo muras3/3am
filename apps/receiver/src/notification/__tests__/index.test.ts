@@ -188,6 +188,7 @@ describe("notification delivery", () => {
           provider: "discord",
           label: "Discord default",
           enabled: true,
+          mode: "webhook",
           webhookUrl: "https://discord.com/api/webhooks/1/2",
         },
       ],
@@ -198,6 +199,10 @@ describe("notification delivery", () => {
 
     expect(mockDiscordParent).toHaveBeenCalled();
     expect(mockDiscordFollowup).toHaveBeenCalled();
-    expect(mockDiscordPost.mock.calls[1]?.[2]).toBe("m_123");
+    expect(mockDiscordPost.mock.calls[1]?.[2]).toEqual({
+      messageId: "m_123",
+      threadId: undefined,
+      incidentId: "inc_000001",
+    });
   });
 });

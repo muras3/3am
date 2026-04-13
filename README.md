@@ -262,7 +262,7 @@ npx 3am-cli bridge --receiver-url <url>             # connect bridge to a remote
 
 `deploy` flags: `--yes`, `--no-interactive`, `--json`, `--project-name`, `--auth-token`
 
-`integrations notifications` flags: `--receiver-url`, `--auth-token`, `--provider slack|discord|both`, `--slack-bot-token`, `--slack-channel-id`, `--discord-webhook-url`
+`integrations notifications` flags: `--receiver-url`, `--auth-token`, `--provider slack|discord|both`, `--slack-bot-token`, `--slack-channel-id`, `--discord-bot-token`, `--discord-channel-id`, `--discord-webhook-url`
 
 </details>
 

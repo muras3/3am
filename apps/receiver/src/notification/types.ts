@@ -17,17 +17,31 @@ const DiscordTargetConfigSchema = z.strictObject({
   provider: z.literal("discord"),
   label: z.string(),
   enabled: z.boolean().default(true),
+  mode: z.literal("webhook").default("webhook"),
   webhookUrl: z.string().url(),
 });
 
-export const NotificationTargetConfigSchema = z.discriminatedUnion("provider", [
+const DiscordBotTargetConfigSchema = z.strictObject({
+  id: z.string(),
+  provider: z.literal("discord"),
+  label: z.string(),
+  enabled: z.boolean().default(true),
+  mode: z.literal("bot"),
+  botToken: z.string(),
+  channelId: z.string(),
+});
+
+export const NotificationTargetConfigSchema = z.union([
   SlackTargetConfigSchema,
   DiscordTargetConfigSchema,
+  DiscordBotTargetConfigSchema,
 ]);
 
 export type NotificationTargetConfig = z.infer<typeof NotificationTargetConfigSchema>;
 export type SlackTargetConfig = z.infer<typeof SlackTargetConfigSchema>;
-export type DiscordTargetConfig = z.infer<typeof DiscordTargetConfigSchema>;
+export type DiscordWebhookTargetConfig = z.infer<typeof DiscordTargetConfigSchema>;
+export type DiscordBotTargetConfig = z.infer<typeof DiscordBotTargetConfigSchema>;
+export type DiscordTargetConfig = DiscordWebhookTargetConfig | DiscordBotTargetConfig;
 
 export const NotificationConfigSchema = z.strictObject({
   targets: z.array(NotificationTargetConfigSchema).default([]),
@@ -48,6 +62,7 @@ const DiscordDeliveryRefSchema = z.strictObject({
   provider: z.literal("discord"),
   targetId: z.string(),
   messageId: z.string(),
+  threadId: z.string().optional(),
   parentNotifiedAt: z.string(),
   diagnosisNotifiedAt: z.string().optional(),
 });

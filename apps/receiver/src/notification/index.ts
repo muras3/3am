@@ -1,7 +1,12 @@
 import type { DiagnosisResult, IncidentPacket } from "3am-core";
 import type { StorageDriver } from "../storage/interface.js";
 import { getNotificationConfig } from "./config.js";
-import { formatDiscordDiagnosisComplete, formatDiscordIncidentCreated, postDiscordMessage } from "./discord.js";
+import {
+  formatDiscordDiagnosisComplete,
+  formatDiscordIncidentCreated,
+  postDiscordMessage,
+  sendDiscordConnectivityProbe,
+} from "./discord.js";
 import { formatSlackDiagnosisComplete, formatSlackIncidentCreated, postSlackMessage } from "./slack.js";
 import {
   buildDiagnosisNotificationPayload,
@@ -74,6 +79,7 @@ export async function notifyIncidentCreated(
           provider: "discord",
           targetId: target.id,
           messageId: result.messageId,
+          ...(result.threadId ? { threadId: result.threadId } : {}),
           parentNotifiedAt: new Date().toISOString(),
         });
       }
@@ -121,10 +127,23 @@ export async function notifyDiagnosisComplete(
         const posted = await postDiscordMessage(
           target,
           formatDiscordDiagnosisComplete(payload),
-          delivery.messageId,
+          {
+            messageId: delivery.messageId,
+            threadId: delivery.threadId,
+            incidentId,
+          },
         );
         if (posted.ok) {
-          nextState = markDeliveryDiagnosed(nextState, delivery.targetId);
+          nextState = {
+            deliveries: nextState.deliveries.map((entry) =>
+              entry.targetId === delivery.targetId
+                ? {
+                    ...entry,
+                    ...(posted.threadId ? { threadId: posted.threadId } : {}),
+                    diagnosisNotifiedAt: new Date().toISOString(),
+                  }
+                : entry),
+          };
         }
       }
     }
@@ -161,7 +180,7 @@ export async function sendNotificationTest(storage: StorageDriver): Promise<{
         if (result.ok) sent.push({ targetId: target.id, provider: "slack" });
         continue;
       }
-      const result = await postDiscordMessage(target, formatDiscordIncidentCreated(payload));
+      const result = await sendDiscordConnectivityProbe(target);
       if (result.ok) sent.push({ targetId: target.id, provider: "discord" });
     }
 
