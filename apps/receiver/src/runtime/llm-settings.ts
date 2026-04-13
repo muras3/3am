@@ -23,6 +23,14 @@ function isProviderName(value: string | undefined): value is ProviderName {
     || value === "codex";
 }
 
+/**
+ * Providers that require a local subprocess (claude CLI / codex CLI).
+ * These cannot run on serverless platforms (Vercel, CF Workers) in automatic mode.
+ * In automatic mode, if the stored provider is subprocess-only, we fall back to
+ * autodetect (provider: undefined) so the platform can select Anthropic API instead.
+ */
+const SUBPROCESS_ONLY_PROVIDERS = new Set<ProviderName>(["claude-code", "codex"]);
+
 function envMode(): DiagnosisMode | undefined {
   return process.env["LLM_MODE"] === "manual"
     ? "manual"
@@ -42,7 +50,14 @@ export async function getReceiverLlmSettings(storage: StorageDriver): Promise<Re
   if (isProviderName(storedProvider ?? undefined)) {
     storedProviderName = storedProvider as ProviderName;
   }
-  const provider = isProviderName(envProvider) ? envProvider : storedProviderName;
+  const resolvedProvider = isProviderName(envProvider) ? envProvider : storedProviderName;
+
+  // In automatic mode, subprocess-only providers (claude-code, codex) cannot run on
+  // serverless platforms. Fall back to autodetect (undefined) so the platform selects
+  // the best available API-based provider (e.g. Anthropic via ANTHROPIC_API_KEY).
+  const provider = (mode === "automatic" && resolvedProvider && SUBPROCESS_ONLY_PROVIDERS.has(resolvedProvider))
+    ? undefined
+    : resolvedProvider;
 
   return {
     mode,
