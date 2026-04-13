@@ -211,7 +211,30 @@ Open incidents are never deleted regardless of retention setting.
 npx 3am-cli integrations notifications
 ```
 
-Connects Slack and/or Discord to your deployed Receiver. Once configured, 3am posts a parent incident notification and follows up in the same Slack thread / Discord reply chain when diagnosis completes.
+Connects Slack and/or Discord to your deployed Receiver. Once configured, 3am posts a parent incident notification and follows up in the same Slack thread / Discord thread when diagnosis completes.
+
+For self-hosted OSS usage, 3am does not assume a vendor-managed integration app. You bring your own Slack app / Discord bot once, then 3am automates delivery after credentials are stored.
+
+OSS best practice:
+- create your own Slack app / Discord bot in your own workspace/server
+- grant the minimum permissions needed for threaded delivery
+- pass the bot credentials to `npx 3am-cli integrations notifications`
+- let 3am handle connectivity checks, parent notifications, and threaded follow-ups
+
+Setup reference:
+- [OSS notification setup](docs/integrations/notifications-oss-setup.md)
+
+Minimal Slack scopes:
+- `chat:write`
+- `channels:read`
+- `groups:read` when private channels must be selectable
+
+Minimal Discord bot permissions:
+- `View Channels`
+- `Send Messages`
+- `Create Public Threads`
+- `Send Messages in Threads`
+- `Read Message History`
 
 ### Logs
 
@@ -263,6 +286,18 @@ npx 3am-cli bridge --receiver-url <url>             # connect bridge to a remote
 `deploy` flags: `--yes`, `--no-interactive`, `--json`, `--project-name`, `--auth-token`
 
 `integrations notifications` flags: `--receiver-url`, `--auth-token`, `--provider slack|discord|both`, `--slack-bot-token`, `--slack-channel-id`, `--discord-bot-token`, `--discord-channel-id`, `--discord-webhook-url`
+
+Recommended OSS onboarding:
+
+```bash
+# Slack + Discord bot credentials already created in your own workspace/server
+npx 3am-cli integrations notifications \
+  --provider both \
+  --slack-bot-token xoxb-... \
+  --slack-channel-id C... \
+  --discord-bot-token ... \
+  --discord-channel-id ...
+```
 
 </details>
 

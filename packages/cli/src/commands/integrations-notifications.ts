@@ -135,7 +135,9 @@ export async function runIntegrationsNotifications(options: {
   }
 
   if (provider === "discord" || provider === "both") {
-    const modeAnswer = (options.discordBotToken || options.discordChannelId)
+    const modeAnswer = options.discordWebhookUrl
+      ? "webhook"
+      : (options.discordBotToken || options.discordChannelId)
       ? "bot"
       : (await prompt("Discord mode [bot|webhook] (default: bot): ") || "bot");
     if (modeAnswer === "webhook") {
