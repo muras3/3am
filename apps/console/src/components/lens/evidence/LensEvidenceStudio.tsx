@@ -156,23 +156,24 @@ export function LensEvidenceStudio({ incidentId }: Props) {
       lastEntry?.response?.status === "clarification" &&
       lastEntry?.response?.clarificationQuestion;
 
-    // Count consecutive clarification turns and find the root question
+    // Count consecutive clarification turns and find the root question.
+    // The root question is the first question that triggered the clarification chain.
+    // Example: Q0 answered -> Q1 clarification -> user reply -> Q2 clarification -> user reply
+    // Root question = Q1 (the first clarification-triggering question in the chain)
     let clarificationChainLength = 0;
     let rootQuestion = lastEntry?.question ?? question;
     if (isReplyToClarification) {
+      let firstClarificationIdx = history.length - 1;
       for (let i = history.length - 1; i >= 0; i--) {
         if (history[i]?.response?.status === "clarification") {
           clarificationChainLength++;
+          firstClarificationIdx = i;
         } else {
-          // The entry just before the clarification chain is the root question
-          rootQuestion = history[i]?.question ?? question;
           break;
         }
-        // If we reached the beginning, the first entry is the root
-        if (i === 0) {
-          rootQuestion = history[0]?.question ?? question;
-        }
       }
+      // The root question is the question at the start of the clarification chain
+      rootQuestion = history[firstClarificationIdx]?.question ?? question;
     }
 
     const replyToClarification = isReplyToClarification
