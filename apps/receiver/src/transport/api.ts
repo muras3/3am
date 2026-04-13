@@ -142,6 +142,25 @@ function boundedQueryLimit(cursor: string | undefined, limit: number, hardCap: n
   return Math.min(parseCursor(cursor) + limit + 1, hardCap);
 }
 
+function isLoopbackUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    return parsed.hostname === "localhost" || parsed.hostname === "127.0.0.1" || parsed.hostname === "::1";
+  } catch {
+    return false;
+  }
+}
+
+function buildRemoteLoopbackBridgeError(receiverOrigin: string, bridgeUrl: string): string {
+  const platformHint = receiverOrigin.includes("vercel.app")
+    ? " Vercel Functions do not expose the /bridge/ws upgrade path used by the local bridge client."
+    : "";
+  return (
+    `remote receiver ${receiverOrigin} cannot reach loopback bridge URL ${bridgeUrl}.` +
+    `${platformHint} Set LLM_BRIDGE_URL to a public bridge endpoint reachable from the receiver runtime, or switch manual mode to a supported relay runtime.`
+  );
+}
+
 function telemetrySpanToBufferedSpan(span: TelemetrySpan): BufferedSpan {
   return {
     traceId: span.traceId,
@@ -571,12 +590,20 @@ export function createApiRouter(
       }
 
       // Fall back to HTTP proxy (only works when bridge is on localhost)
+      const receiverOrigin = new URL(c.req.url).origin;
+      if (isLoopbackUrl(llmSettings.bridgeUrl) && !isLoopbackUrl(receiverOrigin)) {
+        return c.json({
+          error: "manual evidence query bridge unavailable",
+          details: buildRemoteLoopbackBridgeError(receiverOrigin, llmSettings.bridgeUrl),
+        }, 503);
+      }
+
       try {
         const bridgeResponse = await fetch(`${llmSettings.bridgeUrl}/api/manual/evidence-query`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            receiverUrl: new URL(c.req.url).origin,
+            receiverUrl: receiverOrigin,
             incidentId: id,
             authToken,
             question: parsed.data.question,
@@ -604,6 +631,9 @@ export function createApiRouter(
       }
     }
 
+    // Automatic evidence queries can still return status="answered" without a live
+    // bridge because buildEvidenceQueryAnswer() has deterministic curated-evidence
+    // fallbacks when the planner/generator model layer is unavailable.
     const result = await buildEvidenceQueryAnswer(
       incident,
       telemetryStore,
@@ -761,12 +791,20 @@ export function createApiRouter(
       }
 
       // Fall back to HTTP proxy (only works when bridge is on localhost)
+      const receiverOrigin = new URL(c.req.url).origin;
+      if (isLoopbackUrl(llmSettings.bridgeUrl) && !isLoopbackUrl(receiverOrigin)) {
+        return c.json({
+          error: "manual chat bridge unavailable",
+          details: buildRemoteLoopbackBridgeError(receiverOrigin, llmSettings.bridgeUrl),
+        }, 503);
+      }
+
       try {
         const bridgeResponse = await fetch(`${llmSettings.bridgeUrl}/api/manual/chat`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            receiverUrl: new URL(c.req.url).origin,
+            receiverUrl: receiverOrigin,
             incidentId: id,
             authToken,
             message,

@@ -9,8 +9,11 @@
  *
  * Platform support:
  * - CF Workers: WebSocket upgrade handled natively via WebSocketPair in cf-entry.ts
- * - Vercel: WebSocket supported via Fluid Compute. Upgrade handled in server.ts.
  * - Node.js (local dev): WebSocket upgrade handled in server.ts. HTTP proxy also works on localhost.
+ *
+ * Vercel's deployed receiver entrypoint is HTTP-only in this repo, so /bridge/ws
+ * is not available there. Remote Vercel deployments must use a public HTTP bridge
+ * URL or a different relay runtime.
  *
  * Message protocol (JSON over WebSocket):
  *
