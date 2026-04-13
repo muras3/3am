@@ -320,6 +320,8 @@ async function handleWsMessage(msg: WsMessage, sendResponse: (response: unknown)
         diagnosisResult: msg["diagnosisResult"] as DiagnosisResult | undefined,
         evidence: msg["evidence"] as EvidenceResponse | undefined,
         isSystemFollowup: (msg["isSystemFollowup"] as boolean | undefined) ?? false,
+        replyToClarification: msg["replyToClarification"] as { originalQuestion: string; clarificationText: string } | undefined,
+        clarificationChainLength: (msg["clarificationChainLength"] as number | undefined) ?? 0,
       });
       sendResponse({ type: "evidence_query_response", id: msg.id, result });
       return;
@@ -438,6 +440,8 @@ export function runBridge(options: BridgeOptions = {}): { close: () => void } {
           evidence?: EvidenceResponse;
           locale?: "en" | "ja";
           isSystemFollowup?: boolean;
+          replyToClarification?: { originalQuestion: string; clarificationText: string };
+          clarificationChainLength?: number;
         };
         const creds = loadCredentials();
         const provider = payload.provider ?? creds.llmProvider;
@@ -453,6 +457,8 @@ export function runBridge(options: BridgeOptions = {}): { close: () => void } {
           diagnosisResult: payload.diagnosisResult,
           evidence: payload.evidence,
           isSystemFollowup: payload.isSystemFollowup ?? false,
+          replyToClarification: payload.replyToClarification,
+          clarificationChainLength: payload.clarificationChainLength ?? 0,
         });
         sendJson(res, 200, result);
         return;

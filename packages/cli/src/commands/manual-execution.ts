@@ -118,6 +118,95 @@ function localizeNoAnswerForGreeting(locale: "en" | "ja"): string {
     : "Ask about traces, metrics, logs, or the diagnosed cause for this incident.";
 }
 
+// ── Phase 3: Numbered option resolution ─────────────────────────
+
+function extractNumberedOptions(clarificationText: string): Map<number, string> {
+  const options = new Map<number, string>();
+  const lines = clarificationText.split(/\n/);
+  for (const line of lines) {
+    const match = /^\s*(\d+)[.):\s]+(.+)/.exec(line.trim());
+    if (match) {
+      const num = parseInt(match[1]!, 10);
+      const text = match[2]!.trim();
+      if (num > 0 && num <= 20 && text.length > 0) {
+        options.set(num, text);
+      }
+    }
+  }
+  return options;
+}
+
+function resolveNumberedReply(
+  reply: string,
+  clarificationText: string,
+): string | null {
+  const options = extractNumberedOptions(clarificationText);
+  if (options.size === 0) return null;
+
+  const trimmed = reply.trim();
+  const numberPattern = /^[\s(]*(\d+)[\s)]*(?:[,、とand\s]+[\s(]*(\d+)[\s)]*)*$/i;
+  if (!numberPattern.test(trimmed)) return null;
+
+  const numbers: number[] = [];
+  const numRegex = /(\d+)/g;
+  let numMatch: RegExpExecArray | null;
+  while ((numMatch = numRegex.exec(trimmed)) !== null) {
+    numbers.push(parseInt(numMatch[1]!, 10));
+  }
+
+  if (numbers.length === 0) return null;
+
+  const resolved: string[] = [];
+  for (const num of numbers) {
+    const option = options.get(num);
+    if (!option) return null;
+    resolved.push(option);
+  }
+
+  return resolved.join("; ");
+}
+
+// ── Phase 4: Meta-speech (frustration/off-topic) detection ──────
+
+const FRUSTRATION_PATTERNS_EN = [
+  /\b(answer|just answer|tell me|stop asking|quit asking|enough|frustrated|annoyed|irritated)\b/i,
+  /\b(are you (stupid|dumb|broken|crazy|insane|nuts))\b/i,
+  /\b(wtf|wth|omg|ffs|damn|hell|crap)\b/i,
+  /\b(useless|pointless|waste of time|not helpful|unhelpful)\b/i,
+  /\b(i (already|just) (said|told|answered|explained))\b/i,
+  /\b(read my (question|message|input))\b/i,
+  /^(no|yes|ok|okay|sure|fine|whatever)$/i,
+];
+
+const FRUSTRATION_PATTERNS_JA = [
+  /答え(て|ろ|てくれ|なさい)/,
+  /(いかれ|おかしい|壊れ|バカ|アホ|ダメ)/,
+  /(意味ない|使えない|役に立たない|無駄)/,
+  /(もう(いい|やめ)|いい加減)/,
+  /(さっき(言った|答えた|書いた))/,
+  /(ちゃんと(読め|見て|聞いて))/,
+  /^(はい|いいえ|うん|ううん|まあ|別に)$/,
+];
+
+function detectFrustration(question: string): boolean {
+  const trimmed = question.trim();
+  if (trimmed.length === 0) return false;
+
+  for (const pattern of FRUSTRATION_PATTERNS_EN) {
+    if (pattern.test(trimmed)) return true;
+  }
+  for (const pattern of FRUSTRATION_PATTERNS_JA) {
+    if (pattern.test(trimmed)) return true;
+  }
+  return false;
+}
+
+function localizeMetaSpeechResponse(locale: "en" | "ja"): string {
+  return locale === "ja"
+    ? "すみません。質問を別の言い方で聞いていただけますか？例: 「root cause は何か」「最初に何をすべきか」「メトリクスに異常はあるか」"
+    : "I apologize. Could you rephrase your question? For example: \"What is the root cause?\", \"What should I do first?\", or \"Are the metrics abnormal?\"";
+}
+
 function summarizeEvidence(evidence: EvidenceResponse["surfaces"]) {
   return {
     traces: evidence.traces.observed.length,
@@ -627,7 +716,14 @@ async function buildManualEvidenceQueryAnswer(
   evidence: EvidenceResponse,
   question: string,
   history: EvidenceConversationTurn[],
-  options: { provider?: ProviderName; model?: string; locale: "en" | "ja"; isSystemFollowup?: boolean },
+  options: {
+    provider?: ProviderName;
+    model?: string;
+    locale: "en" | "ja";
+    isSystemFollowup?: boolean;
+    replyToClarification?: { originalQuestion: string; clarificationText: string };
+    clarificationChainLength?: number;
+  },
 ): Promise<EvidenceQueryResponse> {
   if (/^(hi|hello|hey|こんにちは|こんばんは|おはよう)/i.test(question.trim())) {
     return buildDeterministicNoAnswer(
@@ -637,10 +733,40 @@ async function buildManualEvidenceQueryAnswer(
     );
   }
 
+  // Phase 4: Detect frustration/meta-speech
+  if (detectFrustration(question)) {
+    if (options.replyToClarification) {
+      // Re-process the original question with forced answer mode
+      return buildManualEvidenceQueryAnswer(
+        diagnosisResult,
+        evidence,
+        options.replyToClarification.originalQuestion,
+        history,
+        { ...options, isSystemFollowup: true, replyToClarification: undefined },
+      );
+    }
+    return buildDeterministicNoAnswer(
+      question,
+      evidence,
+      localizeMetaSpeechResponse(options.locale),
+    );
+  }
+
+  // Phase 3: Resolve numbered references when replying to clarification
+  let effectiveQuestionInput = question;
+  if (options.replyToClarification) {
+    const resolved = resolveNumberedReply(question, options.replyToClarification.clarificationText);
+    if (resolved) {
+      effectiveQuestionInput = `${options.replyToClarification.originalQuestion} — ${resolved}`;
+    } else {
+      effectiveQuestionInput = `${options.replyToClarification.originalQuestion} (${question})`;
+    }
+  }
+
   const catalog = buildEvidenceCatalog(evidence, options.locale);
   const planningIntent: IntentProfile = { kind: "general", preferredSurfaces: ["traces", "metrics", "logs"] };
-  const planningCandidates = retrieveEvidence(question, catalog, planningIntent).slice(0, 8);
-  const explanatoryTerm = detectExplanatoryTerm(question, options.locale);
+  const planningCandidates = retrieveEvidence(effectiveQuestionInput, catalog, planningIntent).slice(0, 8);
+  const explanatoryTerm = detectExplanatoryTerm(effectiveQuestionInput, options.locale);
   if (explanatoryTerm) {
     return buildExplanatoryAnswer(
       question,
@@ -652,15 +778,18 @@ async function buildManualEvidenceQueryAnswer(
     );
   }
 
-  let effectiveQuestion = question;
+  let effectiveQuestion = effectiveQuestionInput;
   let intent: IntentProfile = planningIntent;
   let answerMode: "answer" | "action" | "missing_evidence" = "answer";
+
+  // Phase 5: Force answer mode if clarification chain is too long (>= 2)
+  const forceBestEffort = (options.clarificationChainLength ?? 0) >= 2 || options.isSystemFollowup;
 
   try {
     const plan = await generateEvidencePlan(
       {
-        question,
-        isSystemFollowup: options.isSystemFollowup,
+        question: effectiveQuestionInput,
+        isSystemFollowup: forceBestEffort,
         history,
         diagnosis: {
           whatHappened: diagnosisResult.summary.what_happened,
@@ -677,7 +806,7 @@ async function buildManualEvidenceQueryAnswer(
       },
     );
 
-    if (plan.mode === "clarification" && !options.isSystemFollowup) {
+    if (plan.mode === "clarification" && !forceBestEffort) {
       return {
         question,
         status: "clarification",
@@ -688,7 +817,7 @@ async function buildManualEvidenceQueryAnswer(
       };
     }
 
-    // When isSystemFollowup is true and the planner still chose clarification,
+    // When forceBestEffort is true and the planner still chose clarification,
     // treat the rewritten question as an "answer" mode — never surface clarification.
     effectiveQuestion = plan.rewrittenQuestion;
     answerMode = plan.mode === "clarification" ? "answer" : plan.mode;
@@ -710,7 +839,7 @@ async function buildManualEvidenceQueryAnswer(
   try {
     const generated = await generateEvidenceQuery(
       {
-        question,
+        question: effectiveQuestionInput,
         answerMode,
         history,
         intent: intent.kind,
@@ -876,6 +1005,8 @@ export async function runManualEvidenceQuery(options: ManualExecutionOptions & {
   diagnosisResult?: DiagnosisResult;
   evidence?: EvidenceResponse;
   isSystemFollowup?: boolean;
+  replyToClarification?: { originalQuestion: string; clarificationText: string };
+  clarificationChainLength?: number;
 }): Promise<EvidenceQueryResponse> {
   let diagnosisResult = options.diagnosisResult;
   let evidence = options.evidence;
@@ -919,6 +1050,8 @@ export async function runManualEvidenceQuery(options: ManualExecutionOptions & {
       model,
       locale,
       isSystemFollowup: options.isSystemFollowup,
+      replyToClarification: options.replyToClarification,
+      clarificationChainLength: options.clarificationChainLength ?? 0,
     },
   );
 }

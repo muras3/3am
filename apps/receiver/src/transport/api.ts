@@ -547,6 +547,8 @@ export function createApiRouter(
             evidence,
             locale,
             isSystemFollowup: parsed.data.isSystemFollowup ?? false,
+            replyToClarification: parsed.data.replyToClarification,
+            clarificationChainLength: parsed.data.clarificationChainLength ?? 0,
           });
           return c.json(wsResult.result);
         } catch (error) {
@@ -573,6 +575,8 @@ export function createApiRouter(
             evidence,
             locale,
             isSystemFollowup: parsed.data.isSystemFollowup ?? false,
+            replyToClarification: parsed.data.replyToClarification,
+            clarificationChainLength: parsed.data.clarificationChainLength ?? 0,
           });
           if (doResponse.type === "error_response") {
             return c.json({
@@ -610,6 +614,8 @@ export function createApiRouter(
           evidence,
           locale,
           isSystemFollowup: parsed.data.isSystemFollowup ?? false,
+          replyToClarification: parsed.data.replyToClarification,
+          clarificationChainLength: parsed.data.clarificationChainLength ?? 0,
         });
         try {
           const jobResult = await bridgeJobQueue.waitForResult(jobId, 60_000);
@@ -658,6 +664,8 @@ export function createApiRouter(
             evidence,
             locale,
             isSystemFollowup: parsed.data.isSystemFollowup ?? false,
+            replyToClarification: parsed.data.replyToClarification,
+            clarificationChainLength: parsed.data.clarificationChainLength ?? 0,
           }),
         });
         if (!bridgeResponse.ok) {
@@ -687,6 +695,8 @@ export function createApiRouter(
       locale,
       parsed.data.history ?? [],
       parsed.data.isSystemFollowup ?? false,
+      parsed.data.replyToClarification,
+      parsed.data.clarificationChainLength ?? 0,
     );
     return c.json(result);
   });

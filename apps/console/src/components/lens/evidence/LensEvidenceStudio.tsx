@@ -29,7 +29,7 @@ function historyToRequest(history: QAHistoryItem[]) {
     if (entry.status === "answered" && entry.response) {
       const assistantContent = entry.response.segments.length > 0
         ? entry.response.segments.map((segment) => segment.text).join(" ")
-        : entry.response.noAnswerReason;
+        : entry.response.clarificationQuestion ?? entry.response.noAnswerReason;
       if (assistantContent) {
         turns.push({ role: "assistant", content: assistantContent });
       }
@@ -148,9 +148,42 @@ export function LensEvidenceStudio({ incidentId }: Props) {
   function handleSubmitQuestion(question: string) {
     const entryId = `qa-${nextHistoryId.current++}`;
     const isFollowup = history.length > 0;
+
+    // Detect if the user is replying to a clarification question
+    const lastEntry = history.at(-1);
+    const isReplyToClarification =
+      lastEntry?.status === "answered" &&
+      lastEntry?.response?.status === "clarification" &&
+      lastEntry?.response?.clarificationQuestion;
+
+    // Count consecutive clarification turns in the chain
+    let clarificationChainLength = 0;
+    if (isReplyToClarification) {
+      for (let i = history.length - 1; i >= 0; i--) {
+        if (history[i]?.response?.status === "clarification") {
+          clarificationChainLength++;
+        } else {
+          break;
+        }
+      }
+    }
+
+    const replyToClarification = isReplyToClarification
+      ? {
+          originalQuestion: lastEntry.question,
+          clarificationText: lastEntry.response!.clarificationQuestion!,
+        }
+      : undefined;
+
     setHistory((current) => [...current, { id: entryId, question, status: "pending" }]);
     groundedQueryMutation.mutate(
-      { question, isFollowup, history: historyToRequest(history) },
+      {
+        question,
+        isFollowup,
+        ...(replyToClarification && { replyToClarification }),
+        ...(clarificationChainLength > 0 && { clarificationChainLength }),
+        history: historyToRequest(history),
+      },
       {
         onSuccess: (response) => {
           setHistory((current) =>

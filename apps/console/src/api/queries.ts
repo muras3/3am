@@ -79,6 +79,11 @@ export const curatedQueries = {
 export interface EvidenceQueryRequest {
   question: string;
   isFollowup?: boolean;
+  replyToClarification?: {
+    originalQuestion: string;
+    clarificationText: string;
+  };
+  clarificationChainLength?: number;
   history?: Array<{
     role: "user" | "assistant";
     content: string;

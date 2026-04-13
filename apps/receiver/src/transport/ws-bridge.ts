@@ -70,6 +70,8 @@ export interface EvidenceQueryRequest {
   evidence?: unknown;
   locale?: string;
   isSystemFollowup?: boolean;
+  replyToClarification?: { originalQuestion: string; clarificationText: string };
+  clarificationChainLength?: number;
 }
 
 export type BridgeRequest = ChatRequest | DiagnoseRequest | EvidenceQueryRequest;
@@ -266,6 +268,8 @@ export class WsBridgeManager {
     evidence?: unknown;
     locale?: string;
     isSystemFollowup?: boolean;
+    replyToClarification?: { originalQuestion: string; clarificationText: string };
+    clarificationChainLength?: number;
   }): Promise<{ result: unknown }> {
     const response = await this.sendRequest({
       type: "evidence_query_request",

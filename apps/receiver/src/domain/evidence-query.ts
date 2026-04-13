@@ -87,6 +87,107 @@ function localizeNoAnswerForGreeting(locale: "en" | "ja"): string {
     : "Ask about traces, metrics, logs, or the diagnosed cause for this incident.";
 }
 
+// ── Phase 3: Numbered option resolution ─────────────────────────
+
+/**
+ * Extracts numbered options from a clarification question text.
+ * Matches patterns like "1. option text", "1) option text", "1: option text"
+ */
+function extractNumberedOptions(clarificationText: string): Map<number, string> {
+  const options = new Map<number, string>();
+  const lines = clarificationText.split(/\n/);
+  for (const line of lines) {
+    const match = /^\s*(\d+)[.):\s]+(.+)/.exec(line.trim());
+    if (match) {
+      const num = parseInt(match[1]!, 10);
+      const text = match[2]!.trim();
+      if (num > 0 && num <= 20 && text.length > 0) {
+        options.set(num, text);
+      }
+    }
+  }
+  return options;
+}
+
+/**
+ * Resolves numbered references in a user reply against clarification options.
+ * "1" -> first option, "1と2" / "1 and 2" / "(1),(2)" -> both options joined.
+ * Returns null if the reply doesn't match a number pattern.
+ */
+function resolveNumberedReply(
+  reply: string,
+  clarificationText: string,
+): string | null {
+  const options = extractNumberedOptions(clarificationText);
+  if (options.size === 0) return null;
+
+  // Match pure number references: "1", "1と2", "1 and 2", "(1)と(2)", "1,2,3"
+  const trimmed = reply.trim();
+  const numberPattern = /^[\s(]*(\d+)[\s)]*(?:[,、とand\s]+[\s(]*(\d+)[\s)]*)*$/i;
+  if (!numberPattern.test(trimmed)) return null;
+
+  // Extract all numbers from the reply
+  const numbers: number[] = [];
+  const numRegex = /(\d+)/g;
+  let numMatch: RegExpExecArray | null;
+  while ((numMatch = numRegex.exec(trimmed)) !== null) {
+    numbers.push(parseInt(numMatch[1]!, 10));
+  }
+
+  if (numbers.length === 0) return null;
+
+  // Check all referenced numbers exist in options
+  const resolved: string[] = [];
+  for (const num of numbers) {
+    const option = options.get(num);
+    if (!option) return null; // Number doesn't match any option
+    resolved.push(option);
+  }
+
+  return resolved.join("; ");
+}
+
+// ── Phase 4: Meta-speech (frustration/off-topic) detection ──────
+
+const FRUSTRATION_PATTERNS_EN = [
+  /\b(answer|just answer|tell me|stop asking|quit asking|enough|frustrated|annoyed|irritated)\b/i,
+  /\b(are you (stupid|dumb|broken|crazy|insane|nuts))\b/i,
+  /\b(wtf|wth|omg|ffs|damn|hell|crap)\b/i,
+  /\b(useless|pointless|waste of time|not helpful|unhelpful)\b/i,
+  /\b(i (already|just) (said|told|answered|explained))\b/i,
+  /\b(read my (question|message|input))\b/i,
+  /^(no|yes|ok|okay|sure|fine|whatever)$/i,
+];
+
+const FRUSTRATION_PATTERNS_JA = [
+  /答え(て|ろ|てくれ|なさい)/,
+  /(いかれ|おかしい|壊れ|バカ|アホ|ダメ)/,
+  /(意味ない|使えない|役に立たない|無駄)/,
+  /(もう(いい|やめ)|いい加減)/,
+  /(さっき(言った|答えた|書いた))/,
+  /(ちゃんと(読め|見て|聞いて))/,
+  /^(はい|いいえ|うん|ううん|まあ|別に)$/,
+];
+
+function detectFrustration(question: string): boolean {
+  const trimmed = question.trim();
+  if (trimmed.length === 0) return false;
+
+  for (const pattern of FRUSTRATION_PATTERNS_EN) {
+    if (pattern.test(trimmed)) return true;
+  }
+  for (const pattern of FRUSTRATION_PATTERNS_JA) {
+    if (pattern.test(trimmed)) return true;
+  }
+  return false;
+}
+
+function localizeMetaSpeechResponse(locale: "en" | "ja"): string {
+  return locale === "ja"
+    ? "すみません。質問を別の言い方で聞いていただけますか？例: 「root cause は何か」「最初に何をすべきか」「メトリクスに異常はあるか」"
+    : "I apologize. Could you rephrase your question? For example: \"What is the root cause?\", \"What should I do first?\", or \"Are the metrics abnormal?\"";
+}
+
 function buildDirectAnswer(
   intent: IntentProfile,
   locale: "en" | "ja",
@@ -733,6 +834,8 @@ export async function buildEvidenceQueryAnswer(
   locale: "en" | "ja" = "en",
   history: EvidenceConversationTurn[] = [],
   isSystemFollowup = false,
+  replyToClarification?: { originalQuestion: string; clarificationText: string },
+  clarificationChainLength = 0,
 ): Promise<EvidenceQueryResponse> {
   const diagnosisState = determineDiagnosisState(incident);
   const curatedEvidence = await buildCuratedEvidence(incident, telemetryStore);
@@ -761,10 +864,45 @@ export async function buildEvidenceQueryAnswer(
     );
   }
 
+  // Phase 4: Detect frustration/meta-speech
+  if (detectFrustration(question)) {
+    // If there's a pending clarification, try to answer the original question best-effort
+    if (replyToClarification) {
+      // Re-process the original question with forced answer mode
+      return buildEvidenceQueryAnswer(
+        incident,
+        telemetryStore,
+        replyToClarification.originalQuestion,
+        isFollowup,
+        locale,
+        history,
+        true, // treat as system followup to suppress clarification
+      );
+    }
+    return buildDeterministicNoAnswer(
+      question,
+      curatedEvidence,
+      localizeMetaSpeechResponse(locale),
+    );
+  }
+
+  // Phase 3: Resolve numbered references when replying to clarification
+  let effectiveQuestionInput = question;
+  if (replyToClarification) {
+    const resolved = resolveNumberedReply(question, replyToClarification.clarificationText);
+    if (resolved) {
+      // Combine original question context with resolved answer
+      effectiveQuestionInput = `${replyToClarification.originalQuestion} — ${resolved}`;
+    } else {
+      // User typed a free-text answer; combine with original question
+      effectiveQuestionInput = `${replyToClarification.originalQuestion} (${question})`;
+    }
+  }
+
   const catalog = buildEvidenceCatalog(curatedEvidence, locale);
   const planningIntent: IntentProfile = { kind: "general", preferredSurfaces: ["traces", "metrics", "logs"] };
-  const planningCandidates = retrieveEvidence(question, catalog, planningIntent).slice(0, 8);
-  const explanatoryTerm = detectExplanatoryTerm(question, locale);
+  const planningCandidates = retrieveEvidence(effectiveQuestionInput, catalog, planningIntent).slice(0, 8);
+  const explanatoryTerm = detectExplanatoryTerm(effectiveQuestionInput, locale);
   if (explanatoryTerm) {
     return buildExplanatoryAnswer(
       question,
@@ -776,15 +914,18 @@ export async function buildEvidenceQueryAnswer(
     );
   }
 
-  let effectiveQuestion = question;
+  let effectiveQuestion = effectiveQuestionInput;
   let intent: IntentProfile = planningIntent;
   let answerMode: "answer" | "action" | "missing_evidence" = "answer";
+
+  // Phase 5: Force answer mode if clarification chain is too long (>= 2)
+  const forceBestEffort = clarificationChainLength >= 2 || isSystemFollowup;
 
   try {
     const plan = await generateEvidencePlan(
       {
-        question,
-        isSystemFollowup,
+        question: effectiveQuestionInput,
+        isSystemFollowup: forceBestEffort,
         history,
         diagnosis: incident.diagnosisResult
           ? {
@@ -804,7 +945,7 @@ export async function buildEvidenceQueryAnswer(
       },
     );
 
-    if (plan.mode === "clarification" && !isSystemFollowup) {
+    if (plan.mode === "clarification" && !forceBestEffort) {
       return {
         question,
         status: "clarification",
@@ -815,7 +956,7 @@ export async function buildEvidenceQueryAnswer(
       };
     }
 
-    // When isSystemFollowup is true and the planner still chose clarification,
+    // When forceBestEffort is true and the planner still chose clarification,
     // treat the rewritten question as an "answer" mode — never surface clarification.
     effectiveQuestion = plan.rewrittenQuestion;
     answerMode = plan.mode === "clarification" ? "answer" : plan.mode;
@@ -843,7 +984,7 @@ export async function buildEvidenceQueryAnswer(
   try {
     const generated = await generateEvidenceQuery(
       {
-        question,
+        question: effectiveQuestionInput,
         answerMode,
         history,
         intent: intent.kind,

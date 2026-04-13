@@ -284,6 +284,11 @@ export const EvidenceQueryRequestSchema = z.strictObject({
   isFollowup: z.boolean().optional(),
   isSystemFollowup: z.boolean().optional(),
   locale: z.enum(["en", "ja"]).optional(),
+  replyToClarification: z.strictObject({
+    originalQuestion: z.string(),
+    clarificationText: z.string(),
+  }).optional(),
+  clarificationChainLength: z.number().int().min(0).max(10).optional(),
   history: z.array(z.strictObject({
     role: z.enum(["user", "assistant"]),
     content: z.string().min(1).max(4000),

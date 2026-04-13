@@ -378,6 +378,225 @@ describe('buildEvidenceQueryAnswer', () => {
     expect(result.followups.length).toBeGreaterThan(0)
   })
 
+  // ── Phase 1: clarification question included in history serialization ────
+  // (This is a console-side behavior, tested via integration / QAFrame tests)
+
+  // ── Phase 3: Numbered reference resolution ─────────────────────────────
+
+  it('resolves numbered reply "1" against clarification options', async () => {
+    generateEvidencePlanMock.mockResolvedValueOnce({
+      mode: 'answer',
+      rewrittenQuestion: 'Show me the trace path for the first failure',
+      preferredSurfaces: ['traces', 'logs', 'metrics'],
+    })
+    const incident = makeIncident({ diagnosisResult: makeDiagnosisResult() })
+    const store = makeMockStore()
+
+    const result = await buildEvidenceQueryAnswer(
+      incident,
+      store,
+      '1',
+      true,
+      'en',
+      [],
+      false,
+      {
+        originalQuestion: 'What went wrong?',
+        clarificationText: '1. The trace path for the first failure\n2. The metric anomaly during the incident',
+      },
+    )
+
+    // Should combine the original question with the resolved option
+    expect(result.status).toBe('answered')
+    expect(result.segments.length).toBeGreaterThan(0)
+  })
+
+  it('resolves numbered reply "1と2" in Japanese', async () => {
+    generateEvidencePlanMock.mockResolvedValueOnce({
+      mode: 'answer',
+      rewrittenQuestion: 'Show traces and metrics',
+      preferredSurfaces: ['traces', 'metrics', 'logs'],
+    })
+    const incident = makeIncident({ diagnosisResult: makeDiagnosisResult() })
+
+    const result = await buildEvidenceQueryAnswer(
+      incident,
+      makeMockStore(),
+      '1と2',
+      true,
+      'ja',
+      [],
+      false,
+      {
+        originalQuestion: '何が問題？',
+        clarificationText: '1. トレースの失敗経路\n2. メトリクスの異常',
+      },
+    )
+
+    expect(result.status).toBe('answered')
+  })
+
+  it('passes through free-text reply to clarification with original question context', async () => {
+    generateEvidencePlanMock.mockResolvedValueOnce({
+      mode: 'answer',
+      rewrittenQuestion: 'What went wrong with the trace latency?',
+      preferredSurfaces: ['traces', 'logs', 'metrics'],
+    })
+    const incident = makeIncident({ diagnosisResult: makeDiagnosisResult() })
+
+    const result = await buildEvidenceQueryAnswer(
+      incident,
+      makeMockStore(),
+      'I want to see the latency details',
+      true,
+      'en',
+      [],
+      false,
+      {
+        originalQuestion: 'What went wrong?',
+        clarificationText: 'Could you be more specific about what aspect you want to explore?',
+      },
+    )
+
+    expect(result.status).toBe('answered')
+  })
+
+  // ── Phase 4: Meta-speech / frustration detection ───────────────────────
+
+  it('returns meta-speech response for frustration expressions (en)', async () => {
+    const incident = makeIncident({ diagnosisResult: makeDiagnosisResult() })
+
+    const result = await buildEvidenceQueryAnswer(
+      incident,
+      makeMockStore(),
+      'just answer me already',
+      false,
+      'en',
+    )
+
+    expect(result.status).toBe('no_answer')
+    expect(result.noAnswerReason).toContain('rephrase')
+  })
+
+  it('returns meta-speech response for frustration expressions (ja)', async () => {
+    const incident = makeIncident({ diagnosisResult: makeDiagnosisResult() })
+
+    const result = await buildEvidenceQueryAnswer(
+      incident,
+      makeMockStore(),
+      'いかれてる',
+      false,
+      'ja',
+    )
+
+    expect(result.status).toBe('no_answer')
+    expect(result.noAnswerReason).toContain('質問を別の言い方')
+  })
+
+  it('frustration during clarification falls back to original question best-effort', async () => {
+    generateEvidencePlanMock.mockResolvedValueOnce({
+      mode: 'answer',
+      rewrittenQuestion: 'What went wrong?',
+      preferredSurfaces: ['traces', 'metrics', 'logs'],
+    })
+    const incident = makeIncident({ diagnosisResult: makeDiagnosisResult() })
+
+    const result = await buildEvidenceQueryAnswer(
+      incident,
+      makeMockStore(),
+      '答えろ',
+      true,
+      'ja',
+      [],
+      false,
+      {
+        originalQuestion: '何が起きた？',
+        clarificationText: '何を知りたいかを一段具体化して。',
+      },
+    )
+
+    // Should attempt to answer the original question instead of showing frustration message
+    expect(result.status).toBe('answered')
+    expect(result.segments.length).toBeGreaterThan(0)
+  })
+
+  // ── Phase 5: Clarification escape after 2 consecutive clarifications ───
+
+  it('forces best-effort answer when clarificationChainLength >= 2', async () => {
+    // The planner would normally return clarification, but should be forced to answer
+    generateEvidencePlanMock.mockResolvedValueOnce({
+      mode: 'clarification',
+      rewrittenQuestion: 'Clarify again.',
+      preferredSurfaces: ['traces'],
+      clarificationQuestion: 'もう一回聞くよ',
+    })
+    const incident = makeIncident({ diagnosisResult: makeDiagnosisResult() })
+
+    const result = await buildEvidenceQueryAnswer(
+      incident,
+      makeMockStore(),
+      'もっと具体的に',
+      true,
+      'ja',
+      [],
+      false,
+      undefined,
+      2, // clarificationChainLength >= 2 forces best-effort
+    )
+
+    // Should NOT return clarification since chain is too long
+    expect(result.status).not.toBe('clarification')
+    expect(result.segments.length).toBeGreaterThan(0)
+  })
+
+  it('allows clarification when clarificationChainLength < 2', async () => {
+    generateEvidencePlanMock.mockResolvedValueOnce({
+      mode: 'clarification',
+      rewrittenQuestion: 'Clarify.',
+      preferredSurfaces: ['traces'],
+      clarificationQuestion: '何を知りたいかを一段具体化して。',
+    })
+    const incident = makeIncident({ diagnosisResult: makeDiagnosisResult() })
+
+    const result = await buildEvidenceQueryAnswer(
+      incident,
+      makeMockStore(),
+      'どうあるべき？',
+      true,
+      'ja',
+      [],
+      false,
+      undefined,
+      1, // Still under the threshold
+    )
+
+    expect(result.status).toBe('clarification')
+    expect(result.clarificationQuestion).toBeDefined()
+  })
+
+  // ── Schema backward compatibility ─────────────────────────────────────
+
+  it('old clients without replyToClarification still work (backward compat)', async () => {
+    const incident = makeIncident({ diagnosisResult: makeDiagnosisResult() })
+    const store = makeMockStore()
+
+    // Simulate old client: no replyToClarification, no clarificationChainLength
+    const result = await buildEvidenceQueryAnswer(
+      incident,
+      store,
+      'What happened?',
+      false,
+      'en',
+      [],
+      false,
+      // no replyToClarification
+      // no clarificationChainLength
+    )
+
+    expect(result.status).toBe('answered')
+    expect(result.segments.length).toBeGreaterThan(0)
+  })
+
   it('answers missing-log questions without collapsing back to the generic cause template', async () => {
     const incident = makeIncident({
       diagnosisResult: makeDiagnosisResult(),
