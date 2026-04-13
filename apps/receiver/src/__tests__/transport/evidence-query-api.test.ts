@@ -807,4 +807,87 @@ describe('POST /api/incidents/:id/evidence/query (bridgeJobQueue path)', () => {
     })
     await queryPromise
   })
+
+  // ── Fix: resolvedAuthToken consistency (指摘2) ────────────────────────
+  it('bridge endpoints use resolvedAuthToken passed to createApiRouter (not just env var)', async () => {
+    // Create app with a resolvedAuthToken that differs from env — simulates
+    // Vercel path where authToken is stored in DB and resolved before createApiRouter is called.
+    const resolvedToken = 'resolved-db-token'
+    const { createApiRouter } = await import('../../transport/api.js')
+    const { MemoryTelemetryAdapter } = await import('../../telemetry/adapters/memory.js')
+    const queueForTest = new BridgeJobQueue()
+    const apiApp = createApiRouter(
+      new MemoryAdapter(),
+      undefined,
+      new MemoryTelemetryAdapter(),
+      { generationThreshold: 0 },
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      queueForTest,
+      resolvedToken, // resolvedAuthToken — takes precedence over env
+    )
+
+    // Request with the resolved token should succeed
+    const res = await apiApp.request('/api/bridge/jobs', {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${resolvedToken}` },
+    })
+    expect(res.status).toBe(200)
+
+    // Request with env token (if different) should be rejected
+    const wrongRes = await apiApp.request('/api/bridge/jobs', {
+      method: 'GET',
+      headers: { Authorization: 'Bearer wrong-token' },
+    })
+    expect(wrongRes.status).toBe(401)
+
+    queueForTest.destroy()
+  })
+
+  // ── Fix: bridge result payload validation (指摘4) ──────────────────────
+  it('POST /api/bridge/results/:jobId rejects unknown response type', async () => {
+    const res = await app.request('/api/bridge/results/some-job', {
+      method: 'POST',
+      headers: { ...authHeader(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type: 'bogus_type', id: 'some-job' }),
+    })
+    expect(res.status).toBe(400)
+    const body = await res.json() as Record<string, unknown>
+    expect(String(body['error'])).toContain('invalid type')
+  })
+
+  it('POST /api/bridge/results/:jobId rejects evidence_query_response without result field', async () => {
+    const res = await app.request('/api/bridge/results/some-job', {
+      method: 'POST',
+      headers: { ...authHeader(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type: 'evidence_query_response', id: 'some-job' }),
+    })
+    expect(res.status).toBe(400)
+    const body = await res.json() as Record<string, unknown>
+    expect(String(body['error'])).toContain('result')
+  })
+
+  it('POST /api/bridge/results/:jobId rejects chat_response without reply field', async () => {
+    const res = await app.request('/api/bridge/results/some-job', {
+      method: 'POST',
+      headers: { ...authHeader(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type: 'chat_response', id: 'some-job' }),
+    })
+    expect(res.status).toBe(400)
+    const body = await res.json() as Record<string, unknown>
+    expect(String(body['error'])).toContain('reply')
+  })
+
+  it('POST /api/bridge/results/:jobId rejects error_response without error field', async () => {
+    const res = await app.request('/api/bridge/results/some-job', {
+      method: 'POST',
+      headers: { ...authHeader(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type: 'error_response', id: 'some-job' }),
+    })
+    expect(res.status).toBe(400)
+    const body = await res.json() as Record<string, unknown>
+    expect(String(body['error'])).toContain('error')
+  })
 })

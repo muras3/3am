@@ -328,7 +328,7 @@ export function createApp(storage?: StorageDriver, options?: AppOptions): Hono {
   const wsBridge = options?.wsBridge;
 
   app.route("/", createIngestRouter(store, spanBuffer, telemetryStore, diagnosisConfig, runner, options?.enqueueDiagnosis));
-  app.route("/", createApiRouter(store, spanBuffer, telemetryStore, diagnosisConfig, runner, options?.enqueueDiagnosis, wsBridge, options?.bridgeDoForwarder, options?.bridgeJobQueue));
+  app.route("/", createApiRouter(store, spanBuffer, telemetryStore, diagnosisConfig, runner, options?.enqueueDiagnosis, wsBridge, options?.bridgeDoForwarder, options?.bridgeJobQueue, authToken));
 
   // Bridge status endpoint — protected by Bearer auth (under /api/*)
   const bridgeDoStatus = options?.bridgeDoStatus;

@@ -298,11 +298,14 @@ export function createApiRouter(
   wsBridge?: WsBridgeManager,
   bridgeDoForwarder?: BridgeDoForwarder,
   bridgeJobQueue?: BridgeJobQueue,
+  resolvedAuthToken?: string | null,
 ): Hono {
   const app = new Hono();
 
   // JWT session cookie for browser clients.
-  const authToken = process.env["RECEIVER_AUTH_TOKEN"];
+  // Prefer the caller-provided resolvedAuthToken (e.g. from DB storage on Vercel);
+  // fall back to RECEIVER_AUTH_TOKEN env var for local dev and CF Workers paths.
+  const authToken = resolvedAuthToken ?? process.env["RECEIVER_AUTH_TOKEN"];
   const allowInsecure = process.env["ALLOW_INSECURE_DEV_MODE"] === "true";
 
   // Rate limit chat endpoint — LLM cost protection (B-11)
@@ -982,6 +985,31 @@ export function createApiRouter(
       const result = body as BridgeResponse;
       if (!result.type) {
         return c.json({ error: "missing type field" }, 400);
+      }
+
+      // Validate type is a known bridge response type
+      const ALLOWED_RESPONSE_TYPES = [
+        "evidence_query_response",
+        "chat_response",
+        "error_response",
+        "diagnose_response",
+      ] as const;
+      if (!ALLOWED_RESPONSE_TYPES.includes(result.type as (typeof ALLOWED_RESPONSE_TYPES)[number])) {
+        return c.json({ error: `invalid type: ${result.type}` }, 400);
+      }
+
+      // Validate required fields per response type
+      if (result.type === "evidence_query_response" && !("result" in body)) {
+        return c.json({ error: "evidence_query_response requires result field" }, 400);
+      }
+      if (result.type === "diagnose_response" && !("result" in body)) {
+        return c.json({ error: "diagnose_response requires result field" }, 400);
+      }
+      if (result.type === "chat_response" && !("reply" in body)) {
+        return c.json({ error: "chat_response requires reply field" }, 400);
+      }
+      if (result.type === "error_response" && !("error" in body)) {
+        return c.json({ error: "error_response requires error field" }, 400);
       }
 
       const resolved = bridgeJobQueue.resolve(jobId, { ...result, id: jobId });

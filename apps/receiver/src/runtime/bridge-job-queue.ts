@@ -37,8 +37,8 @@ interface JobEntry {
 }
 
 const DEFAULT_TTL_MS = 120_000; // 2 minutes — jobs older than this are discarded
-const DEFAULT_LEASE_TIMEOUT_MS = 30_000; // 30s — if bridge doesn't resolve, re-enqueue
-const CLEANUP_INTERVAL_MS = 10_000;
+const DEFAULT_LEASE_TIMEOUT_MS = 15_000; // 15s — if bridge doesn't resolve, re-enqueue (max 20s recovery within 60s hold)
+const CLEANUP_INTERVAL_MS = 5_000; // 5s cleanup interval — recovery within 15s+5s=20s
 
 let idCounter = 0;
 

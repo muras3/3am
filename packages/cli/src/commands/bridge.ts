@@ -54,10 +54,9 @@ function isRemoteUrl(url: string): boolean {
 }
 
 /**
- * Detect Vercel receiver URLs. Currently hostname-based (*.vercel.app).
- * Limitation: Vercel receivers behind custom domains are not detected and will
- * attempt the WebSocket path, which fails on Vercel. A future enhancement could
- * probe the receiver's /api/bridge/status to detect platform capabilities.
+ * Detect Vercel receiver URLs via hostname (fast path for *.vercel.app).
+ * Custom-domain Vercel receivers are NOT detected here — use probeWsSupport()
+ * for those, which actually attempts the WS connection and detects failure.
  */
 function isVercelReceiverUrl(url: string): boolean {
   try {
@@ -65,6 +64,60 @@ function isVercelReceiverUrl(url: string): boolean {
   } catch {
     return false;
   }
+}
+
+/**
+ * Probe whether a WebSocket endpoint is reachable and stays connected.
+ * Returns true if the connection remains open for at least timeoutMs.
+ * Returns false if the connection closes/errors within timeoutMs (e.g. Vercel
+ * rejects WS upgrades with code 1006).
+ *
+ * The probe WebSocket is always closed before this function returns.
+ *
+ * Exported for testing.
+ */
+export function probeWsSupport(wsUrl: string, timeoutMs = 3_000): Promise<boolean> {
+  return new Promise((resolve) => {
+    let settled = false;
+    let ws: WebSocket | null = null;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+
+    const settle = (result: boolean) => {
+      if (settled) return;
+      settled = true;
+      if (timer) {
+        clearTimeout(timer);
+        timer = null;
+      }
+      if (ws) {
+        try { ws.close(1000, "probe done"); } catch { /* ignore */ }
+        ws = null;
+      }
+      resolve(result);
+    };
+
+    try {
+      ws = new WebSocket(wsUrl);
+    } catch {
+      settle(false);
+      return;
+    }
+
+    ws.addEventListener("open", () => {
+      // Connection opened — wait for timeoutMs to confirm it stays up
+      timer = setTimeout(() => settle(true), timeoutMs);
+    });
+
+    ws.addEventListener("close", () => {
+      // Closed before timeout (or before open) — WS not supported
+      settle(false);
+    });
+
+    ws.addEventListener("error", () => {
+      // Error event always precedes close; settle false here too
+      settle(false);
+    });
+  });
 }
 
 function httpToWs(url: string): string {
@@ -424,33 +477,11 @@ export function runBridge(options: BridgeOptions = {}): { close: () => void } {
     : undefined;
   const authToken = matchedReceiver?.authToken ?? creds.receiverAuthToken;
 
-  if (receiverUrl && isRemoteUrl(receiverUrl) && !isVercelReceiverUrl(receiverUrl)) {
-    const wsUrl = `${httpToWs(receiverUrl)}/bridge/ws${authToken ? `?token=${encodeURIComponent(authToken)}` : ""}`;
-    process.stdout.write(`[bridge-ws] connecting to remote receiver: ${receiverUrl}\n`);
+  // ── Poll mode implementation (shared by Vercel and WS-fallback paths) ──
 
-    const wsClient = new WsBridgeClient(wsUrl, (msg) => {
-      // Handle incoming request from receiver
-      void handleWsMessage(msg, (response) => wsClient.send(response));
-    });
-    wsClient.connect();
-
-    // Graceful shutdown
-    const shutdown = () => {
-      shutdownClaudePool();
-      wsClient.close();
-      server.close();
-    };
-    if (registerSignalHandlers) {
-      process.on("SIGINT", shutdown);
-      process.on("SIGTERM", shutdown);
-    }
-    return { close: shutdown };
-  } else if (receiverUrl && isVercelReceiverUrl(receiverUrl)) {
-    // ── Vercel long-poll bridge ───────────────────────────────────────
-    // Vercel has no WS upgrade. Instead, poll GET /api/bridge/jobs and
-    // POST results back to /api/bridge/results/:jobId.
+  function startPollMode(label: string): { close: () => void } {
     process.stdout.write(
-      `[bridge-poll] starting long-poll bridge for Vercel receiver: ${receiverUrl}\n`,
+      `[bridge-poll] starting long-poll bridge for ${label}: ${receiverUrl}\n`,
     );
 
     const POLL_INTERVAL_MS = 2_000;
@@ -535,12 +566,66 @@ export function runBridge(options: BridgeOptions = {}): { close: () => void } {
     // Start first poll immediately
     void pollOnce().then(() => schedulePoll());
 
-    const shutdown = () => {
-      pollStopped = true;
-      if (pollTimer) {
-        clearTimeout(pollTimer);
-        pollTimer = null;
+    return {
+      close: () => {
+        pollStopped = true;
+        if (pollTimer) {
+          clearTimeout(pollTimer);
+          pollTimer = null;
+        }
+      },
+    };
+  }
+
+  if (receiverUrl && isRemoteUrl(receiverUrl) && !isVercelReceiverUrl(receiverUrl)) {
+    // ── Non-Vercel remote receiver: try WS first, fall back to poll ───────
+    // Custom-domain Vercel receivers will fail the WS probe (code 1006) and
+    // automatically fall back to poll mode. Standard Node.js receivers will
+    // stay connected and continue in WS mode.
+    const wsUrl = `${httpToWs(receiverUrl)}/bridge/ws${authToken ? `?token=${encodeURIComponent(authToken)}` : ""}`;
+    process.stdout.write(`[bridge-ws] connecting to remote receiver: ${receiverUrl}\n`);
+
+    let activePollHandle: { close: () => void } | null = null;
+    let wsClient: WsBridgeClient | null = null;
+
+    // Probe WS support: if the connection closes within 3s, switch to poll mode
+    void probeWsSupport(wsUrl).then((wsSupported) => {
+      if (!wsSupported) {
+        process.stdout.write(
+          `[bridge-ws] WebSocket not supported (probe closed within 3s) — switching to poll mode\n`,
+        );
+        activePollHandle = startPollMode("custom-domain receiver");
+        return;
       }
+
+      // WS probe passed — create the real WsBridgeClient
+      process.stdout.write(`[bridge-ws] WebSocket probe succeeded — using WS mode\n`);
+      const client = new WsBridgeClient(wsUrl, (msg) => {
+        void handleWsMessage(msg, (response) => client.send(response));
+      });
+      wsClient = client;
+      client.connect();
+    });
+
+    // Graceful shutdown
+    const shutdown = () => {
+      shutdownClaudePool();
+      if (wsClient) wsClient.close();
+      if (activePollHandle) activePollHandle.close();
+      server.close();
+    };
+    if (registerSignalHandlers) {
+      process.on("SIGINT", shutdown);
+      process.on("SIGTERM", shutdown);
+    }
+    return { close: shutdown };
+  } else if (receiverUrl && isVercelReceiverUrl(receiverUrl)) {
+    // ── Vercel long-poll bridge (fast path for *.vercel.app) ─────────────
+    // Vercel has no WS upgrade. Skip the WS probe and go directly to poll.
+    const pollHandle = startPollMode("Vercel receiver");
+
+    const shutdown = () => {
+      pollHandle.close();
       shutdownClaudePool();
       server.close();
     };
