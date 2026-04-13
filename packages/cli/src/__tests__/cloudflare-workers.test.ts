@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 vi.mock("node:fs", () => ({
   existsSync: vi.fn(() => false),
@@ -6,8 +6,17 @@ vi.mock("node:fs", () => ({
   writeFileSync: vi.fn(),
 }));
 
+vi.mock("node:child_process", () => ({
+  execFileSync: vi.fn(),
+}));
+
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { resolveCloudflareApiAuth, updateCloudflareObservabilityConfig } from "../commands/cloudflare-workers.js";
+import { execFileSync } from "node:child_process";
+import {
+  connectCloudflareWorkerToReceiver,
+  resolveCloudflareApiAuth,
+  updateCloudflareObservabilityConfig,
+} from "../commands/cloudflare-workers.js";
 
 describe("updateCloudflareObservabilityConfig() — wrangler.jsonc", () => {
   beforeEach(() => {
@@ -197,5 +206,123 @@ describe("resolveCloudflareApiAuth()", () => {
       account: { email: "user@example.com" },
       noInteractive: true,
     })).rejects.toThrow("Workers Scripts:Edit");
+  });
+});
+
+describe("connectCloudflareWorkerToReceiver()", () => {
+  beforeEach(() => {
+    vi.stubEnv("CLOUDFLARE_API_TOKEN", "token-123");
+    vi.mocked(existsSync).mockImplementation((path) => path === "wrangler.toml");
+    vi.mocked(readFileSync).mockImplementation((path) => {
+      if (path === "wrangler.toml") {
+        return 'name = "e2e-order-api"\n';
+      }
+      return "";
+    });
+    vi.mocked(writeFileSync).mockReset();
+    vi.mocked(execFileSync).mockImplementation((command, args) => {
+      if (command === "wrangler" && Array.isArray(args) && args[0] === "whoami") {
+        return Buffer.from(JSON.stringify({
+          email: "dev@example.com",
+          accounts: [{ id: "acct_123" }],
+        }));
+      }
+      if (command === "wrangler" && Array.isArray(args) && args[0] === "deploy") {
+        return Buffer.from("");
+      }
+      throw new Error(`Unexpected execFileSync call: ${command} ${String(args)}`);
+    });
+    vi.stubGlobal("fetch", vi.fn());
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("sends create payloads with normalized OTLP URLs", async () => {
+    const fetchMock = vi.mocked(fetch);
+    fetchMock.mockImplementation(async (input, init) => {
+      const url = String(input);
+      if (url.endsWith("/workers/observability/destinations") && init?.method === "GET") {
+        return new Response(JSON.stringify({
+          success: true,
+          errors: [],
+          messages: [],
+          result: [],
+        }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+
+      if (url.endsWith("/workers/observability/destinations") && init?.method === "POST") {
+        return new Response(JSON.stringify({
+          success: true,
+          errors: [],
+          messages: [{ message: "Resource created" }],
+          result: {
+            slug: "dest-slug",
+            name: "dest-name",
+            enabled: true,
+            configuration: {
+              type: "logpush",
+              logpushDataset: "opentelemetry-logs",
+              url: "https://receiver.example.com/v1/logs",
+            },
+          },
+        }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+
+      throw new Error(`Unexpected fetch call: ${url}`);
+    });
+
+    await connectCloudflareWorkerToReceiver(
+      ".",
+      "https://receiver.example.com/",
+      "tok_abc123",
+      { noInteractive: true },
+    );
+
+    const postCalls = fetchMock.mock.calls.filter(([, init]) => init?.method === "POST");
+    expect(postCalls).toHaveLength(2);
+
+    const tracePayload = JSON.parse(String(postCalls[0]?.[1]?.body)) as Record<string, unknown>;
+    expect(postCalls[0]?.[1]?.headers).toMatchObject({
+      "Content-Type": "application/json",
+      Authorization: "Bearer token-123",
+    });
+    expect(tracePayload).toEqual({
+      name: "e2e-order-api-3am-traces",
+      enabled: true,
+      configuration: {
+        type: "logpush",
+        logpushDataset: "opentelemetry-traces",
+        url: "https://receiver.example.com/v1/traces",
+        headers: {
+          Authorization: "Bearer tok_abc123",
+        },
+      },
+    });
+
+    const logPayload = JSON.parse(String(postCalls[1]?.[1]?.body)) as Record<string, unknown>;
+    expect(postCalls[1]?.[1]?.headers).toMatchObject({
+      "Content-Type": "application/json",
+      Authorization: "Bearer token-123",
+    });
+    expect(logPayload).toEqual({
+      name: "e2e-order-api-3am-logs",
+      enabled: true,
+      configuration: {
+        type: "logpush",
+        logpushDataset: "opentelemetry-logs",
+        url: "https://receiver.example.com/v1/logs",
+        headers: {
+          Authorization: "Bearer tok_abc123",
+        },
+      },
+    });
   });
 });
