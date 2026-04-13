@@ -38,12 +38,14 @@ export function buildNarrativePrompt(
 
   const availableKinds = context.qaContext.availableEvidenceKinds.join(", ");
 
-  // Collect all known evidence IDs for the constraint
-  const allEvidenceIds = context.proofRefs
-    .flatMap((r) => r.evidenceRefs.map((e) => `${e.kind}:${e.id}`));
-  const knownIdsStr = allEvidenceIds.length > 0
-    ? allEvidenceIds.join("\n  ")
-    : "(none)";
+  // Collect all known evidence IDs as structured objects for the constraint.
+  // Presenting them in the same {kind, id} format the output uses reduces the
+  // format-translation burden on the LLM and makes the constraint harder to violate.
+  const allEvidenceRefs = context.proofRefs
+    .flatMap((r) => r.evidenceRefs.map((e) => ({ kind: e.kind, id: e.id })));
+  const knownIdsJson = allEvidenceRefs.length > 0
+    ? JSON.stringify(allEvidenceRefs, null, 2)
+    : "[]";
 
   return `You are generating console-facing narrative for an incident management UI.
 
@@ -96,12 +98,15 @@ ${absenceSummary}
 ### Available Evidence Surfaces
   ${availableKinds}
 
-### Known Evidence IDs — ONLY these IDs are valid
-  ${knownIdsStr}
+### Known Evidence IDs — ONLY these objects are valid for answerEvidenceRefs and evidenceBindings
+${knownIdsJson}
 
-⚠️ HARD RULE: You MUST NOT reference any evidence ID that is not in the list above.
-Do not invent IDs. Do not guess IDs. Do not combine IDs. Do not use metric or field names as IDs.
-If you cannot find a matching ID, omit the reference entirely or set noAnswerReason.
+⚠️ HARD RULE: You MUST NOT use any {kind, id} pair in answerEvidenceRefs or evidenceBindings that is not in the JSON array above.
+- Do NOT invent IDs. Do NOT guess IDs. Do NOT combine IDs.
+- Do NOT use metric names, field names, log message fragments, or service names as IDs.
+- Copy the exact "kind" and "id" values from the array above — no modifications.
+- If you cannot find a matching evidence object for a claim, omit that claim or set noAnswerReason.
+- Violations will cause the evidence ref to be stripped and the claim discarded.
 
 ---
 
@@ -128,9 +133,10 @@ CRITICAL CONSTRAINTS:
 7. qa.answer: A grounded answer referencing the evidence.
 8. qa.answerEvidenceRefs: Flat list of ALL evidence refs that support the answer as a whole.
    Frontend uses this directly — it must not need to aggregate from evidenceBindings.
+   *** ONLY copy {kind, id} objects from the "Known Evidence IDs" array above. Do NOT invent new IDs. ***
    If unanswerable, set to [].
 9. qa.evidenceBindings: Break the answer into claims. Each claim MUST have ≥1 concrete evidence ref.
-   - ONLY use IDs from the "Known Evidence IDs" list above. Do NOT invent IDs.
+   *** ONLY copy {kind, id} objects from the "Known Evidence IDs" array above. Do NOT invent new IDs. ***
    - Each evidenceRef must use kind from: span, log, metric, log_cluster, metric_group.
    - answerEvidenceRefs should be the union of all evidenceBindings refs (plus any additional).
    - If the question cannot be answered with available evidence, set noAnswerReason to a string and leave both answerEvidenceRefs and evidenceBindings as [].
@@ -153,9 +159,9 @@ CRITICAL CONSTRAINTS:
   "qa": {
     "question": "...",
     "answer": "...",
-    "answerEvidenceRefs": [{"kind": "span|log|metric|log_cluster|metric_group", "id": "..."}],
+    "answerEvidenceRefs": [/* ONLY objects from Known Evidence IDs array above — e.g. {"kind": "span", "id": "..."} */],
     "evidenceBindings": [
-      {"claim": "...", "evidenceRefs": [{"kind": "span|log|metric|log_cluster|metric_group", "id": "..."}]}
+      {"claim": "...", "evidenceRefs": [/* ONLY objects from Known Evidence IDs array above */]}
     ],
     "followups": [
       {"question": "...", "targetEvidenceKinds": ["traces|metrics|logs"]}

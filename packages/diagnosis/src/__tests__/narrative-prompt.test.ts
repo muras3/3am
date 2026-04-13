@@ -29,9 +29,16 @@ describe("buildNarrativePrompt", () => {
     expect(prompt).toContain("matchCount=0");
   });
 
-  it("includes the concrete ref constraint", () => {
-    expect(prompt).toContain("ONLY use IDs from");
+  it("includes the concrete ref constraint with structured JSON list", () => {
+    // Verify the hard rule is present
+    expect(prompt).toContain("HARD RULE");
     expect(prompt).toContain("Do NOT invent IDs");
+    // Verify known IDs are rendered as a JSON array (structured format, not plain text)
+    // The prompt should contain a JSON array with kind+id objects
+    expect(prompt).toContain('"kind"');
+    expect(prompt).toContain('"id"');
+    // Verify the in-template reminder near the output fields
+    expect(prompt).toContain("ONLY copy {kind, id} objects from the");
   });
 
   it("includes the wording-only directive", () => {

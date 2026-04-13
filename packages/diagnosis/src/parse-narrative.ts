@@ -32,6 +32,11 @@ function checkStr(path: string, value: string, max: number): void {
  * Rationale: LLMs occasionally hallucinate ref IDs even when instructed not to.
  * Failing the entire diagnose command over a wording artifact would be worse than
  * returning a partial narrative (degraded mode). Stage 1 diagnosis is unaffected.
+ *
+ * Post-strip fallback: if ALL evidence refs were hallucinated (both answerEvidenceRefs
+ * and evidenceBindings become empty after stripping, and noAnswerReason was null),
+ * automatically sets noAnswerReason to a diagnostic message. This prevents a hollow
+ * narrative (empty refs, null noAnswerReason) from reaching the UI silently.
  */
 function stripInvalidEvidenceRefIds(
   narrative: ConsoleNarrative,
@@ -75,12 +80,25 @@ function stripInvalidEvidenceRefIds(
     }))
     .filter((binding) => binding.evidenceRefs.length > 0);
 
+  // If all refs were hallucinated and stripped, set noAnswerReason to surface the
+  // degradation explicitly rather than returning a hollow narrative.
+  const hadRefs =
+    narrative.qa.answerEvidenceRefs.length > 0 ||
+    narrative.qa.evidenceBindings.length > 0;
+  const allStripped =
+    cleanAnswerRefs.length === 0 && cleanBindings.length === 0;
+  const noAnswerReason =
+    hadRefs && allStripped && narrative.qa.noAnswerReason === null
+      ? "Evidence references were invalid and have been removed. The LLM used IDs not present in the packet."
+      : narrative.qa.noAnswerReason;
+
   return {
     ...narrative,
     qa: {
       ...narrative.qa,
       answerEvidenceRefs: cleanAnswerRefs,
       evidenceBindings: cleanBindings,
+      noAnswerReason,
     },
   };
 }
