@@ -78,13 +78,8 @@ export function formatSlackIncidentCreated(
     ];
 
   return {
-    text: buildIncidentText(payload),
-    attachments: [
-      {
-        color: "#E85D3A",
-        blocks,
-      },
-    ],
+    text: `${buildIncidentText(payload)}. Diagnosing now.`,
+    blocks,
   };
 }
 
@@ -127,6 +122,12 @@ export function formatSlackDiagnosisComplete(
             text: { type: "plain_text", text: "View in Console" },
             url: payload.consoleUrl,
           },
+        ],
+      },
+      {
+        type: "context",
+        elements: [
+          { type: "mrkdwn", text: "3am diagnosis" },
         ],
       },
     ],

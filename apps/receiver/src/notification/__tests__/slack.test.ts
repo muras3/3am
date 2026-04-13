@@ -20,25 +20,21 @@ describe("formatSlack", () => {
     expect((result["text"] as string).length).toBeGreaterThan(0);
   });
 
-  it("has attachments[0].color === '#E85D3A'", () => {
+  it("returns top-level blocks for rendering", () => {
     const result = formatSlack(base);
-    const attachments = result["attachments"] as Array<Record<string, unknown>>;
-    expect(attachments).toBeDefined();
-    expect(attachments[0]["color"]).toBe("#E85D3A");
+    expect(Array.isArray(result["blocks"])).toBe(true);
   });
 
-  it("has a blocks array inside attachments[0] with at least 4 blocks", () => {
+  it("has a blocks array with at least 4 blocks", () => {
     const result = formatSlack(base);
-    const attachments = result["attachments"] as Array<Record<string, unknown>>;
-    const blocks = attachments[0]["blocks"] as unknown[];
+    const blocks = result["blocks"] as unknown[];
     expect(Array.isArray(blocks)).toBe(true);
     expect(blocks.length).toBeGreaterThanOrEqual(4);
   });
 
   it("includes a section block with bold title", () => {
     const result = formatSlack(base);
-    const attachments = result["attachments"] as Array<Record<string, unknown>>;
-    const blocks = attachments[0]["blocks"] as Array<Record<string, unknown>>;
+    const blocks = result["blocks"] as Array<Record<string, unknown>>;
     const sectionBlocks = blocks.filter((b) => b["type"] === "section");
     expect(sectionBlocks.length).toBeGreaterThanOrEqual(1);
     const firstSection = sectionBlocks[0] as Record<string, unknown>;
@@ -49,8 +45,7 @@ describe("formatSlack", () => {
 
   it("includes a fields section with Service and Environment", () => {
     const result = formatSlack(base);
-    const attachments = result["attachments"] as Array<Record<string, unknown>>;
-    const blocks = attachments[0]["blocks"] as Array<Record<string, unknown>>;
+    const blocks = result["blocks"] as Array<Record<string, unknown>>;
     const fieldsBlock = blocks.find(
       (b) => b["type"] === "section" && Array.isArray(b["fields"])
     ) as Record<string, unknown> | undefined;
@@ -63,8 +58,7 @@ describe("formatSlack", () => {
 
   it("includes an actions block with a button linking to consoleUrl", () => {
     const result = formatSlack(base);
-    const attachments = result["attachments"] as Array<Record<string, unknown>>;
-    const blocks = attachments[0]["blocks"] as Array<Record<string, unknown>>;
+    const blocks = result["blocks"] as Array<Record<string, unknown>>;
     const actionsBlock = blocks.find((b) => b["type"] === "actions") as
       | Record<string, unknown>
       | undefined;
@@ -78,8 +72,7 @@ describe("formatSlack", () => {
 
   it("includes a context block (footer with timestamp)", () => {
     const result = formatSlack(base);
-    const attachments = result["attachments"] as Array<Record<string, unknown>>;
-    const blocks = attachments[0]["blocks"] as Array<Record<string, unknown>>;
+    const blocks = result["blocks"] as Array<Record<string, unknown>>;
     const contextBlock = blocks.find((b) => b["type"] === "context") as
       | Record<string, unknown>
       | undefined;
