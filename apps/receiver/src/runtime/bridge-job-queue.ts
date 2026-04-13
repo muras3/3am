@@ -10,6 +10,12 @@
  * enqueue and poll requests will see the same in-memory state.
  *
  * If instances diverge (cold start race), the job times out and the console retries.
+ *
+ * Delivery guarantee: at-least-once. A dequeued job whose lease expires (LEASE_TIMEOUT_MS)
+ * is re-enqueued for another bridge to pick up. If the original bridge is merely slow
+ * (not crashed), the LLM call may execute twice. The first resolve() wins; subsequent
+ * resolves are no-ops. This is acceptable because LLM calls are idempotent from the
+ * user's perspective (same question, same context).
  */
 
 import type { BridgeRequest, BridgeResponse } from "../transport/ws-bridge.js";

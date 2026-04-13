@@ -930,6 +930,11 @@ export function createApiRouter(
   // These endpoints are restricted to Bearer token auth only (not session cookies)
   // because they handle sensitive bridge payloads. The authToken is stripped from
   // the job payload to prevent leaking the receiver secret to bridge clients.
+  //
+  // Note: authToken here is read from RECEIVER_AUTH_TOKEN env var (line 305).
+  // On Vercel deployments where bridgeJobQueue is active, the env var is always
+  // set. DB-only token configurations would not reach this code path since
+  // bridgeJobQueue is only instantiated in vercel-entry.ts.
 
   if (bridgeJobQueue) {
     // Bearer-only auth guard — reject session cookie auth for bridge endpoints
