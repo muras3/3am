@@ -893,3 +893,116 @@ describe('followup text self-containment', () => {
     ).toBe(true)
   })
 })
+
+describe('replyToClarification enrichment', () => {
+  it('enriches question with original context when replyToClarification is provided', async () => {
+    // The plan mock should receive the enriched question
+    generateEvidencePlanMock.mockImplementation(async (input: { question: string }) => {
+      // Verify the enriched question was passed to the planner
+      expect(input.question).toContain('What caused the error rate spike')
+      expect(input.question).toContain('the checkout service')
+      return {
+        mode: 'answer',
+        rewrittenQuestion: 'What caused the error rate spike in the checkout service?',
+        preferredSurfaces: ['traces', 'metrics', 'logs'],
+      }
+    })
+    generateEvidenceQueryMock.mockResolvedValueOnce({
+      question: 'the checkout service',
+      status: 'answered',
+      segments: [{
+        id: 'seg-1',
+        kind: 'fact',
+        text: 'The checkout service experienced 504 errors',
+        evidenceRefs: [{ kind: 'span', id: 'span-1' }],
+      }],
+      evidenceSummary: { traces: 1, metrics: 1, logs: 1 },
+      followups: [],
+    })
+
+    const incident = makeIncident({ diagnosisResult: makeDiagnosisResult() })
+    const store = makeMockStore()
+    const result = await buildEvidenceQueryAnswer(
+      incident,
+      store,
+      'the checkout service',
+      true,
+      'en',
+      [],
+      false,
+      { originalQuestion: 'What caused the error rate spike', clarificationText: 'Which service are you asking about?' },
+    )
+
+    expect(result.status).toBe('answered')
+    expect(generateEvidencePlanMock).toHaveBeenCalled()
+  })
+
+  it('passes question unchanged when replyToClarification is not provided', async () => {
+    generateEvidencePlanMock.mockImplementation(async (input: { question: string }) => {
+      expect(input.question).toBe('What caused the error rate spike?')
+      return {
+        mode: 'answer',
+        rewrittenQuestion: 'What caused the error rate spike?',
+        preferredSurfaces: ['traces', 'metrics', 'logs'],
+      }
+    })
+    generateEvidenceQueryMock.mockResolvedValueOnce({
+      question: 'What caused the error rate spike?',
+      status: 'answered',
+      segments: [{
+        id: 'seg-1',
+        kind: 'fact',
+        text: 'The checkout service experienced 504 errors',
+        evidenceRefs: [{ kind: 'span', id: 'span-1' }],
+      }],
+      evidenceSummary: { traces: 1, metrics: 1, logs: 1 },
+      followups: [],
+    })
+
+    const incident = makeIncident({ diagnosisResult: makeDiagnosisResult() })
+    const store = makeMockStore()
+    const result = await buildEvidenceQueryAnswer(
+      incident,
+      store,
+      'What caused the error rate spike?',
+      false,
+      'en',
+      [],
+      false,
+      // no replyToClarification
+    )
+
+    expect(result.status).toBe('answered')
+    expect(generateEvidencePlanMock).toHaveBeenCalled()
+  })
+
+  it('replyToClarification field is optional in EvidenceQueryRequestSchema', async () => {
+    const { EvidenceQueryRequestSchema } = await import('3am-core')
+
+    // Without replyToClarification
+    const withoutResult = EvidenceQueryRequestSchema.safeParse({
+      question: 'What happened?',
+    })
+    expect(withoutResult.success).toBe(true)
+
+    // With replyToClarification
+    const withResult = EvidenceQueryRequestSchema.safeParse({
+      question: 'the checkout service',
+      replyToClarification: {
+        originalQuestion: 'What caused the error?',
+        clarificationText: 'Which service?',
+      },
+    })
+    expect(withResult.success).toBe(true)
+
+    // With invalid replyToClarification (missing required field)
+    const invalidResult = EvidenceQueryRequestSchema.safeParse({
+      question: 'test',
+      replyToClarification: {
+        originalQuestion: 'What?',
+        // missing clarificationText
+      },
+    })
+    expect(invalidResult.success).toBe(false)
+  })
+})

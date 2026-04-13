@@ -733,6 +733,7 @@ export async function buildEvidenceQueryAnswer(
   locale: "en" | "ja" = "en",
   history: EvidenceConversationTurn[] = [],
   isSystemFollowup = false,
+  replyToClarification?: { originalQuestion: string; clarificationText: string },
 ): Promise<EvidenceQueryResponse> {
   const diagnosisState = determineDiagnosisState(incident);
   const curatedEvidence = await buildCuratedEvidence(incident, telemetryStore);
@@ -761,10 +762,17 @@ export async function buildEvidenceQueryAnswer(
     );
   }
 
+  // When replying to a clarification, enrich the question with the original context
+  // so the LLM can understand what the user is responding to
+  let effectiveQuestionInput = question;
+  if (replyToClarification) {
+    effectiveQuestionInput = `${replyToClarification.originalQuestion} (${question})`;
+  }
+
   const catalog = buildEvidenceCatalog(curatedEvidence, locale);
   const planningIntent: IntentProfile = { kind: "general", preferredSurfaces: ["traces", "metrics", "logs"] };
-  const planningCandidates = retrieveEvidence(question, catalog, planningIntent).slice(0, 8);
-  const explanatoryTerm = detectExplanatoryTerm(question, locale);
+  const planningCandidates = retrieveEvidence(effectiveQuestionInput, catalog, planningIntent).slice(0, 8);
+  const explanatoryTerm = detectExplanatoryTerm(effectiveQuestionInput, locale);
   if (explanatoryTerm) {
     return buildExplanatoryAnswer(
       question,
@@ -776,14 +784,14 @@ export async function buildEvidenceQueryAnswer(
     );
   }
 
-  let effectiveQuestion = question;
+  let effectiveQuestion = effectiveQuestionInput;
   let intent: IntentProfile = planningIntent;
   let answerMode: "answer" | "action" | "missing_evidence" = "answer";
 
   try {
     const plan = await generateEvidencePlan(
       {
-        question,
+        question: effectiveQuestionInput,
         isSystemFollowup,
         history,
         diagnosis: incident.diagnosisResult
@@ -843,7 +851,7 @@ export async function buildEvidenceQueryAnswer(
   try {
     const generated = await generateEvidenceQuery(
       {
-        question,
+        question: effectiveQuestionInput,
         answerMode,
         history,
         intent: intent.kind,
