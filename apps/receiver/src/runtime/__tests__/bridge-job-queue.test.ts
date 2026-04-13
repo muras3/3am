@@ -280,7 +280,7 @@ describe("BridgeJobQueue", () => {
     // The simplest assertion: a job with 14s-old dequeuedAt should NOT be re-enqueued
     // (lease hasn't expired yet), while one with 16s-old dequeuedAt should be.
     // We test this by inspecting the queue size after forceCleanup with mocked time.
-    const now = Date.now();
+    const _now = Date.now();
     const jobId = queue.enqueue({
       type: "chat_request",
       id: "",
