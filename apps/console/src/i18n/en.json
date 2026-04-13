@@ -11,7 +11,7 @@
     "tokenPlaceholder": "Paste your auth token here",
     "saveAndContinueShort": "Save and Continue",
     "claimTitle": "Open Your Sign-In Link",
-    "claimBody": "This receiver now uses secure one-time sign-in links instead of showing a reusable auth token in the browser.",
+    "claimBody": "This console is protected by secure one-time sign-in links. Each link works once and expires after use.",
     "claimFooter": "Open the sign-in link printed by <code>npx 3am deploy</code>, or generate a fresh one from a trusted machine with <code>npx 3am auth-link</code>.",
     "failed": "Setup Failed",
     "failedBody": "Could not connect to the receiver to complete setup.",
