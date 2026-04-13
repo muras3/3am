@@ -312,7 +312,8 @@ export function createApiRouter(
   app.use("/api/chat/*", rateLimiter({ windowMs: 60_000, max: 10, storage }));
 
   // Rate limit evidence query endpoint — LLM cost protection
-  app.use("/api/incidents/*/evidence/query", rateLimiter({ windowMs: 60_000, max: 10, storage }));
+  const evidenceQueryRateLimit = allowInsecure ? 200 : 10;
+  app.use("/api/incidents/*/evidence/query", rateLimiter({ windowMs: 60_000, max: evidenceQueryRateLimit, storage }));
 
   app.post("/api/claims", apiBodyLimit(4 * 1024), async (c) => {
     if (!authToken) {
