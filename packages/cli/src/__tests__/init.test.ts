@@ -14,6 +14,26 @@ vi.mock("../commands/dev.js", () => ({
   runDev: vi.fn(),
 }));
 
+// Readline mock — intercepts all createInterface calls, records each question
+// asked, and answers immediately with "" so tests never hang on TTY prompts.
+const _readlineQuestionsAsked: string[] = [];
+vi.mock("node:readline", async (importOriginal) => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const original = await importOriginal() as any;
+  return {
+    ...original,
+    createInterface: vi.fn((opts) => {
+      const rl = original.createInterface(opts);
+      rl.question = (query: string, callback: (answer: string) => void) => {
+        _readlineQuestionsAsked.push(query);
+        rl.close();
+        callback("");
+      };
+      return rl;
+    }),
+  };
+});
+
 import { execSync } from "node:child_process";
 import { detectFramework } from "../commands/init/detect-framework.js";
 import { detectRuntimeTarget, findWranglerConfigPath } from "../commands/init/detect-runtime.js";
@@ -1198,6 +1218,77 @@ describe("runInit()", () => {
     const combined = stdoutChunks.join("");
     expect(combined).toContain("no next.config found");
     expect(combined).toContain("serverExternalPackages");
+  });
+
+  // -------------------------------------------------------------------------
+  // Flag precedence over interactive prompts (#fix/init-mode-flag-override)
+  // -------------------------------------------------------------------------
+
+  it("saves mode=manual when --mode manual is explicitly passed (non-interactive)", async () => {
+    writeFileSync(
+      join(tmpDir, "package.json"),
+      JSON.stringify({ name: "my-app", dependencies: {} }),
+    );
+
+    const stdoutSpy = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    await runInit([], { mode: "manual", noInteractive: true });
+    stdoutSpy.mockRestore();
+
+    const creds = loadCredentials();
+    expect(creds.llmMode).toBe("manual");
+  });
+
+  it("does not prompt for mode when --mode is explicitly provided even in TTY", async () => {
+    writeFileSync(
+      join(tmpDir, "package.json"),
+      JSON.stringify({ name: "my-app", dependencies: {} }),
+    );
+
+    // Simulate a TTY environment
+    const origIsTTY = process.stdin.isTTY;
+    Object.defineProperty(process.stdin, "isTTY", { value: true, configurable: true });
+
+    // Clear the shared question tracker before this test
+    _readlineQuestionsAsked.length = 0;
+
+    const stdoutSpy = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    await runInit([], { mode: "manual" });
+    stdoutSpy.mockRestore();
+
+    // Restore isTTY
+    Object.defineProperty(process.stdin, "isTTY", { value: origIsTTY, configurable: true });
+
+    // The mode prompt should NOT have been shown — flag takes precedence
+    const modePromptsShown = _readlineQuestionsAsked.filter((q) => q.includes("automatic/manual"));
+    expect(modePromptsShown).toHaveLength(0);
+
+    const creds = loadCredentials();
+    expect(creds.llmMode).toBe("manual");
+  });
+
+  it("does not prompt for provider when --provider is explicitly provided even in TTY", async () => {
+    writeFileSync(
+      join(tmpDir, "package.json"),
+      JSON.stringify({ name: "my-app", dependencies: {} }),
+    );
+
+    const origIsTTY = process.stdin.isTTY;
+    Object.defineProperty(process.stdin, "isTTY", { value: true, configurable: true });
+
+    _readlineQuestionsAsked.length = 0;
+
+    const stdoutSpy = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    await runInit([], { provider: "anthropic" });
+    stdoutSpy.mockRestore();
+
+    Object.defineProperty(process.stdin, "isTTY", { value: origIsTTY, configurable: true });
+
+    // The provider prompt should NOT have been shown — flag takes precedence
+    const providerPromptsShown = _readlineQuestionsAsked.filter((q) => q.includes("LLM provider"));
+    expect(providerPromptsShown).toHaveLength(0);
+
+    const creds = loadCredentials();
+    expect(creds.llmProvider).toBe("anthropic");
   });
 });
 
