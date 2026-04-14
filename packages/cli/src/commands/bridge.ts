@@ -271,7 +271,19 @@ function resolveProvider(msgProvider: unknown, fallback: ProviderName | undefine
   return fallback;
 }
 
-async function handleWsMessage(msg: WsMessage, sendResponse: (response: unknown) => void): Promise<void> {
+async function handleWsMessage(
+  msg: WsMessage,
+  sendResponse: (response: unknown) => void,
+  poolReady?: Promise<void>,
+): Promise<void> {
+  // Wait for the Claude Code pool to finish priming before dispatching LLM work.
+  // Without this, the first real call queues behind the still-running prime in
+  // the per-model serialized queue, and the combined time can exceed the 60s
+  // receiver-side timeout.
+  if (poolReady) {
+    await poolReady;
+  }
+
   const creds = loadCredentials();
 
   try {
@@ -343,10 +355,14 @@ export function runBridge(options: BridgeOptions = {}): { close: () => void } {
   const registerSignalHandlers = options.registerSignalHandlers ?? true;
 
   // ── Warm up persistent Claude Code pool ───────────────────────────────
+  // Store the promise so poll/WS handlers can await it before dispatching
+  // LLM work. This prevents the first real call from queuing behind the
+  // still-running prime and exceeding the 60s receiver-side timeout.
   const creds = loadCredentials();
   const receiverUrl = options.receiverUrl ?? creds.receiverUrl;
+  let poolReadyPromise: Promise<void> = Promise.resolve();
   if (!creds.llmProvider || creds.llmProvider === "claude-code") {
-    void primeClaudePool(creds.llmModel);
+    poolReadyPromise = primeClaudePool(creds.llmModel);
   }
 
   // ── HTTP server (always started, for local dev backward compat) ──────
@@ -522,7 +538,9 @@ export function runBridge(options: BridgeOptions = {}): { close: () => void } {
           `[bridge-poll] picked up job ${jobId} (type=${request.type})\n`,
         );
 
-        // Reuse the same dispatch logic as the WS bridge
+        // Reuse the same dispatch logic as the WS bridge.
+        // Pass poolReadyPromise so the handler waits for priming to finish
+        // before dispatching LLM work — prevents cold-start timeout.
         await handleWsMessage(request, async (response) => {
           try {
             const resultRes = await fetch(
@@ -548,7 +566,7 @@ export function runBridge(options: BridgeOptions = {}): { close: () => void } {
               `[bridge-poll] failed to post result for ${jobId}: ${err instanceof Error ? err.message : String(err)}\n`,
             );
           }
-        });
+        }, poolReadyPromise);
       } catch (err) {
         if (!pollStopped) {
           process.stderr.write(
@@ -604,7 +622,7 @@ export function runBridge(options: BridgeOptions = {}): { close: () => void } {
       // WS probe passed — create the real WsBridgeClient
       process.stdout.write(`[bridge-ws] WebSocket probe succeeded — using WS mode\n`);
       const client = new WsBridgeClient(wsUrl, (msg) => {
-        void handleWsMessage(msg, (response) => client.send(response));
+        void handleWsMessage(msg, (response) => client.send(response), poolReadyPromise);
       });
       wsClient = client;
       client.connect();
