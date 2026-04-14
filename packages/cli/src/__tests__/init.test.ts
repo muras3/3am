@@ -18,7 +18,8 @@ vi.mock("../commands/dev.js", () => ({
 // asked, and answers immediately with "" so tests never hang on TTY prompts.
 const _readlineQuestionsAsked: string[] = [];
 vi.mock("node:readline", async (importOriginal) => {
-  const original = await importOriginal<typeof import("node:readline")>();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const original = await importOriginal() as any;
   return {
     ...original,
     createInterface: vi.fn((opts) => {
