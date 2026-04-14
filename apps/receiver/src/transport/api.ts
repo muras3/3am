@@ -374,9 +374,9 @@ export function createApiRouter(
       return c.json({ error: "claim unavailable" }, 404);
     }
 
-    let claimState: { expiresAt: string };
+    let claimState: { expiresAt: string; reusable?: boolean };
     try {
-      claimState = JSON.parse(rawState) as { expiresAt: string };
+      claimState = JSON.parse(rawState) as { expiresAt: string; reusable?: boolean };
     } catch {
       return c.json({ error: "claim unavailable" }, 404);
     }
@@ -386,7 +386,11 @@ export function createApiRouter(
       return c.json({ error: "claim expired" }, 410);
     }
 
-    await storage.setSettings(claimKey, "");
+    // Notification claims are reusable (multiple team members may click the same link).
+    // Deploy claims are single-use.
+    if (!claimState.reusable) {
+      await storage.setSettings(claimKey, "");
+    }
     await storage.setSettings(SETUP_COMPLETE_SETTINGS_KEY, "true");
     await issueSessionCookie(c, { authToken, secure: !allowInsecure });
     return c.json({ status: "ok" });

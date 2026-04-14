@@ -321,7 +321,7 @@ describe("diagnosis notification with claim sign-in link", () => {
 });
 
 describe("NOTIFICATION_CLAIM_TTL_MS", () => {
-  it("is 5 hours (18_000_000 ms)", () => {
-    expect(NOTIFICATION_CLAIM_TTL_MS).toBe(5 * 60 * 60 * 1000);
+  it("is 48 hours (172_800_000 ms)", () => {
+    expect(NOTIFICATION_CLAIM_TTL_MS).toBe(48 * 60 * 60 * 1000);
   });
 });

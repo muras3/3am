@@ -6,8 +6,8 @@ export const CLAIM_KEY_PREFIX = "claim:";
 /** Default TTL for deploy/setup claim links (10 minutes). */
 export const DEPLOY_CLAIM_TTL_MS = 10 * 60 * 1000;
 
-/** TTL for notification claim links (5 hours) — on-call may not check immediately. */
-export const NOTIFICATION_CLAIM_TTL_MS = 5 * 60 * 60 * 1000;
+/** TTL for notification claim links (48 hours) — on-call may not check immediately. */
+export const NOTIFICATION_CLAIM_TTL_MS = 48 * 60 * 60 * 1000;
 
 export function base64UrlEncode(bytes: Uint8Array): string {
   return Buffer.from(bytes)
@@ -44,7 +44,7 @@ export async function mintClaimToken(
 
   await storage.setSettings(
     CLAIM_KEY_PREFIX + tokenHash,
-    JSON.stringify({ expiresAt }),
+    JSON.stringify({ expiresAt, reusable: ttlMs === NOTIFICATION_CLAIM_TTL_MS }),
   );
 
   return { token, expiresAt };
