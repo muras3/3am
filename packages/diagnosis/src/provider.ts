@@ -408,14 +408,36 @@ class ClaudeCodeProvider extends CliProvider {
   }
 }
 
+/**
+ * Maps product-facing model names to the actual codex CLI model identifiers.
+ * Users often use the marketing name (e.g. "codex-5.4") while the underlying
+ * OpenAI API requires the canonical name (e.g. "gpt-5.4").
+ */
+const CODEX_MODEL_ALIASES: Record<string, string> = {
+  "codex-5.4": "gpt-5.4",
+};
+
+function resolveCodexModel(model: string | undefined): string | undefined {
+  if (!model) return undefined;
+  const resolved = CODEX_MODEL_ALIASES[model];
+  if (resolved) {
+    process.stderr.write(
+      `[3am] Note: mapped model '${model}' → '${resolved}' (codex CLI model name)\n`,
+    );
+    return resolved;
+  }
+  return model;
+}
+
 class CodexProvider extends CliProvider {
   readonly name = "codex" as const;
   readonly binary = "codex";
 
   protected buildArgs(options: ModelCallOptions): string[] {
     const args = ["exec"];
-    if (options.model) {
-      args.push("--model", options.model);
+    const model = resolveCodexModel(options.model);
+    if (model) {
+      args.push("--model", model);
     }
     args.push("-");
     return args;
