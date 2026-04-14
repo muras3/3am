@@ -305,6 +305,10 @@ export async function runDeploy(
 
     const result = await provider.deploy();
     deployedUrl = result.url;
+
+    // Set CONSOLE_BASE_URL so notification claim links point to the deployed receiver
+    info("Setting CONSOLE_BASE_URL on platform...\n", json);
+    await provider.setEnvVar("CONSOLE_BASE_URL", deployedUrl);
   } catch (err) {
     provider.cleanup();
     process.stderr.write(

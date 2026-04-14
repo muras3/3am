@@ -10,7 +10,7 @@ import { createApp } from "../../index.js";
 
 // Mock the notification module
 vi.mock("../../notification/index.js", () => ({
-  notifyIncidentCreated: vi.fn(),
+  notifyIncidentCreated: vi.fn().mockResolvedValue(undefined),
 }));
 
 import { notifyIncidentCreated } from "../../notification/index.js";
