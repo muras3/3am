@@ -493,6 +493,40 @@ describe("Receiver integration tests", () => {
     expect(item).not.toHaveProperty("diagnosisResult");
   });
 
+  // Test 3c: GET /api/incidents list items include summary fields for UI rendering
+  it("GET /api/incidents list items include severity, primaryService, label, and diagnosisState", async () => {
+    await app.request("/v1/traces", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(errorSpanPayload),
+    });
+
+    const res = await app.request("/api/incidents");
+    expect(res.status).toBe(200);
+    const body = await res.json() as { items: Array<Record<string, unknown>> };
+    expect(body.items).toHaveLength(1);
+    const item = body.items[0]!;
+
+    // Must include summary fields
+    expect(typeof item.severity).toBe("string");
+    expect((item.severity as string).length).toBeGreaterThan(0);
+
+    expect(typeof item.primaryService).toBe("string");
+    expect((item.primaryService as string).length).toBeGreaterThan(0);
+
+    expect(typeof item.label).toBe("string");
+    expect((item.label as string).length).toBeGreaterThan(0);
+
+    expect(typeof item.diagnosisState).toBe("string");
+    expect(["ready", "pending", "unavailable"]).toContain(item.diagnosisState);
+
+    // Must still include basic fields
+    expect(typeof item.incidentId).toBe("string");
+    expect(typeof item.status).toBe("string");
+    expect(typeof item.openedAt).toBe("string");
+    expect(typeof item.lastActivityAt).toBe("string");
+  });
+
   // Test 4: GET /api/incidents/:id → 200, curated incidentId matches
   it("GET /api/incidents/:id returns the curated incident", async () => {
     const traceRes = await app.request("/v1/traces", {

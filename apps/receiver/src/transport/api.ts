@@ -12,6 +12,7 @@ import { callModelMessages, wrapUserMessage } from "3am-diagnosis";
 import { issueSessionCookie } from "../middleware/session-cookie.js";
 import { rateLimiter } from "../middleware/rate-limit.js";
 import type { Incident, IncidentPage, StorageDriver } from "../storage/interface.js";
+import { classifyDiagnosisState } from "../domain/diagnosis-state.js";
 import { spanMembershipKey } from "../storage/interface.js";
 import type { SpanBuffer } from "../ambient/span-buffer.js";
 import type { BufferedSpan } from "../ambient/types.js";
@@ -58,9 +59,22 @@ interface ChatTurn {
   content: string;
 }
 
-type IncidentResponse = Omit<Incident, "telemetryScope" | "spanMembership" | "anomalousSignals" | "platformEvents" | "packet" | "consoleNarrative" | "diagnosisResult">;
+interface IncidentSummary {
+  incidentId: string;
+  status: "open" | "closed";
+  openedAt: string;
+  closedAt?: string;
+  lastActivityAt: string;
+  severity: string;
+  primaryService: string;
+  label: string;
+  diagnosisState: "ready" | "pending" | "unavailable";
+  diagnosisScheduledAt?: string;
+  diagnosisDispatchedAt?: string;
+  notificationState?: Incident["notificationState"];
+}
 type IncidentPageResponse = {
-  items: IncidentResponse[];
+  items: IncidentSummary[];
   nextCursor?: string;
 };
 
@@ -89,14 +103,29 @@ const CLAIM_KEY_PREFIX = "claim:";
 const SETUP_COMPLETE_SETTINGS_KEY = "setup_complete";
 const CLAIM_TTL_MS = 10 * 60 * 1000;
 
-function toIncidentResponse(incident: Incident): IncidentResponse {
-  const { telemetryScope: _ts, spanMembership: _sm, anomalousSignals: _as, platformEvents: _pe, packet: _pk, consoleNarrative: _cn, diagnosisResult: _dr, ...response } = incident;
-  return response;
+function toIncidentSummary(incident: Incident): IncidentSummary {
+  return {
+    incidentId: incident.incidentId,
+    status: incident.status,
+    openedAt: incident.openedAt,
+    closedAt: incident.closedAt,
+    lastActivityAt: incident.lastActivityAt,
+    severity: incident.packet.signalSeverity ?? "medium",
+    primaryService: incident.packet.scope.primaryService,
+    label:
+      incident.consoleNarrative?.headline
+      ?? incident.diagnosisResult?.summary.what_happened
+      ?? incident.packet.scope.primaryService,
+    diagnosisState: classifyDiagnosisState(incident),
+    diagnosisScheduledAt: incident.diagnosisScheduledAt,
+    diagnosisDispatchedAt: incident.diagnosisDispatchedAt,
+    notificationState: incident.notificationState,
+  };
 }
 
 function toIncidentPageResponse(page: IncidentPage): IncidentPageResponse {
   return {
-    items: page.items.map(toIncidentResponse),
+    items: page.items.map(toIncidentSummary),
     nextCursor: page.nextCursor,
   };
 }
