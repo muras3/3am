@@ -281,4 +281,59 @@ describe("CodexProvider: spawn env is NOT stripped", () => {
     expect(spawnCallEnv["ANTHROPIC_API_KEY"]).toBe("sk-secret");
     expect(spawnCallEnv["OTHER"]).toBe("val");
   });
+
+  it("maps 'codex-5.4' alias to 'gpt-5.4' and passes the resolved name to codex CLI", async () => {
+    const child = makeSpawnChild("codex result");
+    spawnMock.mockReturnValue(child);
+
+    const stderrSpy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+
+    const { provider } = await resolveProvider({
+      provider: "codex",
+      maxTokens: 128,
+      env: {},
+    });
+
+    await provider.generate([{ role: "user", content: "diagnose" }], {
+      provider: "codex",
+      model: "codex-5.4",
+      maxTokens: 128,
+      env: {},
+    });
+
+    // The CLI should be called with the resolved model name
+    const spawnCallArgs = spawnMock.mock.calls[0][1] as string[];
+    const modelFlagIndex = spawnCallArgs.indexOf("--model");
+    expect(modelFlagIndex).toBeGreaterThan(-1);
+    expect(spawnCallArgs[modelFlagIndex + 1]).toBe("gpt-5.4");
+
+    // A warning message should be printed to stderr
+    const stderrOutput = stderrSpy.mock.calls.map((c) => String(c[0])).join("");
+    expect(stderrOutput).toContain("mapped model 'codex-5.4' → 'gpt-5.4'");
+
+    stderrSpy.mockRestore();
+  });
+
+  it("passes an unknown model name through unchanged", async () => {
+    const child = makeSpawnChild("codex result");
+    spawnMock.mockReturnValue(child);
+
+    const { provider } = await resolveProvider({
+      provider: "codex",
+      maxTokens: 128,
+      env: {},
+    });
+
+    await provider.generate([{ role: "user", content: "diagnose" }], {
+      provider: "codex",
+      model: "gpt-4o",
+      maxTokens: 128,
+      env: {},
+    });
+
+    const spawnCallArgs = spawnMock.mock.calls[0][1] as string[];
+    const modelFlagIndex = spawnCallArgs.indexOf("--model");
+    expect(modelFlagIndex).toBeGreaterThan(-1);
+    expect(spawnCallArgs[modelFlagIndex + 1]).toBe("gpt-4o");
+  });
 });
