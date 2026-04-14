@@ -38,6 +38,7 @@ import { ensureIncidentMaterialized } from "../runtime/materialization.js";
 import { getReceiverLlmSettings } from "../runtime/llm-settings.js";
 import { maybeCleanup } from "../retention/lazy-cleanup.js";
 import { notifyDiagnosisComplete } from "../notification/index.js";
+import { mintClaimToken, sha256, CLAIM_KEY_PREFIX, DEPLOY_CLAIM_TTL_MS } from "../auth/claim.js";
 import type { WsBridgeManager } from "./ws-bridge.js";
 import type { BridgeRequest, BridgeResponse } from "./ws-bridge.js";
 import type { BridgeJobQueue } from "../runtime/bridge-job-queue.js";
@@ -99,9 +100,7 @@ const TELEMETRY_LOGS_CONTEXTUAL_DEFAULT_LIMIT = 50;
 const TELEMETRY_MAX_LIMIT = 200;
 const AMBIENT_LIVE_WINDOW_MS = 5 * 60 * 1000;
 const AMBIENT_INCIDENT_FALLBACK_LIMIT = 50;
-const CLAIM_KEY_PREFIX = "claim:";
 const SETUP_COMPLETE_SETTINGS_KEY = "setup_complete";
-const CLAIM_TTL_MS = 10 * 60 * 1000;
 
 function toIncidentSummary(incident: Incident): IncidentSummary {
   return {
@@ -143,18 +142,6 @@ function parseLimit(raw: string | undefined, defaultLimit: number): number {
   return Math.min(Math.max(parsed, 1), TELEMETRY_MAX_LIMIT);
 }
 
-function base64UrlEncode(bytes: Uint8Array): string {
-  return Buffer.from(bytes)
-    .toString("base64")
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_")
-    .replace(/=+$/g, "");
-}
-
-async function sha256(value: string): Promise<string> {
-  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
-  return base64UrlEncode(new Uint8Array(digest));
-}
 
 function paginateItems<T>(
   items: T[],
@@ -356,18 +343,7 @@ export function createApiRouter(
       return c.json({ error: "unauthorized" }, 401);
     }
 
-    const tokenBytes = crypto.getRandomValues(new Uint8Array(32));
-    const token = base64UrlEncode(tokenBytes);
-    const expiresAt = new Date(Date.now() + CLAIM_TTL_MS).toISOString();
-    const tokenHash = await sha256(token);
-
-    // Store under a per-claim key so multiple pending claims can coexist.
-    // A new mint no longer invalidates a previously issued sign-in link.
-    await storage.setSettings(
-      CLAIM_KEY_PREFIX + tokenHash,
-      JSON.stringify({ expiresAt }),
-    );
-
+    const { token, expiresAt } = await mintClaimToken(storage, DEPLOY_CLAIM_TTL_MS);
     return c.json({ token, expiresAt });
   });
 
@@ -398,9 +374,9 @@ export function createApiRouter(
       return c.json({ error: "claim unavailable" }, 404);
     }
 
-    let claimState: { expiresAt: string };
+    let claimState: { expiresAt: string; reusable?: boolean };
     try {
-      claimState = JSON.parse(rawState) as { expiresAt: string };
+      claimState = JSON.parse(rawState) as { expiresAt: string; reusable?: boolean };
     } catch {
       return c.json({ error: "claim unavailable" }, 404);
     }
@@ -410,7 +386,11 @@ export function createApiRouter(
       return c.json({ error: "claim expired" }, 410);
     }
 
-    await storage.setSettings(claimKey, "");
+    // Notification claims are reusable (multiple team members may click the same link).
+    // Deploy claims are single-use.
+    if (!claimState.reusable) {
+      await storage.setSettings(claimKey, "");
+    }
     await storage.setSettings(SETUP_COMPLETE_SETTINGS_KEY, "true");
     await issueSessionCookie(c, { authToken, secure: !allowInsecure });
     return c.json({ status: "ok" });

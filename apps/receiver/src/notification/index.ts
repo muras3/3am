@@ -1,5 +1,6 @@
 import type { DiagnosisResult, IncidentPacket } from "3am-core";
 import type { StorageDriver } from "../storage/interface.js";
+import { mintClaimToken, NOTIFICATION_CLAIM_TTL_MS } from "../auth/claim.js";
 import { getNotificationConfig } from "./config.js";
 import {
   formatDiscordDiagnosisComplete,
@@ -16,9 +17,10 @@ import {
   type NotificationDeliveryRef,
 } from "./types.js";
 
-function buildConsoleUrl(incidentId: string): string {
+export function buildConsoleUrl(incidentId: string, claimToken?: string): string {
   const base = process.env["CONSOLE_BASE_URL"] || "http://localhost:3333";
-  return `${base}/incidents/${incidentId}`;
+  const url = `${base}/incidents/${incidentId}`;
+  return claimToken ? `${url}#claim=${claimToken}` : url;
 }
 
 async function storeDeliveryState(
@@ -102,7 +104,18 @@ export async function notifyDiagnosisComplete(
     if (!notificationState || notificationState.deliveries.length === 0) return;
 
     const config = await getNotificationConfig(storage);
-    const consoleUrl = buildConsoleUrl(incidentId);
+
+    // Mint a claim token so the on-call engineer can click straight into the Console.
+    // If minting fails, fall back to the plain URL (graceful degradation).
+    let claimToken: string | undefined;
+    try {
+      const claim = await mintClaimToken(storage, NOTIFICATION_CLAIM_TTL_MS);
+      claimToken = claim.token;
+    } catch (claimError) {
+      console.warn("[notification] claim mint failed, using plain URL:", claimError instanceof Error ? claimError.message : claimError);
+    }
+
+    const consoleUrl = buildConsoleUrl(incidentId, claimToken);
     const payload = buildDiagnosisNotificationPayload(packet, incidentId, result, consoleUrl);
 
     let nextState = notificationState;

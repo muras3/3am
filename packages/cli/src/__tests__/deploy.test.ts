@@ -311,11 +311,13 @@ describe("runDeploy()", () => {
       "generated-uuid-token",
     );
 
-    // Both setEnvVar calls must happen before deploy
+    // Secret setEnvVar calls must happen before deploy; CONSOLE_BASE_URL happens after
+    const setEnvCalls = mockProvider.setEnvVar.mock.calls;
     const setEnvOrders = mockProvider.setEnvVar.mock.invocationCallOrder;
     const deployOrder = mockProvider.deploy.mock.invocationCallOrder[0];
-    for (const order of setEnvOrders) {
-      expect(order).toBeLessThan(deployOrder!);
+    for (let i = 0; i < setEnvCalls.length; i++) {
+      if (setEnvCalls[i]![0] === "CONSOLE_BASE_URL") continue; // set after deploy
+      expect(setEnvOrders[i]).toBeLessThan(deployOrder!);
     }
   });
 

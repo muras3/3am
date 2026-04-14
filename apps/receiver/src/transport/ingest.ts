@@ -355,8 +355,10 @@ export function createIngestRouter(
       // Mark activity so on-read materialization will rebuild snapshots
       await storage.touchIncidentActivity(incidentId);
 
-      // Fire-and-forget notification to Slack/Discord (if configured)
-      void notifyIncidentCreated(storage, packet, incidentId);
+      // Notification to Slack/Discord (if configured).
+      // Must use waitUntil so CF Workers doesn't kill the promise on response.
+      const notifyWaitUntil = await waitUntilPromise;
+      notifyWaitUntil(notifyIncidentCreated(storage, packet, incidentId));
 
       // Schedule delayed diagnosis. Generation threshold is checked via on-read materialization.
       if (enqueueDiagnosis) {
