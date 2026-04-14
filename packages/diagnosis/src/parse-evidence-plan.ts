@@ -1,3 +1,5 @@
+import { parseJsonFromModelOutput } from "./parse-json-utils.js";
+
 export type EvidencePlanMode = "answer" | "action" | "missing_evidence" | "clarification";
 
 export type EvidencePlan = {
@@ -7,24 +9,12 @@ export type EvidencePlan = {
   clarificationQuestion?: string;
 };
 
-function parseJson(raw: string): unknown {
-  try {
-    return JSON.parse(raw);
-  } catch {
-    const match = /```(?:json)?\s*\n?([\s\S]*?)\n?```/.exec(raw);
-    if (match?.[1] !== undefined) {
-      return JSON.parse(match[1]);
-    }
-    throw new Error("Failed to parse evidence plan output as JSON");
-  }
-}
-
 function isSurface(value: string): value is "traces" | "metrics" | "logs" {
   return value === "traces" || value === "metrics" || value === "logs";
 }
 
 export function parseEvidencePlan(raw: string): EvidencePlan {
-  const parsed = parseJson(raw) as Record<string, unknown>;
+  const parsed = parseJsonFromModelOutput(raw) as Record<string, unknown>;
   const mode = parsed["mode"];
   const rewrittenQuestion = parsed["rewrittenQuestion"];
   const preferredSurfaces = parsed["preferredSurfaces"];
