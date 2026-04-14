@@ -437,33 +437,40 @@ export async function runInit(_argv: string[], options: InitOptions = {}): Promi
       ? storedCreds.llmProvider
       : "anthropic";
   if (!options.noInteractive && process.stdin.isTTY) {
-    const rl = createInterface({ input: process.stdin, output: process.stdout });
-    const localeAnswer = await new Promise<string>((resolve) => {
-      rl.question("Preferred language / 言語選択 (en/ja) [en]: ", (answer) => {
-        rl.close();
-        resolve(answer.trim().toLowerCase() || "en");
+    // Explicit flags always win — only prompt for values not already supplied via CLI flag.
+    if (options.lang === undefined) {
+      const rl = createInterface({ input: process.stdin, output: process.stdout });
+      const localeAnswer = await new Promise<string>((resolve) => {
+        rl.question("Preferred language / 言語選択 (en/ja) [en]: ", (answer) => {
+          rl.close();
+          resolve(answer.trim().toLowerCase() || "en");
+        });
       });
-    });
-    locale = localeAnswer === "ja" ? "ja" : "en";
-    process.stdout.write(locale === "ja" ? `言語: 日本語\n` : `Language: English\n`);
+      locale = localeAnswer === "ja" ? "ja" : "en";
+      process.stdout.write(locale === "ja" ? `言語: 日本語\n` : `Language: English\n`);
+    }
 
-    const rlMode = createInterface({ input: process.stdin, output: process.stdout });
-    const modeAnswer = await new Promise<string>((resolve) => {
-      rlMode.question("Diagnosis mode (automatic/manual) [automatic]: ", (answer) => {
-        rlMode.close();
-        resolve(answer.trim().toLowerCase() || "automatic");
+    if (options.mode === undefined) {
+      const rlMode = createInterface({ input: process.stdin, output: process.stdout });
+      const modeAnswer = await new Promise<string>((resolve) => {
+        rlMode.question("Diagnosis mode (automatic/manual) [automatic]: ", (answer) => {
+          rlMode.close();
+          resolve(answer.trim().toLowerCase() || "automatic");
+        });
       });
-    });
-    mode = modeAnswer === "manual" ? "manual" : "automatic";
+      mode = modeAnswer === "manual" ? "manual" : "automatic";
+    }
 
-    const rlProvider = createInterface({ input: process.stdin, output: process.stdout });
-    const providerAnswer = await new Promise<string>((resolve) => {
-      rlProvider.question(`LLM provider (${PROVIDER_NAMES.join("/")}) [anthropic]: `, (answer) => {
-        rlProvider.close();
-        resolve(answer.trim().toLowerCase() || "anthropic");
+    if (options.provider === undefined) {
+      const rlProvider = createInterface({ input: process.stdin, output: process.stdout });
+      const providerAnswer = await new Promise<string>((resolve) => {
+        rlProvider.question(`LLM provider (${PROVIDER_NAMES.join("/")}) [anthropic]: `, (answer) => {
+          rlProvider.close();
+          resolve(answer.trim().toLowerCase() || "anthropic");
+        });
       });
-    });
-    provider = isProviderName(providerAnswer) ? providerAnswer : "anthropic";
+      provider = isProviderName(providerAnswer) ? providerAnswer : "anthropic";
+    }
   }
 
   saveCredentials({
