@@ -28,6 +28,15 @@ export { parseEvidenceQuery } from "./parse-evidence-query.js";
 export type { EvidenceQueryParseMeta } from "./parse-evidence-query.js";
 export { parseEvidencePlan } from "./parse-evidence-plan.js";
 export type { EvidencePlan, EvidencePlanMode } from "./parse-evidence-plan.js";
+export { generateEvidenceCombined } from "./generate-evidence-combined.js";
+export type { GenerateEvidenceCombinedOptions } from "./generate-evidence-combined.js";
+export { buildEvidenceCombinedPrompt } from "./evidence-combined-prompt.js";
+export type {
+  EvidenceCombinedPromptEvidence,
+  EvidenceCombinedPromptInput,
+} from "./evidence-combined-prompt.js";
+export { parseEvidenceCombined } from "./parse-evidence-combined.js";
+export type { EvidenceCombinedResult } from "./parse-evidence-combined.js";
 export {
   PROVIDER_NAMES,
   resolveProvider,
