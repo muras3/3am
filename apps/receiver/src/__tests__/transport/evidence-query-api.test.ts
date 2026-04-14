@@ -459,6 +459,33 @@ describe('POST /api/incidents/:id/evidence/query', () => {
     )
   })
 
+  it('enriches the question with original clarification context when replyToClarification is provided', async () => {
+    const cookie = await getSessionCookie(app)
+    const incidentId = await seedIncident(app, true)
+
+    const res = await app.request(`/api/incidents/${incidentId}/evidence/query`, {
+      method: 'POST',
+      headers: queryHeaders(cookie),
+      body: JSON.stringify({
+        question: '1と2',
+        replyToClarification: {
+          originalQuestion: 'トレースとログ、どちらを見たい？',
+          clarificationText: 'トレースとログのどちらを先に確認しますか？',
+        },
+      }),
+    })
+
+    expect(res.status).toBe(200)
+    // The domain enriches the question to "<originalQuestion> (<userAnswer>)"
+    // so the plan receives the combined question, not just "1と2".
+    expect(generateEvidencePlanMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        question: 'トレースとログ、どちらを見たい？ (1と2)',
+      }),
+      expect.any(Object),
+    )
+  })
+
   it('returns 503 for manual evidence query when a remote Vercel receiver is configured with a loopback bridge URL', async () => {
     await app.request('/api/settings/diagnosis', {
       method: 'PUT',
