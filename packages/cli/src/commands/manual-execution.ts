@@ -14,6 +14,7 @@ import {
   formatTraceFact,
   generateEvidencePlan,
   generateEvidenceQuery,
+  generateEvidenceCombined,
   generateConsoleNarrative,
   wrapUserMessage,
   type ProviderName,
@@ -622,6 +623,11 @@ function buildFollowups(
   return followups.slice(0, 4);
 }
 
+/** Providers that spawn subprocesses and pay a fixed startup cost per call. */
+function isSubprocessProvider(provider: ProviderName | undefined): boolean {
+  return provider === "codex" || provider === "claude-code";
+}
+
 async function buildManualEvidenceQueryAnswer(
   diagnosisResult: DiagnosisResult,
   evidence: EvidenceResponse,
@@ -665,29 +671,85 @@ async function buildManualEvidenceQueryAnswer(
     );
   }
 
+  const diagnosisInput = {
+    whatHappened: diagnosisResult.summary.what_happened,
+    rootCauseHypothesis: diagnosisResult.summary.root_cause_hypothesis,
+    immediateAction: diagnosisResult.recommendation.immediate_action,
+    causalChain: diagnosisResult.reasoning.causal_chain.map((step) => step.title),
+  };
+  const providerCallOptions = {
+    provider: options.provider,
+    model: options.model,
+    locale: options.locale,
+  };
+
+  // ── Fast path: single LLM call for subprocess providers ──────────────────
+  // codex and claude-code each cost 7-9s per subprocess invocation. The
+  // default two-call flow (plan + generate) results in 15-18s total. By merging
+  // both steps into a single prompt we cut this to 7-9s.
+  if (isSubprocessProvider(options.provider)) {
+    const t0 = Date.now();
+    try {
+      const allowedRefs = planningCandidates.map(({ ref }) => ref);
+      const combined = await generateEvidenceCombined(
+        {
+          question: effectiveQuestionInput,
+          isSystemFollowup: options.isSystemFollowup,
+          history,
+          diagnosis: diagnosisInput,
+          evidence: planningCandidates.map(({ ref, surface, summary }) => ({ ref, surface, summary })),
+        },
+        allowedRefs,
+        providerCallOptions,
+      );
+
+      const elapsed = Date.now() - t0;
+      process.stderr.write(`[evidence-query] combined call elapsed=${elapsed}ms provider=${options.provider ?? "auto"}\n`);
+
+      if (combined.kind === "clarification") {
+        if (options.isSystemFollowup) {
+          // System followups must never surface clarification — fall through to fallback answer.
+          const fallbackRetrieved = retrieveEvidence(effectiveQuestionInput, catalog, planningIntent);
+          return buildFallbackAnswer(question, diagnosisResult, evidence, fallbackRetrieved, planningIntent, options.locale);
+        }
+        return {
+          question,
+          status: "clarification",
+          clarificationQuestion: combined.clarificationQuestion,
+          segments: [],
+          evidenceSummary: summarizeEvidence(evidence.surfaces),
+          followups: buildFollowups(planningCandidates, evidence, question, options.locale),
+        };
+      }
+
+      return {
+        ...combined.response,
+        evidenceSummary: summarizeEvidence(evidence.surfaces),
+        followups: buildFollowups(planningCandidates, evidence, question, options.locale),
+      };
+    } catch {
+      // Combined call failed — fall through to the two-call path below.
+      process.stderr.write(`[evidence-query] combined call failed after ${Date.now() - t0}ms, falling back to two-call path\n`);
+    }
+  }
+
+  // ── Standard path: two sequential LLM calls (plan → generate) ────────────
+  // Used for: anthropic, openai, ollama (low per-call overhead) or as fallback.
   let effectiveQuestion = effectiveQuestionInput;
   let intent: IntentProfile = planningIntent;
   let answerMode: "answer" | "action" | "missing_evidence" = "answer";
 
+  const t0TwoCall = Date.now();
   try {
     const plan = await generateEvidencePlan(
       {
         question: effectiveQuestionInput,
         isSystemFollowup: options.isSystemFollowup,
         history,
-        diagnosis: {
-          whatHappened: diagnosisResult.summary.what_happened,
-          rootCauseHypothesis: diagnosisResult.summary.root_cause_hypothesis,
-          immediateAction: diagnosisResult.recommendation.immediate_action,
-          causalChain: diagnosisResult.reasoning.causal_chain.map((step) => step.title),
-        },
+        diagnosis: diagnosisInput,
         evidence: planningCandidates.map(({ ref, surface, summary }) => ({ ref, surface, summary })),
       },
-      {
-        provider: options.provider,
-        model: options.model,
-        locale: options.locale,
-      },
+      providerCallOptions,
     );
 
     if (plan.mode === "clarification" && !options.isSystemFollowup) {
@@ -728,20 +790,14 @@ async function buildManualEvidenceQueryAnswer(
         history,
         intent: intent.kind,
         preferredSurfaces: intent.preferredSurfaces,
-        diagnosis: {
-          whatHappened: diagnosisResult.summary.what_happened,
-          rootCauseHypothesis: diagnosisResult.summary.root_cause_hypothesis,
-          immediateAction: diagnosisResult.recommendation.immediate_action,
-          causalChain: diagnosisResult.reasoning.causal_chain.map((step) => step.title),
-        },
+        diagnosis: diagnosisInput,
         evidence: retrieved.map(({ ref, surface, summary }) => ({ ref, surface, summary })),
       },
-      {
-        provider: options.provider,
-        model: options.model,
-        locale: options.locale,
-      },
+      providerCallOptions,
     );
+
+    const elapsed = Date.now() - t0TwoCall;
+    process.stderr.write(`[evidence-query] two-call elapsed=${elapsed}ms provider=${options.provider ?? "auto"}\n`);
 
     return {
       ...generated,
