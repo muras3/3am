@@ -8,6 +8,8 @@ import { serveStatic } from "@hono/node-server/serve-static";
 import { createApp, resolveAuthToken, WsBridgeManager } from "./index.js";
 import type { BridgeWsConnection } from "./transport/ws-bridge.js";
 import { MemoryAdapter } from "./storage/adapters/memory.js";
+import { resolveDevStorage } from "./storage/dev-storage.js";
+import type { StorageDriver } from "./storage/interface.js";
 import { createPostgresClient } from "./storage/drizzle/postgres-client.js";
 import { PostgresAdapter } from "./storage/drizzle/postgres.js";
 import { PostgresTelemetryAdapter } from "./telemetry/drizzle/postgres.js";
@@ -23,7 +25,7 @@ void initializeNodeSelfTelemetry("node");
 // this is fine; PostgreSQL DDL locks protect concurrent multi-instance starts.
 // If future migrations require data transforms, move them to a pre-deploy step.
 async function main() {
-  let storage: PostgresAdapter | undefined;
+  let storage: StorageDriver | undefined;
   let telemetryStore: PostgresTelemetryAdapter | undefined;
 
   if (process.env["DATABASE_URL"]) {
@@ -32,8 +34,9 @@ async function main() {
       body: "[receiver] DATABASE_URL detected — using PostgresAdapter",
     });
     const sharedClient = createPostgresClient();
-    storage = new PostgresAdapter(sharedClient);
-    await storage.migrate();
+    const pgStorage = new PostgresAdapter(sharedClient);
+    await pgStorage.migrate();
+    storage = pgStorage;
 
     telemetryStore = new PostgresTelemetryAdapter(sharedClient);
     await telemetryStore.migrate();
@@ -42,10 +45,15 @@ async function main() {
       body: "[receiver] database migration complete (incidents + telemetry)",
     });
   } else {
-    emitSelfTelemetryLog({
-      severity: "WARN",
-      body: "[receiver] DATABASE_URL not set — using MemoryAdapter (data is not persisted)",
-    });
+    const devStorage = resolveDevStorage(process.env as Record<string, string | undefined>, process.cwd());
+    if (devStorage) {
+      storage = devStorage;
+    } else if (process.env["ALLOW_INSECURE_DEV_MODE"] !== "true") {
+      emitSelfTelemetryLog({
+        severity: "WARN",
+        body: "[receiver] DATABASE_URL not set — using MemoryAdapter (data is not persisted)",
+      });
+    }
   }
 
   // resolveAuthToken needs a StorageDriver even for MemoryAdapter, so that

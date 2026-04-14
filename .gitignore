@@ -30,6 +30,9 @@ reports/
 # Local debug artifacts
 apps/console/.tmp-*
 
+# Local dev SQLite database (persisted across restarts, reset by deleting)
+.3am/
+
 # Misgenerated local outputs in diagnosis src
 packages/diagnosis/src/*.js
 packages/diagnosis/src/*.js.map
