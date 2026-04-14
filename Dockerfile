@@ -12,6 +12,7 @@ COPY apps/receiver/package.json ./apps/receiver/
 COPY apps/console/package.json ./apps/console/
 COPY packages/core/package.json ./packages/core/
 COPY packages/diagnosis/package.json ./packages/diagnosis/
+COPY packages/cli/package.json ./packages/cli/
 COPY packages/config-typescript/package.json ./packages/config-typescript/
 COPY packages/config-eslint/package.json ./packages/config-eslint/
 
@@ -20,13 +21,10 @@ RUN pnpm install --frozen-lockfile
 
 # Copy source
 COPY apps/ ./apps/
-COPY packages/core/ ./packages/core/
-COPY packages/diagnosis/ ./packages/diagnosis/
-COPY packages/config-typescript/ ./packages/config-typescript/
-COPY packages/config-eslint/ ./packages/config-eslint/
+COPY packages/ ./packages/
 
-# Build receiver + console (turbo handles dependency order: core first)
-RUN pnpm turbo run build --filter=@3am/receiver --filter=@3am/console
+# Build receiver + console (... includes transitive deps: core, diagnosis)
+RUN pnpm turbo run build --filter=@3am/receiver... --filter=@3am/console...
 
 # Stage 2: runtime
 FROM node:22-slim AS runtime

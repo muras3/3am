@@ -16,9 +16,12 @@
  */
 import { spawn, execFileSync } from "node:child_process";
 import { existsSync, mkdtempSync, rmSync, readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { tmpdir } from "node:os";
+import { fileURLToPath } from "node:url";
 import { getCloudflareAccountInfo } from "../cloudflare-workers.js";
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
 
 export interface DeployProvider {
   /** Clone Receiver repo and deploy to platform. Returns deployment URL. */
@@ -41,16 +44,42 @@ const CLOUDFLARE_DIAGNOSIS_DLQ = "3am-diagnosis-dlq";
 // Shared helpers
 // ---------------------------------------------------------------------------
 
+function getCLIVersion(): string {
+  try {
+    const pkgPath = resolve(__dirname, "../../package.json");
+    return JSON.parse(readFileSync(pkgPath, "utf-8")).version as string;
+  } catch {
+    return "0.0.0-unknown";
+  }
+}
+
 function cloneReceiver(): string {
   const dir = mkdtempSync(join(tmpdir(), "3am-deploy-"));
   const repoSource = process.env["THREEAM_DEPLOY_REPO"] ?? REPO_URL;
+  const version = getCLIVersion();
+  const tag = `v${version}`;
+
+  if (repoSource.startsWith("http") && !version.includes("unknown")) {
+    // Pin to the release tag matching this CLI version
+    try {
+      execFileSync("git", ["clone", "--depth", "1", "--branch", tag, repoSource, dir], {
+        stdio: "pipe",
+      });
+      return dir;
+    } catch {
+      // Tag doesn't exist (dev/pre-release) — fall back to default branch
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }
+
+  const fallbackDir = mkdtempSync(join(tmpdir(), "3am-deploy-"));
   const cloneArgs = repoSource.startsWith("http")
-    ? ["clone", "--depth", "1", "--single-branch", repoSource, dir]
-    : ["clone", repoSource, dir];
+    ? ["clone", "--depth", "1", "--single-branch", repoSource, fallbackDir]
+    : ["clone", repoSource, fallbackDir];
   execFileSync("git", cloneArgs, {
     stdio: "pipe",
   });
-  return dir;
+  return fallbackDir;
 }
 
 /**
