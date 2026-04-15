@@ -297,7 +297,7 @@ npx 3am-cli integrations notifications \
 
 </details>
 
-<sub><a href="llms-full.ja.txt">AI エージェント向け: 機械可読なセットアップ手順は llms-full.ja.txt を参照</a></sub>
+<sub><a href="llms-full.txt">AI agents: read llms-full.txt for machine-readable setup instructions</a></sub>
 
 ---
 
