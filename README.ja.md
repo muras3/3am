@@ -7,7 +7,7 @@
   </a>
 </p>
 
-<p align="center">サーバーレスアプリのインシデント診断</p>
+<p align="center">サーバーレスのためのインシデント診断</p>
 
 <p align="center">
   <a href="https://github.com/muras3/3am/actions/workflows/ci.yml"><img src="https://github.com/muras3/3am/actions/workflows/ci.yml/badge.svg?branch=develop" alt="CI"/></a>
@@ -64,7 +64,7 @@ npx 3am-cli local demo    # デモインシデントを流して診断を確認
 ブラウザで **http://localhost:3333** を開いてください。Docker と Node.js 20 以上が必要です。
 
 <details>
-<summary>どちらのモードを選べばいい？</summary>
+<summary>利用モード</summary>
 
 | | `automatic` モード | `manual` モード |
 |---|---|---|
@@ -94,7 +94,7 @@ npx 3am-cli bridge             # ターミナル 2
 </details>
 
 <details>
-<summary>各コマンドが何をするか</summary>
+<summary>各コマンド</summary>
 
 **`3am init`** はランタイムを自動で検出し、OTel のセットアップまで行います:
 - **Node.js / Vercel** — OTel 関連パッケージをインストールし、`instrumentation.ts` を生成、`.env` に OTLP エンドポイントを追記します
@@ -248,7 +248,7 @@ Discord bot の最小権限:
 </details>
 
 <details>
-<summary><strong>なぜ <code>3am init</code> は <code>next build</code> を <code>next build --webpack</code> に書き換えるの？</strong></summary>
+<summary><strong><code>3am init</code> が <code>next build</code> を <code>next build --webpack</code> に書き換える背景</strong></summary>
 
 OpenTelemetry の自動計装（`@opentelemetry/auto-instrumentations-node`）は [require-in-the-middle](https://github.com/elastic/require-in-the-middle) を使い、Node.js のモジュールを `require()` のタイミングでフックします。この仕組みは、**バンドルに含めずに残したモジュール**を Node がランタイムで本物の `require` を使ってロードしたときにだけ動きます。Webpack と Next.js の `serverExternalPackages` の組み合わせは、こうしたモジュールをバンドルから外すやり方が十分に成熟しています。一方 Turbopack の externalization はまだこのケースに対応しきれておらず、Turbopack でビルドすると OTel 計装はエラーも出さないままテレメトリを止めてしまいます。
 
