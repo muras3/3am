@@ -230,7 +230,11 @@ export async function promptApiKey(): Promise<string> {
 
 /**
  * Resolve the Anthropic API key from multiple sources.
- * Priority: --api-key flag > env var > stored credentials > interactive prompt.
+ * Priority: --api-key flag > stored credentials > env var > interactive prompt.
+ *
+ * Stored credentials take precedence over the env var so that `3am init --api-key`
+ * reliably selects the key that gets uploaded to the platform on `3am deploy`.
+ * If both exist and differ, a warning is printed so users are never silently surprised.
  *
  * Returns the key or undefined if not available (non-interactive mode without key).
  */
@@ -238,20 +242,29 @@ export async function resolveApiKey(options: {
   apiKey?: string;
   noInteractive?: boolean;
 }): Promise<string | undefined> {
-  // 1. CLI flag
+  // 1. CLI flag (explicit override — also persists to credentials)
   if (options.apiKey) {
     const existing = loadCredentials();
     saveCredentials({ ...existing, anthropicApiKey: options.apiKey });
     return options.apiKey;
   }
 
-  // 2. Environment variable
-  const envKey = process.env["ANTHROPIC_API_KEY"];
-  if (envKey) return envKey;
-
-  // 3. Stored credentials
+  // 2. Stored credentials (takes precedence over env var so `3am init --api-key` is sticky)
   const stored = loadCredentials();
-  if (stored.anthropicApiKey) return stored.anthropicApiKey;
+  const envKey = process.env["ANTHROPIC_API_KEY"];
+  if (stored.anthropicApiKey) {
+    if (envKey && envKey !== stored.anthropicApiKey) {
+      process.stderr.write(
+        "Warning: ANTHROPIC_API_KEY env var differs from the key stored by `3am init`.\n" +
+        "Using the stored credential. To use the env var instead, run:\n" +
+        "  npx 3am init --api-key $ANTHROPIC_API_KEY\n",
+      );
+    }
+    return stored.anthropicApiKey;
+  }
+
+  // 3. Environment variable (fallback when no stored credential exists)
+  if (envKey) return envKey;
 
   // 4. Interactive prompt
   if (options.noInteractive) {
