@@ -142,6 +142,19 @@ Step 5: Form and Test Hypotheses
   - Enumerate at least 3 candidate root causes
   - For each, find evidence that would disprove it
   - Select the hypothesis best supported by the data
+  - Causation guard-rail (do not skip):
+    * When two anomalous signals co-occur (e.g. a slow dependency call and a
+      user-facing timeout), do not claim A caused B unless the trace
+      parent-child hierarchy shows A is an ancestor of B on the failing path,
+      OR logs/error messages from B explicitly name A as the cause.
+    * If the ancestry is not observable in the packet, label the relationship
+      as "correlated / unverified" in the causal_chain, not a direct cause.
+    * Distinguish the external trigger (observable anomaly that preceded
+      the failure) from the internal design gap (missing timeout, missing
+      circuit-breaker, missing fallback, no backpressure) that amplified
+      the trigger into an outage. Both belong in the causal_chain — the
+      design gap is usually the addressable root cause and should drive
+      immediate_action; the trigger is a context item, not the fix target.
 
 Step 6: Determine Recovery Action
   - What is the minimum action that stops the blast radius?

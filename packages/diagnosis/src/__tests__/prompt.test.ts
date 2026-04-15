@@ -159,6 +159,27 @@ describe("buildPrompt", () => {
     expect(prompt).toContain("Signal severity:       (not computed)");
   });
 
+  it("includes causation guard-rail instructions in Step 5", () => {
+    // Regression for Problem C: Stage 1 used to mis-attribute a triggering
+    // signal (e.g. 916ms Upstash Redis latency) as the root cause, when the
+    // actual addressable root cause was a missing timeout / circuit-breaker.
+    // The prompt must explicitly instruct the model to:
+    //   1. Not assert causation between co-occurring anomalies without
+    //      parent-child trace ancestry or explicit error-body reference.
+    //   2. Distinguish external trigger vs internal design gap and put both
+    //      in the causal_chain, with the design gap driving immediate_action.
+    const prompt = buildPrompt(packet);
+
+    expect(prompt).toMatch(/Causation guard-rail/);
+    // Co-occurrence rule
+    expect(prompt).toMatch(/co-occur|correlated\s*\/\s*unverified|parent-child/);
+    // Trigger vs design-gap distinction
+    expect(prompt).toMatch(/external trigger/);
+    expect(prompt).toMatch(/design gap|circuit-breaker|timeout|fallback/);
+    // Must make clear the design gap usually drives immediate_action
+    expect(prompt).toMatch(/immediate_action/);
+  });
+
   it("consumes representativeTraces with peerService correctly (diagnosis gate)", () => {
     // Packet with a peerService=stripe span and a HTTP 429 span in representativeTraces
     const packetWithPeer: IncidentPacket = {
