@@ -27,19 +27,19 @@ import { runAuthLink } from "../commands/auth-link.js";
 
 describe("runAuthLink() — cross-receiver token selection (Bug 4)", () => {
   let stderrOutput: string;
-  let stdoutOutput: string;
+  let _stdoutOutput: string;
   let exitCode: number | undefined;
 
   beforeEach(() => {
     stderrOutput = "";
-    stdoutOutput = "";
+    _stdoutOutput = "";
     exitCode = undefined;
     vi.spyOn(process.stderr, "write").mockImplementation((msg) => {
       stderrOutput += String(msg);
       return true;
     });
     vi.spyOn(process.stdout, "write").mockImplementation((msg) => {
-      stdoutOutput += String(msg);
+      _stdoutOutput += String(msg);
       return true;
     });
     vi.spyOn(process, "exit").mockImplementation((code) => {
