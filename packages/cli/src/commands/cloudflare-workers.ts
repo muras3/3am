@@ -281,6 +281,52 @@ async function cloudflareApiFetch<T>(
   return body.result;
 }
 
+/**
+ * Retry wrapper for Cloudflare API calls that may transiently fail (400, 5xx)
+ * immediately after a Worker is deployed — the Observability destinations API
+ * sometimes rejects requests during propagation lag.
+ *
+ * Auth errors (401/403) are not retried — they indicate a wrong/expired token.
+ */
+async function cloudflareApiFetchWithRetry<T>(
+  auth: CloudflareApiAuth,
+  accountId: string,
+  path: string,
+  init: RequestInit = {},
+  maxRetries = 3,
+): Promise<T> {
+  const delaysMs = [2_000, 4_000, 8_000];
+  let lastError: Error | undefined;
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await cloudflareApiFetch<T>(auth, accountId, path, init);
+    } catch (err) {
+      lastError = err instanceof Error ? err : new Error(String(err));
+      // Auth errors (401/403) are not transient — don't retry
+      const msg = lastError.message.toLowerCase();
+      if (
+        msg.includes("401") ||
+        msg.includes("403") ||
+        msg.includes("unauthorized") ||
+        msg.includes("forbidden") ||
+        msg.includes("authentication failed")
+      ) {
+        throw lastError;
+      }
+      if (attempt < maxRetries) {
+        const delayMs = delaysMs[attempt] ?? 8_000;
+        process.stderr.write(
+          `  Cloudflare API transient error (attempt ${attempt + 1}/${maxRetries + 1}): ${lastError.message}. Retrying in ${delayMs / 1000}s...\n`,
+        );
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+      }
+    }
+  }
+
+  throw lastError!;
+}
+
 export function getCloudflareAccountInfo(): CloudflareAccountInfo {
   const output = execFileSync("wrangler", ["whoami", "--json"], {
     stdio: "pipe",
@@ -441,7 +487,9 @@ async function createDestination(
   url: string,
   headers: Record<string, string>,
 ): Promise<void> {
-  await cloudflareApiFetch<CloudflareDestination>(
+  // Use retry wrapper: the Observability destinations API may transiently return
+  // 400 "Bad Request" immediately after a Worker is deployed due to propagation lag.
+  await cloudflareApiFetchWithRetry<CloudflareDestination>(
     auth,
     accountId,
     "/workers/observability/destinations",

@@ -388,14 +388,27 @@ export async function runDeploy(
         noInteractive: options.noInteractive,
       });
     } catch (err) {
+      const errMsg = String(err);
+      const isAuthError = /401|403|unauthorized|forbidden|authentication/i.test(errMsg);
       process.stderr.write(
-        `Error: failed to configure Cloudflare telemetry export: ${String(err)}\n\n` +
-          "Fix:\n" +
-          "  1. Create a Cloudflare API Token with Account Settings:Read, Workers Scripts:Edit, D1:Edit, Cloudflare Queues:Edit, and Workers Observability:Edit.\n" +
-          "  2. Export it as CLOUDFLARE_API_TOKEN.\n" +
-          "  3. Re-run: npx 3am deploy cloudflare --yes\n\n" +
-          "  Re-running deploy will use the same token from CLI credentials.\n",
+        `Error: failed to configure Cloudflare telemetry export: ${errMsg}\n\n`,
       );
+      if (isAuthError) {
+        process.stderr.write(
+          "Fix: your Cloudflare API token lacks the required permissions.\n" +
+          "  Create a token at https://dash.cloudflare.com/profile/api-tokens with:\n" +
+          "    Account Settings:Read, Workers Scripts:Edit, D1:Edit,\n" +
+          "    Cloudflare Queues:Edit, Workers Observability:Edit\n" +
+          "  Then export CLOUDFLARE_API_TOKEN and re-run:\n" +
+          "    npx 3am deploy cloudflare --yes\n",
+        );
+      } else {
+        process.stderr.write(
+          "Fix: this may be a transient Cloudflare API error (the deploy retried automatically).\n" +
+          "  Re-run the deploy — your existing secrets and Worker are still in place:\n" +
+          "    npx 3am deploy cloudflare --yes\n",
+        );
+      }
       process.exit(1);
       return;
     }

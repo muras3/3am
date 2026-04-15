@@ -326,3 +326,137 @@ describe("connectCloudflareWorkerToReceiver()", () => {
     });
   });
 });
+
+// ---------------------------------------------------------------------------
+// connectCloudflareWorkerToReceiver — retry on transient 400 from CF API
+// (Bug 2: CF Observability destinations API returns 400 on first call after
+//  worker deploy, succeeds on retry)
+// ---------------------------------------------------------------------------
+
+describe("connectCloudflareWorkerToReceiver — retries transient 400 on destination creation", () => {
+  beforeEach(() => {
+    vi.mocked(existsSync).mockImplementation((p) => {
+      const s = String(p);
+      if (s.endsWith("wrangler.jsonc") || s.endsWith("wrangler.toml")) return true;
+      return false;
+    });
+    vi.mocked(readFileSync).mockReturnValue(
+      JSON.stringify({ name: "my-worker" }, null, 2) + "\n",
+    );
+    vi.mocked(writeFileSync).mockImplementation(() => undefined);
+    vi.mocked(execFileSync).mockImplementation((cmd, args) => {
+      const a = args as string[];
+      if (a.includes("whoami")) {
+        return Buffer.from(JSON.stringify({ email: "test@example.com", accounts: [{ id: "acc123" }] }));
+      }
+      if (a.includes("deploy")) return Buffer.from("");
+      return Buffer.from("");
+    });
+    process.env["CLOUDFLARE_API_TOKEN"] = "tok-test";
+  });
+
+  afterEach(() => {
+    delete process.env["CLOUDFLARE_API_TOKEN"];
+    vi.mocked(existsSync).mockReset();
+    vi.mocked(readFileSync).mockReset();
+    vi.mocked(writeFileSync).mockReset();
+    vi.mocked(execFileSync).mockReset();
+  });
+
+  it("succeeds after a transient 400 on createDestination (retry kicks in)", async () => {
+    let callCount = 0;
+    const globalFetch = vi.fn(async (url: string | URL | Request, _init?: RequestInit) => {
+      const urlStr = String(url);
+      // List destinations — always return empty
+      if (urlStr.includes("/destinations") && (!_init?.method || _init.method === "GET")) {
+        return new Response(JSON.stringify({ success: true, errors: [], messages: [], result: [] }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      // Create destination — fail first time, succeed second
+      if (urlStr.includes("/destinations") && _init?.method === "POST") {
+        callCount++;
+        if (callCount === 1) {
+          return new Response(
+            JSON.stringify({ success: false, errors: [{ message: "Bad Request" }], messages: [], result: null }),
+            { status: 400, headers: { "Content-Type": "application/json" } },
+          );
+        }
+        return new Response(
+          JSON.stringify({
+            success: true, errors: [], messages: [],
+            result: { slug: "s", name: "n", enabled: true, configuration: { type: "logpush", logpushDataset: "opentelemetry-traces", url: "https://r.example.com/v1/traces" } },
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+      }
+      return new Response(JSON.stringify({ success: true, errors: [], messages: [], result: [] }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+
+    vi.stubGlobal("fetch", globalFetch);
+    // Speed up retries for test (override setTimeout to be instant)
+    vi.useFakeTimers();
+
+    const connectPromise = connectCloudflareWorkerToReceiver(
+      "/fake/cwd",
+      "https://receiver.example.com",
+      "tok_abc123",
+      { noInteractive: true },
+    );
+
+    // Advance timers to bypass retry delay
+    await vi.runAllTimersAsync();
+    const result = await connectPromise;
+    expect(result.workerName).toBe("my-worker");
+    // createDestination was called more than once (retry happened)
+    const postCalls = globalFetch.mock.calls.filter(
+      ([, init]) => (init as RequestInit)?.method === "POST",
+    );
+    expect(postCalls.length).toBeGreaterThanOrEqual(2);
+
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  it("does NOT retry on 401 auth errors", async () => {
+    let postCallCount = 0;
+    const globalFetch = vi.fn(async (url: string | URL | Request, _init?: RequestInit) => {
+      const urlStr = String(url);
+      if (urlStr.includes("/destinations") && (!_init?.method || _init.method === "GET")) {
+        return new Response(JSON.stringify({ success: true, errors: [], messages: [], result: [] }), {
+          status: 200, headers: { "Content-Type": "application/json" },
+        });
+      }
+      if (urlStr.includes("/destinations") && _init?.method === "POST") {
+        postCallCount++;
+        return new Response(
+          JSON.stringify({ success: false, errors: [{ message: "401 Unauthorized" }], messages: [], result: null }),
+          { status: 401, headers: { "Content-Type": "application/json" } },
+        );
+      }
+      return new Response(JSON.stringify({ success: true, errors: [], messages: [], result: [] }), {
+        status: 200, headers: { "Content-Type": "application/json" },
+      });
+    });
+
+    vi.stubGlobal("fetch", globalFetch);
+
+    await expect(
+      connectCloudflareWorkerToReceiver(
+        "/fake/cwd",
+        "https://receiver.example.com",
+        "tok_abc123",
+        { noInteractive: true },
+      ),
+    ).rejects.toThrow();
+
+    // Should NOT have retried on 401
+    expect(postCallCount).toBe(1);
+
+    vi.unstubAllGlobals();
+  });
+});
