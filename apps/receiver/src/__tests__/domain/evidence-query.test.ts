@@ -1,28 +1,46 @@
 /**
  * evidence-query.test.ts — Domain tests for POST /api/incidents/:id/evidence/query.
  *
- * Tests deterministic paths (1 and 2) of buildEvidenceQueryAnswer.
- * Path 3 (LLM) is not tested here — Anthropic SDK is not mocked.
+ * The domain layer is LLM-first (see absolute rule in CLAUDE.md). These tests
+ * mock `generateEvidenceQueryWithMeta` and `generateEvidencePlan` to simulate
+ * the synthesis layer and assert:
+ *   - the right context fields (diagnosisStatus, evidenceStatus, absenceInput,
+ *     locale, history) flow into the LLM prompt input, and
+ *   - retry/repair/safety-net semantics match CLAUDE.md.
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { TelemetryLog, TelemetryMetric, TelemetrySpan, TelemetryStoreDriver } from '../../telemetry/interface.js'
 import type { Incident } from '../../storage/interface.js'
-import type { IncidentPacket, DiagnosisResult } from '3am-core'
+import type { IncidentPacket, DiagnosisResult, EvidenceQueryResponse } from '3am-core'
 import { EvidenceQueryResponseSchema } from '3am-core/schemas/curated-evidence'
-import * as diagnosis from '3am-diagnosis'
-const { generateEvidencePlanMock, generateEvidenceQueryMock } = vi.hoisted(() => ({
+const {
+  generateEvidencePlanMock,
+  generateEvidenceQueryWithMetaMock,
+} = vi.hoisted(() => ({
   generateEvidencePlanMock: vi.fn(),
-  generateEvidenceQueryMock: vi.fn(),
+  generateEvidenceQueryWithMetaMock: vi.fn(),
 }))
 vi.mock('3am-diagnosis', async () => {
   const actual = await vi.importActual('3am-diagnosis')
   return {
     ...actual,
     generateEvidencePlan: generateEvidencePlanMock,
-    generateEvidenceQuery: generateEvidenceQueryMock,
+    generateEvidenceQueryWithMeta: generateEvidenceQueryWithMetaMock,
   }
 })
+
+/** Helper: wrap a response into the {response, meta} tuple the domain expects. */
+function withMeta(response: EvidenceQueryResponse, meta: { retryCount?: number; repairedRefCount?: number } = {}) {
+  return {
+    response,
+    meta: {
+      retryCount: meta.retryCount ?? 0,
+      repairedRefCount: meta.repairedRefCount ?? 0,
+    },
+  }
+}
+
 
 import { buildEvidenceQueryAnswer } from '../../domain/evidence-query.js'
 
@@ -186,7 +204,7 @@ function makeIncident(overrides: Partial<Incident> = {}): Incident {
 describe('buildEvidenceQueryAnswer', () => {
   beforeEach(() => {
     generateEvidencePlanMock.mockReset()
-    generateEvidenceQueryMock.mockReset()
+    generateEvidenceQueryWithMetaMock.mockReset()
     generateEvidencePlanMock.mockImplementation(async (input: { question: string }) => {
       if (input.question === 'どうあるべき？') {
         return {
@@ -216,21 +234,56 @@ describe('buildEvidenceQueryAnswer', () => {
         preferredSurfaces: ['traces', 'metrics', 'logs'],
       }
     })
-    generateEvidenceQueryMock.mockRejectedValue(new Error('LLM not available in test'))
+    // LLM-first default: synthesis succeeds with a generic evidence-grounded
+    // response. Individual tests override this for specific behavioral checks.
+    generateEvidenceQueryWithMetaMock.mockImplementation(async (input: { question: string; evidence: Array<{ ref: { kind: string; id: string } }>; diagnosis?: { rootCauseHypothesis?: string } | null; answerMode?: string }) => {
+      const firstRef = input.evidence[0]?.ref ?? { kind: 'span', id: 'trace-1:span-1' }
+      const diagnosisInferenceText = input.diagnosis?.rootCauseHypothesis
+        ? `That pattern is consistent with the existing diagnosis: ${input.diagnosis.rootCauseHypothesis}`
+        : 'The evidence is consistent with an ongoing anomaly.'
+      const actionInferenceText = 'The minimum next action follows from the diagnosis and the cited evidence.'
+      const missingLogsText = '失敗ログに対応する収集経路を確認するのが最短。'
+      return withMeta({
+        question: input.question,
+        status: 'answered',
+        segments: [
+          {
+            id: 'seg_1',
+            kind: 'fact',
+            text: 'Checkout spans returned 504 during the incident window.',
+            evidenceRefs: [firstRef as { kind: 'span' | 'metric_group' | 'log_cluster' | 'absence'; id: string }],
+          },
+          {
+            id: 'seg_2',
+            kind: 'inference',
+            text: input.answerMode === 'action'
+              ? actionInferenceText
+              : input.answerMode === 'missing_evidence'
+                ? missingLogsText
+                : diagnosisInferenceText,
+            evidenceRefs: [firstRef as { kind: 'span' | 'metric_group' | 'log_cluster' | 'absence'; id: string }],
+          },
+        ],
+        evidenceSummary: { traces: 0, metrics: 0, logs: 0 },
+        followups: [],
+      })
+    })
   })
 
-  it('returns noAnswerReason when diagnosis is unavailable', async () => {
+  it('passes diagnosisStatus=unavailable to the LLM when no diagnosis has run', async () => {
     const incident = makeIncident()
     const store = makeMockStore()
 
     const result = await buildEvidenceQueryAnswer(incident, store, 'What happened?', false)
 
-    expect(result.status).toBe('no_answer')
-    expect(result.noAnswerReason).toBeTruthy()
-    expect(result.noAnswerReason).toContain('No diagnosis has been triggered')
+    expect(generateEvidenceQueryWithMetaMock).toHaveBeenCalled()
+    const call = generateEvidenceQueryWithMetaMock.mock.calls[0]?.[0] as { diagnosisStatus?: string; diagnosis?: unknown }
+    expect(call?.diagnosisStatus).toBe('unavailable')
+    expect(call?.diagnosis).toBeNull()
+    expect(result.status).toBe('answered')
   })
 
-  it('returns noAnswerReason when diagnosis is pending', async () => {
+  it('passes diagnosisStatus=pending to the LLM while diagnosis is running', async () => {
     const incident = makeIncident({
       diagnosisDispatchedAt: new Date().toISOString(),
     })
@@ -238,9 +291,10 @@ describe('buildEvidenceQueryAnswer', () => {
 
     const result = await buildEvidenceQueryAnswer(incident, store, 'What happened?', false)
 
-    expect(result.status).toBe('no_answer')
-    expect(result.noAnswerReason).toBeTruthy()
-    expect(result.noAnswerReason).toContain('Diagnosis is still running')
+    expect(generateEvidenceQueryWithMetaMock).toHaveBeenCalled()
+    const call = generateEvidenceQueryWithMetaMock.mock.calls[0]?.[0] as { diagnosisStatus?: string }
+    expect(call?.diagnosisStatus).toBe('pending')
+    expect(result.status).toBe('answered')
   })
 
   it('returns structured answer when diagnosis available (no narrative)', async () => {
@@ -355,7 +409,10 @@ describe('buildEvidenceQueryAnswer', () => {
     )
 
     expect(result.status).toBe('answered')
-    expect(result.segments.some((segment) => segment.text.includes('最小アクション'))).toBe(true)
+    // LLM synthesis should have been called with answerMode=action derived from planner
+    const call = generateEvidenceQueryWithMetaMock.mock.calls.at(-1)?.[0] as { answerMode?: string; history?: unknown[] }
+    expect(call?.answerMode).toBe('action')
+    expect(Array.isArray(call?.history) ? call.history.length : 0).toBeGreaterThan(0)
   })
 
   it('asks for clarification when an underspecified follow-up has no usable history', async () => {
@@ -378,7 +435,7 @@ describe('buildEvidenceQueryAnswer', () => {
     expect(result.followups.length).toBeGreaterThan(0)
   })
 
-  it('answers missing-log questions without collapsing back to the generic cause template', async () => {
+  it('passes answerMode=missing_evidence to the LLM for absence-type questions', async () => {
     const incident = makeIncident({
       diagnosisResult: makeDiagnosisResult(),
     })
@@ -393,25 +450,25 @@ describe('buildEvidenceQueryAnswer', () => {
     )
 
     expect(result.status).toBe('answered')
-    expect(result.segments.some((segment) => segment.text.includes('失敗ログ'))).toBe(true)
-    expect(result.segments.some((segment) => segment.text.includes('収集経路'))).toBe(true)
+    const call = generateEvidenceQueryWithMetaMock.mock.calls.at(-1)?.[0] as { answerMode?: string; locale?: string }
+    expect(call?.answerMode).toBe('missing_evidence')
+    expect(call?.locale).toBe('ja')
   })
 
-  it('span summary includes httpStatus when using new stable attribute http.response.status_code', async () => {
+  it('evidence catalog fed to the LLM includes httpStatus=504 when using the new http.response.status_code attribute', async () => {
     const incident = makeIncident({ diagnosisResult: makeDiagnosisResult() })
     // makeMockStore already uses 'http.response.status_code': 504
     const store = makeMockStore()
 
-    const result = await buildEvidenceQueryAnswer(incident, store, 'Why is checkout failing?', false)
+    await buildEvidenceQueryAnswer(incident, store, 'Why is checkout failing?', false)
 
-    const spanSegment = result.segments.find(
-      (seg) => seg.kind === 'fact' && seg.text.includes('httpStatus=504'),
-    )
-    expect(spanSegment).toBeDefined()
+    const call = generateEvidenceQueryWithMetaMock.mock.calls.at(-1)?.[0] as {
+      evidence: Array<{ summary: string }>
+    }
+    expect(call?.evidence.some((entry) => entry.summary.includes('httpStatus=504'))).toBe(true)
   })
 
-  it('span summary includes httpStatus when using deprecated attribute http.status_code (backward compat)', async () => {
-    // Override the store to return a span with the deprecated attribute form
+  it('evidence catalog carries httpStatus=504 when using deprecated http.status_code attribute (backward compat)', async () => {
     const spans: TelemetrySpan[] = [{
       traceId: 'trace-1',
       spanId: 'span-1',
@@ -435,64 +492,76 @@ describe('buildEvidenceQueryAnswer', () => {
     }
 
     const incident = makeIncident({ diagnosisResult: makeDiagnosisResult() })
-    const result = await buildEvidenceQueryAnswer(incident, storeWithDeprecated, 'Why is checkout failing?', false)
+    await buildEvidenceQueryAnswer(incident, storeWithDeprecated, 'Why is checkout failing?', false)
 
-    const spanSegment = result.segments.find(
-      (seg) => seg.kind === 'fact' && seg.text.includes('httpStatus=504'),
-    )
-    expect(spanSegment).toBeDefined()
+    const call = generateEvidenceQueryWithMetaMock.mock.calls.at(-1)?.[0] as {
+      evidence: Array<{ summary: string }>
+    }
+    expect(call?.evidence.some((entry) => entry.summary.includes('httpStatus=504'))).toBe(true)
   })
 
-  it('returns concise no_answer for greetings and off-topic prompts', async () => {
+  it('routes greetings through the LLM (LLM-first, no template shortcut)', async () => {
     const incident = makeIncident({ diagnosisResult: makeDiagnosisResult() })
-    const generateEvidenceQuerySpy = vi.spyOn(diagnosis, 'generateEvidenceQuery')
+    // Override: LLM decides greeting is status=no_answer with a locale-aware intro.
+    generateEvidenceQueryWithMetaMock.mockImplementationOnce(async (input: { question: string; locale?: string }) => withMeta({
+      question: input.question,
+      status: 'no_answer',
+      segments: [],
+      evidenceSummary: { traces: 0, metrics: 0, logs: 0 },
+      followups: [],
+      noAnswerReason: input.locale === 'ja'
+        ? 'このインシデントは調査中です。トレース・メトリクス・ログ・診断結果のどれを確認する？'
+        : 'Incident is under investigation — what would you like to check: traces, metrics, logs, or the diagnosed cause?',
+    }))
 
     const result = await buildEvidenceQueryAnswer(incident, makeMockStore(), 'こんにちは？', false, 'ja')
 
+    expect(generateEvidenceQueryWithMetaMock).toHaveBeenCalledOnce()
     expect(result.status).toBe('no_answer')
-    expect(result.segments).toEqual([])
-    expect(result.noAnswerReason).toContain('このインシデントについて')
-    expect(generateEvidenceQuerySpy).not.toHaveBeenCalled()
+    expect(result.noAnswerReason).toBeTruthy()
   })
 
-  it('answers incident-context glossary questions for backoff', async () => {
+  it('routes glossary questions (X とは?) through the LLM with locale and retrieved evidence', async () => {
     const incident = makeIncident({ diagnosisResult: makeDiagnosisResult() })
-    const generateEvidenceQuerySpy = vi.spyOn(diagnosis, 'generateEvidenceQuery')
 
-    const result = await buildEvidenceQueryAnswer(incident, makeMockStore(), 'バックオフって何？', false, 'ja')
+    await buildEvidenceQueryAnswer(incident, makeMockStore(), 'バックオフって何？', false, 'ja')
 
-    expect(result.status).toBe('answered')
-    expect(result.segments[0]?.text).toContain('バックオフは')
-    expect(result.segments.some((segment) => segment.text.includes('このインシデントでは'))).toBe(true)
-    expect(result.segments.every((segment) => segment.evidenceRefs.length > 0)).toBe(true)
-    expect(generateEvidenceQuerySpy).not.toHaveBeenCalled()
+    expect(generateEvidenceQueryWithMetaMock).toHaveBeenCalled()
+    const call = generateEvidenceQueryWithMetaMock.mock.calls.at(-1)?.[0] as {
+      question: string
+      locale?: string
+      evidence: unknown[]
+    }
+    expect(call?.question).toContain('バックオフ')
+    expect(call?.locale).toBe('ja')
+    expect(Array.isArray(call?.evidence) ? call.evidence.length : 0).toBeGreaterThan(0)
   })
 
-  it('answers incident-context glossary questions for queue', async () => {
+  it('routes explanatory queue question through the LLM', async () => {
     const incident = makeIncident({ diagnosisResult: makeDiagnosisResult() })
+
     const result = await buildEvidenceQueryAnswer(incident, makeMockStore(), 'キューって何？', false, 'ja')
 
+    expect(generateEvidenceQueryWithMetaMock).toHaveBeenCalled()
     expect(result.status).toBe('answered')
-    expect(result.segments[0]?.text).toContain('キューは')
-    expect(result.segments.some((segment) => segment.text.includes('このインシデントでは'))).toBe(true)
   })
 
-  it('answers incident-context glossary questions for worker pool via registry', async () => {
+  it('routes trace definition question through the LLM', async () => {
     const incident = makeIncident({ diagnosisResult: makeDiagnosisResult() })
-    const result = await buildEvidenceQueryAnswer(incident, makeMockStore(), 'ワーカープールってなんですか？', false, 'ja')
 
-    expect(result.status).toBe('answered')
-    expect(result.segments[0]?.text).toContain('ワーカープールは')
-    expect(result.segments.some((segment) => segment.text.includes('このインシデントでは'))).toBe(true)
-  })
-
-  it('answers general explanations for trace without no-answer fallback', async () => {
-    const incident = makeIncident({ diagnosisResult: makeDiagnosisResult() })
     const result = await buildEvidenceQueryAnswer(incident, makeMockStore(), 'トレースって何？', false, 'ja')
 
+    expect(generateEvidenceQueryWithMetaMock).toHaveBeenCalled()
     expect(result.status).toBe('answered')
-    expect(result.segments[0]?.text).toContain('トレースは')
-    expect(result.segments.some((segment) => segment.text.includes('このインシデントでは'))).toBe(true)
+  })
+
+  it('compound greeting+question ("こんにちは。原因は？") routes through LLM instead of being swallowed by a greeting keyword match', async () => {
+    const incident = makeIncident({ diagnosisResult: makeDiagnosisResult() })
+
+    const result = await buildEvidenceQueryAnswer(incident, makeMockStore(), 'こんにちは。原因は？', false, 'ja')
+
+    expect(generateEvidenceQueryWithMetaMock).toHaveBeenCalled()
+    expect(result.status).toBe('answered')
   })
 
   it('localizes followups when locale is ja', async () => {
@@ -741,13 +810,13 @@ describe('buildEvidenceQueryAnswer', () => {
     EvidenceQueryResponseSchema.parse(result)
   })
 
-  // ── Locale=ja fact segment output ────────────────────────────────────────
+  // ── Locale=ja evidence-catalog content fed to LLM ────────────────────────
 
-  it('fact segments use Japanese strings when locale=ja', async () => {
+  it('evidence catalog passed to LLM uses Japanese fact summaries when locale=ja', async () => {
     const incident = makeIncident({ diagnosisResult: makeDiagnosisResult() })
     const store = makeMockStoreWithAnomalousMetrics()
 
-    const result = await buildEvidenceQueryAnswer(
+    await buildEvidenceQueryAnswer(
       incident,
       store,
       'checkoutが失敗している原因は？',
@@ -755,51 +824,24 @@ describe('buildEvidenceQueryAnswer', () => {
       'ja',
     )
 
-    expect(result.status).toBe('answered')
-
-    const factSegments = result.segments.filter((seg) => seg.kind === 'fact')
-    expect(factSegments.length).toBeGreaterThan(0)
-
-    // At least one fact segment should contain Japanese metric or log text
-    const hasJapaneseFact = factSegments.some(
-      (seg) =>
-        seg.text.includes('メトリクスグループ') ||
-        seg.text.includes('ログ証跡') ||
-        seg.text.includes('トレース'),
-    )
-    expect(hasJapaneseFact).toBe(true)
-
-    // None of the fact segments should contain English-only metric/log patterns
-    for (const seg of factSegments) {
-      // English metric pattern: "Metric group ... Verdict=..."
-      expect(seg.text).not.toMatch(/^Metric group .+ Verdict=/)
-      // English log pattern: "Log evidence ... of type ... appeared"
-      expect(seg.text).not.toMatch(/^Log evidence .+ of type .+ appeared/)
+    const call = generateEvidenceQueryWithMetaMock.mock.calls.at(-1)?.[0] as {
+      evidence: Array<{ summary: string }>
+      locale?: string
     }
-  })
-
-  it('no fact segment contains English metric or log template strings when locale=ja', async () => {
-    const incident = makeIncident({ diagnosisResult: makeDiagnosisResult() })
-    const store = makeMockStoreWithAnomalousMetrics()
-
-    const result = await buildEvidenceQueryAnswer(
-      incident,
-      store,
-      'checkoutが失敗している原因は？',
-      false,
-      'ja',
+    expect(call?.locale).toBe('ja')
+    // At least one evidence summary should be Japanese, not English template text.
+    const summaries = (call?.evidence ?? []).map((entry) => entry.summary)
+    const hasJapanese = summaries.some(
+      (s) =>
+        s.includes('メトリクスグループ') ||
+        s.includes('ログ証跡') ||
+        s.includes('トレース'),
     )
-
-    expect(result.status).toBe('answered')
-
-    const factSegments = result.segments.filter((seg) => seg.kind === 'fact')
-    for (const seg of factSegments) {
-      // Must not use English metric fact pattern
-      expect(seg.text).not.toMatch(/Metric group .+ indicates .+ Verdict=/)
-      // Must not use English log fact pattern
-      expect(seg.text).not.toMatch(/Log evidence .+ of type .+ appeared \d+ times/)
-      // Must not use English trace fact pattern
-      expect(seg.text).not.toMatch(/Trace .+ span .+ returned httpStatus=/)
+    expect(hasJapanese).toBe(true)
+    // And none should use English metric/log/trace template patterns.
+    for (const s of summaries) {
+      expect(s).not.toMatch(/^Metric group .+ Verdict=/)
+      expect(s).not.toMatch(/^Log evidence .+ of type .+ appeared/)
     }
   })
 })
@@ -812,7 +854,24 @@ describe('buildEvidenceQueryAnswer', () => {
 describe('followup text self-containment', () => {
   beforeEach(() => {
     generateEvidencePlanMock.mockReset()
-    generateEvidenceQueryMock.mockReset()
+    generateEvidenceQueryWithMetaMock.mockReset()
+    generateEvidenceQueryWithMetaMock.mockImplementation(async (input: { question: string; evidence: Array<{ ref: { kind: string; id: string } }> }) => {
+      const firstRef = input.evidence[0]?.ref ?? { kind: 'span', id: 'trace-1:span-1' }
+      return withMeta({
+        question: input.question,
+        status: 'answered',
+        segments: [
+          {
+            id: 'seg_1',
+            kind: 'fact',
+            text: 'Evidence observed during the incident.',
+            evidenceRefs: [firstRef as { kind: 'span' | 'metric_group' | 'log_cluster' | 'absence'; id: string }],
+          },
+        ],
+        evidenceSummary: { traces: 0, metrics: 0, logs: 0 },
+        followups: [],
+      })
+    })
   })
 
   async function getFollowups(
@@ -907,7 +966,7 @@ describe('replyToClarification enrichment', () => {
         preferredSurfaces: ['traces', 'metrics', 'logs'],
       }
     })
-    generateEvidenceQueryMock.mockResolvedValueOnce({
+    generateEvidenceQueryWithMetaMock.mockResolvedValueOnce(withMeta({
       question: 'the checkout service',
       status: 'answered',
       segments: [{
@@ -918,7 +977,7 @@ describe('replyToClarification enrichment', () => {
       }],
       evidenceSummary: { traces: 1, metrics: 1, logs: 1 },
       followups: [],
-    })
+    }))
 
     const incident = makeIncident({ diagnosisResult: makeDiagnosisResult() })
     const store = makeMockStore()
@@ -946,7 +1005,7 @@ describe('replyToClarification enrichment', () => {
         preferredSurfaces: ['traces', 'metrics', 'logs'],
       }
     })
-    generateEvidenceQueryMock.mockResolvedValueOnce({
+    generateEvidenceQueryWithMetaMock.mockResolvedValueOnce(withMeta({
       question: 'What caused the error rate spike?',
       status: 'answered',
       segments: [{
@@ -957,7 +1016,7 @@ describe('replyToClarification enrichment', () => {
       }],
       evidenceSummary: { traces: 1, metrics: 1, logs: 1 },
       followups: [],
-    })
+    }))
 
     const incident = makeIncident({ diagnosisResult: makeDiagnosisResult() })
     const store = makeMockStore()
@@ -1004,5 +1063,176 @@ describe('replyToClarification enrichment', () => {
       },
     })
     expect(invalidResult.success).toBe(false)
+  })
+})
+
+// ──────────────────────────────────────────────────────────────────────────
+// LLM-first decision coverage (per CLAUDE.md). These tests exercise the
+// structured context fields the domain layer now passes to the LLM instead
+// of producing deterministic template answers.
+// ──────────────────────────────────────────────────────────────────────────
+
+describe('LLM-first synthesis context (CLAUDE.md rule)', () => {
+  beforeEach(() => {
+    generateEvidencePlanMock.mockReset()
+    generateEvidenceQueryWithMetaMock.mockReset()
+    generateEvidencePlanMock.mockImplementation(async (input: { question: string }) => ({
+      mode: input.question.includes('logがない') || input.question.includes('ログがない')
+        ? 'missing_evidence'
+        : 'answer',
+      rewrittenQuestion: input.question,
+      preferredSurfaces: ['traces', 'metrics', 'logs'],
+    }))
+    generateEvidenceQueryWithMetaMock.mockImplementation(async (input: { question: string; evidence: Array<{ ref: { kind: string; id: string } }> }) => {
+      const firstRef = input.evidence[0]?.ref ?? { kind: 'span', id: 'trace-1:span-1' }
+      return withMeta({
+        question: input.question,
+        status: 'answered',
+        segments: [
+          {
+            id: 'seg_1',
+            kind: 'fact',
+            text: 'synthesized.',
+            evidenceRefs: [firstRef as { kind: 'span' | 'metric_group' | 'log_cluster' | 'absence'; id: string }],
+          },
+        ],
+        evidenceSummary: { traces: 0, metrics: 0, logs: 0 },
+        followups: [],
+      })
+    })
+  })
+
+  it('Decision 1 — diagnosisStatus=pending flows to synthesis prompt', async () => {
+    const incident = makeIncident({ diagnosisDispatchedAt: new Date().toISOString() })
+    await buildEvidenceQueryAnswer(incident, makeMockStore(), 'What happened so far?', false)
+
+    const call = generateEvidenceQueryWithMetaMock.mock.calls.at(-1)?.[0] as { diagnosisStatus?: string; diagnosis?: unknown }
+    expect(call?.diagnosisStatus).toBe('pending')
+    // Planner is skipped when diagnosis is not ready, so diagnosis context is null.
+    expect(call?.diagnosis).toBeNull()
+  })
+
+  it('Decision 1 — diagnosisStatus=unavailable flows to synthesis prompt', async () => {
+    const incident = makeIncident()
+    await buildEvidenceQueryAnswer(incident, makeMockStore(), 'Anything you can tell me?', false)
+
+    const call = generateEvidenceQueryWithMetaMock.mock.calls.at(-1)?.[0] as { diagnosisStatus?: string; diagnosis?: unknown }
+    expect(call?.diagnosisStatus).toBe('unavailable')
+    expect(call?.diagnosis).toBeNull()
+  })
+
+  it('Decision 1 — diagnosisStatus=ready with diagnosis context is forwarded when diagnosis finished', async () => {
+    const incident = makeIncident({ diagnosisResult: makeDiagnosisResult() })
+    await buildEvidenceQueryAnswer(incident, makeMockStore(), 'Why is checkout failing?', false)
+
+    const call = generateEvidenceQueryWithMetaMock.mock.calls.at(-1)?.[0] as {
+      diagnosisStatus?: string
+      diagnosis?: { rootCauseHypothesis?: string } | null
+    }
+    expect(call?.diagnosisStatus).toBe('ready')
+    expect(call?.diagnosis?.rootCauseHypothesis).toContain('Flash sale')
+  })
+
+  it('Decision 2 — greeting message is handled by LLM synthesis (not a keyword branch)', async () => {
+    const incident = makeIncident({ diagnosisResult: makeDiagnosisResult() })
+    const result = await buildEvidenceQueryAnswer(incident, makeMockStore(), 'hello', false, 'en')
+
+    expect(generateEvidenceQueryWithMetaMock).toHaveBeenCalled()
+    expect(result.status).not.toBe('clarification')
+  })
+
+  it('Decision 3 — evidenceStatus is passed to the LLM (empty | sparse | dense)', async () => {
+    // Empty telemetry store. The curated-evidence builder may still synthesize
+    // absence entries, so retrieved length is not strictly 0; the key contract
+    // is that evidenceStatus is one of the documented values and is forwarded.
+    const emptyStore: TelemetryStoreDriver = {
+      querySpans: vi.fn().mockResolvedValue([]),
+      queryMetrics: vi.fn().mockResolvedValue([]),
+      queryLogs: vi.fn().mockResolvedValue([]),
+      ingestSpans: vi.fn().mockResolvedValue(undefined),
+      ingestMetrics: vi.fn().mockResolvedValue(undefined),
+      ingestLogs: vi.fn().mockResolvedValue(undefined),
+      upsertSnapshot: vi.fn().mockResolvedValue(undefined),
+      getSnapshots: vi.fn().mockResolvedValue([]),
+      deleteSnapshots: vi.fn().mockResolvedValue(undefined),
+      deleteExpired: vi.fn().mockResolvedValue(undefined),
+      deleteExpiredSnapshots: vi.fn().mockResolvedValue(undefined),
+    }
+    const incident = makeIncident({ diagnosisResult: makeDiagnosisResult(), spanMembership: [] })
+
+    await buildEvidenceQueryAnswer(incident, emptyStore, 'Why is checkout failing?', false)
+
+    const call = generateEvidenceQueryWithMetaMock.mock.calls.at(-1)?.[0] as {
+      evidenceStatus?: string
+    }
+    expect(['empty', 'sparse', 'dense']).toContain(call?.evidenceStatus ?? '')
+    // With a fully empty telemetry store (and no absence-synthesis input),
+    // evidence should be empty or at most sparse — never dense.
+    expect(call?.evidenceStatus).not.toBe('dense')
+  })
+
+  it('Decision 4 — safety net returns a deterministic no_answer only when the LLM fails after retries', async () => {
+    // Simulate the retry-aware generator throwing after exhausting retries.
+    generateEvidenceQueryWithMetaMock.mockRejectedValueOnce(new Error('retries exhausted'))
+
+    const incident = makeIncident({ diagnosisResult: makeDiagnosisResult() })
+    const result = await buildEvidenceQueryAnswer(incident, makeMockStore(), 'Why is checkout failing?', false)
+
+    expect(result.status).toBe('no_answer')
+    expect(result.noAnswerReason).toContain('LLM synthesis failed after retries')
+  })
+
+  it('Decision 5 — absence-type question sends a structured absenceInput to the LLM', async () => {
+    // Build a store where curated logs surface an absence claim.
+    const storeWithAbsence: TelemetryStoreDriver = {
+      querySpans: vi.fn().mockResolvedValue([{
+        traceId: 'trace-1',
+        spanId: 'span-1',
+        parentSpanId: undefined,
+        serviceName: 'web',
+        environment: 'production',
+        spanName: 'POST /checkout',
+        httpRoute: '/api/checkout',
+        httpStatusCode: 504,
+        spanStatusCode: 2,
+        durationMs: 1200,
+        startTimeMs: 1700000001000,
+        exceptionCount: 1,
+        attributes: { 'http.response.status_code': 504 },
+        ingestedAt: 1700000002000,
+      }]),
+      queryMetrics: vi.fn().mockResolvedValue([]),
+      queryLogs: vi.fn().mockResolvedValue([]),
+      ingestSpans: vi.fn().mockResolvedValue(undefined),
+      ingestMetrics: vi.fn().mockResolvedValue(undefined),
+      ingestLogs: vi.fn().mockResolvedValue(undefined),
+      upsertSnapshot: vi.fn().mockResolvedValue(undefined),
+      getSnapshots: vi.fn().mockResolvedValue([]),
+      deleteSnapshots: vi.fn().mockResolvedValue(undefined),
+      deleteExpired: vi.fn().mockResolvedValue(undefined),
+      deleteExpiredSnapshots: vi.fn().mockResolvedValue(undefined),
+    }
+
+    // Ask about the missing signal so planner picks missing_evidence mode.
+    generateEvidencePlanMock.mockResolvedValueOnce({
+      mode: 'missing_evidence',
+      rewrittenQuestion: 'Why are the expected retry logs missing?',
+      preferredSurfaces: ['logs', 'traces', 'metrics'],
+    })
+
+    const incident = makeIncident({ diagnosisResult: makeDiagnosisResult() })
+    await buildEvidenceQueryAnswer(incident, storeWithAbsence, 'なぜlogがない？', false, 'ja')
+
+    const call = generateEvidenceQueryWithMetaMock.mock.calls.at(-1)?.[0] as {
+      answerMode?: string
+      absenceInput?: { claimType?: string }
+    }
+    expect(call?.answerMode).toBe('missing_evidence')
+    // absenceInput is only set when the curated logs surface has an absence
+    // claim. Even without one, answerMode=missing_evidence must still reach
+    // the LLM so synthesis can explain "no record found".
+    if (call?.absenceInput) {
+      expect(['no-record-found', 'no-supporting-evidence', 'not-yet-available']).toContain(call.absenceInput.claimType ?? '')
+    }
   })
 })

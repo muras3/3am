@@ -12,10 +12,12 @@ const {
   mockGenerateEvidenceCombined,
   mockGenerateEvidencePlan,
   mockGenerateEvidenceQuery,
+  mockGenerateEvidenceQueryWithMeta,
 } = vi.hoisted(() => ({
   mockGenerateEvidenceCombined: vi.fn(),
   mockGenerateEvidencePlan: vi.fn(),
   mockGenerateEvidenceQuery: vi.fn(),
+  mockGenerateEvidenceQueryWithMeta: vi.fn(),
 }));
 
 vi.mock("3am-diagnosis", async () => {
@@ -25,8 +27,23 @@ vi.mock("3am-diagnosis", async () => {
     generateEvidenceCombined: mockGenerateEvidenceCombined,
     generateEvidencePlan: mockGenerateEvidencePlan,
     generateEvidenceQuery: mockGenerateEvidenceQuery,
+    generateEvidenceQueryWithMeta: mockGenerateEvidenceQueryWithMeta,
   };
 });
+
+/**
+ * Helper: adapt a legacy generateEvidenceQuery-style mock return into the
+ * {response, meta} shape expected by the refactored domain code.
+ */
+function wrapAsMeta(response: unknown, meta: { retryCount?: number; repairedRefCount?: number } = {}) {
+  return {
+    response,
+    meta: {
+      retryCount: meta.retryCount ?? 0,
+      repairedRefCount: meta.repairedRefCount ?? 0,
+    },
+  };
+}
 
 import { runManualEvidenceQuery } from "../commands/manual-execution.js";
 import { rateLimit as diagnosisResult } from "../../../diagnosis/src/__fixtures__/diagnosis-results.js";
@@ -155,16 +172,37 @@ describe("evidence query — combined path (subprocess providers)", () => {
     expect(result.clarificationQuestion).toBe("Are you asking about checkout or payment?");
   });
 
-  it("falls through to fallback answer when combined returns clarification on system followup", async () => {
+  it("falls through to the two-call LLM path when combined returns clarification on system followup", async () => {
     mockGenerateEvidenceCombined.mockResolvedValue({
       kind: "clarification",
       clarificationQuestion: "Which service?",
     });
+    mockGenerateEvidencePlan.mockResolvedValue({
+      mode: "answer",
+      rewrittenQuestion: "Why are checkout requests failing?",
+      preferredSurfaces: ["traces"],
+    });
+    const generatedSys = {
+      question: baseOptions.question,
+      status: "answered" as const,
+      segments: [
+        {
+          id: "seg_1",
+          kind: "fact" as const,
+          text: "Checkout spans returned 504.",
+          evidenceRefs: [{ kind: "span" as const, id: "trace-1:span-1" }],
+        },
+      ],
+      evidenceSummary: { traces: 1, metrics: 1, logs: 1 },
+      followups: [],
+    };
+    mockGenerateEvidenceQueryWithMeta.mockResolvedValue(wrapAsMeta(generatedSys));
 
     const result = await runManualEvidenceQuery({ ...baseOptions, isSystemFollowup: true });
 
-    // Must NOT return clarification for system followups
+    // Must NOT return clarification for system followups — LLM synthesis fills in.
     expect(result.status).not.toBe("clarification");
+    expect(mockGenerateEvidenceQueryWithMeta).toHaveBeenCalledOnce();
   });
 
   it("falls back to two-call path when combined call throws", async () => {
@@ -174,26 +212,28 @@ describe("evidence query — combined path (subprocess providers)", () => {
       rewrittenQuestion: "Why are checkout requests returning 504?",
       preferredSurfaces: ["traces", "metrics"],
     });
-    mockGenerateEvidenceQuery.mockResolvedValue({
+    const generatedA = {
       question: baseOptions.question,
-      status: "answered",
+      status: "answered" as const,
       segments: [
         {
           id: "seg_1",
-          kind: "fact",
+          kind: "fact" as const,
           text: "Worker pool exhausted.",
-          evidenceRefs: [{ kind: "span", id: "trace-1:span-1" }],
+          evidenceRefs: [{ kind: "span" as const, id: "trace-1:span-1" }],
         },
       ],
       evidenceSummary: { traces: 1, metrics: 1, logs: 1 },
       followups: [],
-    });
+    };
+    mockGenerateEvidenceQuery.mockResolvedValue(generatedA);
+    mockGenerateEvidenceQueryWithMeta.mockResolvedValue(wrapAsMeta(generatedA));
 
     const result = await runManualEvidenceQuery(baseOptions);
 
     expect(mockGenerateEvidenceCombined).toHaveBeenCalledOnce();
     expect(mockGenerateEvidencePlan).toHaveBeenCalledOnce();
-    expect(mockGenerateEvidenceQuery).toHaveBeenCalledOnce();
+    expect(mockGenerateEvidenceQueryWithMeta).toHaveBeenCalledOnce();
     expect(result.status).toBe("answered");
   });
 
@@ -203,26 +243,28 @@ describe("evidence query — combined path (subprocess providers)", () => {
       rewrittenQuestion: "Why are checkout requests failing?",
       preferredSurfaces: ["traces"],
     });
-    mockGenerateEvidenceQuery.mockResolvedValue({
+    const generatedAnthropic = {
       question: baseOptions.question,
-      status: "answered",
+      status: "answered" as const,
       segments: [
         {
           id: "seg_1",
-          kind: "fact",
+          kind: "fact" as const,
           text: "Checkout spans are returning 504.",
-          evidenceRefs: [{ kind: "span", id: "trace-1:span-1" }],
+          evidenceRefs: [{ kind: "span" as const, id: "trace-1:span-1" }],
         },
       ],
       evidenceSummary: { traces: 1, metrics: 1, logs: 1 },
       followups: [],
-    });
+    };
+    mockGenerateEvidenceQuery.mockResolvedValue(generatedAnthropic);
+    mockGenerateEvidenceQueryWithMeta.mockResolvedValue(wrapAsMeta(generatedAnthropic));
 
     await runManualEvidenceQuery({ ...baseOptions, provider: "anthropic" });
 
     expect(mockGenerateEvidenceCombined).not.toHaveBeenCalled();
     expect(mockGenerateEvidencePlan).toHaveBeenCalledOnce();
-    expect(mockGenerateEvidenceQuery).toHaveBeenCalledOnce();
+    expect(mockGenerateEvidenceQueryWithMeta).toHaveBeenCalledOnce();
   });
 
   it("uses the two-call path for openai provider", async () => {
@@ -231,35 +273,50 @@ describe("evidence query — combined path (subprocess providers)", () => {
       rewrittenQuestion: "Why are checkout requests failing?",
       preferredSurfaces: ["traces"],
     });
-    mockGenerateEvidenceQuery.mockResolvedValue({
+    const generatedOpenai = {
       question: baseOptions.question,
-      status: "answered",
+      status: "answered" as const,
       segments: [
         {
           id: "seg_1",
-          kind: "fact",
+          kind: "fact" as const,
           text: "Checkout spans are returning 504.",
-          evidenceRefs: [{ kind: "span", id: "trace-1:span-1" }],
+          evidenceRefs: [{ kind: "span" as const, id: "trace-1:span-1" }],
         },
       ],
       evidenceSummary: { traces: 1, metrics: 1, logs: 1 },
       followups: [],
-    });
+    };
+    mockGenerateEvidenceQuery.mockResolvedValue(generatedOpenai);
+    mockGenerateEvidenceQueryWithMeta.mockResolvedValue(wrapAsMeta(generatedOpenai));
 
     await runManualEvidenceQuery({ ...baseOptions, provider: "openai" });
 
     expect(mockGenerateEvidenceCombined).not.toHaveBeenCalled();
     expect(mockGenerateEvidencePlan).toHaveBeenCalledOnce();
-    expect(mockGenerateEvidenceQuery).toHaveBeenCalledOnce();
+    expect(mockGenerateEvidenceQueryWithMeta).toHaveBeenCalledOnce();
   });
 
-  it("returns a greeting no-answer without calling any LLM", async () => {
+  it("routes a greeting through the LLM synthesis path (LLM-first, no template shortcut)", async () => {
+    // Subprocess provider goes through generateEvidenceCombined; the LLM is
+    // instructed by the system prompt to produce an incident-aware greeting.
+    mockGenerateEvidenceCombined.mockResolvedValue({
+      kind: "answer",
+      response: {
+        question: "hello",
+        status: "no_answer",
+        segments: [],
+        evidenceSummary: { traces: 1, metrics: 1, logs: 1 },
+        followups: [],
+        noAnswerReason: "This incident is under active investigation — ask about traces, metrics, logs, or the diagnosed cause.",
+      },
+    });
+
     const result = await runManualEvidenceQuery({ ...baseOptions, question: "hello" });
 
-    expect(mockGenerateEvidenceCombined).not.toHaveBeenCalled();
-    expect(mockGenerateEvidencePlan).not.toHaveBeenCalled();
-    expect(mockGenerateEvidenceQuery).not.toHaveBeenCalled();
+    expect(mockGenerateEvidenceCombined).toHaveBeenCalledOnce();
     expect(result.status).toBe("no_answer");
+    expect(result.noAnswerReason).toBeTruthy();
   });
 
   it("returns answered response with evidenceSummary populated", async () => {

@@ -1,8 +1,13 @@
 /**
  * evidence-query.ts — Domain logic for POST /api/incidents/:id/evidence/query.
  *
- * Uses the curated evidence read model as the source of truth, performs a
- * lightweight retrieval pass, then generates a grounded single-turn answer.
+ * LLM-first synthesis (see absolute rule in CLAUDE.md):
+ *   detection  : code-side (diagnosis_status, evidence_status, absence_input)
+ *   synthesis  : always LLM (no deterministic template output)
+ *   repair     : strip invalid refs + bounded retry inside generate-*
+ *   safety net : ONE final deterministic no-answer when the LLM cannot be
+ *                reached (provider-down equivalent), routed through a single
+ *                call site at the end of buildEvidenceQueryAnswer.
  */
 
 import type {
@@ -11,7 +16,14 @@ import type {
   EvidenceResponse,
   Followup,
 } from "3am-core";
-import { generateEvidencePlan, generateEvidenceQuery, formatMetricFact, formatLogFact, formatTraceFact } from "3am-diagnosis";
+import {
+  generateEvidencePlan,
+  generateEvidenceQueryWithMeta,
+  formatMetricFact,
+  formatLogFact,
+  formatTraceFact,
+  type EvidenceQueryAbsenceInput,
+} from "3am-diagnosis";
 import type { Incident } from "../storage/interface.js";
 import { classifyDiagnosisState } from "./diagnosis-state.js";
 import type { TelemetryStoreDriver } from "../telemetry/interface.js";
@@ -28,12 +40,6 @@ type RetrievedEvidence = {
   surface: "traces" | "metrics" | "logs";
   summary: string;
   score: number;
-};
-
-type ExplanatoryTerm = {
-  definition: string;
-  canonical: string;
-  preferredSurfaces: Array<"traces" | "metrics" | "logs">;
 };
 
 function determineDiagnosisState(incident: Incident): DiagnosisState {
@@ -74,195 +80,6 @@ function ensureSentence(text: string): string {
   return /[.!?。]$/.test(trimmed) ? trimmed : `${trimmed}.`;
 }
 
-function firstSentence(text: string): string {
-  const trimmed = text.trim();
-  if (!trimmed) return "";
-  const match = /^[\s\S]*?[.!?。](?:\s|$)/.exec(trimmed);
-  return ensureSentence((match?.[0] ?? trimmed).trim());
-}
-
-function localizeNoAnswerForGreeting(locale: "en" | "ja"): string {
-  return locale === "ja"
-    ? "このインシデントについて、トレース・メトリクス・ログ・原因を聞いて。"
-    : "Ask about traces, metrics, logs, or the diagnosed cause for this incident.";
-}
-
-function buildDirectAnswer(
-  intent: IntentProfile,
-  locale: "en" | "ja",
-  incident: Incident,
-  primary?: RetrievedEvidence,
-): { kind: "fact" | "inference"; text: string } | null {
-  if (intent.kind === "greeting") return null;
-
-  if (intent.kind === "root_cause" && incident.diagnosisResult) {
-    return {
-      kind: "inference",
-      text: locale === "ja"
-        ? `現時点では、${incident.diagnosisResult.summary.root_cause_hypothesis}`
-        : `Current best explanation: ${incident.diagnosisResult.summary.root_cause_hypothesis}`,
-    };
-  }
-
-  if (intent.kind === "action" && incident.diagnosisResult) {
-    return {
-      kind: "inference",
-      text: locale === "ja"
-        ? `いま取るべき最小アクションは、${incident.diagnosisResult.recommendation.immediate_action}`
-        : `The minimum next action is ${incident.diagnosisResult.recommendation.immediate_action}`,
-    };
-  }
-
-  if (intent.kind === "metrics") {
-    return {
-      kind: "fact",
-      text: locale === "ja"
-        ? "はい。メトリクスでは明確な異常があります。"
-        : "Yes. The metrics show a clear anomaly.",
-    };
-  }
-
-  if (intent.kind === "logs") {
-    return {
-      kind: "fact",
-      text: locale === "ja"
-        ? "はい。ログにも異常があります。"
-        : "Yes. The logs also show an abnormal pattern.",
-    };
-  }
-
-  if (intent.kind === "traces") {
-    return {
-      kind: "fact",
-      text: locale === "ja"
-        ? "はい。失敗経路はトレースで確認できます。"
-        : "Yes. The failing path is visible in traces.",
-    };
-  }
-
-  if (primary) {
-    return {
-      kind: "fact",
-      text: locale === "ja"
-        ? "はい。いまの evidence で直接確認できる異常があります。"
-        : "Yes. The current evidence shows a directly observable issue.",
-    };
-  }
-
-  return null;
-}
-
-function buildInferenceTail(
-  intent: IntentProfile,
-  locale: "en" | "ja",
-  incident: Incident,
-): string | null {
-  if (!incident.diagnosisResult) return null;
-  if (intent.kind === "root_cause") {
-    return locale === "ja"
-      ? "この説明は既存の diagnosis と、いま取得できている traces / metrics / logs の並びに一致しています。"
-      : "That explanation matches the existing diagnosis and the currently retrieved traces, metrics, and logs.";
-  }
-  if (intent.kind === "action") {
-    return locale === "ja"
-      ? `このアクションを優先する理由は、${incident.diagnosisResult.recommendation.action_rationale_short}`
-      : `That action is prioritized because ${incident.diagnosisResult.recommendation.action_rationale_short}`;
-  }
-  return locale === "ja"
-    ? `この並びは、${incident.diagnosisResult.summary.root_cause_hypothesis} という既存 diagnosis と整合しています。`
-    : `That pattern is consistent with the existing diagnosis: ${incident.diagnosisResult.summary.root_cause_hypothesis}`;
-}
-
-function detectExplanatoryTerm(question: string, locale: "en" | "ja"): ExplanatoryTerm | null {
-  const lower = question.toLowerCase();
-  const asksDefinition = /what is|what's|define|meaning|とは|って何|ってなんですか|何ですか|なんですか|どういう意味/.test(lower);
-  if (!asksDefinition) return null;
-
-  const terms: Array<{ aliases: string[]; canonical: string; definitionJa: string; definitionEn: string; preferredSurfaces: Array<"traces" | "metrics" | "logs"> }> = [
-    {
-      aliases: ["trace", "traces", "トレース"],
-      canonical: locale === "ja" ? "トレース" : "trace",
-      definitionJa: "トレースは、1つのリクエストや処理がシステム内をどう通ったかを、サービス間の流れとして追える記録です。",
-      definitionEn: "A trace is a record of how a single request or operation moved through the system across services.",
-      preferredSurfaces: ["traces", "logs", "metrics"],
-    },
-    {
-      aliases: ["span", "spans", "スパン"],
-      canonical: locale === "ja" ? "span" : "span",
-      definitionJa: "span は、トレースの中の1区間で、特定の処理や依存先呼び出しの実行時間と結果を表します。",
-      definitionEn: "A span is one timed unit within a trace, representing a specific operation or dependency call.",
-      preferredSurfaces: ["traces", "logs", "metrics"],
-    },
-    {
-      aliases: ["metric", "metrics", "メトリクス", "指標"],
-      canonical: locale === "ja" ? "メトリクス" : "metric",
-      definitionJa: "メトリクスは、エラー率や遅延のような挙動を数値で継続的に観測する指標です。",
-      definitionEn: "Metrics are continuous numeric measurements such as error rate or latency that describe system behavior over time.",
-      preferredSurfaces: ["metrics", "traces", "logs"],
-    },
-    {
-      aliases: ["log", "logs", "ログ"],
-      canonical: locale === "ja" ? "ログ" : "log",
-      definitionJa: "ログは、実行中に起きた出来事やエラーをテキストとして残した記録です。",
-      definitionEn: "Logs are text records of events, warnings, and errors emitted while the system runs.",
-      preferredSurfaces: ["logs", "traces", "metrics"],
-    },
-    {
-      aliases: ["backoff", "バックオフ"],
-      canonical: locale === "ja" ? "バックオフ" : "backoff",
-      definitionJa: "バックオフは、失敗した依存先への再試行のたびに待ち時間を伸ばして、相手を連続で叩き続けないようにする制御です。",
-      definitionEn: "Backoff is a retry strategy that waits progressively longer between attempts so a failing dependency is not hammered continuously.",
-      preferredSurfaces: ["logs", "metrics", "traces"],
-    },
-    {
-      aliases: ["queue", "キュー", "待ち行列"],
-      canonical: locale === "ja" ? "キュー" : "queue",
-      definitionJa: "キューは、すぐ処理できない仕事やリクエストが、処理待ちとして溜まっている状態です。",
-      definitionEn: "A queue is work or requests waiting to be processed because the system cannot handle them immediately.",
-      preferredSurfaces: ["metrics", "traces", "logs"],
-    },
-    {
-      aliases: ["worker pool", "workerpool", "ワーカープール"],
-      canonical: locale === "ja" ? "ワーカープール" : "worker pool",
-      definitionJa: "ワーカープールは、同時に処理を実行できる worker の枠です。枠を使い切ると新しい処理は待たされます。",
-      definitionEn: "A worker pool is the fixed set of workers that can process requests concurrently. Once all workers are busy, new work has to wait.",
-      preferredSurfaces: ["metrics", "traces", "logs"],
-    },
-    {
-      aliases: ["rate limit", "rate-limit", "レート制限", "レートリミット"],
-      canonical: locale === "ja" ? "レート制限" : "rate limit",
-      definitionJa: "レート制限は、依存先が一定時間あたりのリクエスト数を超えないように上限をかける仕組みです。",
-      definitionEn: "A rate limit is a cap that prevents clients from sending more than an allowed number of requests over a period of time.",
-      preferredSurfaces: ["logs", "metrics", "traces"],
-    },
-    {
-      aliases: ["retry", "retries", "再試行", "リトライ"],
-      canonical: locale === "ja" ? "再試行" : "retry",
-      definitionJa: "再試行は、失敗した処理をすぐ諦めず、もう一度実行する動きです。",
-      definitionEn: "A retry is another attempt to perform a failed operation instead of giving up immediately.",
-      preferredSurfaces: ["logs", "traces", "metrics"],
-    },
-    {
-      aliases: ["circuit breaker", "circuit-breaker", "サーキットブレーカー"],
-      canonical: locale === "ja" ? "サーキットブレーカー" : "circuit breaker",
-      definitionJa: "サーキットブレーカーは、依存先の失敗が続くと呼び出しを一時的に止めて、障害の連鎖を防ぐ制御です。",
-      definitionEn: "A circuit breaker temporarily stops calls to a failing dependency so repeated failures do not cascade through the system.",
-      preferredSurfaces: ["logs", "metrics", "traces"],
-    },
-  ];
-
-  const term = terms.find((entry) =>
-    entry.aliases.some((alias) => lower.includes(alias.toLowerCase())),
-  );
-  if (!term) return null;
-
-  return {
-    canonical: term.canonical,
-    definition: locale === "ja" ? term.definitionJa : term.definitionEn,
-    preferredSurfaces: term.preferredSurfaces,
-  };
-}
-
 function intentFromMode(mode: "answer" | "action" | "missing_evidence"): IntentProfile {
   if (mode === "action") {
     return { kind: "action", preferredSurfaces: ["traces", "logs", "metrics"] };
@@ -273,54 +90,6 @@ function intentFromMode(mode: "answer" | "action" | "missing_evidence"): IntentP
   return { kind: "general", preferredSurfaces: ["traces", "metrics", "logs"] };
 }
 
-function buildExplanatoryAnswer(
-  question: string,
-  term: ExplanatoryTerm,
-  incident: Incident,
-  evidence: EvidenceResponse,
-  retrieved: RetrievedEvidence[],
-  locale: "en" | "ja",
-): EvidenceQueryResponse {
-  const refs = retrieved.slice(0, 2).map((entry) => entry.ref);
-  const primary = retrieved[0];
-  const rootCause = incident.diagnosisResult?.summary.root_cause_hypothesis;
-  const context = locale === "ja"
-    ? `このインシデントでは、${term.canonical} は ${rootCause ?? "現在の障害の説明"} を理解するための文脈として使われています。`
-    : `In this incident, ${term.canonical} is relevant because it helps explain ${rootCause ?? "the current failure pattern"}.`;
-
-  const segments: EvidenceQueryResponse["segments"] = [
-    {
-      id: "seg_explanation_1",
-      kind: "inference",
-      text: ensureSentence(term.definition),
-      evidenceRefs: refs.length > 0 ? refs : [{ kind: "metric_group", id: "mgroup:0" }],
-    },
-    {
-      id: "seg_explanation_2",
-      kind: "inference",
-      text: ensureSentence(context),
-      evidenceRefs: refs.length > 0 ? refs : [{ kind: "metric_group", id: "mgroup:0" }],
-    },
-  ];
-
-  if (primary) {
-    segments.push({
-      id: "seg_explanation_3",
-      kind: "fact",
-      text: firstSentence(primary.summary),
-      evidenceRefs: [primary.ref],
-    });
-  }
-
-  return {
-    question,
-    status: "answered",
-    segments,
-    evidenceSummary: summarizeEvidence(evidence.surfaces),
-    followups: buildFollowups(retrieved, evidence, question, locale),
-  };
-}
-
 function summarizeEvidence(evidence: EvidenceResponse["surfaces"]) {
   return {
     traces: evidence.traces.observed.length,
@@ -329,7 +98,10 @@ function summarizeEvidence(evidence: EvidenceResponse["surfaces"]) {
   };
 }
 
-function buildEvidenceCatalog(evidence: EvidenceResponse, locale: "en" | "ja" = "en"): RetrievedEvidence[] {
+function buildEvidenceCatalog(
+  evidence: EvidenceResponse,
+  locale: "en" | "ja" = "en",
+): RetrievedEvidence[] {
   const traces = evidence.surfaces.traces.observed.flatMap((trace) =>
     trace.spans.map((span) => ({
       ref: { kind: "span" as const, id: `${trace.traceId}:${span.spanId}` },
@@ -431,6 +203,12 @@ function retrieveEvidence(
   return diverse.length > 0 ? diverse : catalog.slice(0, 4);
 }
 
+/**
+ * The single deterministic no-answer builder. Per CLAUDE.md this is allowed
+ * ONLY as the provider-down / retries-exhausted safety net. The function
+ * itself is retained, but there is exactly ONE call site in this file (the
+ * final return in buildEvidenceQueryAnswer).
+ */
 function buildDeterministicNoAnswer(
   question: string,
   evidence: EvidenceResponse,
@@ -443,185 +221,6 @@ function buildDeterministicNoAnswer(
     evidenceSummary: summarizeEvidence(evidence.surfaces),
     followups: buildFollowups([], evidence, question),
     noAnswerReason: reason,
-  };
-}
-
-function buildMissingLogsAnswer(
-  question: string,
-  incident: Incident,
-  evidence: EvidenceResponse,
-  retrieved: RetrievedEvidence[],
-  locale: "en" | "ja",
-): EvidenceQueryResponse {
-  const absenceClaim = evidence.surfaces.logs.claims.find((claim) => claim.type === "absence");
-  const primaryTrace = retrieved.find((entry) => entry.surface === "traces") ?? retrieved[0];
-  const evidenceRefs = [
-    ...(absenceClaim ? [{
-      kind: "absence" as const,
-      id: absenceClaim.id,
-    }] : []),
-    ...(primaryTrace ? [primaryTrace.ref] : []),
-  ];
-
-  const segments: EvidenceQueryResponse["segments"] = [];
-  if (absenceClaim) {
-    segments.push({
-      id: "seg_missing_logs_1",
-      kind: "fact",
-      text: locale === "ja"
-        ? `${absenceClaim.label} に対応する失敗ログは、現在のインシデント窓では観測されていない。`
-        : `The current incident window does not contain matching failure logs for ${absenceClaim.label}.`,
-      evidenceRefs: [{ kind: "absence", id: absenceClaim.id }],
-    });
-  }
-
-  segments.push({
-    id: "seg_missing_logs_2",
-    kind: "unknown",
-    text: locale === "ja"
-      ? "いま分かるのは「ログが無い」ことまでで、依存先がログを出す前に失敗したのか、収集経路が欠けたのかはまだ断定できない。"
-      : "The evidence currently proves the logs are absent, but it does not yet distinguish between a pre-log failure and a collection gap.",
-    evidenceRefs: evidenceRefs.length > 0 ? evidenceRefs : retrieved.slice(0, 2).map((entry) => entry.ref),
-  });
-
-  if (incident.diagnosisResult) {
-    segments.push({
-      id: "seg_missing_logs_3",
-      kind: "inference",
-      text: locale === "ja"
-        ? "まずは最初の 500 を返した span と、その依存先のログ収集設定を確認するのが最短。"
-        : "The shortest next step is to inspect the first 500 span and the logging path for the implicated dependency.",
-      evidenceRefs: evidenceRefs.length > 0 ? evidenceRefs : retrieved.slice(0, 2).map((entry) => entry.ref),
-    });
-  }
-
-  return {
-    question,
-    status: "answered",
-    segments,
-    evidenceSummary: summarizeEvidence(evidence.surfaces),
-    followups: buildFollowups(retrieved, evidence, question, locale),
-  };
-}
-
-function buildFallbackAnswer(
-  question: string,
-  incident: Incident,
-  evidence: EvidenceResponse,
-  retrieved: RetrievedEvidence[],
-  intent: IntentProfile,
-  locale: "en" | "ja",
-): EvidenceQueryResponse {
-  if (intent.kind === "greeting") {
-    return buildDeterministicNoAnswer(
-      question,
-      evidence,
-      localizeNoAnswerForGreeting(locale),
-    );
-  }
-
-  const segments: EvidenceQueryResponse["segments"] = [];
-  const primary = retrieved.find((entry) => intent.preferredSurfaces.includes(entry.surface)) ?? retrieved[0];
-  // For secondary diversity, skip absence entries when the intent is not about logs.
-  // Absence entries ("0 entries matching [healthcheck]...") are misleading for trace/metrics/general questions.
-  const isLogFocused = intent.kind === "logs";
-  const secondary = retrieved.find(
-    (entry) =>
-      entry.ref.id !== primary?.ref.id &&
-      entry.surface !== primary?.surface &&
-      (isLogFocused || entry.ref.kind !== "absence"),
-  );
-  const direct = buildDirectAnswer(intent, locale, incident, primary);
-
-  if (direct && (primary || secondary)) {
-    segments.push({
-      id: "seg_answer_1",
-      kind: direct.kind,
-      text: ensureSentence(direct.text),
-      evidenceRefs: [primary, secondary]
-        .filter((entry): entry is RetrievedEvidence => Boolean(entry))
-        .slice(0, 2)
-        .map((entry) => entry.ref),
-    });
-  }
-
-  if (primary) {
-    segments.push({
-      id: "seg_fact_1",
-      kind: "fact",
-      text: firstSentence(primary.summary),
-      evidenceRefs: [primary.ref],
-    });
-  }
-
-  if (intent.kind === "metrics") {
-    const metric = retrieved.find((entry) => entry.surface === "metrics");
-    if (metric && metric.ref.id !== primary?.ref.id) {
-      segments.push({
-        id: "seg_fact_2",
-        kind: "fact",
-        text: firstSentence(metric.summary),
-        evidenceRefs: [metric.ref],
-      });
-    }
-  } else if (intent.kind === "logs") {
-    const log = retrieved.find((entry) => entry.surface === "logs");
-    if (log && log.ref.id !== primary?.ref.id) {
-      segments.push({
-        id: "seg_fact_2",
-        kind: "fact",
-        text: firstSentence(log.summary),
-        evidenceRefs: [log.ref],
-      });
-    }
-  } else if (secondary) {
-    segments.push({
-      id: "seg_fact_2",
-      kind: "fact",
-      text: firstSentence(secondary.summary),
-      evidenceRefs: [secondary.ref],
-    });
-  }
-
-  const inferenceTail = buildInferenceTail(intent, locale, incident);
-  if (inferenceTail && retrieved.length > 0 && intent.kind !== "root_cause") {
-    const evidenceRefs = [primary, secondary]
-      .filter((entry): entry is RetrievedEvidence => Boolean(entry))
-      .map((entry) => entry.ref);
-    // When primary/secondary are both absent, fall back to non-absence entries so the
-    // inference segment does not cite phantom "0 entries matching…" absence evidence.
-    const inferenceRefs = evidenceRefs.length > 0
-      ? evidenceRefs
-      : retrieved.filter((item) => isLogFocused || item.ref.kind !== "absence").slice(0, 2).map((item) => item.ref);
-    segments.push({
-      id: "seg_inference_1",
-      kind: "inference",
-      text: ensureSentence(inferenceTail),
-      evidenceRefs: inferenceRefs.length > 0 ? inferenceRefs : retrieved.slice(0, 2).map((item) => item.ref),
-    });
-  } else if (inferenceTail && intent.kind === "root_cause" && primary) {
-    segments.push({
-      id: "seg_inference_1",
-      kind: "inference",
-      text: ensureSentence(inferenceTail),
-      evidenceRefs: [primary.ref],
-    });
-  }
-
-  if (segments.length === 0) {
-    return buildDeterministicNoAnswer(
-      question,
-      evidence,
-      "The current curated evidence does not support a grounded answer yet.",
-    );
-  }
-
-  return {
-    question,
-    status: "answered",
-    segments,
-    evidenceSummary: summarizeEvidence(evidence.surfaces),
-    followups: buildFollowups(retrieved, evidence, question, locale),
   };
 }
 
@@ -725,6 +324,38 @@ function buildFollowups(
   return followups.slice(0, 4);
 }
 
+function detectAbsenceInput(
+  question: string,
+  evidence: EvidenceResponse,
+  answerMode: "answer" | "action" | "missing_evidence",
+): EvidenceQueryAbsenceInput | undefined {
+  if (answerMode !== "missing_evidence") return undefined;
+  const absenceClaim = evidence.surfaces.logs.claims.find((claim) => claim.type === "absence");
+  if (!absenceClaim) return undefined;
+  // If the user explicitly asks why the signal hasn't arrived yet we hint
+  // "not-yet-available"; otherwise treat it as "no-record-found" (collector
+  // never saw it). "no-supporting-evidence" requires a contradicting signal
+  // which is a narrower detection job left for future work.
+  const lowered = question.toLowerCase();
+  const claimType: EvidenceQueryAbsenceInput["claimType"] =
+    /まだ|yet|pending|処理中|遅れ|collecting|まだ来て/.test(lowered)
+      ? "not-yet-available"
+      : "no-record-found";
+  return {
+    claimId: absenceClaim.id,
+    label: absenceClaim.label,
+    claimType,
+  };
+}
+
+function classifyEvidenceStatus(
+  retrieved: RetrievedEvidence[],
+): "empty" | "sparse" | "dense" {
+  if (retrieved.length === 0) return "empty";
+  if (retrieved.length <= 2) return "sparse";
+  return "dense";
+}
+
 export async function buildEvidenceQueryAnswer(
   incident: Incident,
   telemetryStore: TelemetryStoreDriver,
@@ -738,30 +369,6 @@ export async function buildEvidenceQueryAnswer(
   const diagnosisState = determineDiagnosisState(incident);
   const curatedEvidence = await buildCuratedEvidence(incident, telemetryStore);
 
-  if (diagnosisState === "unavailable") {
-    return buildDeterministicNoAnswer(
-      question,
-      curatedEvidence,
-      "No diagnosis has been triggered for this incident, so the system will not guess beyond the curated evidence.",
-    );
-  }
-
-  if (diagnosisState === "pending") {
-    return buildDeterministicNoAnswer(
-      question,
-      curatedEvidence,
-      "Diagnosis is still running. The curated evidence surfaces are available now, but the system is withholding a grounded answer until diagnosis is ready.",
-    );
-  }
-
-  if (/^(hi|hello|hey|こんにちは|こんばんは|おはよう)/i.test(question.trim())) {
-    return buildDeterministicNoAnswer(
-      question,
-      curatedEvidence,
-      localizeNoAnswerForGreeting(locale),
-    );
-  }
-
   // When replying to a clarification, enrich the question with the original context
   // so the LLM can understand what the user is responding to
   let effectiveQuestionInput = question;
@@ -769,87 +376,73 @@ export async function buildEvidenceQueryAnswer(
     effectiveQuestionInput = `${replyToClarification.originalQuestion} (${question})`;
   }
 
+  void isFollowup; // preserved for future callers; not used on this path.
+
   const catalog = buildEvidenceCatalog(curatedEvidence, locale);
   const planningIntent: IntentProfile = { kind: "general", preferredSurfaces: ["traces", "metrics", "logs"] };
   const planningCandidates = retrieveEvidence(effectiveQuestionInput, catalog, planningIntent).slice(0, 8);
-  const explanatoryTerm = detectExplanatoryTerm(effectiveQuestionInput, locale);
-  if (explanatoryTerm) {
-    return buildExplanatoryAnswer(
-      question,
-      explanatoryTerm,
-      incident,
-      curatedEvidence,
-      planningCandidates,
-      locale,
-    );
-  }
 
   let effectiveQuestion = effectiveQuestionInput;
   let intent: IntentProfile = planningIntent;
   let answerMode: "answer" | "action" | "missing_evidence" = "answer";
 
-  try {
-    const plan = await generateEvidencePlan(
-      {
-        question: effectiveQuestionInput,
-        isSystemFollowup,
-        history,
-        diagnosis: incident.diagnosisResult
-          ? {
-              whatHappened: incident.diagnosisResult.summary.what_happened,
-              rootCauseHypothesis: incident.diagnosisResult.summary.root_cause_hypothesis,
-              immediateAction: incident.diagnosisResult.recommendation.immediate_action,
-              causalChain: incident.diagnosisResult.reasoning.causal_chain.map((step) => step.title),
-            }
-          : null,
-        evidence: planningCandidates.map(({ ref, surface, summary }) => ({ ref, surface, summary })),
-      },
-      {
-        model: EVIDENCE_QUERY_MODEL,
-        locale,
-        allowSubprocessProviders: false,
-        allowLocalHttpProviders: false,
-      },
-    );
-
-    if (plan.mode === "clarification" && !isSystemFollowup) {
-      return {
-        question,
-        status: "clarification",
-        clarificationQuestion: plan.clarificationQuestion,
-        segments: [],
-        evidenceSummary: summarizeEvidence(curatedEvidence.surfaces),
-        followups: buildFollowups(planningCandidates, curatedEvidence, question, locale),
-      };
-    }
-
-    // When isSystemFollowup is true and the planner still chose clarification,
-    // treat the rewritten question as an "answer" mode — never surface clarification.
-    effectiveQuestion = plan.rewrittenQuestion;
-    answerMode = plan.mode === "clarification" ? "answer" : plan.mode;
-    intent = intentFromMode(answerMode);
-    intent.preferredSurfaces = plan.preferredSurfaces;
-  } catch {
-    if (/^(hi|hello|hey|こんにちは|こんばんは|おはよう)/i.test(question.trim())) {
-      return buildDeterministicNoAnswer(
-        question,
-        curatedEvidence,
-        localizeNoAnswerForGreeting(locale),
+  // Planner is still allowed to clarify or pick an answer mode. It is a pure
+  // routing step; synthesis is the LLM call below.
+  if (diagnosisState === "ready") {
+    try {
+      const plan = await generateEvidencePlan(
+        {
+          question: effectiveQuestionInput,
+          isSystemFollowup,
+          history,
+          diagnosis: incident.diagnosisResult
+            ? {
+                whatHappened: incident.diagnosisResult.summary.what_happened,
+                rootCauseHypothesis: incident.diagnosisResult.summary.root_cause_hypothesis,
+                immediateAction: incident.diagnosisResult.recommendation.immediate_action,
+                causalChain: incident.diagnosisResult.reasoning.causal_chain.map((step) => step.title),
+              }
+            : null,
+          evidence: planningCandidates.map(({ ref, surface, summary }) => ({ ref, surface, summary })),
+        },
+        {
+          model: EVIDENCE_QUERY_MODEL,
+          locale,
+          allowSubprocessProviders: false,
+          allowLocalHttpProviders: false,
+        },
       );
+
+      if (plan.mode === "clarification" && !isSystemFollowup) {
+        return {
+          question,
+          status: "clarification",
+          clarificationQuestion: plan.clarificationQuestion,
+          segments: [],
+          evidenceSummary: summarizeEvidence(curatedEvidence.surfaces),
+          followups: buildFollowups(planningCandidates, curatedEvidence, question, locale),
+        };
+      }
+
+      // When isSystemFollowup is true and the planner still chose clarification,
+      // treat the rewritten question as an "answer" mode — never surface clarification.
+      effectiveQuestion = plan.rewrittenQuestion;
+      answerMode = plan.mode === "clarification" ? "answer" : plan.mode;
+      intent = intentFromMode(answerMode);
+      intent.preferredSurfaces = plan.preferredSurfaces;
+    } catch {
+      // Planner failure is non-fatal — fall through to default routing and
+      // let the synthesis LLM handle the question directly.
     }
   }
 
   const retrieved = retrieveEvidence(effectiveQuestion, catalog, intent);
-  if (retrieved.length === 0) {
-    return buildDeterministicNoAnswer(
-      question,
-      curatedEvidence,
-      "The current curated evidence does not contain enough linked material to answer this question responsibly.",
-    );
-  }
+  const evidenceStatus = classifyEvidenceStatus(retrieved);
+  const absenceInput = detectAbsenceInput(effectiveQuestion, curatedEvidence, answerMode);
 
+  // ── Synthesis (LLM-first). Even pending/unavailable diagnosis routes here.
   try {
-    const generated = await generateEvidenceQuery(
+    const { response: generated, meta } = await generateEvidenceQueryWithMeta(
       {
         question: effectiveQuestionInput,
         answerMode,
@@ -865,6 +458,10 @@ export async function buildEvidenceQueryAnswer(
             }
           : null,
         evidence: retrieved.map(({ ref, surface, summary }) => ({ ref, surface, summary })),
+        diagnosisStatus: diagnosisState,
+        evidenceStatus,
+        absenceInput,
+        locale,
       },
       {
         model: EVIDENCE_QUERY_MODEL,
@@ -874,15 +471,31 @@ export async function buildEvidenceQueryAnswer(
       },
     );
 
+    if (meta.retryCount > 0 || meta.repairedRefCount > 0) {
+      // Operator-visible observability for the repair loop; no schema changes.
+      process.stderr.write(
+        `[evidence-query] synthesis meta retryCount=${meta.retryCount} repairedRefCount=${meta.repairedRefCount}\n`,
+      );
+    }
+
     return {
       ...generated,
       evidenceSummary: summarizeEvidence(curatedEvidence.surfaces),
       followups: buildFollowups(retrieved, curatedEvidence, question, locale),
     };
-  } catch {
-    if (answerMode === "missing_evidence") {
-      return buildMissingLogsAnswer(question, incident, curatedEvidence, retrieved, locale);
-    }
-    return buildFallbackAnswer(question, incident, curatedEvidence, retrieved, intent, locale);
+  } catch (err) {
+    process.stderr.write(
+      `[evidence-query] LLM synthesis failed after retries (${err instanceof Error ? err.message : String(err)}); returning safety-net no-answer.\n`,
+    );
+    // ── SOLE deterministic safety-net call site. Reached only when:
+    //   - the LLM provider is unreachable, OR
+    //   - every retry produced unusable output (invalid refs that could not
+    //     be repaired + strict-reminder + narrowed refs all failed).
+    // Per CLAUDE.md this is the allowed "provider-down-equivalent" escape.
+    return buildDeterministicNoAnswer(
+      question,
+      curatedEvidence,
+      "LLM synthesis failed after retries. The evidence surfaces are available on the left, but a grounded answer could not be generated this time.",
+    );
   }
 }

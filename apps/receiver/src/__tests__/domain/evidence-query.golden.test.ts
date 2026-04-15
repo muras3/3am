@@ -8,7 +8,10 @@ vi.mock('3am-diagnosis', async (importOriginal) => {
   return {
     ...original,
     generateEvidencePlan: vi.fn().mockRejectedValue(new Error('LLM not available in golden test')),
-    generateEvidenceQuery: vi.fn().mockRejectedValue(new Error('LLM not available in golden test')),
+    // Retry-aware generator also rejects so the domain falls through to the
+    // single safety-net no-answer. This documents what an operator sees when
+    // the LLM is unreachable in production.
+    generateEvidenceQueryWithMeta: vi.fn().mockRejectedValue(new Error('LLM not available in golden test')),
   }
 })
 

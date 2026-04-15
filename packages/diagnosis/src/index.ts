@@ -10,14 +10,22 @@ export { buildNarrativePrompt } from "./narrative-prompt.js";
 export type { BuildNarrativePromptOptions } from "./narrative-prompt.js";
 export { parseNarrative } from "./parse-narrative.js";
 export type { NarrativeMeta } from "./parse-narrative.js";
-export { generateEvidenceQuery } from "./generate-evidence-query.js";
-export type { GenerateEvidenceQueryOptions } from "./generate-evidence-query.js";
+export {
+  generateEvidenceQuery,
+  generateEvidenceQueryWithMeta,
+} from "./generate-evidence-query.js";
+export type {
+  GenerateEvidenceQueryOptions,
+  EvidenceQueryGenerationMeta,
+  EvidenceQueryGenerationResult,
+} from "./generate-evidence-query.js";
 export { generateEvidencePlan } from "./generate-evidence-plan.js";
 export type { GenerateEvidencePlanOptions } from "./generate-evidence-plan.js";
 export { buildEvidenceQueryPrompt } from "./evidence-query-prompt.js";
 export type {
   EvidenceQueryPromptEvidence,
   EvidenceQueryPromptInput,
+  EvidenceQueryAbsenceInput,
 } from "./evidence-query-prompt.js";
 export { buildEvidencePlanPrompt } from "./evidence-plan-prompt.js";
 export type {

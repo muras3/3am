@@ -14,13 +14,13 @@ import { EvidenceQueryResponseSchema } from '3am-core/schemas/curated-evidence'
 import type { DiagnosisResult } from '3am-core'
 import type * as DiagnosisModule from '3am-diagnosis'
 
-const { generateEvidencePlanMock, generateEvidenceQueryMock } = vi.hoisted(() => ({
-  generateEvidencePlanMock: vi.fn(async (input: { question: string }) => ({
+const { generateEvidencePlanMock, generateEvidenceQueryMock, generateEvidenceQueryWithMetaMock } = vi.hoisted(() => {
+  const plan = vi.fn(async (input: { question: string }) => ({
     mode: 'answer' as const,
     rewrittenQuestion: input.question,
     preferredSurfaces: ['traces', 'metrics', 'logs'] as const,
-  })),
-  generateEvidenceQueryMock: vi.fn(async (input: { question: string }, options?: { locale?: 'en' | 'ja' }) => ({
+  }))
+  const makeResponse = (input: { question: string }, options?: { locale?: 'en' | 'ja' }) => ({
     question: input.question,
     status: 'answered' as const,
     segments: [
@@ -31,8 +31,18 @@ const { generateEvidencePlanMock, generateEvidenceQueryMock } = vi.hoisted(() =>
         evidenceRefs: [{ kind: 'span' as const, id: 'abc_001:span_001' }],
       },
     ],
-  })),
-}))
+    evidenceSummary: { traces: 0, metrics: 0, logs: 0 },
+    followups: [],
+  })
+  return {
+    generateEvidencePlanMock: plan,
+    generateEvidenceQueryMock: vi.fn(async (input: { question: string }, options?: { locale?: 'en' | 'ja' }) => makeResponse(input, options)),
+    generateEvidenceQueryWithMetaMock: vi.fn(async (input: { question: string; locale?: 'en' | 'ja' }) => ({
+      response: makeResponse(input, { locale: input.locale }),
+      meta: { retryCount: 0, repairedRefCount: 0 },
+    })),
+  }
+})
 
 vi.mock('3am-diagnosis', async () => {
   const actual = await vi.importActual<typeof DiagnosisModule>('3am-diagnosis')
@@ -40,6 +50,7 @@ vi.mock('3am-diagnosis', async () => {
     ...actual,
     generateEvidencePlan: generateEvidencePlanMock,
     generateEvidenceQuery: generateEvidenceQueryMock,
+    generateEvidenceQueryWithMeta: generateEvidenceQueryWithMetaMock,
   }
 })
 
@@ -175,7 +186,7 @@ describe('POST /api/incidents/:id/evidence/query', () => {
 
   beforeEach(() => {
     seedCounter = 0
-    generateEvidenceQueryMock.mockClear()
+    generateEvidenceQueryMock.mockClear(); generateEvidenceQueryWithMetaMock.mockClear()
     app = makeApp()
   })
 
@@ -200,7 +211,7 @@ describe('POST /api/incidents/:id/evidence/query', () => {
         allowLocalHttpProviders: false,
       }),
     )
-    expect(generateEvidenceQueryMock).toHaveBeenCalledWith(
+    expect(generateEvidenceQueryWithMetaMock).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({
         allowSubprocessProviders: false,
@@ -288,11 +299,11 @@ describe('POST /api/incidents/:id/evidence/query', () => {
     })
 
     expect(res.status).toBe(200)
-    expect(generateEvidenceQueryMock).toHaveBeenCalled()
-    expect(generateEvidenceQueryMock.mock.calls[0]?.[0]).toMatchObject({
+    expect(generateEvidenceQueryWithMetaMock).toHaveBeenCalled()
+    expect(generateEvidenceQueryWithMetaMock.mock.calls[0]?.[0]).toMatchObject({
       question: 'Why are payments failing?',
     })
-    expect(generateEvidenceQueryMock.mock.calls[0]?.[1]).toMatchObject({
+    expect(generateEvidenceQueryWithMetaMock.mock.calls[0]?.[1]).toMatchObject({
       locale: 'ja',
     })
   })
@@ -317,8 +328,8 @@ describe('POST /api/incidents/:id/evidence/query', () => {
     })
 
     expect(res.status).toBe(200)
-    expect(generateEvidenceQueryMock).toHaveBeenCalled()
-    expect(generateEvidenceQueryMock.mock.calls[0]?.[1]).toMatchObject({
+    expect(generateEvidenceQueryWithMetaMock).toHaveBeenCalled()
+    expect(generateEvidenceQueryWithMetaMock.mock.calls[0]?.[1]).toMatchObject({
       locale: 'ja',
     })
   })
@@ -343,8 +354,8 @@ describe('POST /api/incidents/:id/evidence/query', () => {
     })
 
     expect(res.status).toBe(200)
-    expect(generateEvidenceQueryMock).toHaveBeenCalled()
-    expect(generateEvidenceQueryMock.mock.calls[0]?.[1]).toMatchObject({
+    expect(generateEvidenceQueryWithMetaMock).toHaveBeenCalled()
+    expect(generateEvidenceQueryWithMetaMock.mock.calls[0]?.[1]).toMatchObject({
       locale: 'ja',
     })
   })
@@ -361,8 +372,8 @@ describe('POST /api/incidents/:id/evidence/query', () => {
     })
 
     expect(res.status).toBe(200)
-    expect(generateEvidenceQueryMock).toHaveBeenCalled()
-    expect(generateEvidenceQueryMock.mock.calls[0]?.[1]).toMatchObject({
+    expect(generateEvidenceQueryWithMetaMock).toHaveBeenCalled()
+    expect(generateEvidenceQueryWithMetaMock.mock.calls[0]?.[1]).toMatchObject({
       locale: 'en',
     })
   })
@@ -447,7 +458,7 @@ describe('POST /api/incidents/:id/evidence/query', () => {
     })
 
     expect(res.status).toBe(200)
-    expect(generateEvidenceQueryMock).toHaveBeenCalledWith(
+    expect(generateEvidenceQueryWithMetaMock).toHaveBeenCalledWith(
       expect.objectContaining({
         question: 'What next?',
         history: [
@@ -535,7 +546,7 @@ describe('POST /api/incidents/:id/evidence/query (bridgeJobQueue path)', () => {
 
   beforeEach(() => {
     seedCounter = 0
-    generateEvidenceQueryMock.mockClear()
+    generateEvidenceQueryMock.mockClear(); generateEvidenceQueryWithMetaMock.mockClear()
     app = makeAppWithQueue()
   })
 

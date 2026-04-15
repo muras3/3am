@@ -10,264 +10,16 @@ exports[`evidence query golden responses > keeps the inc_000006 follow-up answer
     },
     "followups": [
       {
-        "question": "障害期間中の同じ時間帯の異常はメトリクスでも出ている？",
-        "targetEvidenceKinds": [
-          "metrics",
-        ],
-      },
-      {
-        "question": "障害期間中のそのドリフトに対応するログクラスタはどれ？",
-        "targetEvidenceKinds": [
-          "logs",
-        ],
-      },
-      {
-        "question": "障害期間の中で、この失敗が最初に出たトレース経路はどれ？",
-        "targetEvidenceKinds": [
-          "traces",
-        ],
-      },
-      {
-        "question": "障害期間中に欠けているはずの回復シグナルは何？",
+        "question": "What expected resilience signal is still missing during the incident?",
         "targetEvidenceKinds": [
           "logs",
         ],
       },
     ],
+    "noAnswerReason": "LLM synthesis failed after retries. The evidence surfaces are available on the left, but a grounded answer could not be generated this time.",
     "question": "原因は？",
-    "segments": [
-      {
-        "evidenceRefs": [
-          {
-            "id": "trace-1:checkout-001",
-            "kind": "span",
-          },
-          {
-            "id": "mgroup:0",
-            "kind": "metric_group",
-          },
-        ],
-        "id": "seg_answer_1",
-        "kind": "fact",
-        "text": "はい。いまの evidence で直接確認できる異常があります。",
-      },
-      {
-        "evidenceRefs": [
-          {
-            "id": "trace-1:checkout-001",
-            "kind": "span",
-          },
-        ],
-        "id": "seg_fact_1",
-        "kind": "fact",
-        "text": "トレース POST /checkout スパン POST /checkout は HTTPステータス=500 で終了し、処理時間は 2340ms でした。",
-      },
-      {
-        "evidenceRefs": [
-          {
-            "id": "mgroup:0",
-            "kind": "metric_group",
-          },
-        ],
-        "id": "seg_fact_2",
-        "kind": "fact",
-        "text": "メトリクスグループ mgroup:0 は web error_rate を示し、判定は Inferred です。観測メトリクス: checkout.error_rate: 観測値 0.710、期待値 0.0123。",
-      },
-      {
-        "evidenceRefs": [
-          {
-            "id": "trace-1:checkout-001",
-            "kind": "span",
-          },
-          {
-            "id": "mgroup:0",
-            "kind": "metric_group",
-          },
-        ],
-        "id": "seg_inference_1",
-        "kind": "inference",
-        "text": "この並びは、Stripe rate limiting and retry amplification caused the checkout failures. という既存 diagnosis と整合しています。",
-      },
-    ],
-    "status": "answered",
-  },
-  {
-    "evidenceSummary": {
-      "logs": 5,
-      "metrics": 2,
-      "traces": 1,
-    },
-    "followups": [
-      {
-        "question": "障害期間中の同じ時間帯の異常はメトリクスでも出ている？",
-        "targetEvidenceKinds": [
-          "metrics",
-        ],
-      },
-      {
-        "question": "障害期間中のそのドリフトに対応するログクラスタはどれ？",
-        "targetEvidenceKinds": [
-          "logs",
-        ],
-      },
-      {
-        "question": "障害期間の中で、この失敗が最初に出たトレース経路はどれ？",
-        "targetEvidenceKinds": [
-          "traces",
-        ],
-      },
-      {
-        "question": "障害期間中に欠けているはずの回復シグナルは何？",
-        "targetEvidenceKinds": [
-          "logs",
-        ],
-      },
-    ],
-    "question": "メトリクスに問題はあるか？",
-    "segments": [
-      {
-        "evidenceRefs": [
-          {
-            "id": "mgroup:0",
-            "kind": "metric_group",
-          },
-          {
-            "id": "trace-1:checkout-001",
-            "kind": "span",
-          },
-        ],
-        "id": "seg_answer_1",
-        "kind": "fact",
-        "text": "はい。いまの evidence で直接確認できる異常があります。",
-      },
-      {
-        "evidenceRefs": [
-          {
-            "id": "mgroup:0",
-            "kind": "metric_group",
-          },
-        ],
-        "id": "seg_fact_1",
-        "kind": "fact",
-        "text": "メトリクスグループ mgroup:0 は web error_rate を示し、判定は Inferred です。観測メトリクス: checkout.error_rate: 観測値 0.710、期待値 0.0123。",
-      },
-      {
-        "evidenceRefs": [
-          {
-            "id": "trace-1:checkout-001",
-            "kind": "span",
-          },
-        ],
-        "id": "seg_fact_2",
-        "kind": "fact",
-        "text": "トレース POST /checkout スパン POST /checkout は HTTPステータス=500 で終了し、処理時間は 2340ms でした。",
-      },
-      {
-        "evidenceRefs": [
-          {
-            "id": "mgroup:0",
-            "kind": "metric_group",
-          },
-          {
-            "id": "trace-1:checkout-001",
-            "kind": "span",
-          },
-        ],
-        "id": "seg_inference_1",
-        "kind": "inference",
-        "text": "この並びは、Stripe rate limiting and retry amplification caused the checkout failures. という既存 diagnosis と整合しています。",
-      },
-    ],
-    "status": "answered",
-  },
-  {
-    "evidenceSummary": {
-      "logs": 5,
-      "metrics": 2,
-      "traces": 1,
-    },
-    "followups": [
-      {
-        "question": "障害期間中の同じ時間帯の異常はメトリクスでも出ている？",
-        "targetEvidenceKinds": [
-          "metrics",
-        ],
-      },
-      {
-        "question": "障害期間中のそのドリフトに対応するログクラスタはどれ？",
-        "targetEvidenceKinds": [
-          "logs",
-        ],
-      },
-      {
-        "question": "障害期間の中で、この失敗が最初に出たトレース経路はどれ？",
-        "targetEvidenceKinds": [
-          "traces",
-        ],
-      },
-      {
-        "question": "障害期間中に欠けているはずの回復シグナルは何？",
-        "targetEvidenceKinds": [
-          "logs",
-        ],
-      },
-    ],
-    "question": "根本原因は？",
-    "segments": [
-      {
-        "evidenceRefs": [
-          {
-            "id": "trace-1:checkout-001",
-            "kind": "span",
-          },
-          {
-            "id": "mgroup:0",
-            "kind": "metric_group",
-          },
-        ],
-        "id": "seg_answer_1",
-        "kind": "fact",
-        "text": "はい。いまの evidence で直接確認できる異常があります。",
-      },
-      {
-        "evidenceRefs": [
-          {
-            "id": "trace-1:checkout-001",
-            "kind": "span",
-          },
-        ],
-        "id": "seg_fact_1",
-        "kind": "fact",
-        "text": "トレース POST /checkout スパン POST /checkout は HTTPステータス=500 で終了し、処理時間は 2340ms でした。",
-      },
-      {
-        "evidenceRefs": [
-          {
-            "id": "mgroup:0",
-            "kind": "metric_group",
-          },
-        ],
-        "id": "seg_fact_2",
-        "kind": "fact",
-        "text": "メトリクスグループ mgroup:0 は web error_rate を示し、判定は Inferred です。観測メトリクス: checkout.error_rate: 観測値 0.710、期待値 0.0123。",
-      },
-      {
-        "evidenceRefs": [
-          {
-            "id": "trace-1:checkout-001",
-            "kind": "span",
-          },
-          {
-            "id": "mgroup:0",
-            "kind": "metric_group",
-          },
-        ],
-        "id": "seg_inference_1",
-        "kind": "inference",
-        "text": "この並びは、Stripe rate limiting and retry amplification caused the checkout failures. という既存 diagnosis と整合しています。",
-      },
-    ],
-    "status": "answered",
+    "segments": [],
+    "status": "no_answer",
   },
   {
     "evidenceSummary": {
@@ -283,7 +35,45 @@ exports[`evidence query golden responses > keeps the inc_000006 follow-up answer
         ],
       },
     ],
-    "noAnswerReason": "このインシデントについて、トレース・メトリクス・ログ・原因を聞いて。",
+    "noAnswerReason": "LLM synthesis failed after retries. The evidence surfaces are available on the left, but a grounded answer could not be generated this time.",
+    "question": "メトリクスに問題はあるか？",
+    "segments": [],
+    "status": "no_answer",
+  },
+  {
+    "evidenceSummary": {
+      "logs": 5,
+      "metrics": 2,
+      "traces": 1,
+    },
+    "followups": [
+      {
+        "question": "What expected resilience signal is still missing during the incident?",
+        "targetEvidenceKinds": [
+          "logs",
+        ],
+      },
+    ],
+    "noAnswerReason": "LLM synthesis failed after retries. The evidence surfaces are available on the left, but a grounded answer could not be generated this time.",
+    "question": "根本原因は？",
+    "segments": [],
+    "status": "no_answer",
+  },
+  {
+    "evidenceSummary": {
+      "logs": 5,
+      "metrics": 2,
+      "traces": 1,
+    },
+    "followups": [
+      {
+        "question": "What expected resilience signal is still missing during the incident?",
+        "targetEvidenceKinds": [
+          "logs",
+        ],
+      },
+    ],
+    "noAnswerReason": "LLM synthesis failed after retries. The evidence surfaces are available on the left, but a grounded answer could not be generated this time.",
     "question": "こんにちは？",
     "segments": [],
     "status": "no_answer",
