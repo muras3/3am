@@ -1,13 +1,11 @@
 # OSS Notification Setup
 
-3am is open source and self-hosted. For Slack and Discord notifications, the recommended pattern is:
+For Slack and Discord notifications:
 
-1. The user creates their own Slack app / Discord bot in their own workspace or server
-2. The user grants the minimal permissions required for threaded delivery
-3. The user runs `npx 3am integrations notifications`
+1. Create a Slack app / Discord bot in your own workspace or server
+2. Grant the minimal permissions required for threaded delivery
+3. Run `npx 3am integrations notifications`
 4. 3am stores the credentials, verifies connectivity, and handles threaded incident delivery automatically
-
-3am does **not** require a shared vendor-operated Slack app or Discord app.
 
 ## Slack
 
@@ -74,13 +72,3 @@ npx 3am integrations notifications \
 - Starts a Discord thread from that message
 - Posts diagnosis follow-ups inside that thread
 
-## Best Practice
-
-For OSS, the best practice is:
-
-- user-owned Slack app / Discord bot
-- minimal permissions
-- one-time credential bootstrap
-- full automation after credentials are stored
-
-This avoids forcing self-hosted users to depend on a central 3am-managed integration app.

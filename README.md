@@ -213,14 +213,6 @@ npx 3am-cli integrations notifications
 
 Connects Slack and/or Discord to your deployed Receiver. Once configured, 3am posts a parent incident notification and follows up in the same Slack thread / Discord thread when diagnosis completes.
 
-For self-hosted OSS usage, 3am does not assume a vendor-managed integration app. You bring your own Slack app / Discord bot once, then 3am automates delivery after credentials are stored.
-
-OSS best practice:
-- create your own Slack app / Discord bot in your own workspace/server
-- grant the minimum permissions needed for threaded delivery
-- pass the bot credentials to `npx 3am-cli integrations notifications`
-- let 3am handle connectivity checks, parent notifications, and threaded follow-ups
-
 Setup reference:
 - [OSS notification setup](docs/integrations/notifications-oss-setup.md)
 
