@@ -268,6 +268,64 @@ describe('buildEvidenceQueryAnswer', () => {
     expect(result.segments.some((segment) => segment.text.includes('Flash sale traffic exceeded Stripe API quota'))).toBe(true)
   })
 
+  it('returns diagnosis hypothesis (not generic yes) when root-cause question falls back (ja)', async () => {
+    // Regression for Problem A: when generateEvidenceQuery throws (e.g. Haiku
+    // invents invalid evidence refs), buildFallbackAnswer used to emit a generic
+    // "はい。いまの evidence で直接確認できる異常があります。" instead of the
+    // diagnosis hypothesis. This test forces the throw and asserts the fallback
+    // now surfaces the root-cause hypothesis text.
+    generateEvidenceQueryMock.mockRejectedValue(new Error('LLM produced invalid evidence refs'))
+
+    const incident = makeIncident({ diagnosisResult: makeDiagnosisResult() })
+    const result = await buildEvidenceQueryAnswer(
+      incident,
+      makeMockStore(),
+      'この障害の原因は何ですか？',
+      false,
+      'ja',
+    )
+
+    expect(result.status).toBe('answered')
+    const joined = result.segments.map((s) => s.text).join('\n')
+    expect(joined).not.toContain('直接確認できる異常があります')
+    expect(joined).toContain('Flash sale traffic exceeded Stripe API quota')
+  })
+
+  it('returns diagnosis hypothesis for English "why" questions on fallback path', async () => {
+    generateEvidenceQueryMock.mockRejectedValue(new Error('LLM failure'))
+    const incident = makeIncident({ diagnosisResult: makeDiagnosisResult() })
+    const result = await buildEvidenceQueryAnswer(
+      incident,
+      makeMockStore(),
+      'Why is checkout failing? What is the root cause?',
+      false,
+      'en',
+    )
+
+    expect(result.status).toBe('answered')
+    const joined = result.segments.map((s) => s.text).join('\n')
+    expect(joined).not.toContain('directly observable issue')
+    expect(joined).toContain('Flash sale traffic exceeded Stripe API quota')
+  })
+
+  it('non-root-cause question still uses general direct answer on fallback', async () => {
+    // Guardrail: promotion to root_cause must not leak into unrelated questions.
+    generateEvidenceQueryMock.mockRejectedValue(new Error('LLM failure'))
+    const incident = makeIncident({ diagnosisResult: makeDiagnosisResult() })
+    const result = await buildEvidenceQueryAnswer(
+      incident,
+      makeMockStore(),
+      'チェックアウトのレイテンシは？',
+      false,
+      'ja',
+    )
+
+    expect(result.status).toBe('answered')
+    // Must not contain the root-cause lead phrase for a metrics-style question.
+    const joined = result.segments.map((s) => s.text).join('\n')
+    expect(joined).not.toContain('現時点では、Flash sale traffic')
+  })
+
   it('every segment carries at least one evidence ref', async () => {
     const incident = makeIncident({ diagnosisResult: makeDiagnosisResult() })
     const result = await buildEvidenceQueryAnswer(incident, makeMockStore(), 'Why is checkout failing?', false)

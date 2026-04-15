@@ -263,12 +263,36 @@ function detectExplanatoryTerm(question: string, locale: "en" | "ja"): Explanato
   };
 }
 
-function intentFromMode(mode: "answer" | "action" | "missing_evidence"): IntentProfile {
+/**
+ * Returns true when the question is asking about the underlying cause or
+ * reason for the incident. Used to promote `answer` mode to `root_cause`
+ * intent so the degraded/fallback path can surface the diagnosis hypothesis
+ * instead of a generic acknowledgement.
+ */
+function questionAsksRootCause(question: string): boolean {
+  const lower = question.toLowerCase();
+  // Japanese: 原因 (cause), 根本原因 (root cause), なぜ (why). Exclude 何が起きた
+  // (what happened) which is handled by the general fact segments.
+  if (/原因|根本原因|なぜ/.test(lower)) return true;
+  // English: cause / why / what caused / reason / root cause
+  return /\b(root\s*cause|cause|caused|why|reason)\b/.test(lower);
+}
+
+function intentFromMode(
+  mode: "answer" | "action" | "missing_evidence",
+  question: string,
+  hasDiagnosis: boolean,
+): IntentProfile {
   if (mode === "action") {
     return { kind: "action", preferredSurfaces: ["traces", "logs", "metrics"] };
   }
   if (mode === "missing_evidence") {
     return { kind: "logs", preferredSurfaces: ["logs", "traces", "metrics"] };
+  }
+  // Promote answer-mode root-cause questions so the degraded fallback path
+  // can return the diagnosis hypothesis rather than a generic acknowledgement.
+  if (hasDiagnosis && questionAsksRootCause(question)) {
+    return { kind: "root_cause", preferredSurfaces: ["traces", "metrics", "logs"] };
   }
   return { kind: "general", preferredSurfaces: ["traces", "metrics", "logs"] };
 }
@@ -827,7 +851,7 @@ export async function buildEvidenceQueryAnswer(
     // treat the rewritten question as an "answer" mode — never surface clarification.
     effectiveQuestion = plan.rewrittenQuestion;
     answerMode = plan.mode === "clarification" ? "answer" : plan.mode;
-    intent = intentFromMode(answerMode);
+    intent = intentFromMode(answerMode, effectiveQuestion, Boolean(incident.diagnosisResult));
     intent.preferredSurfaces = plan.preferredSurfaces;
   } catch {
     if (/^(hi|hello|hey|こんにちは|こんばんは|おはよう)/i.test(question.trim())) {

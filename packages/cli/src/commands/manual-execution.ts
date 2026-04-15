@@ -383,12 +383,29 @@ function detectExplanatoryTerm(question: string, locale: "en" | "ja"): Explanato
   };
 }
 
-function intentFromMode(mode: "answer" | "action" | "missing_evidence"): IntentProfile {
+/**
+ * See apps/receiver/src/domain/evidence-query.ts#questionAsksRootCause for
+ * rationale. Keep patterns in sync across both copies.
+ */
+function questionAsksRootCause(question: string): boolean {
+  const lower = question.toLowerCase();
+  if (/原因|根本原因|なぜ/.test(lower)) return true;
+  return /\b(root\s*cause|cause|caused|why|reason)\b/.test(lower);
+}
+
+function intentFromMode(
+  mode: "answer" | "action" | "missing_evidence",
+  question: string,
+  hasDiagnosis: boolean,
+): IntentProfile {
   if (mode === "action") {
     return { kind: "action", preferredSurfaces: ["traces", "logs", "metrics"] };
   }
   if (mode === "missing_evidence") {
     return { kind: "logs", preferredSurfaces: ["logs", "traces", "metrics"] };
+  }
+  if (hasDiagnosis && questionAsksRootCause(question)) {
+    return { kind: "root_cause", preferredSurfaces: ["traces", "metrics", "logs"] };
   }
   return { kind: "general", preferredSurfaces: ["traces", "metrics", "logs"] };
 }
@@ -767,7 +784,7 @@ async function buildManualEvidenceQueryAnswer(
     // treat the rewritten question as an "answer" mode — never surface clarification.
     effectiveQuestion = plan.rewrittenQuestion;
     answerMode = plan.mode === "clarification" ? "answer" : plan.mode;
-    intent = intentFromMode(answerMode);
+    intent = intentFromMode(answerMode, effectiveQuestion, Boolean(diagnosisResult));
     intent.preferredSurfaces = plan.preferredSurfaces;
   } catch {
     // Fall back to deterministic routing below.
