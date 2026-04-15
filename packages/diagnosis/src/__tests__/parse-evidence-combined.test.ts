@@ -157,6 +157,36 @@ describe("parseEvidenceCombined", () => {
       const raw = JSON.stringify({ mode: "unknown" });
       expect(() => parseEvidenceCombined(raw, { question: "Q?" }, allowedRefs)).toThrow(/invalid mode/);
     });
+
+    it("drops segments with empty evidenceRefs rather than failing validation", () => {
+      // Observed behavior: models occasionally emit an "unknown" segment with
+      // evidenceRefs=[] despite the prompt requirement. Previously this failed
+      // Zod validation for the entire response; now the offending segment is
+      // dropped and the rest of the answer is preserved.
+      const raw = JSON.stringify({
+        mode: "answer",
+        status: "answered",
+        segments: [
+          {
+            kind: "fact",
+            text: "Checkout spans are returning 504.",
+            evidenceRefs: [{ kind: "span", id: "trace-1:span-1" }],
+          },
+          {
+            kind: "unknown",
+            text: "The explicit gateway timeout value is not directly stated in the evidence.",
+            evidenceRefs: [],
+          },
+        ],
+      });
+
+      const result = parseEvidenceCombined(raw, { question: "What failed?" }, allowedRefs);
+      expect(result.kind).toBe("answer");
+      if (result.kind === "answer") {
+        expect(result.response.segments).toHaveLength(1);
+        expect(result.response.segments[0]?.kind).toBe("fact");
+      }
+    });
   });
 
   describe("JSON extraction robustness", () => {

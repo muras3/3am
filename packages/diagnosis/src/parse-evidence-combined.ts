@@ -31,10 +31,23 @@ export function parseEvidenceCombined(
     throw new Error(`EvidenceCombinedValidationError: invalid mode "${String(mode)}".`);
   }
 
+  // Models occasionally emit "unknown" segments with empty evidenceRefs despite
+  // the prompt requirement. Drop those segments rather than letting the entire
+  // response fail Zod validation. A segment without backing evidence adds no
+  // value, and dropping it preserves the rest of the answer.
+  const injected = injectSegmentIds(parsed["segments"] ?? []);
+  const validSegments = Array.isArray(injected)
+    ? injected.filter((segment) => {
+        if (!segment || typeof segment !== "object") return false;
+        const refs = (segment as Record<string, unknown>)["evidenceRefs"];
+        return Array.isArray(refs) && refs.length > 0;
+      })
+    : injected;
+
   const withQuestion = {
     question: meta.question,
     status: parsed["status"],
-    segments: injectSegmentIds(parsed["segments"] ?? []),
+    segments: validSegments,
     evidenceSummary: { traces: 0, metrics: 0, logs: 0 },
     followups: [],
     noAnswerReason: parsed["noAnswerReason"],
