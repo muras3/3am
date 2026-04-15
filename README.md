@@ -246,11 +246,11 @@ Requires a structured logger (pino, winston, bunyan) wired through `@opentelemet
 <details>
 <summary><strong>Why does <code>3am init</code> change <code>next build</code> to <code>next build --webpack</code>?</strong></summary>
 
-OpenTelemetry's auto-instrumentation (`@opentelemetry/auto-instrumentations-node`) monkey-patches Node.js modules at require-time using [require-in-the-middle](https://github.com/elastic/require-in-the-middle). This works when module identifiers are stable — Webpack preserves them. Turbopack, however, renames module IDs as part of its compilation model, which breaks the monkey-patching and causes OTel instrumentation to silently stop working.
+OpenTelemetry's auto-instrumentation (`@opentelemetry/auto-instrumentations-node`) hooks Node.js modules at `require()` time via [require-in-the-middle](https://github.com/elastic/require-in-the-middle). This only works on modules that are **left outside the bundle** and loaded by Node's real `require` at runtime. Webpack combined with Next.js `serverExternalPackages` has a mature story for excluding those modules. Turbopack's externalization handling doesn't yet cover this case, so OTel instrumentation silently stops emitting telemetry under Turbopack builds.
 
 `3am init` therefore rewrites `"next build"` to `"next build --webpack"` in your `package.json` build script to force Webpack for production builds. Your dev server (`next dev`) is unaffected.
 
-When OTel publishes an official Turbopack plugin that replaces require-in-the-middle, this workaround can be removed. Until then, removing `--webpack` will produce a build that appears to work but emits no traces.
+Once Turbopack fully supports the externalization semantics OTel needs (or OTel ships a Turbopack-native alternative to require-in-the-middle), this workaround can be removed. Until then, removing `--webpack` will produce a build that appears to work but emits no telemetry.
 
 </details>
 
