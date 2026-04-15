@@ -6,6 +6,8 @@ import {
 
 export async function runAuthLink(options: {
   receiverUrl?: string;
+  /** Explicit auth token override — bypasses credential lookup entirely. */
+  authToken?: string;
   json?: boolean;
 } = {}): Promise<void> {
   const json = options.json ?? false;
@@ -22,13 +24,57 @@ export async function runAuthLink(options: {
     return;
   }
 
-  const matched = findReceiverCredentialByUrl(creds, receiverUrl);
-  const authToken = matched?.authToken ?? creds.receiverAuthToken;
+  let authToken: string | undefined;
+
+  if (options.authToken) {
+    // Explicit --auth-token flag takes highest priority
+    authToken = options.authToken;
+  } else if (options.receiverUrl) {
+    // URL was explicitly passed — require a URL match from the receivers map.
+    // Do NOT fall through to receiverAuthToken (which may belong to a
+    // different platform receiver, causing a silent 401).
+    const matched = findReceiverCredentialByUrl(creds, options.receiverUrl);
+    if (matched?.authToken) {
+      authToken = matched.authToken;
+    } else {
+      // No match — build a helpful error listing available receivers
+      const available = Object.entries(creds.receivers ?? {})
+        .filter(([, v]) => v?.url && v.authToken)
+        .map(([platform, v]) => `  ${platform}: ${v!.url}`);
+      process.stderr.write(
+        `Error: no stored credentials found for ${options.receiverUrl}.\n\n`,
+      );
+      if (available.length > 0) {
+        process.stderr.write(
+          "Available receivers:\n" + available.join("\n") + "\n\n" +
+          "Fix:\n" +
+          "  npx 3am auth-link <receiver-url>           # use a stored receiver\n" +
+          "  npx 3am auth-link <url> --auth-token <t>   # explicit token override\n",
+        );
+      } else {
+        process.stderr.write(
+          "Fix:\n" +
+          "  Re-run `npx 3am deploy` from the machine that manages this receiver.\n" +
+          "  Or pass --auth-token explicitly:\n" +
+          "    npx 3am auth-link <url> --auth-token <token>\n",
+        );
+      }
+      process.exit(1);
+      return;
+    }
+  } else {
+    // No explicit URL — use default receiver (single-receiver fallback is safe here)
+    const matched = findReceiverCredentialByUrl(creds, receiverUrl);
+    authToken = matched?.authToken ?? creds.receiverAuthToken;
+  }
+
   if (!authToken) {
     process.stderr.write(
-      "Error: no stored receiver credentials found for that URL.\n\n" +
+      "Error: no stored receiver credentials found.\n\n" +
         "Fix:\n" +
-        "  Re-run `npx 3am deploy` from the machine that manages this receiver.\n",
+        "  Re-run `npx 3am deploy` from the machine that manages this receiver.\n" +
+        "  Or pass --auth-token explicitly:\n" +
+        "    npx 3am auth-link <url> --auth-token <token>\n",
     );
     process.exit(1);
     return;

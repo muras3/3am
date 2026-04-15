@@ -73,10 +73,11 @@ program
   .command("auth-link")
   .description("Mint a one-time browser sign-in link for a deployed receiver")
   .argument("[receiver-url]")
+  .option("--auth-token <token>", "Auth token override (skips credential lookup)")
   .option("--json", "Output structured JSON")
-  .action(async (receiverUrl: string | undefined, options: { json?: boolean }) => {
+  .action(async (receiverUrl: string | undefined, options: { authToken?: string; json?: boolean }) => {
     const { runAuthLink } = await import("./commands/auth-link.js");
-    await runAuthLink({ receiverUrl, json: options.json });
+    await runAuthLink({ receiverUrl, authToken: options.authToken, json: options.json });
   });
 
 program
