@@ -1,5 +1,7 @@
 # OSS Notification Setup
 
+**English** · [日本語](./notifications-oss-setup.ja.md)
+
 For Slack and Discord notifications:
 
 1. Create a Slack app / Discord bot in your own workspace or server
