@@ -56,6 +56,12 @@ function tokenize(input: string): string[] {
     "root cause",
     "cause",
     "why",
+    "fail",
+    "failed",
+    "failure",
+    "error",
+    "first",
+    "earliest",
     "原因",
     "根本原因",
     "メトリクス",
@@ -64,8 +70,38 @@ function tokenize(input: string): string[] {
     "異常",
     "問題",
     "なぜ",
+    "失敗",
+    "エラー",
+    "最初",
+    "最初に",
   ].filter((token) => normalized.includes(token.toLowerCase()));
   return [...new Set([...asciiTokens, ...phraseTokens])];
+}
+
+/**
+ * True when the user is asking about failures/errors. Used by retrieval to
+ * rank error-bearing spans/logs above ok child spans.
+ */
+function questionAsksFailure(question: string): boolean {
+  const lower = question.toLowerCase();
+  if (/失敗|エラー|落ちた|止まった|例外/.test(lower)) return true;
+  return /\b(fail|failed|failure|error|errored|exception|broken)\b/.test(lower);
+}
+
+/**
+ * Returns true when the evidence summary text describes a failing span/log.
+ * Covers:
+ *   - Span status enum: "status=error" / "ステータス=error" / "status=2"
+ *   - HTTP 4xx/5xx: "httpStatus=500", "HTTPステータス=504"
+ *   - Exception-flavored phrases in log bodies.
+ */
+function summaryIndicatesFailure(summary: string): boolean {
+  const lower = summary.toLowerCase();
+  if (/status=error|ステータス=error|status=2\b|spanstatus=2/.test(lower)) return true;
+  // HTTP 4xx / 5xx — localized and non-localized forms.
+  if (/httpstatus=[45]\d\d|httpステータス=[45]\d\d/.test(lower)) return true;
+  if (/\berror\b|exception|timed out|timeout|\bfail(ed|ure)?\b/.test(lower)) return true;
+  return false;
 }
 
 function ensureSentence(text: string): string {
@@ -398,6 +434,7 @@ function retrieveEvidence(
 ): RetrievedEvidence[] {
   const tokens = new Set(tokenize(question));
   const lowerQuestion = question.toLowerCase();
+  const asksFailure = questionAsksFailure(question);
   const boosted = catalog.map((entry, index) => {
     const haystack = `${entry.summary} ${entry.ref.id} ${entry.ref.kind}`.toLowerCase();
     let score = 0;
@@ -412,6 +449,14 @@ function retrieveEvidence(
     if (entry.ref.kind === "metric_group" && /metric|rate|latency|error rate|throughput|spike|メトリクス|レイテンシ/.test(lowerQuestion)) score += 15;
     if ((entry.ref.kind === "log_cluster" || entry.ref.kind === "absence") && /\blog\b|logs|missing log|retry|backoff|ログ|エラーログ/.test(lowerQuestion)) score += 15;
     if (intent.kind === "root_cause" && entry.surface !== "traces") score += 1;
+    // Problem B fix: when the question asks about failures/errors, strongly
+    // prefer evidence whose summary indicates a failing state (span
+    // status=error, HTTP 4xx/5xx, timeout/exception phrases). Without this,
+    // BM25-style token match misses HTTP-status-only summaries and ok child
+    // spans end up ranked above the actual failing root span.
+    if (asksFailure && summaryIndicatesFailure(entry.summary)) {
+      score += 12;
+    }
     return { ...entry, score: score + Math.max(0, 1 - index * 0.01) };
   });
 

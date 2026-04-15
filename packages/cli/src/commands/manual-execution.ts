@@ -88,6 +88,12 @@ function tokenize(input: string): string[] {
     "root cause",
     "cause",
     "why",
+    "fail",
+    "failed",
+    "failure",
+    "error",
+    "first",
+    "earliest",
     "原因",
     "根本原因",
     "メトリクス",
@@ -96,8 +102,28 @@ function tokenize(input: string): string[] {
     "異常",
     "問題",
     "なぜ",
+    "失敗",
+    "エラー",
+    "最初",
+    "最初に",
   ].filter((token) => normalized.includes(token.toLowerCase()));
   return [...new Set([...asciiTokens, ...phraseTokens])];
+}
+
+/** Mirror of apps/receiver/src/domain/evidence-query.ts#questionAsksFailure. */
+function questionAsksFailure(question: string): boolean {
+  const lower = question.toLowerCase();
+  if (/失敗|エラー|落ちた|止まった|例外/.test(lower)) return true;
+  return /\b(fail|failed|failure|error|errored|exception|broken)\b/.test(lower);
+}
+
+/** Mirror of apps/receiver/src/domain/evidence-query.ts#summaryIndicatesFailure. */
+function summaryIndicatesFailure(summary: string): boolean {
+  const lower = summary.toLowerCase();
+  if (/status=error|ステータス=error|status=2\b|spanstatus=2/.test(lower)) return true;
+  if (/httpstatus=[45]\d\d|httpステータス=[45]\d\d/.test(lower)) return true;
+  if (/\berror\b|exception|timed out|timeout|\bfail(ed|ure)?\b/.test(lower)) return true;
+  return false;
 }
 
 function ensureSentence(text: string): string {
@@ -195,6 +221,7 @@ function retrieveEvidence(
   intent: IntentProfile,
 ): RetrievedEvidence[] {
   const tokens = new Set(tokenize(question));
+  const asksFailure = questionAsksFailure(question);
   const boosted = catalog.map((entry, index) => {
     const haystack = `${entry.summary} ${entry.ref.id} ${entry.ref.kind}`.toLowerCase();
     let score = 0;
@@ -209,6 +236,12 @@ function retrieveEvidence(
     if (entry.ref.kind === "metric_group" && /metric|rate|latency|error|throughput|spike/.test(question.toLowerCase())) score += 2;
     if ((entry.ref.kind === "log_cluster" || entry.ref.kind === "absence") && /log|missing|retry|backoff|error/.test(question.toLowerCase())) score += 2;
     if (intent.kind === "root_cause" && entry.surface !== "traces") score += 1;
+    // Problem B fix: prefer evidence whose summary indicates failure when the
+    // question asks about failures/errors. Keep the mirrored receiver logic in
+    // sync with this block.
+    if (asksFailure && summaryIndicatesFailure(entry.summary)) {
+      score += 12;
+    }
     return { ...entry, score: score + Math.max(0, 1 - index * 0.01) };
   });
 

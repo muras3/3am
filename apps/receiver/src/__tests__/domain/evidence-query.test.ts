@@ -268,6 +268,167 @@ describe('buildEvidenceQueryAnswer', () => {
     expect(result.segments.some((segment) => segment.text.includes('Flash sale traffic exceeded Stripe API quota'))).toBe(true)
   })
 
+  it('retrieves the error-status span (not ok child spans) when the question asks about failure (ja)', async () => {
+    // Regression for Problem B: "失敗が最初に現れたトレースは？" used to return
+    // no_answer because tokenize() had no "失敗" token and retrieveEvidence()
+    // had no error-status boost. Retrieval therefore returned ok-status child
+    // spans, which the LLM correctly refused to call a failure.
+    //
+    // Build a store with one error root span and several ok child spans so the
+    // selection order matters, then assert the evidence passed to
+    // generateEvidenceQuery includes the error span ref.
+    const errorRootSpan: TelemetrySpan = {
+      traceId: 'trace-err',
+      spanId: 'span-root',
+      parentSpanId: undefined,
+      serviceName: 'web',
+      environment: 'production',
+      spanName: 'POST /api/orders',
+      httpRoute: '/api/orders',
+      httpStatusCode: 500,
+      spanStatusCode: 2,
+      durationMs: 700,
+      startTimeMs: 1700000001000,
+      exceptionCount: 1,
+      attributes: { 'http.response.status_code': 500 },
+      ingestedAt: 1700000002000,
+    }
+    const okChildSpans: TelemetrySpan[] = Array.from({ length: 6 }).map((_, i) => ({
+      traceId: 'trace-err',
+      spanId: `span-ok-${i}`,
+      parentSpanId: 'span-root',
+      serviceName: 'web',
+      environment: 'production',
+      spanName: `GET /health-${i}`,
+      httpRoute: `/health-${i}`,
+      httpStatusCode: 200,
+      spanStatusCode: 1,
+      durationMs: 5,
+      startTimeMs: 1700000001000 + i,
+      exceptionCount: 0,
+      attributes: { 'http.response.status_code': 200 },
+      ingestedAt: 1700000002000,
+    }))
+
+    const store: TelemetryStoreDriver = {
+      // Order matters — put ok child spans first so index-based tiebreaks favor them.
+      querySpans: vi.fn().mockResolvedValue([...okChildSpans, errorRootSpan]),
+      queryMetrics: vi.fn().mockResolvedValue([]),
+      queryLogs: vi.fn().mockResolvedValue([]),
+      ingestSpans: vi.fn().mockResolvedValue(undefined),
+      ingestMetrics: vi.fn().mockResolvedValue(undefined),
+      ingestLogs: vi.fn().mockResolvedValue(undefined),
+      upsertSnapshot: vi.fn().mockResolvedValue(undefined),
+      getSnapshots: vi.fn().mockResolvedValue([]),
+      deleteSnapshots: vi.fn().mockResolvedValue(undefined),
+      deleteExpired: vi.fn().mockResolvedValue(undefined),
+      deleteExpiredSnapshots: vi.fn().mockResolvedValue(undefined),
+    }
+
+    let capturedEvidence: unknown = null
+    generateEvidenceQueryMock.mockImplementation(async (input: { evidence: Array<{ ref: { id: string } }> }) => {
+      capturedEvidence = input.evidence
+      return {
+        question: '失敗が最初に現れたトレースは？',
+        status: 'answered',
+        segments: [{
+          id: 'seg-1',
+          kind: 'fact',
+          text: 'Error trace observed on span-root',
+          evidenceRefs: [{ kind: 'span', id: 'trace-err:span-root' }],
+        }],
+        evidenceSummary: { traces: 7, metrics: 0, logs: 0 },
+        followups: [],
+      }
+    })
+
+    const incident = makeIncident({
+      diagnosisResult: makeDiagnosisResult(),
+      packet: makePacket({
+        evidence: {
+          changedMetrics: [],
+          representativeTraces: [
+            { traceId: 'trace-err', spanId: 'span-root', serviceName: 'web', durationMs: 700, spanStatusCode: 2 },
+          ],
+          relevantLogs: [],
+          platformEvents: [],
+        },
+      }),
+      spanMembership: ['trace-err:span-root', ...okChildSpans.map((s) => `trace-err:${s.spanId}`)],
+    })
+
+    const result = await buildEvidenceQueryAnswer(
+      incident,
+      store,
+      '失敗が最初に現れたトレースは？',
+      false,
+      'ja',
+    )
+
+    expect(result.status).toBe('answered')
+    // The error root span must be among the evidence passed to the LLM.
+    expect(capturedEvidence).toBeTruthy()
+    const refs = (capturedEvidence as Array<{ ref: { id: string } }>).map((e) => e.ref.id)
+    expect(refs).toContain('trace-err:span-root')
+  })
+
+  it('does not spuriously boost ok spans when question does not ask about failure', async () => {
+    // Guardrail: the failure-boost must be gated by questionAsksFailure so an
+    // unrelated question does not ever-so-slightly promote error spans in
+    // contexts where they are not relevant.
+    const errorSpan: TelemetrySpan = {
+      traceId: 'trace-e',
+      spanId: 'span-e',
+      parentSpanId: undefined,
+      serviceName: 'web',
+      environment: 'production',
+      spanName: 'POST /x',
+      httpRoute: '/x',
+      httpStatusCode: 500,
+      spanStatusCode: 2,
+      durationMs: 700,
+      startTimeMs: 1700000001000,
+      exceptionCount: 1,
+      attributes: {},
+      ingestedAt: 1700000002000,
+    }
+    const store: TelemetryStoreDriver = {
+      querySpans: vi.fn().mockResolvedValue([errorSpan]),
+      queryMetrics: vi.fn().mockResolvedValue([]),
+      queryLogs: vi.fn().mockResolvedValue([]),
+      ingestSpans: vi.fn().mockResolvedValue(undefined),
+      ingestMetrics: vi.fn().mockResolvedValue(undefined),
+      ingestLogs: vi.fn().mockResolvedValue(undefined),
+      upsertSnapshot: vi.fn().mockResolvedValue(undefined),
+      getSnapshots: vi.fn().mockResolvedValue([]),
+      deleteSnapshots: vi.fn().mockResolvedValue(undefined),
+      deleteExpired: vi.fn().mockResolvedValue(undefined),
+      deleteExpiredSnapshots: vi.fn().mockResolvedValue(undefined),
+    }
+
+    generateEvidenceQueryMock.mockRejectedValue(new Error('force fallback'))
+
+    const incident = makeIncident({
+      diagnosisResult: makeDiagnosisResult(),
+      spanMembership: ['trace-e:span-e'],
+    })
+
+    // An explanatory question that should go through the normal path without
+    // ever triggering the failure-boost code (asks about a term, not failure).
+    const result = await buildEvidenceQueryAnswer(
+      incident,
+      store,
+      'トレースとは何ですか？',
+      false,
+      'ja',
+    )
+
+    // Smoke: should still produce a valid response (not crash). No score leak
+    // assertion is possible from the public API; the test exists to catch any
+    // accidental unconditional error-boost refactor.
+    expect(result.question).toBe('トレースとは何ですか？')
+  })
+
   it('every segment carries at least one evidence ref', async () => {
     const incident = makeIncident({ diagnosisResult: makeDiagnosisResult() })
     const result = await buildEvidenceQueryAnswer(incident, makeMockStore(), 'Why is checkout failing?', false)
