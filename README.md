@@ -63,6 +63,9 @@ npx 3am-cli local demo    # inject a demo incident → see diagnosis
 
 Open **http://localhost:3333**. Requires Docker and Node.js 20+.
 
+> **Onboarding is designed for AI coding agents.**
+> 3am is set up so that Claude Code, Codex, and similar agents can run the steps above for you — just point them at the machine-readable setup guide at [**llms-full.txt**](llms-full.txt). Manual install (the commands above) still works if you prefer.
+
 <details>
 <summary>Which mode should I pick?</summary>
 
@@ -296,8 +299,6 @@ npx 3am-cli integrations notifications \
 ```
 
 </details>
-
-<sub><a href="llms-full.txt">AI agents: read llms-full.txt for machine-readable setup instructions</a></sub>
 
 ---
 

@@ -63,6 +63,9 @@ npx 3am-cli local demo    # デモインシデントを流して診断を確認
 
 ブラウザで **http://localhost:3333** を開いてください。Docker と Node.js 20 以上が必要です。
 
+> **AI コーディングエージェントからの導入を想定しています。**
+> 3am は Claude Code や Codex のようなエージェントが、上記のセットアップを代わりに実行できるよう整えています。エージェント向けの機械可読セットアップガイドを [**llms-full.txt**](llms-full.txt) に置いてあるので、手元のエージェントに読ませてみてください。手動で上記のコマンドを実行する従来どおりの導入もそのまま使えます。
+
 <details>
 <summary>利用モード</summary>
 
@@ -296,8 +299,6 @@ npx 3am-cli integrations notifications \
 ```
 
 </details>
-
-<sub><a href="llms-full.txt">AI agents: read llms-full.txt for machine-readable setup instructions</a></sub>
 
 ---
 
