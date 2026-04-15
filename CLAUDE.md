@@ -2,6 +2,54 @@
 
 OSS tool that diagnoses serverless app incidents in under 5 minutes using OTel data + LLM.
 
+## 絶対ルール: AI Chat は LLM-first (synthesis を迂回するな)
+
+**AI Chat / evidence-query 機能で「LLM synthesis を経由せず deterministic template を最終出力に返すパターン」は、LLM プロバイダ到達不可等の完全障害時を除き、絶対にゼロ。**
+
+対象: `apps/receiver/src/domain/evidence-query.ts`、`packages/cli/src/commands/manual-execution.ts`、および AI Chat / 質問応答に関わる全ての経路。
+
+### 研究整合的な分業（2025年以降の grounded QA / enterprise RAG 主流）
+
+| 層 | 担当 | 理由 |
+|----|------|------|
+| **検出層 (detection)** | deterministic OK | `diagnosisState=pending/unavailable` / `evidence_count=0` / provider-down 等の事実判定は code 側に残す。LLM 丸投げは AbstentionBench (NeurIPS 2025) の指摘通り未解決問題。 |
+| **合成層 (synthesis)** | **LLM 必須** | 回答文生成は必ず LLM を通す。state/count/claim を入力として LLM に渡し、自然文を生成させる。「該当ログ無し」のような答えも LLM synthesis で。 |
+| **検証/修復層 (verify/repair)** | deterministic 実行 | invalid ref の削除・citation 検証・faithfulness check は post-process で（CiteFix ACL 2025 Industry、Generate-but-Verify IJCNLP-AACL 2025）。 |
+| **最終 safety net** | deterministic OK | LLM プロバイダ到達不可、retry 複数回失敗時のみ deterministic template を許容。 |
+
+### 禁止される実装
+
+- keyword match で intent を分類し **LLM を経由せず** template 応答（挨拶・定義質問・診断状態別・no-evidence の deterministic no-answer 等）
+- ref validation で LLM 出力を reject した後、**retry / post-process repair なしで**すぐ deterministic template にフォールバック
+- greeting / explanatory / root_cause 判定を code 側で完結させ LLM を迂回
+
+### 正しい実装
+
+- state/count/absence-type 等の事実は code で検出し、**その事実を入力として LLM に渡して回答を生成**させる
+- hallucination 対策は retry (ref 制約を段階的に緩和) + post-process (invalid ref を削除・再生成)
+- deterministic safety net は retry 2回失敗後の最終段のみ
+- 絶対に除外できない safety gate（緊急エスカレーション等）は deterministic 併用可、ただし **回答生成自体**は LLM で
+
+### 例外導入のハードル
+
+`AI synthesis を経由せず回答を返す経路` を新規追加する場合、事前にユーザーへ以下を提示して許可を取る:
+- なぜ LLM 経路で実現できないか
+- retry / post-process / structured input 等の代替を検討したか
+- 当該経路を導入する impact（false positive / i18n / 説明力欠落のコスト）
+
+### 根拠
+
+2025年以降の研究・公式 docs は一貫して `deterministic detection + LLM synthesis + verification/repair` の分業を推奨:
+
+- Microsoft Azure AI Search *agentic retrieval* (2025-2026 docs): raw extraction より LLM answer synthesis
+- Anthropic Citations API (2025-06-23): prompt 工夫より built-in citation grounding の方が valid pointers を保証
+- Filice et al. *Generate but Verify* (IJCNLP-AACL 2025): faithfulness-aware generate+verify が downstream improvement に直結
+- Maheshwari et al. *CiteFix* (ACL 2025 Industry): post-process citation correction で +15.46% accuracy
+- Hwang et al. *RA-RAG* (EMNLP 2025): source reliability-aware retrieval
+- AbstentionBench (NeurIPS 2025): LLM の abstention 能力自体は未解決 → abstain 判定は code 側に残せ
+
+「deterministic 分岐を主系、LLM を例外」という設計は現在の主流でも推奨でもない。
+
 ## Quick Start
 
 **Local:**
