@@ -36,7 +36,7 @@ vi.mock("node:readline", async (importOriginal) => {
 
 import { execSync } from "node:child_process";
 import { detectFramework } from "../commands/init/detect-framework.js";
-import { detectRuntimeTarget, findWranglerConfigPath } from "../commands/init/detect-runtime.js";
+import { detectRuntimeTarget, findWranglerConfigPath, isMonorepoRoot, findWorkspaceWranglerConfigs } from "../commands/init/detect-runtime.js";
 import { updateCloudflareObservabilityConfig } from "../commands/cloudflare-workers.js";
 import { detectLogger } from "../commands/init/detect-logger.js";
 import { detectPackageManager } from "../commands/init/detect-package-manager.js";
@@ -93,6 +93,124 @@ describe("detectRuntimeTarget()", () => {
   it("detects node-like when no wrangler config exists", () => {
     expect(detectRuntimeTarget(tmpDir)).toBe("node-like");
     expect(findWranglerConfigPath(tmpDir)).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Monorepo detection (Bug 3)
+// ---------------------------------------------------------------------------
+
+describe("isMonorepoRoot()", () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = join(tmpdir(), `monorepo-test-${Date.now()}`);
+    mkdirSync(tmpDir, { recursive: true });
+  });
+
+  afterEach(() => {
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it("returns true when pnpm-workspace.yaml exists", () => {
+    writeFileSync(join(tmpDir, "pnpm-workspace.yaml"), "packages:\n  - apps/*\n");
+    expect(isMonorepoRoot(tmpDir)).toBe(true);
+  });
+
+  it("returns true when turbo.json exists", () => {
+    writeFileSync(join(tmpDir, "turbo.json"), "{}");
+    expect(isMonorepoRoot(tmpDir)).toBe(true);
+  });
+
+  it("returns false when no workspace markers exist", () => {
+    expect(isMonorepoRoot(tmpDir)).toBe(false);
+  });
+});
+
+describe("findWorkspaceWranglerConfigs()", () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = join(tmpdir(), `ws-configs-test-${Date.now()}`);
+    mkdirSync(tmpDir, { recursive: true });
+  });
+
+  afterEach(() => {
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it("finds wrangler.jsonc in apps/ subdirectory", () => {
+    mkdirSync(join(tmpDir, "apps", "order-api"), { recursive: true });
+    writeFileSync(join(tmpDir, "apps", "order-api", "wrangler.jsonc"), "{}");
+    const found = findWorkspaceWranglerConfigs(tmpDir);
+    expect(found).toHaveLength(1);
+    expect(found[0]).toContain("order-api");
+    expect(found[0]).toContain("wrangler.jsonc");
+  });
+
+  it("finds wrangler.toml in apps/ subdirectory", () => {
+    mkdirSync(join(tmpDir, "apps", "my-worker"), { recursive: true });
+    writeFileSync(join(tmpDir, "apps", "my-worker", "wrangler.toml"), 'name = "my-worker"');
+    const found = findWorkspaceWranglerConfigs(tmpDir);
+    expect(found).toHaveLength(1);
+    expect(found[0]).toContain("wrangler.toml");
+  });
+
+  it("finds multiple workers across subdirectories", () => {
+    mkdirSync(join(tmpDir, "apps", "worker-a"), { recursive: true });
+    mkdirSync(join(tmpDir, "workers", "worker-b"), { recursive: true });
+    writeFileSync(join(tmpDir, "apps", "worker-a", "wrangler.jsonc"), "{}");
+    writeFileSync(join(tmpDir, "workers", "worker-b", "wrangler.toml"), 'name = "b"');
+    const found = findWorkspaceWranglerConfigs(tmpDir);
+    expect(found).toHaveLength(2);
+  });
+
+  it("returns empty array when no workers found", () => {
+    mkdirSync(join(tmpDir, "apps", "web"), { recursive: true });
+    writeFileSync(join(tmpDir, "apps", "web", "package.json"), "{}");
+    const found = findWorkspaceWranglerConfigs(tmpDir);
+    expect(found).toHaveLength(0);
+  });
+});
+
+describe("runInit() — monorepo root guard (Bug 3)", () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = join(tmpdir(), `init-monorepo-test-${Date.now()}`);
+    mkdirSync(join(tmpDir, "apps", "order-api"), { recursive: true });
+    // Workspace root markers
+    writeFileSync(join(tmpDir, "pnpm-workspace.yaml"), "packages:\n  - apps/*\n");
+    writeFileSync(join(tmpDir, "turbo.json"), "{}");
+    // Worker in subdirectory
+    writeFileSync(join(tmpDir, "apps", "order-api", "wrangler.jsonc"), JSON.stringify({ name: "order-api" }));
+    // Root package.json (no wrangler config at root)
+    writeFileSync(join(tmpDir, "package.json"), JSON.stringify({ name: "my-monorepo" }));
+  });
+
+  afterEach(() => {
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it("exits with error in --no-interactive mode when workers exist in subdirectories", async () => {
+    const originalCwd = process.cwd();
+    process.chdir(tmpDir);
+    const stderrSpy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    const exitSpy = vi.spyOn(process, "exit").mockImplementation((_code) => { throw new Error("process.exit"); });
+
+    try {
+      await expect(
+        runInit([], { noInteractive: true }),
+      ).rejects.toThrow("process.exit");
+      expect(exitSpy).toHaveBeenCalledWith(1);
+      const stderrOutput = stderrSpy.mock.calls.map((c) => String(c[0])).join("");
+      expect(stderrOutput).toContain("monorepo root");
+      expect(stderrOutput).toContain("order-api");
+    } finally {
+      process.chdir(originalCwd);
+      stderrSpy.mockRestore();
+      exitSpy.mockRestore();
+    }
   });
 });
 
