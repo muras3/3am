@@ -48,11 +48,7 @@ AVOID ASSUMING
   ✗ Scaling the DB will help — confirm bottleneck first
 ```
 <p align="center">
-  <a href="assets/demo.mp4">
-    <img src="assets/demo.gif" alt="3am Console — incident list, board and Evidence Studio" width="720"/>
-  </a>
-  <br/>
-  <sub><a href="assets/demo.mp4">MP4 (1840×1200)</a> · <a href="assets/demo.webm">WebM</a></sub>
+  <img src="assets/demo.gif" alt="3am Console — incident diagnosis" width="720"/>
 </p>
 
 ---
