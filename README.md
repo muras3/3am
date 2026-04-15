@@ -15,6 +15,10 @@
   <a href="#license"><img src="https://img.shields.io/badge/license-Apache--2.0-blue.svg" alt="License"/></a>
 </p>
 
+<p align="center">
+  <strong>English</strong> · <a href="README.ja.md">日本語</a>
+</p>
+
 ---
 
 OTel data in → diagnosis + action plan out. No thresholds. No runbooks. Under 60 seconds.
