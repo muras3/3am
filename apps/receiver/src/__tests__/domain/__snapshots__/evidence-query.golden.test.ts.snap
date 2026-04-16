@@ -10,7 +10,7 @@ exports[`evidence query golden responses > keeps the inc_000006 follow-up answer
     },
     "followups": [
       {
-        "question": "What expected resilience signal is still missing during the incident?",
+        "question": "障害期間中に欠けているはずの回復シグナルは何？",
         "targetEvidenceKinds": [
           "logs",
         ],
@@ -29,7 +29,7 @@ exports[`evidence query golden responses > keeps the inc_000006 follow-up answer
     },
     "followups": [
       {
-        "question": "What expected resilience signal is still missing during the incident?",
+        "question": "障害期間中に欠けているはずの回復シグナルは何？",
         "targetEvidenceKinds": [
           "logs",
         ],
@@ -48,7 +48,7 @@ exports[`evidence query golden responses > keeps the inc_000006 follow-up answer
     },
     "followups": [
       {
-        "question": "What expected resilience signal is still missing during the incident?",
+        "question": "障害期間中に欠けているはずの回復シグナルは何？",
         "targetEvidenceKinds": [
           "logs",
         ],
@@ -67,7 +67,7 @@ exports[`evidence query golden responses > keeps the inc_000006 follow-up answer
     },
     "followups": [
       {
-        "question": "What expected resilience signal is still missing during the incident?",
+        "question": "障害期間中に欠けているはずの回復シグナルは何？",
         "targetEvidenceKinds": [
           "logs",
         ],

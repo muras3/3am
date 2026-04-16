@@ -213,13 +213,14 @@ function buildDeterministicNoAnswer(
   question: string,
   evidence: EvidenceResponse,
   reason: string,
+  locale: "en" | "ja" = "en",
 ): EvidenceQueryResponse {
   return {
     question,
     status: "no_answer",
     segments: [],
     evidenceSummary: summarizeEvidence(evidence.surfaces),
-    followups: buildFollowups([], evidence, question),
+    followups: buildFollowups([], evidence, question, locale),
     noAnswerReason: reason,
   };
 }
@@ -496,6 +497,7 @@ export async function buildEvidenceQueryAnswer(
       question,
       curatedEvidence,
       "LLM synthesis failed after retries. The evidence surfaces are available on the left, but a grounded answer could not be generated this time.",
+      locale,
     );
   }
 }
