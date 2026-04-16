@@ -26,7 +26,7 @@ import { buildAnomalousSignals, createPacket } from "../domain/packetizer.js";
 import { extractTelemetryMetrics, extractTelemetryLogs } from "../telemetry/otlp-extractors.js";
 import { maybeCleanup } from "../retention/lazy-cleanup.js";
 import type { DiagnosisRunner } from "../runtime/diagnosis-runner.js";
-import { type DiagnosisConfig, scheduleDelayedDiagnosis, resolveWaitUntil, runIfNeeded } from "../runtime/diagnosis-debouncer.js";
+import { type DiagnosisConfig, scheduleDelayedDiagnosis, resolveWaitUntil, runIfNeeded, recoverOrphanedDiagnoses } from "../runtime/diagnosis-debouncer.js";
 import type { EnqueueDiagnosisFn } from "../runtime/diagnosis-dispatch.js";
 import { decodeTraces, decodeMetrics, decodeLogs } from "./otlp-protobuf.js";
 import { notifyIncidentCreated } from "../notification/index.js";
@@ -253,6 +253,15 @@ export function createIngestRouter(
         ingestedAt: now,
       }));
       await telemetryStore.ingestSpans(telemetrySpans);
+
+      // Vercel-only orphan recovery: if a serverless instance was recycled mid-timer,
+      // the waitUntil+sleep promise is lost. On the next ingest request we opportunistically
+      // scan for orphaned incidents and re-trigger diagnosis.
+      // Gated on Vercel path (diagnosisRunner present, no CF Queue).
+      if (diagnosisRunner && !enqueueDiagnosis) {
+        const recoveryWaitUntil = await waitUntilPromise;
+        recoverOrphanedDiagnoses(storage, diagnosisRunner, recoveryWaitUntil, now);
+      }
     }
 
     // signalSpans: all anomalous spans (isAnomalous) — for evidence/signal recording.

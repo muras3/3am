@@ -13,7 +13,7 @@ import type { StorageDriver } from "../storage/interface.js";
 import type { TelemetryStoreDriver } from "../telemetry/interface.js";
 import { rebuildSnapshots } from "../telemetry/snapshot-builder.js";
 import type { DiagnosisRunner } from "./diagnosis-runner.js";
-import { checkGenerationThreshold } from "./diagnosis-debouncer.js";
+import { checkGenerationThreshold, type WaitUntilFn } from "./diagnosis-debouncer.js";
 import type { DiagnosisConfig } from "./diagnosis-debouncer.js";
 import type { EnqueueDiagnosisFn } from "./diagnosis-dispatch.js";
 
@@ -22,6 +22,10 @@ import type { EnqueueDiagnosisFn } from "./diagnosis-dispatch.js";
  *
  * Returns true if a rebuild was performed, false if snapshots were already fresh
  * or another reader is already rebuilding.
+ *
+ * @param waitUntilFn - Optional platform waitUntil (Vercel). When provided,
+ *   generation-threshold diagnosis runs are wrapped so the serverless instance
+ *   stays alive until diagnosis completes.
  */
 export async function ensureIncidentMaterialized(
   incidentId: string,
@@ -30,6 +34,7 @@ export async function ensureIncidentMaterialized(
   diagnosisConfig?: DiagnosisConfig,
   diagnosisRunner?: DiagnosisRunner,
   enqueueDiagnosis?: EnqueueDiagnosisFn,
+  waitUntilFn?: WaitUntilFn,
 ): Promise<boolean> {
   const incident = await storage.getIncident(incidentId);
   if (!incident) return false;
@@ -68,6 +73,7 @@ export async function ensureIncidentMaterialized(
           diagnosisRunner,
           { generationThreshold: diagnosisConfig.generationThreshold },
           enqueueDiagnosis,
+          waitUntilFn,
         );
       }
     }
