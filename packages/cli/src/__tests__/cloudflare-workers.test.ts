@@ -206,7 +206,7 @@ describe("resolveCloudflareApiAuth()", () => {
       env: {},
       account: { email: "user@example.com" },
       noInteractive: true,
-    })).rejects.toThrow("Workers Scripts:Edit");
+    })).rejects.toThrow("CLOUDFLARE_API_TOKEN");
   });
 });
 
@@ -325,6 +325,97 @@ describe("connectCloudflareWorkerToReceiver()", () => {
         },
       },
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// connectCloudflareWorkerToReceiver — explicit cloudflareApiToken option
+// (Fixes the cfut_ token issue: token captured before deploy subprocess runs,
+//  passed explicitly so Observability API auth works even when env is unset)
+// ---------------------------------------------------------------------------
+
+describe("connectCloudflareWorkerToReceiver — cloudflareApiToken option", () => {
+  beforeEach(() => {
+    vi.unstubAllEnvs();
+    vi.mocked(existsSync).mockImplementation((p) => String(p) === "wrangler.toml");
+    vi.mocked(readFileSync).mockReturnValue('name = "e2e-order-api"\n');
+    vi.mocked(writeFileSync).mockImplementation(() => undefined);
+    vi.mocked(execFileSync).mockImplementation((cmd, args) => {
+      const a = args as string[];
+      if (a.includes("whoami")) {
+        return Buffer.from(JSON.stringify({ email: "test@example.com", accounts: [{ id: "acc_test" }] }));
+      }
+      if (a.includes("deploy")) return Buffer.from("");
+      return Buffer.from("");
+    });
+  });
+
+  afterEach(() => {
+    vi.mocked(existsSync).mockReset();
+    vi.mocked(readFileSync).mockReset();
+    vi.mocked(writeFileSync).mockReset();
+    vi.mocked(execFileSync).mockReset();
+    vi.unstubAllGlobals();
+  });
+
+  it("uses explicit cloudflareApiToken when env var is absent", async () => {
+    // No CLOUDFLARE_API_TOKEN in env (simulates the cfut_ workaround scenario)
+    delete process.env["CLOUDFLARE_API_TOKEN"];
+    delete process.env["CF_API_TOKEN"];
+
+    const fetchMock = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      const urlStr = String(url);
+      if (urlStr.includes("/destinations") && (!init?.method || init.method === "GET")) {
+        return new Response(JSON.stringify({ success: true, errors: [], messages: [], result: [] }), {
+          status: 200, headers: { "Content-Type": "application/json" },
+        });
+      }
+      if (urlStr.includes("/destinations") && init?.method === "POST") {
+        return new Response(JSON.stringify({
+          success: true, errors: [], messages: [{ message: "Resource created" }],
+          result: { slug: "s", name: "n", enabled: true, configuration: { type: "logpush", logpushDataset: "opentelemetry-logs", url: "https://r.example.com/v1/logs" } },
+        }), { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+      return new Response(JSON.stringify({ success: true, errors: [], messages: [], result: [] }), {
+        status: 200, headers: { "Content-Type": "application/json" },
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await connectCloudflareWorkerToReceiver(
+      ".",
+      "https://receiver.example.com",
+      "tok_receiver",
+      {
+        noInteractive: true,
+        accountId: "acc_test",
+        cloudflareApiToken: "cfut_explicit_token",
+      },
+    );
+
+    // Verify that all observability API calls used the explicit token
+    const apicalls = fetchMock.mock.calls.filter(([url]) =>
+      String(url).includes("observability"),
+    );
+    expect(apicalls.length).toBeGreaterThan(0);
+    for (const [, init] of apicalls) {
+      expect((init as RequestInit)?.headers).toMatchObject({
+        Authorization: "Bearer cfut_explicit_token",
+      });
+    }
+  });
+
+  it("errors in noInteractive mode when no token is available (env absent, no explicit token)", async () => {
+    delete process.env["CLOUDFLARE_API_TOKEN"];
+    delete process.env["CF_API_TOKEN"];
+
+    await expect(
+      connectCloudflareWorkerToReceiver(".", "https://receiver.example.com", "tok_receiver", {
+        noInteractive: true,
+        accountId: "acc_test",
+        // cloudflareApiToken not provided — should throw
+      }),
+    ).rejects.toThrow("CLOUDFLARE_API_TOKEN");
   });
 });
 

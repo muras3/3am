@@ -442,9 +442,16 @@ export async function resolveCloudflareApiAuth(options: {
   env?: NodeJS.ProcessEnv;
   account?: { email?: string };
   noInteractive?: boolean;
+  /**
+   * Explicit CF API token.  Takes precedence over the env variable so that the
+   * caller can capture the token before the deploy subprocess (which must run
+   * without it to avoid cfut_-token failures on d1/queues/scripts endpoints)
+   * strips it from the environment.
+   */
+  apiToken?: string;
 }): Promise<CloudflareApiAuth> {
   const env = options.env ?? process.env;
-  const apiToken = env["CLOUDFLARE_API_TOKEN"] ?? env["CF_API_TOKEN"];
+  const apiToken = options.apiToken ?? env["CLOUDFLARE_API_TOKEN"] ?? env["CF_API_TOKEN"];
   if (apiToken) {
     return {
       source: "api-token",
@@ -467,8 +474,12 @@ export async function resolveCloudflareApiAuth(options: {
 
   if (options.noInteractive) {
     throw new Error(
-      "Cloudflare Observability destination setup requires CLOUDFLARE_API_TOKEN. " +
-      "For initial OSS setup, create a Cloudflare API Token with Account Settings:Read, Workers Scripts:Edit, D1:Edit, Cloudflare Queues:Edit, and Workers Observability:Edit, then export CLOUDFLARE_API_TOKEN before running `3am deploy cloudflare`.",
+      "Cloudflare Observability destination setup requires CLOUDFLARE_API_TOKEN.\n" +
+      "If you are using a scoped API token (cfut_...), it must include Workers Observability:Edit.\n" +
+      "Export the token before running deploy:\n" +
+      "  export CLOUDFLARE_API_TOKEN=<your-token>\n" +
+      "  export CLOUDFLARE_ACCOUNT_ID=<your-account-id>  # required for cfut_ scoped tokens\n" +
+      "  npx 3am deploy cloudflare --yes",
     );
   }
 
@@ -603,7 +614,18 @@ export async function connectCloudflareWorkerToReceiver(
   cwd: string,
   receiverUrl: string,
   authToken: string,
-  options: { noInteractive?: boolean; accountId?: string } = {},
+  options: {
+    noInteractive?: boolean;
+    accountId?: string;
+    /**
+     * Cloudflare API token for the Observability destinations API.
+     * Pass the token captured at deploy start so the Observability setup step
+     * works even when the deploy subprocess had to run without it (e.g. cfut_
+     * scoped tokens lack D1/Queues/Scripts:Edit and must not be forwarded to
+     * the wrangler deploy subprocess).
+     */
+    cloudflareApiToken?: string;
+  } = {},
 ): Promise<CloudflareObservabilityState> {
   const configPath = join(cwd, existsSync(join(cwd, "wrangler.jsonc")) ? "wrangler.jsonc" : "wrangler.toml");
   if (!existsSync(configPath)) {
@@ -615,6 +637,7 @@ export async function connectCloudflareWorkerToReceiver(
   const cloudflareAuth = await resolveCloudflareApiAuth({
     account,
     noInteractive: options.noInteractive,
+    apiToken: options.cloudflareApiToken,
   });
 
   // The CF Workers Observability destinations API only accepts Bearer token
@@ -684,9 +707,21 @@ export async function connectCloudflareWorkerToReceiver(
     logDestination,
   });
 
+  // Strip CLOUDFLARE_API_TOKEN and CF_API_TOKEN from the wrangler subprocess
+  // environment so wrangler falls back to OAuth for the test-app redeploy.
+  // cfut_ (User API Token) tokens issued for Observability:Edit do not include
+  // Workers Scripts:Edit, so forwarding the token would cause the deploy to
+  // fail with HTTP 403.  The OAuth session on the host machine has the
+  // necessary permissions and is unaffected by unsetting the token here.
+  const {
+    CLOUDFLARE_API_TOKEN: _cfToken,
+    CF_API_TOKEN: _cfToken2,
+    ...wranglerDeployEnv
+  } = process.env;
   execFileSync("wrangler", ["deploy"], {
     cwd,
     stdio: "inherit",
+    env: wranglerDeployEnv,
   });
 
   return {
