@@ -12,14 +12,14 @@ describe("getRetentionHours", () => {
     }
   });
 
-  it("returns 1 when RETENTION_HOURS is unset", () => {
+  it("returns 48 when RETENTION_HOURS is unset", () => {
     delete process.env["RETENTION_HOURS"];
-    expect(getRetentionHours()).toBe(1);
+    expect(getRetentionHours()).toBe(48);
   });
 
-  it("returns 1 when RETENTION_HOURS is empty string", () => {
+  it("returns 48 when RETENTION_HOURS is empty string", () => {
     process.env["RETENTION_HOURS"] = "";
-    expect(getRetentionHours()).toBe(1);
+    expect(getRetentionHours()).toBe(48);
   });
 
   it("returns 1 for RETENTION_HOURS=1", () => {
@@ -37,24 +37,24 @@ describe("getRetentionHours", () => {
     expect(getRetentionHours()).toBe(72);
   });
 
-  it("returns 1 for invalid string RETENTION_HOURS=abc", () => {
+  it("returns 48 for invalid string RETENTION_HOURS=abc", () => {
     process.env["RETENTION_HOURS"] = "abc";
-    expect(getRetentionHours()).toBe(1);
+    expect(getRetentionHours()).toBe(48);
   });
 
-  it("returns 1 for RETENTION_HOURS=0", () => {
+  it("returns 48 for RETENTION_HOURS=0", () => {
     process.env["RETENTION_HOURS"] = "0";
-    expect(getRetentionHours()).toBe(1);
+    expect(getRetentionHours()).toBe(48);
   });
 
-  it("returns 1 for RETENTION_HOURS=-1", () => {
+  it("returns 48 for RETENTION_HOURS=-1", () => {
     process.env["RETENTION_HOURS"] = "-1";
-    expect(getRetentionHours()).toBe(1);
+    expect(getRetentionHours()).toBe(48);
   });
 
-  it("returns 1 for non-integer RETENTION_HOURS=1.5", () => {
+  it("returns 48 for non-integer RETENTION_HOURS=1.5", () => {
     process.env["RETENTION_HOURS"] = "1.5";
-    expect(getRetentionHours()).toBe(1);
+    expect(getRetentionHours()).toBe(48);
   });
 });
 
@@ -63,7 +63,7 @@ describe("getRetentionCutoff", () => {
     delete process.env["RETENTION_HOURS"];
     const now = 1700000000000;
     const cutoff = getRetentionCutoff(now);
-    expect(cutoff.getTime()).toBe(now - 1 * 60 * 60 * 1000);
+    expect(cutoff.getTime()).toBe(now - 48 * 60 * 60 * 1000);
   });
 
   it("respects RETENTION_HOURS=24", () => {
