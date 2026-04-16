@@ -1182,6 +1182,72 @@ describe('LLM-first synthesis context (CLAUDE.md rule)', () => {
     expect(result.noAnswerReason).toContain('LLM synthesis failed after retries')
   })
 
+  it('safety-net followups are in Japanese when locale=ja and LLM fails', async () => {
+    // Regression: buildDeterministicNoAnswer was calling buildFollowups without
+    // locale, so followups always came back in English even with locale=ja.
+    generateEvidenceQueryWithMetaMock.mockRejectedValueOnce(new Error('provider unreachable'))
+
+    const incident = makeIncident({ diagnosisResult: makeDiagnosisResult() })
+    const result = await buildEvidenceQueryAnswer(
+      incident,
+      makeMockStore(),
+      'チェックアウトが失敗している原因は？',
+      false,
+      'ja',
+    )
+
+    expect(result.status).toBe('no_answer')
+    expect(result.followups.length).toBeGreaterThan(0)
+    // Every followup question must be Japanese — none should contain English trigger words
+    for (const fu of result.followups) {
+      expect(fu.question).not.toMatch(/^(Do the|Which|Within|What expected)/i)
+    }
+    // At least one followup should contain a Japanese anchor
+    const hasJapanese = result.followups.some(
+      (fu) => /[ぁ-んァ-ン一-龥]/.test(fu.question),
+    )
+    expect(hasJapanese).toBe(true)
+  })
+
+  it('safety-net followups are in English when locale=en and LLM fails', async () => {
+    generateEvidenceQueryWithMetaMock.mockRejectedValueOnce(new Error('provider unreachable'))
+
+    const incident = makeIncident({ diagnosisResult: makeDiagnosisResult() })
+    const result = await buildEvidenceQueryAnswer(
+      incident,
+      makeMockStore(),
+      'Why is checkout failing?',
+      false,
+      'en',
+    )
+
+    expect(result.status).toBe('no_answer')
+    expect(result.followups.length).toBeGreaterThan(0)
+    // English followups should not contain Japanese characters
+    for (const fu of result.followups) {
+      expect(fu.question).not.toMatch(/[ぁ-んァ-ン一-龥]/)
+    }
+  })
+
+  it('safety-net followups default to English when no locale is passed and LLM fails', async () => {
+    generateEvidenceQueryWithMetaMock.mockRejectedValueOnce(new Error('provider unreachable'))
+
+    const incident = makeIncident({ diagnosisResult: makeDiagnosisResult() })
+    // No locale argument — should default to "en"
+    const result = await buildEvidenceQueryAnswer(
+      incident,
+      makeMockStore(),
+      'Why is checkout failing?',
+      false,
+    )
+
+    expect(result.status).toBe('no_answer')
+    expect(result.followups.length).toBeGreaterThan(0)
+    for (const fu of result.followups) {
+      expect(fu.question).not.toMatch(/[ぁ-んァ-ン一-龥]/)
+    }
+  })
+
   it('Decision 5 — absence-type question sends a structured absenceInput to the LLM', async () => {
     // Build a store where curated logs surface an absence claim.
     const storeWithAbsence: TelemetryStoreDriver = {
