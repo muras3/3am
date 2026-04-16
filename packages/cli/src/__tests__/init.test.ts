@@ -122,6 +122,46 @@ describe("isMonorepoRoot()", () => {
     expect(isMonorepoRoot(tmpDir)).toBe(true);
   });
 
+  it("returns true when package.json has workspaces array (npm/yarn)", () => {
+    writeFileSync(
+      join(tmpDir, "package.json"),
+      JSON.stringify({ name: "my-monorepo", workspaces: ["apps/*"] }),
+    );
+    expect(isMonorepoRoot(tmpDir)).toBe(true);
+  });
+
+  it("returns true when package.json has workspaces object (yarn classic)", () => {
+    writeFileSync(
+      join(tmpDir, "package.json"),
+      JSON.stringify({ name: "my-monorepo", workspaces: { packages: ["apps/*"] } }),
+    );
+    expect(isMonorepoRoot(tmpDir)).toBe(true);
+  });
+
+  it("returns false when package.json exists but has no workspaces field", () => {
+    writeFileSync(
+      join(tmpDir, "package.json"),
+      JSON.stringify({ name: "my-app", version: "1.0.0" }),
+    );
+    expect(isMonorepoRoot(tmpDir)).toBe(false);
+  });
+
+  it("returns false when package.json has workspaces: [] (empty array)", () => {
+    writeFileSync(
+      join(tmpDir, "package.json"),
+      JSON.stringify({ name: "my-app", workspaces: [] }),
+    );
+    expect(isMonorepoRoot(tmpDir)).toBe(false);
+  });
+
+  it("returns false when package.json has workspaces: {packages: []} (empty object form)", () => {
+    writeFileSync(
+      join(tmpDir, "package.json"),
+      JSON.stringify({ name: "my-app", workspaces: { packages: [] } }),
+    );
+    expect(isMonorepoRoot(tmpDir)).toBe(false);
+  });
+
   it("returns false when no workspace markers exist", () => {
     expect(isMonorepoRoot(tmpDir)).toBe(false);
   });
@@ -230,6 +270,50 @@ describe("runInit() — monorepo root guard (Bug 3)", () => {
       expect(stderrOutput).toContain("order-api");
       // Must not continue to attempt dep install or create instrumentation files
       expect(stderrOutput).not.toContain("Continuing");
+    } finally {
+      process.chdir(originalCwd);
+      stderrSpy.mockRestore();
+      exitSpy.mockRestore();
+    }
+  });
+});
+
+describe("runInit() — npm/yarn workspaces monorepo root guard", () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = join(tmpdir(), `init-npm-monorepo-test-${Date.now()}`);
+    mkdirSync(join(tmpDir, "apps", "api-worker"), { recursive: true });
+    // npm/yarn workspaces only — no pnpm-workspace.yaml, turbo.json, lerna.json, or nx.json
+    writeFileSync(
+      join(tmpDir, "package.json"),
+      JSON.stringify({ name: "my-npm-monorepo", workspaces: ["apps/*"] }),
+    );
+    // Worker in subdirectory
+    writeFileSync(
+      join(tmpDir, "apps", "api-worker", "wrangler.jsonc"),
+      JSON.stringify({ name: "api-worker" }),
+    );
+  });
+
+  afterEach(() => {
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it("aborts init when package.json#workspaces is the only monorepo signal", async () => {
+    const originalCwd = process.cwd();
+    process.chdir(tmpDir);
+    const stderrSpy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    const exitSpy = vi.spyOn(process, "exit").mockImplementation((_code) => { throw new Error("process.exit"); });
+
+    try {
+      await expect(
+        runInit([], { noInteractive: true }),
+      ).rejects.toThrow("process.exit");
+      expect(exitSpy).toHaveBeenCalledWith(1);
+      const stderrOutput = stderrSpy.mock.calls.map((c) => String(c[0])).join("");
+      expect(stderrOutput).toContain("monorepo root");
+      expect(stderrOutput).toContain("api-worker");
     } finally {
       process.chdir(originalCwd);
       stderrSpy.mockRestore();

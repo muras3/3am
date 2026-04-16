@@ -1,4 +1,4 @@
-import { existsSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 
 export type RuntimeTarget = "node-like" | "cloudflare-workers";
@@ -26,11 +26,39 @@ export function findWranglerConfigPath(cwd: string): string | null {
 }
 
 /**
+ * Return true if package.json at cwd has a non-empty `workspaces` field.
+ * Accepts:
+ *   - Array form (npm/yarn Berry): `["apps/*"]` → true only if non-empty
+ *   - Object form (yarn classic):  `{packages: ["apps/*"]}` → true only if non-empty packages array
+ * Returns false for empty arrays, empty objects, absent field, or parse errors.
+ */
+function hasPackageJsonWorkspaces(cwd: string): boolean {
+  const pkgPath = join(cwd, "package.json");
+  if (!existsSync(pkgPath)) return false;
+  try {
+    const pkg = JSON.parse(readFileSync(pkgPath, "utf8")) as Record<string, unknown>;
+    const ws = pkg["workspaces"];
+    if (Array.isArray(ws)) return ws.length > 0;
+    if (ws !== null && typeof ws === "object") {
+      const pkgs = (ws as Record<string, unknown>)["packages"];
+      return Array.isArray(pkgs) && pkgs.length > 0;
+    }
+    return false;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Detect whether the cwd is a monorepo workspace root.
- * Returns true if any workspace marker file exists at cwd.
+ * Returns true if any workspace marker file exists at cwd,
+ * OR if package.json declares a `workspaces` field (npm/yarn pattern).
  */
 export function isMonorepoRoot(cwd: string): boolean {
-  return WORKSPACE_MARKERS.some((marker) => existsSync(join(cwd, marker)));
+  return (
+    WORKSPACE_MARKERS.some((marker) => existsSync(join(cwd, marker))) ||
+    hasPackageJsonWorkspaces(cwd)
+  );
 }
 
 /**
