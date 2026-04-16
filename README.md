@@ -73,13 +73,13 @@ Open **http://localhost:3333**. Requires Docker and Node.js 20+.
 |---|---|---|
 | **When to use** | You have an `ANTHROPIC_API_KEY` (or `OPENAI_API_KEY`) | You use Claude Code, Codex, or Ollama subscription — no API key |
 | **How diagnosis runs** | Receiver calls the LLM server-side on every incident | You click "Run Diagnosis" in the Console; the bridge routes it through your local CLI |
-| **Setup** | `npx 3am-cli init --mode auto --provider anthropic` | `npx 3am-cli init --mode manual --provider claude-code` |
+| **Setup** | `npx 3am-cli init --mode automatic --provider anthropic` | `npx 3am-cli init --mode manual --provider claude-code` |
 | **Bridge required** | No | Yes — run `npx 3am-cli bridge` in a terminal |
 
-**Using an API key? → `auto` mode is the production path:**
+**Using an API key? → `automatic` mode is the production path:**
 
 ```bash
-npx 3am-cli init --mode auto --provider anthropic
+npx 3am-cli init --mode automatic --provider anthropic
 export ANTHROPIC_API_KEY=sk-ant-...
 npx 3am-cli deploy vercel
 ```
@@ -92,7 +92,7 @@ npx 3am-cli local              # terminal 1
 npx 3am-cli bridge             # terminal 2
 ```
 
-> **Common mistake:** `--mode manual --provider anthropic` is a contradiction — manual mode is for when you don't have a server-side API key. If you have `ANTHROPIC_API_KEY`, use `--mode auto --provider anthropic`.
+> **Common mistake:** `--mode manual --provider anthropic` is not recommended — manual mode is designed for when you don't have a server-side API key. If you have `ANTHROPIC_API_KEY`, `--mode automatic` is the simpler path.
 
 </details>
 
@@ -128,7 +128,7 @@ If your Receiver is deployed (Vercel, Cloudflare) but you want to run diagnosis 
 npx 3am-cli bridge --receiver-url https://your-3am-receiver.vercel.app
 ```
 
-The bridge connects to the deployed Receiver via WebSocket (Durable Objects on CF Workers, HTTP upgrade on Vercel) and handles diagnosis requests locally. Auth token is auto-detected from credentials saved by `npx 3am-cli deploy`.
+The bridge connects to the deployed Receiver via WebSocket (Cloudflare Workers, Node.js) or long-poll (Vercel) and handles diagnosis requests locally. Auth token is auto-detected from credentials saved by `npx 3am-cli deploy`.
 
 **Manual mode workflow (local or hosted Receiver):**
 - `npx 3am-cli init --mode manual --provider claude-code|codex|ollama`
@@ -210,7 +210,7 @@ The receiver ingests OTLP/HTTP telemetry. When anomalies cross thresholds, it fo
 
 `RETENTION_HOURS` controls how long telemetry and closed incidents are kept. Default: `48` hours.
 
-Open incidents are never deleted regardless of retention setting.
+Incidents with recent activity are preserved; stale open incidents older than the retention window are auto-closed and cleaned up.
 
 ### Notifications
 
@@ -255,7 +255,7 @@ Requires a structured logger (pino, winston, bunyan) wired through `@opentelemet
 
 OpenTelemetry's auto-instrumentation (`@opentelemetry/auto-instrumentations-node`) hooks Node.js modules at `require()` time via [require-in-the-middle](https://github.com/elastic/require-in-the-middle). This only works on modules that are **left outside the bundle** and loaded by Node's real `require` at runtime. Webpack combined with Next.js `serverExternalPackages` has a mature story for excluding those modules. Turbopack's externalization handling doesn't yet cover this case, so OTel instrumentation silently stops emitting telemetry under Turbopack builds.
 
-`3am init` therefore rewrites `"next build"` to `"next build --webpack"` in your `package.json` build script to force Webpack for production builds. Your dev server (`next dev`) is unaffected.
+When deploying to Vercel, `3am init` therefore rewrites `"next build"` to `"next build --webpack"` in your `package.json` build script to force Webpack for production builds. Your dev server (`next dev`) is unaffected.
 
 Once Turbopack fully supports the externalization semantics OTel needs (or OTel ships a Turbopack-native alternative to require-in-the-middle), this workaround can be removed. Until then, removing `--webpack` will produce a build that appears to work but emits no telemetry.
 
@@ -266,7 +266,7 @@ Once Turbopack fully supports the externalization semantics OTel needs (or OTel 
 
 ```bash
 npx 3am-cli init                                    # set up OTel in your app
-npx 3am-cli init --mode auto --provider anthropic   # auto mode (API key path)
+npx 3am-cli init --mode automatic --provider anthropic   # automatic mode (API key path)
 npx 3am-cli init --mode manual --provider claude-code  # manual mode (subscription path)
 npx 3am-cli local                                   # start local receiver
 npx 3am-cli local demo                              # run demo incident
@@ -275,12 +275,12 @@ npx 3am-cli integrations notifications              # connect Slack/Discord noti
 npx 3am-cli auth-link [receiver-url]                # mint a fresh sign-in link
 npx 3am-cli diagnose --incident-id inc_000001       # manual diagnosis
 npx 3am-cli bridge                                  # start local diagnosis bridge (local receiver)
-npx 3am-cli bridge --receiver-url <url>             # connect bridge to a remote deployed receiver via WebSocket
+npx 3am-cli bridge --receiver-url <url>             # connect bridge to a remote deployed receiver (WebSocket or long-poll)
 ```
 
-`init` flags: `--api-key`, `--mode auto|manual`, `--provider anthropic|openai|claude-code|codex|ollama`, `--model`, `--lang en|ja`, `--no-interactive`
+`init` flags: `--api-key`, `--mode automatic|manual` (alias: `auto`), `--provider anthropic|openai|claude-code|codex|ollama`, `--model`, `--bridge-url`, `--lang en|ja`, `--no-interactive`
 
-`bridge` flags: `--port` (default 4269), `--receiver-url` (remote WebSocket target; auto-detected from credentials if omitted)
+`bridge` flags: `--port` (default 4269), `--receiver-url` (remote WebSocket/long-poll target; auto-detected from credentials if omitted)
 
 `deploy` flags: `--yes`, `--no-interactive`, `--json`, `--project-name`, `--auth-token`
 
