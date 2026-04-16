@@ -151,6 +151,16 @@ export async function runDeploy(
 ): Promise<void> {
   const json = options.json ?? false;
 
+  // Capture the CF API token from env before the deploy subprocess runs.
+  // The Cloudflare provider must NOT forward this token to wrangler subprocesses
+  // when it's a scoped cfut_ token (it lacks Workers Scripts:Edit and causes
+  // wrangler d1/queues/deploy to fail with auth errors).  We pass it explicitly
+  // to connectCloudflareWorkerToReceiver so the Observability destinations API
+  // call can still authenticate even after the main deploy strips it from
+  // subprocess envs.
+  const capturedCloudflareApiToken =
+    process.env["CLOUDFLARE_API_TOKEN"] ?? process.env["CF_API_TOKEN"];
+
   // -------------------------------------------------------------------------
   // Step 1: Validate flags
   // -------------------------------------------------------------------------
@@ -423,6 +433,7 @@ export async function runDeploy(
       state = await connectCloudflareWorkerToReceiver(process.cwd(), deployedUrl, authToken, {
         noInteractive: options.noInteractive,
         accountId: options.accountId,
+        cloudflareApiToken: capturedCloudflareApiToken,
       });
     } catch (err) {
       const errMsg = String(err);

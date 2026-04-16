@@ -602,7 +602,7 @@ describe("runDeploy()", () => {
       process.cwd(),
       "https://test.workers.dev",
       "generated-uuid-token",
-      { noInteractive: true },
+      expect.objectContaining({ noInteractive: true }),
     );
     expect(updateAppEnv).not.toHaveBeenCalled();
     expect(stdoutChunks.join("")).toContain("Worker:");
