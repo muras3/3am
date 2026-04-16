@@ -303,7 +303,7 @@ export const EvidenceQuerySegmentSchema = z.strictObject({
   id: z.string(),
   kind: z.enum(["fact", "inference", "unknown"]),
   text: z.string().min(1),
-  evidenceRefs: z.array(EvidenceQueryRefSchema).min(1),
+  evidenceRefs: z.array(EvidenceQueryRefSchema),
 });
 
 export const EvidenceQueryStatusSchema = z.enum(["answered", "no_answer", "clarification"]);

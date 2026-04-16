@@ -87,18 +87,40 @@ describe("generateEvidenceQueryWithMeta — retry + repair loop", () => {
     expect(meta.repairedRefCount).toBeGreaterThanOrEqual(1);
   });
 
-  it("retries once when all refs are invalid, then succeeds on retry (retryCount=1)", async () => {
+  it("preserves answer text on first attempt when all refs are hallucinated (no retry, LLM-first regression guard)", async () => {
+    // Regression test for #420: previously, all-invalid refs caused ok=false →
+    // retry loop exhausted → deterministic safety net fired → 100% no_answer.
+    // After the fix, the LLM answer text is preserved (empty evidenceRefs is
+    // valid) and no retry is needed.
     callModelMock.mockResolvedValueOnce(
       JSON.stringify({
         status: "answered",
         segments: [
           {
             kind: "fact",
-            text: "Hallucinated.",
+            text: "Checkout timed out after 30s.",
             evidenceRefs: [{ kind: "span", id: "trace-ghost:span-ghost" }],
           },
         ],
       }),
+    );
+
+    const { response, meta } = await generateEvidenceQueryWithMeta(baseInput);
+
+    expect(response.status).toBe("answered");
+    expect(response.segments).toHaveLength(1);
+    expect(response.segments[0]?.text).toBe("Checkout timed out after 30s.");
+    expect(response.segments[0]?.evidenceRefs).toHaveLength(0);
+    expect(meta.retryCount).toBe(0);
+    expect(meta.repairedRefCount).toBe(1);
+    // Only one LLM call needed — text is preserved on first attempt
+    expect(callModelMock).toHaveBeenCalledOnce();
+  });
+
+  it("retries only when LLM returns answered with truly zero segments (not just empty refs)", async () => {
+    // A truly empty segments array for answered status is the new retry trigger.
+    callModelMock.mockResolvedValueOnce(
+      JSON.stringify({ status: "answered", segments: [] }),
     );
     callModelMock.mockResolvedValueOnce(
       JSON.stringify({
@@ -117,21 +139,12 @@ describe("generateEvidenceQueryWithMeta — retry + repair loop", () => {
 
     expect(response.status).toBe("answered");
     expect(meta.retryCount).toBe(1);
-    expect(meta.repairedRefCount).toBeGreaterThanOrEqual(1);
     expect(callModelMock).toHaveBeenCalledTimes(2);
   });
 
-  it("throws after exhausting retries when every attempt is unusable (caller must produce safety net)", async () => {
-    const bad = JSON.stringify({
-      status: "answered",
-      segments: [
-        {
-          kind: "fact",
-          text: "Hallucinated.",
-          evidenceRefs: [{ kind: "span", id: "trace-ghost:span-ghost" }],
-        },
-      ],
-    });
+  it("throws after exhausting retries when every attempt returns answered with zero segments", async () => {
+    // The safety-net trigger is now zero segments (not zero refs).
+    const bad = JSON.stringify({ status: "answered", segments: [] });
     callModelMock.mockResolvedValueOnce(bad);
     callModelMock.mockResolvedValueOnce(bad);
     callModelMock.mockResolvedValueOnce(bad);
@@ -143,7 +156,7 @@ describe("generateEvidenceQueryWithMeta — retry + repair loop", () => {
     expect(callModelMock).toHaveBeenCalledTimes(3);
   });
 
-  it("retry 2 receives a trimmed evidence set (top-5) and strictRefReminder=true", async () => {
+  it("retry 2 receives a trimmed evidence set (top-5) and strictRefReminder=true (triggered by empty segments, not empty refs)", async () => {
     const inputWithManyRefs: EvidenceQueryPromptInput = {
       ...baseInput,
       evidence: Array.from({ length: 8 }, (_, i) => ({
@@ -153,16 +166,8 @@ describe("generateEvidenceQueryWithMeta — retry + repair loop", () => {
       })),
     };
 
-    const bad = JSON.stringify({
-      status: "answered",
-      segments: [
-        {
-          kind: "fact",
-          text: "Bad.",
-          evidenceRefs: [{ kind: "span", id: "trace-invented:span-zz" }],
-        },
-      ],
-    });
+    // Retry is triggered by answered+empty segments (not by hallucinated refs)
+    const bad = JSON.stringify({ status: "answered", segments: [] });
     callModelMock.mockResolvedValue(bad);
 
     await expect(generateEvidenceQueryWithMeta(inputWithManyRefs)).rejects.toThrow(

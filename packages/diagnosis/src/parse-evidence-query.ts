@@ -80,11 +80,12 @@ export function parseEvidenceQueryWithRepair(
               if (!keep) repairedRefCount += 1;
               return keep;
             });
+            // Keep the segment even when all its refs were stripped — the
+            // LLM answer text is still grounded (the model saw the evidence
+            // in context). Dropping the text discards the entire synthesis
+            // and causes the retry loop to exhaust and fire the deterministic
+            // safety net, violating the LLM-first rule in CLAUDE.md.
             return { ...segment, evidenceRefs: keptRefs };
-          })
-          .filter((segment) => {
-            const refs = segment["evidenceRefs"] as Array<unknown> | undefined;
-            return Array.isArray(refs) && refs.length > 0;
           })
       : rawSegments;
 
@@ -122,12 +123,15 @@ export function parseEvidenceQueryWithRepair(
       }
     }
   } else {
-    // repair mode: any answered response must still have at least one segment
-    // after stripping. If every segment was dropped, the answer is unusable.
+    // repair mode: segments may have empty evidenceRefs (valid per schema after
+    // the min(1) relaxation) — the text is still LLM synthesis and must be
+    // preserved. Only fail when the LLM returned zero segments entirely (which
+    // means the model produced an empty or schema-invalid answer, not merely
+    // that ref IDs were hallucinated).
     if (result.status === "answered" && result.segments.length === 0) {
       return {
         ok: false,
-        reason: "EvidenceQueryValidationError: all segments had only invalid refs after repair.",
+        reason: "EvidenceQueryValidationError: LLM returned no segments for answered status.",
         repairedRefCount,
       };
     }
