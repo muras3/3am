@@ -19,7 +19,7 @@ describe("parseEvidenceQuery", () => {
           id: "seg-1",
           kind: "fact",
           text: "Checkout spans are returning 504.",
-          evidenceRefs: [{ kind: "span", id: "trace-1:span-1" }],
+          evidenceRefs: [1],
         },
       ],
     });
@@ -28,6 +28,8 @@ describe("parseEvidenceQuery", () => {
     expect(result.question).toBe("What failed?");
     expect(result.status).toBe("answered");
     expect(result.segments[0]?.kind).toBe("fact");
+    // Index 1 should map to the first allowedRef
+    expect(result.segments[0]?.evidenceRefs[0]).toEqual({ kind: "span", id: "trace-1:span-1" });
   });
 
   it("fills missing segment ids from model output", () => {
@@ -37,7 +39,7 @@ describe("parseEvidenceQuery", () => {
         {
           kind: "fact",
           text: "Checkout spans are returning 504.",
-          evidenceRefs: [{ kind: "span", id: "trace-1:span-1" }],
+          evidenceRefs: [1],
         },
       ],
     });
@@ -54,7 +56,7 @@ describe("parseEvidenceQuery", () => {
           id: "seg-1",
           kind: "fact",
           text: "Checkout spans are returning 504.",
-          evidenceRefs: [{ kind: "span", id: "trace-1:span-1" }],
+          evidenceRefs: [1],
         },
       ],
     });
@@ -72,7 +74,7 @@ describe("parseEvidenceQuery", () => {
           id: "seg-1",
           kind: "fact",
           text: "Checkout spans are returning 504.",
-          evidenceRefs: [{ kind: "span", id: "trace-1:span-1" }],
+          evidenceRefs: [1],
         },
       ],
     });
@@ -81,7 +83,7 @@ describe("parseEvidenceQuery", () => {
     expect(result.status).toBe("answered");
   });
 
-  it("rejects invented evidence refs", () => {
+  it("rejects out-of-bounds evidence indices", () => {
     const raw = JSON.stringify({
       status: "answered",
       segments: [
@@ -89,13 +91,13 @@ describe("parseEvidenceQuery", () => {
           id: "seg-1",
           kind: "fact",
           text: "Invented evidence.",
-          evidenceRefs: [{ kind: "span", id: "trace-2:span-9" }],
+          evidenceRefs: [99],
         },
       ],
     });
 
     expect(() => parseEvidenceQuery(raw, { question: "Q?" }, allowedRefs)).toThrow(
-      /not allowed/,
+      /out of bounds/,
     );
   });
 
@@ -117,7 +119,9 @@ describe("parseEvidenceQueryWithRepair (mode='repair')", () => {
     { kind: "metric_group" as const, id: "hyp-trigger" },
   ];
 
-  it("strips invalid refs and keeps the segment when at least one valid ref remains", () => {
+  it("strips out-of-bounds indices and keeps the segment when at least one valid index remains", () => {
+    // allowedRefs has 2 entries: index 1 = span, index 2 = metric_group
+    // Index 99 is out of bounds → stripped
     const raw = JSON.stringify({
       status: "answered",
       segments: [
@@ -125,11 +129,7 @@ describe("parseEvidenceQueryWithRepair (mode='repair')", () => {
           id: "seg-1",
           kind: "fact",
           text: "mixed.",
-          evidenceRefs: [
-            { kind: "span", id: "trace-1:span-1" },
-            { kind: "span", id: "trace-ghost:span-ghost" },
-            { kind: "metric_group", id: "hyp-trigger" },
-          ],
+          evidenceRefs: [1, 99, 2],
         },
       ],
     });
@@ -138,13 +138,15 @@ describe("parseEvidenceQueryWithRepair (mode='repair')", () => {
     expect(outcome.ok).toBe(true);
     if (outcome.ok) {
       expect(outcome.response.segments[0]?.evidenceRefs).toHaveLength(2);
+      expect(outcome.response.segments[0]?.evidenceRefs[0]).toEqual({ kind: "span", id: "trace-1:span-1" });
+      expect(outcome.response.segments[0]?.evidenceRefs[1]).toEqual({ kind: "metric_group", id: "hyp-trigger" });
       expect(outcome.repairedRefCount).toBe(1);
     }
   });
 
-  it("keeps both segments when one has all-invalid refs — text from both is preserved", () => {
+  it("keeps both segments when one has all-invalid indices — text from both is preserved", () => {
     // After the LLM-first fix: segments with empty refs survive repair.
-    // The grounded text is still valuable even without valid ref IDs.
+    // The grounded text is still valuable even without valid ref indices.
     const raw = JSON.stringify({
       status: "answered",
       segments: [
@@ -152,13 +154,13 @@ describe("parseEvidenceQueryWithRepair (mode='repair')", () => {
           id: "seg-1",
           kind: "fact",
           text: "good.",
-          evidenceRefs: [{ kind: "span", id: "trace-1:span-1" }],
+          evidenceRefs: [1],
         },
         {
           id: "seg-2",
           kind: "fact",
           text: "hallucinated refs but real text.",
-          evidenceRefs: [{ kind: "span", id: "trace-ghost:span-ghost" }],
+          evidenceRefs: [99],
         },
       ],
     });
@@ -175,11 +177,11 @@ describe("parseEvidenceQueryWithRepair (mode='repair')", () => {
     }
   });
 
-  it("keeps segment text when ALL refs were invalid after repair (LLM-first: text preserved)", () => {
+  it("keeps segment text when ALL indices were out-of-bounds after repair (LLM-first: text preserved)", () => {
     // Regression guard: previously this returned ok=false and triggered the
     // deterministic safety net, causing 100% no_answer on Vercel/CF (#420).
-    // After the fix, the LLM answer text is preserved even when ref IDs were
-    // hallucinated — the synthesis result is still grounded (model saw evidence
+    // After the fix, the LLM answer text is preserved even when ref indices were
+    // out of bounds — the synthesis result is still grounded (model saw evidence
     // in context).
     const raw = JSON.stringify({
       status: "answered",
@@ -188,7 +190,7 @@ describe("parseEvidenceQueryWithRepair (mode='repair')", () => {
           id: "seg-1",
           kind: "fact",
           text: "hallucinated refs but real text.",
-          evidenceRefs: [{ kind: "span", id: "trace-ghost:span-ghost" }],
+          evidenceRefs: [99],
         },
       ],
     });
@@ -229,7 +231,7 @@ describe("parseEvidenceQueryWithRepair (mode='repair')", () => {
           id: "seg-valid",
           kind: "fact",
           text: "Good segment with refs.",
-          evidenceRefs: [{ kind: "span", id: "trace-1:span-1" }],
+          evidenceRefs: [1],
         },
         {
           id: "seg-no-refs-field",

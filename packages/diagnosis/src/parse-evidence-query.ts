@@ -83,26 +83,42 @@ export function parseEvidenceQueryWithRepair(
   const rawSegments = Array.isArray(parsed["segments"])
     ? (parsed["segments"] as Array<Record<string, unknown>>)
     : [];
-  const allowed = new Set(allowedRefs.map((ref) => `${ref.kind}:${ref.id}`));
+
+  /**
+   * Map integer index → real EvidenceQueryRef.
+   * The LLM now emits 1-based integer indices (e.g. [1, 3]) instead of
+   * {kind, id} objects, eliminating UUID/hash hallucination at the source.
+   * Index-based citation fix: see CLAUDE.md evidence-query P1 bug.
+   */
+  function mapIndexToRef(rawRef: unknown): EvidenceQueryRef | null {
+    const idx = typeof rawRef === "number" ? rawRef : NaN;
+    if (Number.isInteger(idx) && idx >= 1 && idx <= allowedRefs.length) {
+      return allowedRefs[idx - 1]!;
+    }
+    return null;
+  }
 
   let repairedRefCount = 0;
   const repairedSegments: Array<Record<string, unknown>> =
     mode === "repair"
       ? rawSegments.reduce<Array<Record<string, unknown>>>((acc, segment) => {
             const originalRefs = Array.isArray(segment["evidenceRefs"])
-              ? (segment["evidenceRefs"] as Array<Record<string, unknown>>)
+              ? (segment["evidenceRefs"] as unknown[])
               : null;
             // If the LLM emitted no evidenceRefs at all (absent or non-array),
-            // the segment is a prompt violation — not a hallucinated-ID case.
+            // the segment is a prompt violation — not an out-of-bounds-index case.
             // Drop it so the retry guard can fire rather than accepting
             // uncited text.
             if (originalRefs === null) return acc;
-            const keptRefs = originalRefs.filter((ref) => {
-              const key = `${String(ref["kind"])}:${String(ref["id"])}`;
-              const keep = allowed.has(key);
-              if (!keep) repairedRefCount += 1;
-              return keep;
-            });
+            const keptRefs: EvidenceQueryRef[] = [];
+            for (const rawRef of originalRefs) {
+              const mapped = mapIndexToRef(rawRef);
+              if (mapped !== null) {
+                keptRefs.push(mapped);
+              } else {
+                repairedRefCount += 1;
+              }
+            }
             // Keep the segment even when all its refs were stripped — the
             // LLM answer text is still grounded (the model saw the evidence
             // in context). Dropping the text discards the entire synthesis
@@ -111,7 +127,34 @@ export function parseEvidenceQueryWithRepair(
             acc.push({ ...segment, evidenceRefs: keptRefs });
             return acc;
           }, [])
-      : rawSegments;
+      : rawSegments.map((segment) => {
+          // strict mode: still map indices to real refs so schema validation works
+          const originalRefs = Array.isArray(segment["evidenceRefs"])
+            ? (segment["evidenceRefs"] as unknown[])
+            : null;
+          if (originalRefs === null) return segment;
+          const mappedRefs: EvidenceQueryRef[] = [];
+          for (const rawRef of originalRefs) {
+            const mapped = mapIndexToRef(rawRef);
+            if (mapped !== null) {
+              mappedRefs.push(mapped);
+            } else {
+              repairedRefCount += 1;
+            }
+          }
+          return { ...segment, evidenceRefs: mappedRefs };
+        });
+
+  // In strict mode, fail early if any index was out of bounds — before schema
+  // validation, because the schema requires evidenceRefs.min(1) per segment and
+  // would otherwise produce a less informative error message.
+  if (mode === "strict" && repairedRefCount > 0) {
+    return {
+      ok: false,
+      reason: `EvidenceQueryValidationError: ${repairedRefCount} evidence index/indices out of bounds (not in allowed range 1..${allowedRefs.length}).`,
+      repairedRefCount,
+    };
+  }
 
   const status = typeof parsed["status"] === "string" ? parsed["status"] : undefined;
   const withQuestion = {
@@ -141,19 +184,7 @@ export function parseEvidenceQueryWithRepair(
   // EvidenceQuerySegment[] with the same shape; only runtime validation differs.
   const result = schemaResult.data as EvidenceQueryResponse;
 
-  if (mode === "strict") {
-    for (const segment of result.segments) {
-      for (const ref of segment.evidenceRefs) {
-        if (!allowed.has(`${ref.kind}:${ref.id}`)) {
-          return {
-            ok: false,
-            reason: `EvidenceQueryValidationError: evidence ref "${ref.kind}:${ref.id}" is not allowed.`,
-            repairedRefCount,
-          };
-        }
-      }
-    }
-  } else {
+  if (mode !== "strict") {
     // repair mode: segments may survive with empty evidenceRefs after stripping
     // hallucinated IDs (RepairResponseSchema allows this). The text is still LLM
     // synthesis and must be preserved per the LLM-first rule in CLAUDE.md.
