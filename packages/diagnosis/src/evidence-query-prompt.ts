@@ -89,7 +89,7 @@ export function buildEvidenceQueryPrompt(
     : "  (none)";
 
   const validRefsSection = input.evidence.length > 0
-    ? input.evidence.map(({ ref }) => `${ref.kind}:${ref.id}`).join(", ")
+    ? input.evidence.map((_, i) => String(i + 1)).join(", ")
     : "(none)";
 
   const prioritySection = [
@@ -125,10 +125,10 @@ Use direct, concise Japanese. Do not use polite or formal phrasing.
   const strictRefBlock = input.strictRefReminder
     ? `
 STRICT RETRY REMINDER:
-The previous generation cited evidence ref IDs that are not in the allowed list.
-You MUST cite ONLY the ref IDs listed in <valid_refs> below. Do not invent, guess,
-or abbreviate IDs. If none of the listed refs materially support a segment, omit
-the segment instead of citing an unrelated one.
+The previous generation cited evidence index numbers that are out of range.
+You MUST cite ONLY integer indices listed in <valid_refs> below (1-based, matching [N] in the evidence list).
+Do not invent, guess, or use 0-based indices. If none of the listed indices materially support a segment,
+omit the segment instead of citing an out-of-range index.
 `
     : "";
 
@@ -142,9 +142,9 @@ Product contract:
 - fact = directly supported by curated evidence.
 - inference = supported by curated evidence plus the existing diagnosis, and only within a natural, conservative reading.
 - unknown = the current evidence is insufficient to state the claim responsibly.
-- Every segment must cite at least one evidence ref from the curated list below.
+- Every segment must cite at least one evidence index from the curated list below.
 - Never output a claim without evidenceRefs.
-- Never invent evidence IDs. The allowed IDs are listed in <valid_refs>.
+- Never invent or guess index numbers. The allowed indices are listed in <valid_refs>.
 - Never turn this into generic advice, small talk, or a troubleshooting playbook.
 - Use recent conversation history to resolve underspecified follow-up questions whenever the referent is reasonably clear.
 - If the user asks for the next action or how something should behave, answer with the minimum concrete action that follows from the diagnosis and cited evidence.
@@ -167,7 +167,7 @@ Greeting / off-topic handling:
   - Use status="no_answer" with a noAnswerReason summarizing this one-line reply. No evidence refs are required when status="no_answer".
 
 Explanatory / glossary questions:
-- If the user asks "what is X?" / "define X" / "X とは?" / "X って何?", explain the term WITHIN THIS INCIDENT's context. Cite the most relevant evidence ref(s) from the curated list that illustrate the term as it manifests here. Do NOT produce a generic dictionary definition.
+- If the user asks "what is X?" / "define X" / "X とは?" / "X って何?", explain the term WITHIN THIS INCIDENT's context. Cite the most relevant evidence index/indices from the curated list that illustrate the term as it manifests here. Do NOT produce a generic dictionary definition.
 
 Absence-claim handling (absence_input field above):
 - If absence_input is provided, explain what is missing according to its claim_type:
@@ -203,13 +203,15 @@ Respond with ONLY valid JSON in this shape:
     {
       "kind": "fact" | "inference" | "unknown",
       "text": "one sentence",
-      "evidenceRefs": [
-        { "kind": "span" | "metric_group" | "log_cluster" | "absence", "id": "..." }
-      ]
+      "evidenceRefs": [1, 3]
     }
   ],
   "noAnswerReason": "string or omitted"
 }
+
+Where each number in "evidenceRefs" is a 1-based integer index matching [N] in the curated evidence list above.
+For example, if the evidence list has [1] span:abc and [2] metric_group:def, use "evidenceRefs": [1] or "evidenceRefs": [1, 2].
+NEVER output {"kind": ..., "id": ...} objects — use integer indices only.
 
 Hard rules:
 - Keep segments sentence-level and concise.
