@@ -1,9 +1,26 @@
+import { z } from "zod";
 import {
   EvidenceQueryResponseSchema,
+  EvidenceQuerySegmentSchema,
+  EvidenceQueryRefSchema,
   type EvidenceQueryRef,
   type EvidenceQueryResponse,
 } from "3am-core";
 import { parseJsonFromModelOutput, injectSegmentIds } from "./parse-json-utils.js";
+
+/**
+ * Repair-only schema variant: allows `evidenceRefs: []` on segments whose
+ * ref IDs were all stripped as hallucinations. The LLM answer text is still
+ * grounded (the model saw the curated evidence in context). This schema is
+ * NOT exported and NEVER used in strict mode — the public contract enforced
+ * by EvidenceQueryResponseSchema (min(1) on evidenceRefs) is unchanged.
+ */
+const RepairSegmentSchema = EvidenceQuerySegmentSchema.extend({
+  evidenceRefs: z.array(EvidenceQueryRefSchema),
+}).strict();
+const RepairResponseSchema = EvidenceQueryResponseSchema.extend({
+  segments: z.array(RepairSegmentSchema),
+}).strict();
 
 export type EvidenceQueryParseMeta = {
   question: string;
@@ -21,10 +38,12 @@ export type EvidenceQueryRepairOutcome =
  * In `mode="strict"` (default, back-compat) the parser throws when the model
  * cites an evidence ref not in the allowed list.
  *
- * In `mode="repair"` the parser strips invalid refs from each segment, then
- * drops segments whose evidenceRefs list is left empty. This lets the caller
- * salvage partially-grounded answers instead of forcing a template fallback,
- * per the LLM-first discipline in CLAUDE.md.
+ * In `mode="repair"` the parser strips invalid refs from each segment and
+ * preserves the segment text even when ALL of its refs were stripped (the LLM
+ * answer is still grounded — the model saw the curated evidence in context).
+ * Only fail when the LLM returned zero segments for an "answered" response.
+ * This prevents the deterministic safety net from firing when the only problem
+ * was hallucinated ref IDs, per the LLM-first rule in CLAUDE.md.
  */
 export function parseEvidenceQuery(
   raw: string,
@@ -99,7 +118,11 @@ export function parseEvidenceQueryWithRepair(
     noAnswerReason: parsed["noAnswerReason"],
   };
 
-  const schemaResult = EvidenceQueryResponseSchema.safeParse(withQuestion);
+  // Repair mode uses a schema that permits empty evidenceRefs on segments —
+  // the public EvidenceQueryResponseSchema still enforces min(1) for all other
+  // callers (strict mode, API serialisation, etc.).
+  const schema = mode === "repair" ? RepairResponseSchema : EvidenceQueryResponseSchema;
+  const schemaResult = schema.safeParse(withQuestion);
   if (!schemaResult.success) {
     return {
       ok: false,
@@ -108,7 +131,7 @@ export function parseEvidenceQueryWithRepair(
     };
   }
 
-  const result = schemaResult.data;
+  const result = schemaResult.data as EvidenceQueryResponse;
 
   if (mode === "strict") {
     for (const segment of result.segments) {
@@ -123,11 +146,11 @@ export function parseEvidenceQueryWithRepair(
       }
     }
   } else {
-    // repair mode: segments may have empty evidenceRefs (valid per schema after
-    // the min(1) relaxation) — the text is still LLM synthesis and must be
-    // preserved. Only fail when the LLM returned zero segments entirely (which
-    // means the model produced an empty or schema-invalid answer, not merely
-    // that ref IDs were hallucinated).
+    // repair mode: segments may survive with empty evidenceRefs after stripping
+    // hallucinated IDs (RepairResponseSchema allows this). The text is still LLM
+    // synthesis and must be preserved per the LLM-first rule in CLAUDE.md.
+    // Only fail when the LLM returned zero segments entirely, which means the
+    // model produced a genuinely empty or schema-invalid answer.
     if (result.status === "answered" && result.segments.length === 0) {
       return {
         ok: false,
