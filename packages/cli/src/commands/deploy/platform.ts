@@ -44,11 +44,22 @@ export function detectPlatformCli(platform: Platform): boolean {
  *
  * Runs `<binary> whoami` and returns true if the process exits with code 0,
  * false otherwise. stdout/stderr are suppressed (captured, not displayed).
+ *
+ * For Cloudflare, CLOUDFLARE_API_TOKEN and CF_API_TOKEN are stripped from
+ * the subprocess env so that wrangler uses OAuth credentials rather than a
+ * scoped cfut_ token (which lacks /accounts access and causes a 9109 error).
  */
 export async function checkPlatformAuth(platform: Platform): Promise<boolean> {
   const binary = CLI_BINARY[platform];
   try {
-    await execFileAsync(binary, ["whoami"]);
+    let env: NodeJS.ProcessEnv | undefined;
+    if (platform === "cloudflare") {
+      // Strip CF API token env vars so wrangler whoami uses OAuth, not a
+      // scoped token that may lack /accounts read access (code 9109).
+      const { CLOUDFLARE_API_TOKEN: _a, CF_API_TOKEN: _b, ...rest } = process.env;
+      env = rest;
+    }
+    await execFileAsync(binary, ["whoami"], { env });
     return true;
   } catch {
     return false;
