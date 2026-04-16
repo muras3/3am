@@ -63,18 +63,18 @@ open http://localhost:3333
 
 | Situation | Mode | Provider flag |
 |-----------|------|--------------|
-| You have `ANTHROPIC_API_KEY` | `auto` | `--provider anthropic` |
-| You have `OPENAI_API_KEY` | `auto` | `--provider openai` |
+| You have `ANTHROPIC_API_KEY` | `automatic` | `--provider anthropic` |
+| You have `OPENAI_API_KEY` | `automatic` | `--provider openai` |
 | You use Claude Code subscription (no API key) | `manual` | `--provider claude-code` |
 | You use Codex subscription (no API key) | `manual` | `--provider codex` |
 | You run Ollama locally (no API key) | `manual` | `--provider ollama` |
 
-**IMPORTANT:** `--mode manual --provider anthropic` is a contradiction. Manual mode is for when you do NOT have a server-side API key. If you have `ANTHROPIC_API_KEY`, use `--mode auto --provider anthropic`.
+**IMPORTANT:** `--mode manual --provider anthropic` is not recommended — manual mode is designed for when you don't have a server-side API key. If you have `ANTHROPIC_API_KEY`, `--mode automatic` is the simpler path.
 
 ### Automatic mode setup (API key path — most common for production)
 
 ```bash
-npx 3am init --mode auto --provider anthropic
+npx 3am init --mode automatic --provider anthropic
 export ANTHROPIC_API_KEY=sk-ant-...
 npx 3am deploy vercel
 ```
@@ -82,7 +82,7 @@ npx 3am deploy vercel
 ### Diagnosis modes
 
 - **automatic** (alias: `auto`): Receiver runs diagnosis server-side when an incident is detected. Requires a server-side API key (`ANTHROPIC_API_KEY` or `OPENAI_API_KEY`).
-- **manual**: Diagnosis is triggered from the Console UI or CLI. Routes through a local bridge (`npx 3am bridge`). Supports Claude Code, Codex, Ollama, or any provider without a server-side API key.
+- **manual**: Diagnosis is triggered from the Console UI or CLI. Routes through a local bridge (`npx 3am bridge`). Supports Claude Code, Codex, and Ollama without a server-side API key.
 
 ### Manual mode workflow (local receiver)
 
@@ -112,9 +112,9 @@ Use this when the Receiver is deployed (Vercel or Cloudflare) but you want diagn
 npx 3am bridge --receiver-url https://your-3am-receiver.vercel.app
 ```
 
-- The bridge connects to the deployed Receiver via WebSocket
-- On Cloudflare Workers: uses Durable Objects to maintain the connection
-- On Vercel: uses the Node.js HTTP server upgrade path
+- The bridge connects to the deployed Receiver via WebSocket (Cloudflare Workers, Node.js) or long-poll (Vercel)
+- On Cloudflare Workers: uses Durable Objects to maintain the WebSocket connection
+- On Vercel: uses long-poll (`/api/bridge/jobs` + `/api/bridge/results`)
 - Auth token is auto-detected from credentials saved by `npx 3am deploy`; pass `--receiver-url` explicitly to override
 
 ### Manual diagnosis via CLI
@@ -196,7 +196,7 @@ packages/
 ```bash
 # Instrumentation setup
 npx 3am init                                          # interactive setup
-npx 3am init --mode auto --provider anthropic         # auto mode (API key)
+npx 3am init --mode automatic --provider anthropic    # automatic mode (API key)
 npx 3am init --mode manual --provider claude-code     # manual mode (subscription)
 npx 3am init --api-key <key> --no-interactive         # CI/scripted setup
 
@@ -213,7 +213,7 @@ npx 3am-cli auth-link [receiver-url]                  # mint a fresh one-time si
 
 # Bridge (manual mode)
 npx 3am bridge                                        # local bridge on :4269
-npx 3am bridge --receiver-url <url>                   # WebSocket bridge to remote receiver
+npx 3am bridge --receiver-url <url>                   # connect bridge to remote receiver (WebSocket or long-poll)
 npx 3am bridge --port 4270                            # custom port
 
 # Manual diagnosis
@@ -224,12 +224,12 @@ npx 3am diagnose --incident-id inc_000001 --receiver-url http://localhost:3333 -
 
 | Command | Key flags |
 |---------|-----------|
-| `init` | `--mode auto\|manual`, `--provider anthropic\|openai\|claude-code\|codex\|ollama`, `--api-key`, `--model`, `--lang en\|ja`, `--no-interactive` |
+| `init` | `--mode automatic\|manual` (alias: `auto`), `--provider anthropic\|openai\|claude-code\|codex\|ollama`, `--api-key`, `--model`, `--bridge-url`, `--lang en\|ja`, `--no-interactive` |
 | `local` | `--port` (default 3333), `--yes`, `--no-interactive`, `--receiver-url` |
 | `deploy` | `vercel\|cloudflare`, `--yes`, `--no-interactive`, `--json`, `--project-name`, `--auth-token` |
 | `auth-link` | `[receiver-url]`, `--json` |
-| `bridge` | `--port` (default 4269), `--receiver-url` (remote WS target; auto-detected from credentials) |
-| `diagnose` | `--incident-id`, `--receiver-url`, `--provider`, `--model` |
+| `bridge` | `--port` (default 4269), `--receiver-url` (remote WS/long-poll target; auto-detected from credentials) |
+| `diagnose` | `--incident-id`, `--receiver-url`, `--provider`, `--model`, `--auth-token` |
 
 ## Notification Setup
 
