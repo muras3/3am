@@ -453,7 +453,13 @@ export function createCloudflareProvider(options: ProviderOptions = {}): DeployP
   // /memberships API call that fails with scoped API tokens.
   // getCloudflareAccountInfo() honours explicit arg > CLOUDFLARE_ACCOUNT_ID env > CF_ACCOUNT_ID env > wrangler whoami.
   const { accountId } = getCloudflareAccountInfo(options.accountId);
-  const wranglerEnv: NodeJS.ProcessEnv = { ...process.env, CLOUDFLARE_ACCOUNT_ID: accountId };
+  // Strip CLOUDFLARE_API_TOKEN and CF_API_TOKEN from the wrangler subprocess
+  // environment.  cfut_ (User API Token / scoped token) tokens issued for
+  // Observability:Edit lack D1:Edit and Queues:Edit, so forwarding them to
+  // wrangler causes 403/9109 errors on d1 list/create and queues create.
+  // The OAuth session on the host machine has the necessary permissions.
+  const { CLOUDFLARE_API_TOKEN: _a, CF_API_TOKEN: _b, ...baseEnv } = process.env;
+  const wranglerEnv: NodeJS.ProcessEnv = { ...baseEnv, CLOUDFLARE_ACCOUNT_ID: accountId };
 
   let tempDir: string | undefined = cloneReceiver();
   const receiverDir = join(tempDir, "apps", "receiver");
