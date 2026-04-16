@@ -1182,6 +1182,43 @@ describe('LLM-first synthesis context (CLAUDE.md rule)', () => {
     expect(result.noAnswerReason).toContain('LLM synthesis failed after retries')
   })
 
+  it('safety-net noAnswerReason is Japanese when locale=ja and LLM fails', async () => {
+    // Regression: noAnswerReason was hardcoded English regardless of locale.
+    generateEvidenceQueryWithMetaMock.mockRejectedValueOnce(new Error('provider unreachable'))
+
+    const incident = makeIncident({ diagnosisResult: makeDiagnosisResult() })
+    const result = await buildEvidenceQueryAnswer(
+      incident,
+      makeMockStore(),
+      'チェックアウトが失敗している原因は？',
+      false,
+      'ja',
+    )
+
+    expect(result.status).toBe('no_answer')
+    expect(result.noAnswerReason).toBeTruthy()
+    // Must contain Japanese characters — not the hardcoded English string
+    expect(result.noAnswerReason).toMatch(/[ぁ-んァ-ン一-龥]/)
+    expect(result.noAnswerReason).not.toContain('LLM synthesis failed after retries')
+  })
+
+  it('safety-net noAnswerReason is English when locale=en and LLM fails', async () => {
+    generateEvidenceQueryWithMetaMock.mockRejectedValueOnce(new Error('provider unreachable'))
+
+    const incident = makeIncident({ diagnosisResult: makeDiagnosisResult() })
+    const result = await buildEvidenceQueryAnswer(
+      incident,
+      makeMockStore(),
+      'Why is checkout failing?',
+      false,
+      'en',
+    )
+
+    expect(result.status).toBe('no_answer')
+    expect(result.noAnswerReason).toContain('LLM synthesis failed after retries')
+    expect(result.noAnswerReason).not.toMatch(/[ぁ-んァ-ン一-龥]/)
+  })
+
   it('safety-net followups are in Japanese when locale=ja and LLM fails', async () => {
     // Regression: buildDeterministicNoAnswer was calling buildFollowups without
     // locale, so followups always came back in English even with locale=ja.

@@ -496,7 +496,9 @@ export async function buildEvidenceQueryAnswer(
     return buildDeterministicNoAnswer(
       question,
       curatedEvidence,
-      "LLM synthesis failed after retries. The evidence surfaces are available on the left, but a grounded answer could not be generated this time.",
+      locale === "ja"
+        ? "LLMによる回答生成がリトライ後も失敗しました。エビデンスは左側のパネルで確認できますが、今回は根拠のある回答を生成できませんでした。"
+        : "LLM synthesis failed after retries. The evidence surfaces are available on the left, but a grounded answer could not be generated this time.",
       locale,
     );
   }
