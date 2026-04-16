@@ -3,6 +3,18 @@ import type { DiagnosisRunner } from "./diagnosis-runner.js";
 import type { EnqueueDiagnosisFn } from "./diagnosis-dispatch.js";
 import { DEFAULT_DIAGNOSIS_LEASE_MS } from "./diagnosis-dispatch.js";
 
+/**
+ * Minimum age (ms) for a diagnosis_scheduled_at timestamp before the incident
+ * is considered a potential orphan. 45s = 30s timer + 15s buffer.
+ */
+export const ORPHAN_SCHEDULED_THRESHOLD_MS = 45_000;
+
+/**
+ * Throttle interval (ms) for orphan recovery checks on the ingest path.
+ * Prevents every single ingest request from running a DB scan.
+ */
+export const ORPHAN_CHECK_INTERVAL_MS = 10_000;
+
 export interface DiagnosisConfig {
   /** Fire when packet generation >= this value. 0 = disabled. */
   generationThreshold: number;
@@ -10,7 +22,7 @@ export interface DiagnosisConfig {
   maxWaitMs: number;
 }
 
-type WaitUntilFn = (promise: Promise<unknown>) => void;
+export type WaitUntilFn = (promise: Promise<unknown>) => void;
 export type DiagnosisRunOutcome = "succeeded" | "failed" | "skipped";
 
 /**
@@ -24,6 +36,71 @@ const inFlight = new Set<string>();
 /** Reset in-flight guard — for testing only. */
 export function _resetInFlightForTest(): void {
   inFlight.clear();
+}
+
+/** Last time orphan recovery was run (module-level throttle). */
+let lastOrphanCheckMs = 0;
+
+/** Reset orphan check throttle — for testing only. */
+export function _resetOrphanCheckForTest(): void {
+  lastOrphanCheckMs = 0;
+}
+
+/**
+ * Best-effort orphan recovery for the Vercel path.
+ *
+ * When Vercel recycles a serverless instance mid-timer, the waitUntil+sleep
+ * promise is lost and diagnosis never fires. On the next ingest request we
+ * scan for incidents that look like orphans:
+ *   - diagnosis_scheduled_at IS NOT NULL (timer was started)
+ *   - diagnosisResult IS NULL (diagnosis never completed)
+ *   - diagnosisDispatchedAt IS NULL (not currently in-flight)
+ *     OR diagnosisDispatchedAt is older than DEFAULT_DIAGNOSIS_LEASE_MS (stale lease)
+ *   - diagnosis_scheduled_at is older than ORPHAN_SCHEDULED_THRESHOLD_MS
+ *
+ * For each orphan, `runIfNeeded` (with its atomic DB claim) is called inside
+ * waitUntil so Vercel keeps the instance alive until diagnosis completes.
+ *
+ * Throttled to at most once per ORPHAN_CHECK_INTERVAL_MS to avoid a full
+ * DB scan on every single ingest request.
+ */
+export function recoverOrphanedDiagnoses(
+  storage: StorageDriver,
+  runner: DiagnosisRunner,
+  waitUntilFn: WaitUntilFn,
+  now: number = Date.now(),
+): void {
+  if (now - lastOrphanCheckMs < ORPHAN_CHECK_INTERVAL_MS) return;
+  lastOrphanCheckMs = now;
+
+  waitUntilFn(
+    (async () => {
+      try {
+        const page = await storage.listIncidents({ limit: 100 });
+        const cutoff = now - ORPHAN_SCHEDULED_THRESHOLD_MS;
+        const leaseCutoff = now - DEFAULT_DIAGNOSIS_LEASE_MS;
+
+        for (const incident of page.items) {
+          if (!incident.diagnosisScheduledAt) continue;
+          if (incident.diagnosisResult) continue;
+
+          const scheduledMs = new Date(incident.diagnosisScheduledAt).getTime();
+          if (scheduledMs > cutoff) continue;
+
+          if (incident.diagnosisDispatchedAt) {
+            const dispatchedMs = new Date(incident.diagnosisDispatchedAt).getTime();
+            // Lease still valid — another instance may be running diagnosis.
+            if (dispatchedMs > leaseCutoff) continue;
+            await storage.releaseDiagnosisDispatch(incident.incidentId);
+          }
+
+          await runIfNeeded(incident.incidentId, storage, runner);
+        }
+      } catch (err) {
+        console.error("[diagnosis-debouncer] orphan recovery failed:", err);
+      }
+    })(),
+  );
 }
 
 /** Local Node.js fallback: fire-and-forget (no serverless lifecycle guarantee). */
@@ -116,9 +193,12 @@ export function scheduleDelayedDiagnosis(
 
 /**
  * Check whether the generation threshold has been reached.
- * If so, run diagnosis immediately (no waitUntil needed).
+ * If so, run diagnosis immediately.
  *
  * Called after every rebuildSnapshots to check if enough evidence has accumulated.
+ *
+ * @param waitUntilFn - Optional platform waitUntil (Vercel). When provided, the
+ *   runIfNeeded call is wrapped so the serverless instance stays alive.
  */
 export function checkGenerationThreshold(
   incidentId: string,
@@ -127,6 +207,7 @@ export function checkGenerationThreshold(
   runner: DiagnosisRunner | undefined,
   opts: { generationThreshold: number },
   enqueueDiagnosis?: EnqueueDiagnosisFn,
+  waitUntilFn?: WaitUntilFn,
 ): void {
   if (opts.generationThreshold > 0 && generation >= opts.generationThreshold) {
     if (enqueueDiagnosis) {
@@ -138,7 +219,12 @@ export function checkGenerationThreshold(
         await enqueueDiagnosis(incidentId);
       })();
     } else if (runner) {
-      void runIfNeeded(incidentId, storage, runner);
+      const runPromise = runIfNeeded(incidentId, storage, runner);
+      if (waitUntilFn) {
+        waitUntilFn(runPromise);
+      } else {
+        void runPromise;
+      }
     }
   }
 }

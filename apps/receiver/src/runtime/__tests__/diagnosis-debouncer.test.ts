@@ -1,7 +1,17 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { scheduleDelayedDiagnosis, checkGenerationThreshold, runIfNeeded, _resetInFlightForTest } from "../diagnosis-debouncer.js";
+import {
+  scheduleDelayedDiagnosis,
+  checkGenerationThreshold,
+  runIfNeeded,
+  recoverOrphanedDiagnoses,
+  _resetInFlightForTest,
+  _resetOrphanCheckForTest,
+  ORPHAN_SCHEDULED_THRESHOLD_MS,
+  ORPHAN_CHECK_INTERVAL_MS,
+} from "../diagnosis-debouncer.js";
 import type { StorageDriver } from "../../storage/interface.js";
 import type { DiagnosisRunner } from "../diagnosis-runner.js";
+import { DEFAULT_DIAGNOSIS_LEASE_MS } from "../diagnosis-dispatch.js";
 
 function createMockStorage(incident?: { diagnosisResult?: unknown }): StorageDriver {
   return {
@@ -356,5 +366,189 @@ describe("runIfNeeded (exported for immediate path)", () => {
     await runIfNeeded("inc_1", storage, runner);
 
     expect(runner.run).not.toHaveBeenCalled();
+  });
+});
+
+// ── Orphan recovery ──────────────────────────────────────────────────────────
+
+/**
+ * Build a mock incident for orphan recovery tests.
+ * @param opts.scheduledMsAgo - How many ms ago diagnosis_scheduled_at was set.
+ * @param opts.diagnosisResult - If set, incident already has a result.
+ * @param opts.dispatchedMsAgo - If set, diagnosis_dispatched_at was set this many ms ago.
+ */
+function makeOrphanIncident(opts: {
+  scheduledMsAgo: number;
+  diagnosisResult?: unknown;
+  dispatchedMsAgo?: number;
+  incidentId?: string;
+}, now = Date.now()) {
+  const scheduledAt = new Date(now - opts.scheduledMsAgo).toISOString();
+  const dispatchedAt = opts.dispatchedMsAgo !== undefined
+    ? new Date(now - opts.dispatchedMsAgo).toISOString()
+    : undefined;
+  return {
+    incidentId: opts.incidentId ?? "inc_orphan",
+    diagnosisScheduledAt: scheduledAt,
+    diagnosisDispatchedAt: dispatchedAt,
+    diagnosisResult: opts.diagnosisResult ?? undefined,
+    packet: { generation: 1 },
+    status: "open",
+  };
+}
+
+function createMockStorageWithIncidents(incidents: ReturnType<typeof makeOrphanIncident>[]): StorageDriver {
+  return {
+    getIncident: vi.fn().mockImplementation((id: string) => {
+      const found = incidents.find((i) => i.incidentId === id) ?? null;
+      return Promise.resolve(found);
+    }),
+    listIncidents: vi.fn().mockResolvedValue({ items: incidents }),
+    claimDiagnosisDispatch: vi.fn().mockResolvedValue(true),
+    releaseDiagnosisDispatch: vi.fn().mockResolvedValue(undefined),
+    markDiagnosisScheduled: vi.fn().mockResolvedValue(undefined),
+    clearDiagnosisScheduled: vi.fn().mockResolvedValue(undefined),
+    createIncident: vi.fn(),
+    updatePacket: vi.fn(),
+    updateIncidentStatus: vi.fn(),
+    appendDiagnosis: vi.fn(),
+    getIncidentByPacketId: vi.fn(),
+    deleteExpiredIncidents: vi.fn(),
+    expandTelemetryScope: vi.fn(),
+    appendSpanMembership: vi.fn(),
+    appendAnomalousSignals: vi.fn(),
+    appendPlatformEvents: vi.fn(),
+    appendConsoleNarrative: vi.fn(),
+    updateNotificationState: vi.fn(),
+    claimMaterializationLease: vi.fn(),
+    releaseMaterializationLease: vi.fn(),
+    nextIncidentSequence: vi.fn(),
+    touchIncidentActivity: vi.fn(),
+    saveThinEvent: vi.fn(),
+    listThinEvents: vi.fn(),
+    getSettings: vi.fn(),
+    setSettings: vi.fn(),
+    consumeRateLimit: vi.fn(),
+  } as unknown as StorageDriver;
+}
+
+describe("recoverOrphanedDiagnoses", () => {
+  beforeEach(() => {
+    _resetInFlightForTest();
+    _resetOrphanCheckForTest();
+  });
+
+  it("recovers orphan with scheduledAt older than threshold and no result", async () => {
+    const now = Date.now();
+    const orphan = makeOrphanIncident({ scheduledMsAgo: ORPHAN_SCHEDULED_THRESHOLD_MS + 1_000 }, now);
+    const storage = createMockStorageWithIncidents([orphan]);
+    const runner = createMockRunner();
+    const waitUntilFn = vi.fn((p: Promise<unknown>) => { void p; });
+
+    recoverOrphanedDiagnoses(storage, runner, waitUntilFn, now);
+
+    // waitUntil should have been called with the recovery promise
+    expect(waitUntilFn).toHaveBeenCalledTimes(1);
+
+    // Flush the async work inside waitUntil
+    await vi.waitFor(() => {
+      expect(runner.run).toHaveBeenCalledWith("inc_orphan");
+    });
+  });
+
+  it("does NOT recover incident with scheduledAt newer than threshold (timer may still be alive)", async () => {
+    const now = Date.now();
+    // 10s ago — well within the 45s window
+    const recent = makeOrphanIncident({ scheduledMsAgo: 10_000 }, now);
+    const storage = createMockStorageWithIncidents([recent]);
+    const runner = createMockRunner();
+    const waitUntilFn = vi.fn((p: Promise<unknown>) => { void p; });
+
+    recoverOrphanedDiagnoses(storage, runner, waitUntilFn, now);
+    await vi.waitFor(() => expect(storage.listIncidents).toHaveBeenCalled());
+
+    expect(runner.run).not.toHaveBeenCalled();
+  });
+
+  it("does NOT recover incident that already has a diagnosisResult", async () => {
+    const now = Date.now();
+    const done = makeOrphanIncident({
+      scheduledMsAgo: ORPHAN_SCHEDULED_THRESHOLD_MS + 5_000,
+      diagnosisResult: { summary: "already done" },
+    }, now);
+    const storage = createMockStorageWithIncidents([done]);
+    const runner = createMockRunner();
+    const waitUntilFn = vi.fn((p: Promise<unknown>) => { void p; });
+
+    recoverOrphanedDiagnoses(storage, runner, waitUntilFn, now);
+    await vi.waitFor(() => expect(storage.listIncidents).toHaveBeenCalled());
+
+    expect(runner.run).not.toHaveBeenCalled();
+  });
+
+  it("clears stale lease (dispatchedAt > DEFAULT_DIAGNOSIS_LEASE_MS) then recovers", async () => {
+    const now = Date.now();
+    const staleLeaseOrphan = makeOrphanIncident({
+      scheduledMsAgo: ORPHAN_SCHEDULED_THRESHOLD_MS + 5_000,
+      dispatchedMsAgo: DEFAULT_DIAGNOSIS_LEASE_MS + 1_000, // stale lease
+    }, now);
+    const storage = createMockStorageWithIncidents([staleLeaseOrphan]);
+    const runner = createMockRunner();
+    const waitUntilFn = vi.fn((p: Promise<unknown>) => { void p; });
+
+    recoverOrphanedDiagnoses(storage, runner, waitUntilFn, now);
+
+    await vi.waitFor(() => {
+      expect(storage.releaseDiagnosisDispatch).toHaveBeenCalledWith("inc_orphan");
+      expect(runner.run).toHaveBeenCalledWith("inc_orphan");
+    });
+  });
+
+  it("does NOT recover incident with a valid (non-expired) lease", async () => {
+    const now = Date.now();
+    const validLease = makeOrphanIncident({
+      scheduledMsAgo: ORPHAN_SCHEDULED_THRESHOLD_MS + 5_000,
+      dispatchedMsAgo: 60_000, // 1 min ago — within 15 min lease
+    }, now);
+    const storage = createMockStorageWithIncidents([validLease]);
+    const runner = createMockRunner();
+    const waitUntilFn = vi.fn((p: Promise<unknown>) => { void p; });
+
+    recoverOrphanedDiagnoses(storage, runner, waitUntilFn, now);
+    await vi.waitFor(() => expect(storage.listIncidents).toHaveBeenCalled());
+
+    expect(storage.releaseDiagnosisDispatch).not.toHaveBeenCalled();
+    expect(runner.run).not.toHaveBeenCalled();
+  });
+
+  it("throttle: second call within ORPHAN_CHECK_INTERVAL_MS is a no-op", async () => {
+    const now = Date.now();
+    const orphan = makeOrphanIncident({ scheduledMsAgo: ORPHAN_SCHEDULED_THRESHOLD_MS + 1_000 }, now);
+    const storage = createMockStorageWithIncidents([orphan]);
+    const runner = createMockRunner();
+    const waitUntilFn = vi.fn((p: Promise<unknown>) => { void p; });
+
+    // First call: should proceed
+    recoverOrphanedDiagnoses(storage, runner, waitUntilFn, now);
+    // Second call: within throttle interval — should be skipped
+    recoverOrphanedDiagnoses(storage, runner, waitUntilFn, now + ORPHAN_CHECK_INTERVAL_MS - 1);
+
+    // waitUntil should have been called only once
+    expect(waitUntilFn).toHaveBeenCalledTimes(1);
+  });
+
+  it("throttle: call after ORPHAN_CHECK_INTERVAL_MS elapses proceeds again", async () => {
+    const now = Date.now();
+    const orphan = makeOrphanIncident({ scheduledMsAgo: ORPHAN_SCHEDULED_THRESHOLD_MS + 1_000 }, now);
+    const storage = createMockStorageWithIncidents([orphan]);
+    const runner = createMockRunner();
+    const waitUntilFn = vi.fn((p: Promise<unknown>) => { void p; });
+
+    recoverOrphanedDiagnoses(storage, runner, waitUntilFn, now);
+    // Reset inFlight so runIfNeeded won't be blocked by previous run
+    _resetInFlightForTest();
+    recoverOrphanedDiagnoses(storage, runner, waitUntilFn, now + ORPHAN_CHECK_INTERVAL_MS + 1);
+
+    expect(waitUntilFn).toHaveBeenCalledTimes(2);
   });
 });
