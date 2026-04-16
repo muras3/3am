@@ -217,4 +217,35 @@ describe("parseEvidenceQueryWithRepair (mode='repair')", () => {
       expect(outcome.reason).toMatch(/no segments/i);
     }
   });
+
+  it("treats absent evidenceRefs field (not an array) as prompt violation — drops the segment", () => {
+    // Distinct from hallucinated-ID case: if the LLM never emitted evidenceRefs,
+    // it is a prompt violation (not a repair case) and the segment is dropped.
+    // This prevents prompt-malformed outputs from bypassing ref grounding.
+    const raw = JSON.stringify({
+      status: "answered",
+      segments: [
+        {
+          id: "seg-valid",
+          kind: "fact",
+          text: "Good segment with refs.",
+          evidenceRefs: [{ kind: "span", id: "trace-1:span-1" }],
+        },
+        {
+          id: "seg-no-refs-field",
+          kind: "fact",
+          text: "Segment that never had evidenceRefs at all.",
+          // evidenceRefs is intentionally absent
+        },
+      ],
+    });
+
+    const outcome = parseEvidenceQueryWithRepair(raw, { question: "Q?" }, allowedRefs, "repair");
+    expect(outcome.ok).toBe(true);
+    if (outcome.ok) {
+      // Only the segment that had refs survives
+      expect(outcome.response.segments).toHaveLength(1);
+      expect(outcome.response.segments[0]?.id).toBe("seg-valid");
+    }
+  });
 });

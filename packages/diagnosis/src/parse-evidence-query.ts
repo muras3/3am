@@ -88,12 +88,16 @@ export function parseEvidenceQueryWithRepair(
   let repairedRefCount = 0;
   const repairedSegments: Array<Record<string, unknown>> =
     mode === "repair"
-      ? rawSegments
-          .map((segment) => {
-            const refs = Array.isArray(segment["evidenceRefs"])
+      ? rawSegments.reduce<Array<Record<string, unknown>>>((acc, segment) => {
+            const originalRefs = Array.isArray(segment["evidenceRefs"])
               ? (segment["evidenceRefs"] as Array<Record<string, unknown>>)
-              : [];
-            const keptRefs = refs.filter((ref) => {
+              : null;
+            // If the LLM emitted no evidenceRefs at all (absent or non-array),
+            // the segment is a prompt violation — not a hallucinated-ID case.
+            // Drop it so the retry guard can fire rather than accepting
+            // uncited text.
+            if (originalRefs === null) return acc;
+            const keptRefs = originalRefs.filter((ref) => {
               const key = `${String(ref["kind"])}:${String(ref["id"])}`;
               const keep = allowed.has(key);
               if (!keep) repairedRefCount += 1;
@@ -104,8 +108,9 @@ export function parseEvidenceQueryWithRepair(
             // in context). Dropping the text discards the entire synthesis
             // and causes the retry loop to exhaust and fire the deterministic
             // safety net, violating the LLM-first rule in CLAUDE.md.
-            return { ...segment, evidenceRefs: keptRefs };
-          })
+            acc.push({ ...segment, evidenceRefs: keptRefs });
+            return acc;
+          }, [])
       : rawSegments;
 
   const status = typeof parsed["status"] === "string" ? parsed["status"] : undefined;
@@ -131,6 +136,9 @@ export function parseEvidenceQueryWithRepair(
     };
   }
 
+  // z.array(T).min(1) and z.array(T) both infer as T[] in TypeScript (Zod v4).
+  // The cast is structurally safe: RepairResponseSchema.segments is
+  // EvidenceQuerySegment[] with the same shape; only runtime validation differs.
   const result = schemaResult.data as EvidenceQueryResponse;
 
   if (mode === "strict") {
