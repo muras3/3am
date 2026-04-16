@@ -101,6 +101,10 @@ program
   .option("--yes", "Skip all confirmation prompts")
   .option("--no-interactive", "CI mode (requires --yes and an explicit target)")
   .option("--json", "Output results as JSON")
+  .option(
+    "--account-id <id>",
+    "Cloudflare account ID (required when using a scoped CF API token without Account:Read; falls back to CLOUDFLARE_ACCOUNT_ID env)",
+  )
   .action(
     async (platform: "vercel" | "cloudflare" | undefined, options: {
       projectName?: string;
@@ -109,6 +113,7 @@ program
       yes?: boolean;
       interactive?: boolean;
       json?: boolean;
+      accountId?: string;
     }) => {
       const { runDeploy } = await import("./commands/deploy.js");
       await runDeploy(process.argv.slice(3), {
@@ -120,6 +125,7 @@ program
         yes: options.yes,
         noInteractive: options.interactive === false,
         json: options.json,
+        accountId: options.accountId,
       });
     },
   );

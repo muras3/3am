@@ -327,7 +327,35 @@ async function cloudflareApiFetchWithRetry<T>(
   throw lastError!;
 }
 
-export function getCloudflareAccountInfo(): CloudflareAccountInfo {
+/**
+ * Resolve the Cloudflare account ID using the following precedence:
+ *   1. Explicit `accountId` argument (e.g. from --account-id flag)
+ *   2. CLOUDFLARE_ACCOUNT_ID environment variable
+ *   3. CF_ACCOUNT_ID environment variable (alias)
+ *   4. `wrangler whoami --json` (requires User Details:Read — not available for scoped tokens)
+ *
+ * Scoped API tokens (prefix `cfut_`) issued from the Cloudflare dashboard for
+ * Workers + Observability + D1 + Queues do NOT include User Details:Read, so
+ * `wrangler whoami --json` returns `accounts: []` for them.  Pass the account
+ * ID explicitly via flag or env to bypass the wrangler probe.
+ */
+export function getCloudflareAccountInfo(accountId?: string): CloudflareAccountInfo {
+  // 1. Explicit argument
+  const trimmedArg = accountId?.trim();
+  if (trimmedArg) {
+    return { accountId: trimmedArg };
+  }
+
+  // 2-3. Environment variables (treat blank / unset as absent)
+  const envAccountId = (
+    process.env["CLOUDFLARE_ACCOUNT_ID"]?.trim() ||
+    process.env["CF_ACCOUNT_ID"]?.trim()
+  ) || undefined;
+  if (envAccountId) {
+    return { accountId: envAccountId };
+  }
+
+  // 4. wrangler whoami — may fail for scoped tokens
   const output = execFileSync("wrangler", ["whoami", "--json"], {
     stdio: "pipe",
   }).toString();
@@ -336,11 +364,18 @@ export function getCloudflareAccountInfo(): CloudflareAccountInfo {
     email?: string;
     accounts?: Array<{ id?: string }>;
   };
-  const accountId = parsed.accounts?.[0]?.id;
-  if (!accountId) {
-    throw new Error("Could not determine Cloudflare account ID from `wrangler whoami --json`");
+  const resolvedId = parsed.accounts?.[0]?.id;
+  if (!resolvedId) {
+    throw new Error(
+      "Could not determine Cloudflare account ID from `wrangler whoami --json`.\n" +
+      "If you are using a scoped API token, wrangler cannot list accounts.\n" +
+      "Fix:\n" +
+      "  (1) Re-run with --account-id <id>  (find your account ID at dash.cloudflare.com)\n" +
+      "  (2) Or: unset CLOUDFLARE_API_TOKEN and let wrangler use OAuth credentials\n" +
+      "  (3) Or: set CLOUDFLARE_ACCOUNT_ID=<id> in your environment",
+    );
   }
-  return { accountId, email: parsed.email };
+  return { accountId: resolvedId, email: parsed.email };
 }
 
 async function promptSecret(prompt: string): Promise<string> {
@@ -568,7 +603,7 @@ export async function connectCloudflareWorkerToReceiver(
   cwd: string,
   receiverUrl: string,
   authToken: string,
-  options: { noInteractive?: boolean } = {},
+  options: { noInteractive?: boolean; accountId?: string } = {},
 ): Promise<CloudflareObservabilityState> {
   const configPath = join(cwd, existsSync(join(cwd, "wrangler.jsonc")) ? "wrangler.jsonc" : "wrangler.toml");
   if (!existsSync(configPath)) {
@@ -576,7 +611,7 @@ export async function connectCloudflareWorkerToReceiver(
   }
 
   const { workerName } = resolveCloudflareWorker(configPath);
-  const account = getCloudflareAccountInfo();
+  const account = getCloudflareAccountInfo(options.accountId);
   const cloudflareAuth = await resolveCloudflareApiAuth({
     account,
     noInteractive: options.noInteractive,
