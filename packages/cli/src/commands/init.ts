@@ -254,34 +254,22 @@ export async function runInit(_argv: string[], options: InitOptions = {}): Promi
   }
 
   // Monorepo guard: if we're at a workspace root with no wrangler config here
-  // but workers exist in subdirectories, abort or prompt rather than create
-  // Node.js instrumentation at the wrong level.
+  // but workers exist in subdirectories, always abort — creating Node.js
+  // instrumentation at the workspace root is never the right action.
   if (isMonorepoRoot(cwd) && !findWranglerConfigPath(cwd)) {
     const workerConfigs = findWorkspaceWranglerConfigs(cwd);
     if (workerConfigs.length > 0) {
       const relPaths = workerConfigs.map((p) => p.replace(`${cwd}/`, ""));
-      if (options.noInteractive) {
-        process.stderr.write(
-          "Error: `3am init` was run at a monorepo root, but your Cloudflare Workers are in subdirectories.\n\n" +
-          "Detected workers:\n" +
-          relPaths.map((p) => `  ${p}`).join("\n") + "\n\n" +
-          "Fix: cd into the Worker directory before running init:\n" +
-          `  cd ${relPaths[0]?.replace("/wrangler.jsonc", "").replace("/wrangler.toml", "") ?? "apps/<worker>"}\n` +
-          "  npx 3am init\n",
-        );
-        process.exit(1);
-        return;
-      }
-      // Interactive: warn and list the paths — user should cd into the right one
       process.stderr.write(
-        "Warning: `3am init` was run at a monorepo root, but your Cloudflare Workers are in subdirectories.\n\n" +
+        "Error: `3am init` was run at a monorepo root, but your Cloudflare Workers are in subdirectories.\n\n" +
         "Detected workers:\n" +
         relPaths.map((p) => `  ${p}`).join("\n") + "\n\n" +
-        "For Cloudflare Workers instrumentation, cd into the Worker directory and re-run:\n" +
+        "Fix: cd into the Worker directory before running init:\n" +
         `  cd ${relPaths[0]?.replace("/wrangler.jsonc", "").replace("/wrangler.toml", "") ?? "apps/<worker>"}\n` +
-        "  npx 3am init\n\n" +
-        "Continuing with Node.js instrumentation at the current directory...\n\n",
+        "  npx 3am init\n",
       );
+      process.exit(1);
+      return;
     }
   }
 

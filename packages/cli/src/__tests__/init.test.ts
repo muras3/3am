@@ -212,6 +212,30 @@ describe("runInit() — monorepo root guard (Bug 3)", () => {
       exitSpy.mockRestore();
     }
   });
+
+  it("exits with error in interactive mode (regression: must not warn-and-continue)", async () => {
+    const originalCwd = process.cwd();
+    process.chdir(tmpDir);
+    const stderrSpy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    const exitSpy = vi.spyOn(process, "exit").mockImplementation((_code) => { throw new Error("process.exit"); });
+
+    try {
+      await expect(
+        runInit([], {}),
+      ).rejects.toThrow("process.exit");
+      expect(exitSpy).toHaveBeenCalledWith(1);
+      const stderrOutput = stderrSpy.mock.calls.map((c) => String(c[0])).join("");
+      expect(stderrOutput).toContain("Error:");
+      expect(stderrOutput).toContain("monorepo root");
+      expect(stderrOutput).toContain("order-api");
+      // Must not continue to attempt dep install or create instrumentation files
+      expect(stderrOutput).not.toContain("Continuing");
+    } finally {
+      process.chdir(originalCwd);
+      stderrSpy.mockRestore();
+      exitSpy.mockRestore();
+    }
+  });
 });
 
 // ---------------------------------------------------------------------------
