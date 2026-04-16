@@ -14,6 +14,7 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import {
   connectCloudflareWorkerToReceiver,
+  getCloudflareAccountInfo,
   resolveCloudflareApiAuth,
   updateCloudflareObservabilityConfig,
 } from "../commands/cloudflare-workers.js";
@@ -458,5 +459,149 @@ describe("connectCloudflareWorkerToReceiver — retries transient 400 on destina
     expect(postCallCount).toBe(1);
 
     vi.unstubAllGlobals();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// getCloudflareAccountInfo() — scoped token / explicit account ID support
+// ---------------------------------------------------------------------------
+
+describe("getCloudflareAccountInfo() — explicit accountId bypasses wrangler whoami", () => {
+  beforeEach(() => {
+    vi.mocked(execFileSync).mockReset();
+    vi.unstubAllEnvs();
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("returns the explicit accountId immediately and does NOT call wrangler whoami", () => {
+    const result = getCloudflareAccountInfo("acct_explicit_123");
+
+    expect(result.accountId).toBe("acct_explicit_123");
+    expect(vi.mocked(execFileSync)).not.toHaveBeenCalled();
+  });
+
+  it("reads CLOUDFLARE_ACCOUNT_ID env var and skips wrangler whoami", () => {
+    vi.stubEnv("CLOUDFLARE_ACCOUNT_ID", "acct_from_env_456");
+    vi.stubEnv("CF_ACCOUNT_ID", "");
+
+    const result = getCloudflareAccountInfo();
+
+    expect(result.accountId).toBe("acct_from_env_456");
+    expect(vi.mocked(execFileSync)).not.toHaveBeenCalled();
+  });
+
+  it("reads CF_ACCOUNT_ID env var as alias when CLOUDFLARE_ACCOUNT_ID is absent", () => {
+    vi.stubEnv("CLOUDFLARE_ACCOUNT_ID", "");
+    vi.stubEnv("CF_ACCOUNT_ID", "acct_cf_alias_789");
+
+    const result = getCloudflareAccountInfo();
+
+    expect(result.accountId).toBe("acct_cf_alias_789");
+    expect(vi.mocked(execFileSync)).not.toHaveBeenCalled();
+  });
+
+  it("explicit accountId arg takes precedence over env vars", () => {
+    vi.stubEnv("CLOUDFLARE_ACCOUNT_ID", "acct_env_should_be_ignored");
+
+    const result = getCloudflareAccountInfo("acct_flag_wins");
+
+    expect(result.accountId).toBe("acct_flag_wins");
+    expect(vi.mocked(execFileSync)).not.toHaveBeenCalled();
+  });
+
+  it("falls through to wrangler whoami when no explicit id or env var is set and returns account", () => {
+    vi.stubEnv("CLOUDFLARE_ACCOUNT_ID", "");
+    vi.stubEnv("CF_ACCOUNT_ID", "");
+    vi.mocked(execFileSync).mockReturnValue(
+      Buffer.from(JSON.stringify({ email: "user@example.com", accounts: [{ id: "acct_whoami" }] })),
+    );
+
+    const result = getCloudflareAccountInfo();
+
+    expect(result.accountId).toBe("acct_whoami");
+    expect(result.email).toBe("user@example.com");
+    expect(vi.mocked(execFileSync)).toHaveBeenCalledWith("wrangler", ["whoami", "--json"], { stdio: "pipe" });
+  });
+
+  it("throws actionable error when whoami returns empty accounts (scoped token without Account:Read)", () => {
+    vi.stubEnv("CLOUDFLARE_ACCOUNT_ID", "");
+    vi.stubEnv("CF_ACCOUNT_ID", "");
+    vi.mocked(execFileSync).mockReturnValue(
+      Buffer.from(JSON.stringify({ email: "dev@example.com", accounts: [] })),
+    );
+
+    expect(() => getCloudflareAccountInfo()).toThrow("--account-id");
+    expect(() => getCloudflareAccountInfo()).toThrow("CLOUDFLARE_ACCOUNT_ID");
+  });
+});
+
+describe("connectCloudflareWorkerToReceiver() — accountId option threads through to getCloudflareAccountInfo", () => {
+  beforeEach(() => {
+    vi.stubEnv("CLOUDFLARE_API_TOKEN", "token-123");
+    vi.stubEnv("CLOUDFLARE_ACCOUNT_ID", "");
+    vi.stubEnv("CF_ACCOUNT_ID", "");
+    vi.mocked(existsSync).mockReset();
+    vi.mocked(readFileSync).mockReset();
+    vi.mocked(writeFileSync).mockReset();
+    vi.mocked(execFileSync).mockReset();
+    vi.mocked(existsSync).mockImplementation((path) => path === "wrangler.toml");
+    vi.mocked(readFileSync).mockImplementation((path) => {
+      if (path === "wrangler.toml") return 'name = "my-worker"\n';
+      return "";
+    });
+    vi.mocked(execFileSync).mockImplementation((command, args) => {
+      // wrangler deploy should succeed
+      if (command === "wrangler" && Array.isArray(args) && args[0] === "deploy") {
+        return Buffer.from("");
+      }
+      // whoami should NOT be called when accountId is provided
+      throw new Error(`Unexpected execFileSync call: ${command} ${String(args)}`);
+    });
+    vi.stubGlobal("fetch", vi.fn());
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
+  });
+
+  it("uses provided accountId and never calls wrangler whoami", async () => {
+    const fetchMock = vi.mocked(fetch);
+    fetchMock.mockImplementation(async (input, _init) => {
+      const url = String(input);
+      if (url.endsWith("/workers/observability/destinations")) {
+        return new Response(JSON.stringify({ success: true, errors: [], messages: [], result: [] }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      return new Response(JSON.stringify({ success: true, errors: [], messages: [], result: { slug: "s", name: "n", enabled: true, configuration: { type: "logpush", logpushDataset: "opentelemetry-traces", url: "" } } }), {
+        status: 200, headers: { "Content-Type": "application/json" },
+      });
+    });
+
+    const result = await connectCloudflareWorkerToReceiver(
+      ".",
+      "https://receiver.example.com",
+      "tok_abc123",
+      { noInteractive: true, accountId: "acct_explicit_from_flag" },
+    );
+
+    expect(result.workerName).toBe("my-worker");
+
+    // Verify the explicit account ID was used in Cloudflare API calls
+    const apiCalls = fetchMock.mock.calls.filter(([input]) =>
+      String(input).includes("/accounts/acct_explicit_from_flag/"),
+    );
+    expect(apiCalls.length).toBeGreaterThan(0);
+
+    // wrangler whoami was never called (only deploy was called)
+    const whoisCalls = vi.mocked(execFileSync).mock.calls.filter(
+      ([, args]) => Array.isArray(args) && args[0] === "whoami",
+    );
+    expect(whoisCalls).toHaveLength(0);
   });
 });

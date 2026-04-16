@@ -60,6 +60,13 @@ export interface DeployOptions {
   noInteractive?: boolean;
   /** --json: structured output */
   json?: boolean;
+  /**
+   * --account-id: Cloudflare account ID override.
+   * Required when using a scoped CF API token (prefix `cfut_`) that lacks
+   * Account:Read / User Details:Read.  Falls back to the CLOUDFLARE_ACCOUNT_ID
+   * or CF_ACCOUNT_ID environment variables when not provided.
+   */
+  accountId?: string;
 }
 
 /**
@@ -281,6 +288,7 @@ export async function runDeploy(
   info(`\nDeploying Receiver to ${platform}...\n`, json);
   const provider = createProvider(platform, {
     projectName: options.projectName,
+    accountId: options.accountId,
   });
   let deployedUrl: string;
   let claimUrl: string | undefined;
@@ -386,6 +394,7 @@ export async function runDeploy(
     try {
       state = await connectCloudflareWorkerToReceiver(process.cwd(), deployedUrl, authToken, {
         noInteractive: options.noInteractive,
+        accountId: options.accountId,
       });
     } catch (err) {
       const errMsg = String(err);

@@ -34,6 +34,8 @@ export interface DeployProvider {
 
 export interface ProviderOptions {
   projectName?: string;
+  /** Cloudflare account ID override (required for scoped CF API tokens that lack Account:Read) */
+  accountId?: string;
 }
 
 const REPO_URL = "https://github.com/muras3/3am.git";
@@ -444,12 +446,13 @@ function ensureQueue(name: string, cwd: string, env?: NodeJS.ProcessEnv): void {
   }
 }
 
-export function createCloudflareProvider(): DeployProvider {
+export function createCloudflareProvider(options: ProviderOptions = {}): DeployProvider {
   // Resolve account ID from the user's cwd (where OAuth cache exists) BEFORE
   // switching to the temp directory.  Passing CLOUDFLARE_ACCOUNT_ID to every
   // wrangler invocation tells wrangler which account to use, avoiding the
   // /memberships API call that fails with scoped API tokens.
-  const { accountId } = getCloudflareAccountInfo();
+  // getCloudflareAccountInfo() honours explicit arg > CLOUDFLARE_ACCOUNT_ID env > CF_ACCOUNT_ID env > wrangler whoami.
+  const { accountId } = getCloudflareAccountInfo(options.accountId);
   const wranglerEnv: NodeJS.ProcessEnv = { ...process.env, CLOUDFLARE_ACCOUNT_ID: accountId };
 
   let tempDir: string | undefined = cloneReceiver();
@@ -535,5 +538,5 @@ export function createProvider(
   options: ProviderOptions = {},
 ): DeployProvider {
   if (platform === "vercel") return createVercelProvider(options);
-  return createCloudflareProvider();
+  return createCloudflareProvider(options);
 }
