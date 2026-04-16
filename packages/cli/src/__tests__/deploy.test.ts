@@ -183,6 +183,7 @@ describe("runDeploy()", () => {
   // -------------------------------------------------------------------------
 
   it("exits with error when no API key", async () => {
+    vi.mocked(loadCredentials).mockReturnValue({});
     vi.mocked(resolveApiKey).mockResolvedValue(undefined);
 
     await runDeploy([], {
@@ -206,6 +207,7 @@ describe("runDeploy()", () => {
   });
 
   it("exits with error when platform CLI is missing (vercel)", async () => {
+    vi.mocked(loadCredentials).mockReturnValue({});
     vi.mocked(resolveApiKey).mockResolvedValue("sk-ant-test");
     vi.mocked(detectPlatformCli).mockReturnValue(false);
 
@@ -222,6 +224,7 @@ describe("runDeploy()", () => {
   });
 
   it("exits with error when platform CLI is missing (cloudflare)", async () => {
+    vi.mocked(loadCredentials).mockReturnValue({});
     vi.mocked(resolveApiKey).mockResolvedValue("sk-ant-test");
     vi.mocked(detectPlatformCli).mockReturnValue(false);
 
@@ -238,6 +241,7 @@ describe("runDeploy()", () => {
   });
 
   it("exits with error when platform auth failed", async () => {
+    vi.mocked(loadCredentials).mockReturnValue({});
     vi.mocked(resolveApiKey).mockResolvedValue("sk-ant-test");
     vi.mocked(detectPlatformCli).mockReturnValue(true);
     vi.mocked(checkPlatformAuth).mockResolvedValue(false);
@@ -361,6 +365,7 @@ describe("runDeploy()", () => {
   // -------------------------------------------------------------------------
 
   it("does not deploy when user declines deploy confirmation", async () => {
+    vi.mocked(loadCredentials).mockReturnValue({});
     vi.mocked(resolveApiKey).mockResolvedValue("sk-ant-test");
     vi.mocked(detectPlatformCli).mockReturnValue(true);
     vi.mocked(checkPlatformAuth).mockResolvedValue(true);

@@ -4,7 +4,7 @@
  *
  * Orchestration flow:
  *  1. Validate flags
- *  2. Resolve ANTHROPIC_API_KEY
+ *  2. Resolve LLM mode/provider + API key (conditional)
  *  3. Platform selection
  *  4. Detect platform CLI
  *  5. Check platform auth
@@ -44,6 +44,7 @@ import {
 } from "./init/credentials.js";
 import { connectCloudflareWorkerToReceiver } from "./cloudflare-workers.js";
 import { randomUUID } from "node:crypto";
+import type { ProviderName } from "3am-diagnosis";
 
 export interface DeployOptions {
   platform?: "vercel" | "cloudflare";
@@ -167,18 +168,49 @@ export async function runDeploy(
   }
 
   // -------------------------------------------------------------------------
-  // Step 2: Resolve API key
+  // Step 2: Resolve LLM mode/provider + API key (conditional)
   // -------------------------------------------------------------------------
-  const apiKey = await resolveApiKey({ noInteractive: options.noInteractive });
-  if (!apiKey) {
-    process.stderr.write(
-      "Error: ANTHROPIC_API_KEY is required to deploy.\n\n" +
-        "Fix:\n" +
-        "  npx 3am init --api-key <your-key>\n" +
-        "  npx 3am deploy\n",
-    );
-    process.exit(1);
-    return;
+  const storedCreds = loadCredentials();
+  const llmMode = storedCreds.llmMode ?? "automatic";
+  const llmProvider: ProviderName = storedCreds.llmProvider ?? "anthropic";
+  const llmBridgeUrl = storedCreds.llmBridgeUrl;
+  const isManualMode = llmMode === "manual";
+
+  let apiKey: string | undefined;
+
+  if (isManualMode) {
+    // Manual mode: no API key needed — diagnosis runs locally via bridge
+    info("LLM mode: manual — skipping API key requirement.\n", json);
+  } else if (llmProvider === "openai") {
+    // Auto mode with OpenAI provider: require OPENAI_API_KEY
+    apiKey = process.env["OPENAI_API_KEY"];
+    if (!apiKey) {
+      process.stderr.write(
+        "Error: OPENAI_API_KEY is required to deploy in automatic mode with OpenAI provider.\n\n" +
+          "Fix:\n" +
+          "  export OPENAI_API_KEY=<your-key>\n" +
+          "  npx 3am deploy\n",
+      );
+      process.exit(1);
+      return;
+    }
+  } else {
+    // Auto mode with Anthropic (default) or other API-key providers
+    apiKey = await resolveApiKey({ noInteractive: options.noInteractive });
+    if (!apiKey) {
+      process.stderr.write(
+        "Error: ANTHROPIC_API_KEY is required to deploy in automatic mode.\n\n" +
+          "Fix:\n" +
+          "  npx 3am init --api-key <your-key>\n" +
+          "  npx 3am deploy\n" +
+          "\n" +
+          "Or switch to manual mode (Claude Code / Codex subscription):\n" +
+          "  npx 3am init --mode manual\n" +
+          "  npx 3am deploy\n",
+      );
+      process.exit(1);
+      return;
+    }
   }
 
   // -------------------------------------------------------------------------
@@ -258,8 +290,7 @@ export async function runDeploy(
     authToken = options.authToken;
   } else {
     // Load from CLI credentials or generate new
-    const creds = loadCredentials();
-    const existingReceiver = getReceiverCredential(creds, platform);
+    const existingReceiver = getReceiverCredential(storedCreds, platform);
     if (existingReceiver?.authToken) {
       authToken = existingReceiver.authToken;
       info("Using existing auth token from CLI credentials.\n", json);
@@ -268,12 +299,6 @@ export async function runDeploy(
       info("Generated new auth token.\n", json);
     }
   }
-
-  // Persist to CLI credentials (idempotent)
-  const existingCreds = loadCredentials();
-  const llmMode = existingCreds.llmMode;
-  const llmProvider = existingCreds.llmProvider;
-  const llmBridgeUrl = existingCreds.llmBridgeUrl;
 
   // -------------------------------------------------------------------------
   // Step 8: Provision and deploy Receiver
@@ -286,18 +311,21 @@ export async function runDeploy(
   let claimUrl: string | undefined;
   try {
     // Set secrets on the platform before deploying
-    info("Setting ANTHROPIC_API_KEY on platform...\n", json);
-    await provider.setEnvVar("ANTHROPIC_API_KEY", apiKey);
+    if (apiKey) {
+      if (llmProvider === "openai") {
+        info("Setting OPENAI_API_KEY on platform...\n", json);
+        await provider.setEnvVar("OPENAI_API_KEY", apiKey);
+      } else {
+        info("Setting ANTHROPIC_API_KEY on platform...\n", json);
+        await provider.setEnvVar("ANTHROPIC_API_KEY", apiKey);
+      }
+    }
     info("Setting RECEIVER_AUTH_TOKEN on platform...\n", json);
     await provider.setEnvVar("RECEIVER_AUTH_TOKEN", authToken);
-    if (llmMode) {
-      info("Setting LLM_MODE on platform...\n", json);
-      await provider.setEnvVar("LLM_MODE", llmMode);
-    }
-    if (llmProvider) {
-      info("Setting LLM_PROVIDER on platform...\n", json);
-      await provider.setEnvVar("LLM_PROVIDER", llmProvider);
-    }
+    info("Setting LLM_MODE on platform...\n", json);
+    await provider.setEnvVar("LLM_MODE", llmMode);
+    info("Setting LLM_PROVIDER on platform...\n", json);
+    await provider.setEnvVar("LLM_PROVIDER", llmProvider);
     if (llmBridgeUrl) {
       info("Setting LLM_BRIDGE_URL on platform...\n", json);
       await provider.setEnvVar("LLM_BRIDGE_URL", llmBridgeUrl);
@@ -421,6 +449,7 @@ export async function runDeploy(
           consoleUrl: deployedUrl,
           claimUrl,
           authToken,
+          llmMode,
           workerName: state.workerName,
           wranglerConfigPath: state.configPath,
           wranglerUpdated: state.changed,
@@ -439,10 +468,18 @@ export async function runDeploy(
     process.stdout.write(`  Worker:       ${state.workerName}\n`);
     process.stdout.write(`  Wrangler:     ${state.configPath}\n\n`);
     process.stdout.write("Next steps:\n");
-    process.stdout.write("  1. Trigger requests against your Cloudflare Worker\n");
-    process.stdout.write(`  2. Open ${claimUrl ?? deployedUrl}\n`);
-    process.stdout.write("  3. Run `npx 3am integrations notifications` to connect Slack/Discord\n");
-    process.stdout.write("  4. Generate a fresh sign-in link any time with `npx 3am auth-link`\n\n");
+    if (isManualMode) {
+      process.stdout.write(`  1. Run \`npx 3am bridge --receiver-url ${deployedUrl}\` to connect your local LLM\n`);
+      process.stdout.write("  2. Trigger requests against your Cloudflare Worker\n");
+      process.stdout.write(`  3. Open ${claimUrl ?? deployedUrl}\n`);
+      process.stdout.write("  4. Run `npx 3am integrations notifications` to connect Slack/Discord\n");
+      process.stdout.write("  5. Generate a fresh sign-in link any time with `npx 3am auth-link`\n\n");
+    } else {
+      process.stdout.write("  1. Trigger requests against your Cloudflare Worker\n");
+      process.stdout.write(`  2. Open ${claimUrl ?? deployedUrl}\n`);
+      process.stdout.write("  3. Run `npx 3am integrations notifications` to connect Slack/Discord\n");
+      process.stdout.write("  4. Generate a fresh sign-in link any time with `npx 3am auth-link`\n\n");
+    }
     return;
   }
 
@@ -509,6 +546,7 @@ export async function runDeploy(
         consoleUrl,
         claimUrl,
         authToken,
+        llmMode,
         envUpdated,
         envPath: finalEnvPath,
       },
@@ -538,6 +576,9 @@ export async function runDeploy(
       process.stdout.write("  1. Restart your app to pick up the new .env\n");
       process.stdout.write(`  2. Open ${claimUrl ?? consoleUrl}\n`);
       process.stdout.write("  3. Run `npx 3am integrations notifications`\n");
+    }
+    if (isManualMode) {
+      process.stdout.write(`\n  Manual mode: run \`npx 3am bridge --receiver-url ${deployedUrl}\` to connect your local LLM.\n`);
     }
     process.stdout.write("  Use `npx 3am auth-link` from a trusted machine to mint a fresh sign-in link later\n\n");
   }
