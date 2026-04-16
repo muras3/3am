@@ -142,7 +142,9 @@ describe("parseEvidenceQueryWithRepair (mode='repair')", () => {
     }
   });
 
-  it("drops segments whose refs were all invalid", () => {
+  it("keeps both segments when one has all-invalid refs — text from both is preserved", () => {
+    // After the LLM-first fix: segments with empty refs survive repair.
+    // The grounded text is still valuable even without valid ref IDs.
     const raw = JSON.stringify({
       status: "answered",
       segments: [
@@ -155,7 +157,7 @@ describe("parseEvidenceQueryWithRepair (mode='repair')", () => {
         {
           id: "seg-2",
           kind: "fact",
-          text: "hallucinated.",
+          text: "hallucinated refs but real text.",
           evidenceRefs: [{ kind: "span", id: "trace-ghost:span-ghost" }],
         },
       ],
@@ -164,30 +166,86 @@ describe("parseEvidenceQueryWithRepair (mode='repair')", () => {
     const outcome = parseEvidenceQueryWithRepair(raw, { question: "Q?" }, allowedRefs, "repair");
     expect(outcome.ok).toBe(true);
     if (outcome.ok) {
-      expect(outcome.response.segments).toHaveLength(1);
+      expect(outcome.response.segments).toHaveLength(2);
       expect(outcome.response.segments[0]?.id).toBe("seg-1");
+      expect(outcome.response.segments[0]?.evidenceRefs).toHaveLength(1);
+      expect(outcome.response.segments[1]?.id).toBe("seg-2");
+      expect(outcome.response.segments[1]?.evidenceRefs).toHaveLength(0);
       expect(outcome.repairedRefCount).toBe(1);
     }
   });
 
-  it("returns ok=false when every answered segment lost all its refs after repair", () => {
+  it("keeps segment text when ALL refs were invalid after repair (LLM-first: text preserved)", () => {
+    // Regression guard: previously this returned ok=false and triggered the
+    // deterministic safety net, causing 100% no_answer on Vercel/CF (#420).
+    // After the fix, the LLM answer text is preserved even when ref IDs were
+    // hallucinated — the synthesis result is still grounded (model saw evidence
+    // in context).
     const raw = JSON.stringify({
       status: "answered",
       segments: [
         {
           id: "seg-1",
           kind: "fact",
-          text: "hallucinated.",
+          text: "hallucinated refs but real text.",
           evidenceRefs: [{ kind: "span", id: "trace-ghost:span-ghost" }],
         },
       ],
     });
 
     const outcome = parseEvidenceQueryWithRepair(raw, { question: "Q?" }, allowedRefs, "repair");
+    expect(outcome.ok).toBe(true);
+    if (outcome.ok) {
+      expect(outcome.response.status).toBe("answered");
+      expect(outcome.response.segments).toHaveLength(1);
+      expect(outcome.response.segments[0]?.text).toBe("hallucinated refs but real text.");
+      expect(outcome.response.segments[0]?.evidenceRefs).toHaveLength(0);
+      expect(outcome.repairedRefCount).toBe(1);
+    }
+  });
+
+  it("returns ok=false only when answered response has zero segments (not just zero refs)", () => {
+    // The safety-net trigger is zero segments, not zero refs.
+    const raw = JSON.stringify({
+      status: "answered",
+      segments: [],
+    });
+
+    const outcome = parseEvidenceQueryWithRepair(raw, { question: "Q?" }, allowedRefs, "repair");
     expect(outcome.ok).toBe(false);
     if (!outcome.ok) {
-      expect(outcome.reason).toMatch(/invalid refs|all segments/i);
-      expect(outcome.repairedRefCount).toBe(1);
+      expect(outcome.reason).toMatch(/no segments/i);
+    }
+  });
+
+  it("treats absent evidenceRefs field (not an array) as prompt violation — drops the segment", () => {
+    // Distinct from hallucinated-ID case: if the LLM never emitted evidenceRefs,
+    // it is a prompt violation (not a repair case) and the segment is dropped.
+    // This prevents prompt-malformed outputs from bypassing ref grounding.
+    const raw = JSON.stringify({
+      status: "answered",
+      segments: [
+        {
+          id: "seg-valid",
+          kind: "fact",
+          text: "Good segment with refs.",
+          evidenceRefs: [{ kind: "span", id: "trace-1:span-1" }],
+        },
+        {
+          id: "seg-no-refs-field",
+          kind: "fact",
+          text: "Segment that never had evidenceRefs at all.",
+          // evidenceRefs is intentionally absent
+        },
+      ],
+    });
+
+    const outcome = parseEvidenceQueryWithRepair(raw, { question: "Q?" }, allowedRefs, "repair");
+    expect(outcome.ok).toBe(true);
+    if (outcome.ok) {
+      // Only the segment that had refs survives
+      expect(outcome.response.segments).toHaveLength(1);
+      expect(outcome.response.segments[0]?.id).toBe("seg-valid");
     }
   });
 });

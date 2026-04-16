@@ -1,9 +1,26 @@
+import { z } from "zod";
 import {
   EvidenceQueryResponseSchema,
+  EvidenceQuerySegmentSchema,
+  EvidenceQueryRefSchema,
   type EvidenceQueryRef,
   type EvidenceQueryResponse,
 } from "3am-core";
 import { parseJsonFromModelOutput, injectSegmentIds } from "./parse-json-utils.js";
+
+/**
+ * Repair-only schema variant: allows `evidenceRefs: []` on segments whose
+ * ref IDs were all stripped as hallucinations. The LLM answer text is still
+ * grounded (the model saw the curated evidence in context). This schema is
+ * NOT exported and NEVER used in strict mode — the public contract enforced
+ * by EvidenceQueryResponseSchema (min(1) on evidenceRefs) is unchanged.
+ */
+const RepairSegmentSchema = EvidenceQuerySegmentSchema.extend({
+  evidenceRefs: z.array(EvidenceQueryRefSchema),
+}).strict();
+const RepairResponseSchema = EvidenceQueryResponseSchema.extend({
+  segments: z.array(RepairSegmentSchema),
+}).strict();
 
 export type EvidenceQueryParseMeta = {
   question: string;
@@ -21,10 +38,12 @@ export type EvidenceQueryRepairOutcome =
  * In `mode="strict"` (default, back-compat) the parser throws when the model
  * cites an evidence ref not in the allowed list.
  *
- * In `mode="repair"` the parser strips invalid refs from each segment, then
- * drops segments whose evidenceRefs list is left empty. This lets the caller
- * salvage partially-grounded answers instead of forcing a template fallback,
- * per the LLM-first discipline in CLAUDE.md.
+ * In `mode="repair"` the parser strips invalid refs from each segment and
+ * preserves the segment text even when ALL of its refs were stripped (the LLM
+ * answer is still grounded — the model saw the curated evidence in context).
+ * Only fail when the LLM returned zero segments for an "answered" response.
+ * This prevents the deterministic safety net from firing when the only problem
+ * was hallucinated ref IDs, per the LLM-first rule in CLAUDE.md.
  */
 export function parseEvidenceQuery(
   raw: string,
@@ -69,23 +88,29 @@ export function parseEvidenceQueryWithRepair(
   let repairedRefCount = 0;
   const repairedSegments: Array<Record<string, unknown>> =
     mode === "repair"
-      ? rawSegments
-          .map((segment) => {
-            const refs = Array.isArray(segment["evidenceRefs"])
+      ? rawSegments.reduce<Array<Record<string, unknown>>>((acc, segment) => {
+            const originalRefs = Array.isArray(segment["evidenceRefs"])
               ? (segment["evidenceRefs"] as Array<Record<string, unknown>>)
-              : [];
-            const keptRefs = refs.filter((ref) => {
+              : null;
+            // If the LLM emitted no evidenceRefs at all (absent or non-array),
+            // the segment is a prompt violation — not a hallucinated-ID case.
+            // Drop it so the retry guard can fire rather than accepting
+            // uncited text.
+            if (originalRefs === null) return acc;
+            const keptRefs = originalRefs.filter((ref) => {
               const key = `${String(ref["kind"])}:${String(ref["id"])}`;
               const keep = allowed.has(key);
               if (!keep) repairedRefCount += 1;
               return keep;
             });
-            return { ...segment, evidenceRefs: keptRefs };
-          })
-          .filter((segment) => {
-            const refs = segment["evidenceRefs"] as Array<unknown> | undefined;
-            return Array.isArray(refs) && refs.length > 0;
-          })
+            // Keep the segment even when all its refs were stripped — the
+            // LLM answer text is still grounded (the model saw the evidence
+            // in context). Dropping the text discards the entire synthesis
+            // and causes the retry loop to exhaust and fire the deterministic
+            // safety net, violating the LLM-first rule in CLAUDE.md.
+            acc.push({ ...segment, evidenceRefs: keptRefs });
+            return acc;
+          }, [])
       : rawSegments;
 
   const status = typeof parsed["status"] === "string" ? parsed["status"] : undefined;
@@ -98,7 +123,11 @@ export function parseEvidenceQueryWithRepair(
     noAnswerReason: parsed["noAnswerReason"],
   };
 
-  const schemaResult = EvidenceQueryResponseSchema.safeParse(withQuestion);
+  // Repair mode uses a schema that permits empty evidenceRefs on segments —
+  // the public EvidenceQueryResponseSchema still enforces min(1) for all other
+  // callers (strict mode, API serialisation, etc.).
+  const schema = mode === "repair" ? RepairResponseSchema : EvidenceQueryResponseSchema;
+  const schemaResult = schema.safeParse(withQuestion);
   if (!schemaResult.success) {
     return {
       ok: false,
@@ -107,7 +136,10 @@ export function parseEvidenceQueryWithRepair(
     };
   }
 
-  const result = schemaResult.data;
+  // z.array(T).min(1) and z.array(T) both infer as T[] in TypeScript (Zod v4).
+  // The cast is structurally safe: RepairResponseSchema.segments is
+  // EvidenceQuerySegment[] with the same shape; only runtime validation differs.
+  const result = schemaResult.data as EvidenceQueryResponse;
 
   if (mode === "strict") {
     for (const segment of result.segments) {
@@ -122,12 +154,15 @@ export function parseEvidenceQueryWithRepair(
       }
     }
   } else {
-    // repair mode: any answered response must still have at least one segment
-    // after stripping. If every segment was dropped, the answer is unusable.
+    // repair mode: segments may survive with empty evidenceRefs after stripping
+    // hallucinated IDs (RepairResponseSchema allows this). The text is still LLM
+    // synthesis and must be preserved per the LLM-first rule in CLAUDE.md.
+    // Only fail when the LLM returned zero segments entirely, which means the
+    // model produced a genuinely empty or schema-invalid answer.
     if (result.status === "answered" && result.segments.length === 0) {
       return {
         ok: false,
-        reason: "EvidenceQueryValidationError: all segments had only invalid refs after repair.",
+        reason: "EvidenceQueryValidationError: LLM returned no segments for answered status.",
         repairedRefCount,
       };
     }
