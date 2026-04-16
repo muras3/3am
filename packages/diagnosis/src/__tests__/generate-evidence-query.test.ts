@@ -49,7 +49,7 @@ describe("generateEvidenceQueryWithMeta — retry + repair loop", () => {
           {
             kind: "fact",
             text: "Checkout returned 504 responses.",
-            evidenceRefs: [{ kind: "span", id: "trace-1:span-1" }],
+            evidenceRefs: [1],
           },
         ],
       }),
@@ -63,7 +63,7 @@ describe("generateEvidenceQueryWithMeta — retry + repair loop", () => {
     expect(callModelMock).toHaveBeenCalledOnce();
   });
 
-  it("repairs invalid refs in-place without retry (repairedRefCount > 0, retryCount=0)", async () => {
+  it("repairs out-of-bounds indices in-place without retry (repairedRefCount > 0, retryCount=0)", async () => {
     callModelMock.mockResolvedValueOnce(
       JSON.stringify({
         status: "answered",
@@ -71,10 +71,7 @@ describe("generateEvidenceQueryWithMeta — retry + repair loop", () => {
           {
             kind: "fact",
             text: "A.",
-            evidenceRefs: [
-              { kind: "span", id: "trace-1:span-1" },
-              { kind: "span", id: "trace-9:span-ghost" }, // invalid — gets stripped
-            ],
+            evidenceRefs: [1, 99], // 1 is valid (index 1 = trace-1:span-1), 99 is out-of-bounds → stripped
           },
         ],
       }),
@@ -99,7 +96,7 @@ describe("generateEvidenceQueryWithMeta — retry + repair loop", () => {
           {
             kind: "fact",
             text: "Checkout timed out after 30s.",
-            evidenceRefs: [{ kind: "span", id: "trace-ghost:span-ghost" }],
+            evidenceRefs: [99], // out-of-bounds index → stripped, but text preserved
           },
         ],
       }),
@@ -129,7 +126,7 @@ describe("generateEvidenceQueryWithMeta — retry + repair loop", () => {
           {
             kind: "fact",
             text: "Checkout returned 504.",
-            evidenceRefs: [{ kind: "span", id: "trace-1:span-1" }],
+            evidenceRefs: [1],
           },
         ],
       }),
@@ -175,13 +172,15 @@ describe("generateEvidenceQueryWithMeta — retry + repair loop", () => {
     );
 
     // Verify the third (final retry) prompt includes the trimmed <valid_refs>
-    // with exactly 5 entries. The prompt string is the first positional arg to
-    // callModel.
+    // with exactly 5 index entries ("1, 2, 3, 4, 5"). The prompt string is the
+    // first positional arg to callModel.
     expect(callModelMock).toHaveBeenCalledTimes(3);
     const finalPrompt = callModelMock.mock.calls[2]?.[0] as string;
     const validRefsMatch = /<valid_refs>([^<]*)<\/valid_refs>/.exec(finalPrompt);
     const refCount = (validRefsMatch?.[1] ?? "").split(",").map((s) => s.trim()).filter(Boolean).length;
     expect(refCount).toBe(5);
+    // Indices should be "1, 2, 3, 4, 5" (not kind:id strings)
+    expect(validRefsMatch?.[1]?.trim()).toBe("1, 2, 3, 4, 5");
     expect(finalPrompt).toContain("STRICT RETRY REMINDER");
   });
 });
