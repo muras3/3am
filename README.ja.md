@@ -48,7 +48,7 @@ AVOID ASSUMING
   ✗ Scaling the DB will help — confirm bottleneck first
 ```
 <p align="center">
-  <img src="assets/frames/frame_0002.png" alt="3am Console — incident diagnosis" width="720"/>
+  <img src="assets/demo.gif" alt="3am Console — インシデント診断" width="720"/>
 </p>
 
 ---
