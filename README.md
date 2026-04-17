@@ -189,7 +189,7 @@ Your App ──OTel──→ Receiver ──→ LLM ──→ Console
 
 The receiver ingests OTLP/HTTP telemetry. When anomalies cross thresholds, it forms an **incident packet** — a structured snapshot of what's wrong — and feeds it to an LLM. No thresholds to configure. No rules to write.
 
-**LLM provider auto-detection** — uses whatever's available, no config needed:
+**Supported LLM providers** — pick one during `npx 3am-cli init` (default: `anthropic`), or let it auto-detect the first available in this order if you skip the selection:
 
 | Priority | Provider | Detection |
 |----------|----------|-----------|
@@ -198,6 +198,8 @@ The receiver ingests OTLP/HTTP telemetry. When anomalies cross thresholds, it fo
 | 3 | Codex | `codex` CLI in PATH |
 | 4 | OpenAI | `OPENAI_API_KEY` in env |
 | 5 | Ollama | Running on localhost:11434 (free, local) |
+
+**Model recommendation:** Claude **Sonnet** is the sweet spot for diagnosis quality and cost. Haiku works fine if you want to save money. Opus 4.6 / 4.7 is overkill for this workload.
 
 ---
 
