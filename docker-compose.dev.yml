@@ -1,6 +1,6 @@
 services:
   receiver:
-    image: ghcr.io/3am/receiver:latest
+    image: ghcr.io/muras3/3am-receiver:latest
     ports:
       - "3333:3000"
     environment:
