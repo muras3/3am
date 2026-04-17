@@ -188,7 +188,7 @@ describe("runDev", () => {
 
     expect(mockSpawnSync).toHaveBeenCalledWith(
       "docker",
-      expect.arrayContaining(["ghcr.io/3am/receiver:v1.2.3"]),
+      expect.arrayContaining(["ghcr.io/muras3/3am-receiver:v1.2.3"]),
       expect.any(Object),
     );
   });
@@ -207,7 +207,7 @@ describe("runDev", () => {
 
     expect(mockSpawnSync).toHaveBeenCalledWith(
       "docker",
-      expect.arrayContaining(["ghcr.io/3am/receiver:v0.0.0-unknown"]),
+      expect.arrayContaining(["ghcr.io/muras3/3am-receiver:v0.0.0-unknown"]),
       expect.any(Object),
     );
     // Must NOT use ":vlatest" which would silently pull wrong image
@@ -400,7 +400,7 @@ describe("runDev", () => {
     runDev();
 
     expect(process.exit).toHaveBeenCalledWith(125);
-    expect(stderrOutput).toContain("Docker image ghcr.io/3am/receiver:v0.1.0 failed to start");
+    expect(stderrOutput).toContain("Docker image ghcr.io/muras3/3am-receiver:v0.1.0 failed to start");
     expect(stderrOutput).toContain("run `npx 3am local` from that repo");
   });
 });

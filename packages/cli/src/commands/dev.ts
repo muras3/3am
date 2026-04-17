@@ -206,7 +206,7 @@ export function runDev(options: DevOptions = {}): void {
     return;
   }
 
-  const image = `ghcr.io/3am/receiver:v${version}`;
+  const image = `ghcr.io/muras3/3am-receiver:v${version}`;
   const args = [
     "run",
     "--rm",
