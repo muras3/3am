@@ -1,0 +1,1152 @@
+import { act, render, screen, fireEvent } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import type { LensSearchParams } from "../routes/__root.js";
+import { LensEvidenceStudio } from "../components/lens/evidence/LensEvidenceStudio.js";
+import { ContextBar } from "../components/lens/evidence/ContextBar.js";
+import { LensProofCards } from "../components/lens/evidence/LensProofCards.js";
+import { QAFrame } from "../components/lens/evidence/QAFrame.js";
+import { LensEvidenceTabs } from "../components/lens/evidence/LensEvidenceTabs.js";
+import { LensSideRail } from "../components/lens/evidence/LensSideRail.js";
+import { curatedQueries } from "../api/queries.js";
+import {
+  evidenceReady,
+  evidencePending,
+  evidenceSparse,
+} from "../__fixtures__/curated/evidence.js";
+import {
+  extendedIncidentReady,
+  extendedIncidentPending,
+  extendedIncidentSparse,
+} from "../__fixtures__/curated/extended-incident.js";
+import type { EvidenceQueryResponse } from "../api/curated-types.js";
+
+let mockSearch: LensSearchParams = {
+  level: 2,
+  tab: "traces",
+  incidentId: "inc_0892",
+};
+const mockNavigate = vi.fn();
+const groundedAnswer: EvidenceQueryResponse = {
+  question: "Why are checkout payments failing?",
+  status: "answered",
+  segments: [
+    {
+      id: "seg-1",
+      kind: "fact",
+      text: "Stripe API is returning 429 responses on the checkout path.",
+      evidenceRefs: [{ kind: "span", id: "a3f8c91d:stripe-charge-001" }],
+    },
+    {
+      id: "seg-2",
+      kind: "inference",
+      text: "That pattern is consistent with the existing diagnosis that Stripe quota pressure is driving the failure.",
+      evidenceRefs: [
+        { kind: "span", id: "a3f8c91d:stripe-charge-001" },
+        { kind: "metric_group", id: "hyp-trigger" },
+      ],
+    },
+    {
+      id: "seg-3",
+      kind: "unknown",
+      text: "The current evidence does not prove whether Stripe changed the account quota.",
+      evidenceRefs: [{ kind: "absence", id: "claim-no-retry" }],
+    },
+  ],
+  evidenceSummary: { traces: 1, metrics: 1, logs: 1 },
+  followups: [
+    { question: "同じ時間帯の異常はメトリクスでも出ている？", targetEvidenceKinds: ["metrics"] },
+  ],
+};
+
+const automaticSettings = {
+  mode: "automatic" as const,
+  provider: "anthropic" as const,
+  bridgeUrl: "http://127.0.0.1:4269",
+};
+
+vi.mock("@tanstack/react-router", async (importOriginal) => ({
+  ...((await importOriginal()) as Record<string, unknown>),
+  useSearch: () => mockSearch,
+  useNavigate: () => mockNavigate,
+}));
+
+// ── Helpers ───────────────────────────────────────────────────
+
+function makeClient() {
+  return new QueryClient({ defaultOptions: { queries: { retry: false } } });
+}
+
+function renderStudio(
+  incidentId: string,
+  queryClient: QueryClient,
+) {
+  return render(
+    <QueryClientProvider client={queryClient}>
+      <LensEvidenceStudio incidentId={incidentId} zoomTo={vi.fn()} />
+    </QueryClientProvider>,
+  );
+}
+
+function getStatusBanner() {
+  return document.querySelector(".lens-ev-empty-banner");
+}
+
+function setupReady() {
+  const qc = makeClient();
+  qc.setQueryData(
+    curatedQueries.diagnosisSettings().queryKey,
+    automaticSettings,
+  );
+  qc.setQueryData(
+    curatedQueries.extendedIncident("inc_0892").queryKey,
+    extendedIncidentReady,
+  );
+  qc.setQueryData(
+    curatedQueries.evidence("inc_0892").queryKey,
+    evidenceReady,
+  );
+  return qc;
+}
+
+function setupSparse() {
+  const qc = makeClient();
+  qc.setQueryData(
+    curatedQueries.diagnosisSettings().queryKey,
+    automaticSettings,
+  );
+  qc.setQueryData(
+    curatedQueries.extendedIncident("inc_0892").queryKey,
+    extendedIncidentSparse,
+  );
+  qc.setQueryData(
+    curatedQueries.evidence("inc_0892").queryKey,
+    evidenceSparse,
+  );
+  return qc;
+}
+
+function renderQAFrame(
+  qa: typeof evidenceReady.qa,
+  overrides: Record<string, unknown> = {},
+) {
+  const props = {
+    qa,
+    inputValue: "",
+    history: [],
+    isSubmitting: false,
+    onInputChange: vi.fn(),
+    onSubmitQuestion: vi.fn(),
+    ...overrides,
+  };
+  return { ...render(<QAFrame {...(props as Parameters<typeof QAFrame>[0])} />), ...props };
+}
+
+// ── Tests ─────────────────────────────────────────────────────
+
+beforeEach(() => {
+  mockSearch = {
+    level: 2,
+    tab: "traces" as const,
+    incidentId: "inc_0892",
+  };
+  mockNavigate.mockClear();
+});
+
+describe("LensEvidenceStudio — context bar", () => {
+  it("renders context bar with incident ID", () => {
+    renderStudio("inc_0892", setupReady());
+    expect(screen.getByText("INC-0892")).toBeInTheDocument();
+  });
+
+  it("renders context bar with incident headline", () => {
+    renderStudio("inc_0892", setupReady());
+    expect(
+      screen.getByText(/Stripe API rate limit cascade/),
+    ).toBeInTheDocument();
+  });
+
+  it("does not repeat action text in the context bar", () => {
+    renderStudio("inc_0892", setupReady());
+    expect(screen.queryByText(/Enable request batching on StripeClient/)).toBeNull();
+  });
+});
+
+describe("LensEvidenceStudio — proof cards", () => {
+  it("renders 3 proof cards from fixture data", () => {
+    renderStudio("inc_0892", setupReady());
+    const cards = document.querySelectorAll(".lens-ev-proof-btn");
+    expect(cards).toHaveLength(3);
+  });
+
+  it("renders proof card labels", () => {
+    renderStudio("inc_0892", setupReady());
+    expect(screen.getByText("External Trigger")).toBeInTheDocument();
+    expect(screen.getByText("Design Gap")).toBeInTheDocument();
+    expect(screen.getByText("Recovery Signal")).toBeInTheDocument();
+  });
+
+  it("renders status badges on proof cards", () => {
+    renderStudio("inc_0892", setupReady());
+    const confirmed = document.querySelectorAll(".lens-ev-proof-status-confirmed");
+    expect(confirmed.length).toBeGreaterThan(0);
+    const inferred = document.querySelectorAll(".lens-ev-proof-status-inferred");
+    expect(inferred.length).toBeGreaterThan(0);
+  });
+});
+
+describe("LensEvidenceStudio — Q&A frame", () => {
+  it("renders Q&A frame with placeholder input", () => {
+    renderStudio("inc_0892", setupReady());
+    expect(screen.getByPlaceholderText("Ask about this incident...")).toBeInTheDocument();
+  });
+
+  it("renders prepared read as an assistant bubble", () => {
+    renderStudio("inc_0892", setupReady());
+    expect(
+      screen.getByText(/Stripe API is returning 429 \(rate limit exceeded\) for all payment requests/),
+    ).toBeInTheDocument();
+    expect(screen.getAllByText("Prepared read")).toHaveLength(1);
+    expect(screen.getByText("Grounded answer")).toBeInTheDocument();
+  });
+
+  it("shows the prepared answer before supporting evidence segments", () => {
+    renderStudio("inc_0892", setupReady());
+    const frame = document.querySelector(".lens-ev-qa-frame");
+    expect(frame?.textContent).toContain(
+      "Stripe API is returning 429 (rate limit exceeded) for all payment requests since 14:23:15 UTC.",
+    );
+    expect(frame?.textContent?.indexOf("The StripeClient makes one API call per checkout transaction with no batching")).toBeGreaterThan(-1);
+    expect(frame?.textContent?.indexOf("Stripe API is returning 429 responses on the checkout path since 14:23:15 UTC.")).toBeGreaterThan(-1);
+    expect(
+      (frame?.textContent?.indexOf("The StripeClient makes one API call per checkout transaction with no batching") ?? -1),
+    ).toBeLessThan(
+      frame?.textContent?.indexOf("Stripe API is returning 429 responses on the checkout path since 14:23:15 UTC.") ?? -1,
+    );
+  });
+
+  it("renders suggested follow-up chips", () => {
+    renderStudio("inc_0892", setupReady());
+    expect(document.querySelectorAll(".lens-ev-qa-chip").length).toBeGreaterThan(0);
+    expect(screen.getByRole("button", { name: /Is there retry logic\?/ })).toBeInTheDocument();
+  });
+});
+
+describe("LensEvidenceStudio — tab bar", () => {
+  it("renders 3 tabs with correct labels", () => {
+    renderStudio("inc_0892", setupReady());
+    const tabs = screen.getAllByRole("tab");
+    expect(tabs).toHaveLength(3);
+    expect(screen.getByRole("tab", { name: /Traces/ })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: /Metrics/ })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: /Logs/ })).toBeInTheDocument();
+  });
+
+  it("tabs have correct ARIA attributes", () => {
+    renderStudio("inc_0892", setupReady());
+    const tablist = screen.getByRole("tablist");
+    expect(tablist).toBeInTheDocument();
+
+    const tabs = screen.getAllByRole("tab");
+    tabs.forEach((tab) => {
+      expect(tab).toHaveAttribute("aria-selected");
+      expect(tab).toHaveAttribute("aria-controls");
+      expect(tab).toHaveAttribute("id");
+    });
+  });
+
+  it("active tab matches URL param (traces by default)", () => {
+    renderStudio("inc_0892", setupReady());
+    const tracesTab = screen.getByRole("tab", { name: /Traces/ });
+    expect(tracesTab).toHaveAttribute("aria-selected", "true");
+    const metricsTab = screen.getByRole("tab", { name: /Metrics/ });
+    expect(metricsTab).toHaveAttribute("aria-selected", "false");
+  });
+
+  it("active tab reflects URL param when metrics", () => {
+    mockSearch = { ...mockSearch, tab: "metrics" };
+    renderStudio("inc_0892", setupReady());
+    const metricsTab = screen.getByRole("tab", { name: /Metrics/ });
+    expect(metricsTab).toHaveAttribute("aria-selected", "true");
+  });
+});
+
+describe("LensEvidenceStudio — proof card click updates navigation", () => {
+  it("clicking proof card calls navigate with proof and tab params", async () => {
+    renderStudio("inc_0892", setupReady());
+
+    const triggerCard = screen.getByText("External Trigger").closest("button");
+    expect(triggerCard).not.toBeNull();
+
+    fireEvent.click(triggerCard!);
+
+    expect(mockNavigate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        search: expect.objectContaining({
+          proof: "trigger",
+          tab: "traces",
+          targetId: "stripe-charge-001",
+        }),
+        replace: true,
+      }),
+    );
+  });
+
+  it("clicking design gap card navigates to metrics tab", () => {
+    renderStudio("inc_0892", setupReady());
+
+    const designCard = screen.getByText("Design Gap").closest("button");
+    fireEvent.click(designCard!);
+
+    expect(mockNavigate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        search: expect.objectContaining({
+          proof: "design_gap",
+          tab: "metrics",
+          targetId: "stripe_client_error_rate",
+        }),
+      }),
+    );
+  });
+});
+
+describe("LensEvidenceStudio — side notes", () => {
+  it("renders side notes from fixture data", () => {
+    renderStudio("inc_0892", setupReady());
+    expect(screen.getByText("Confidence")).toBeInTheDocument();
+    expect(screen.getByText("Uncertainty")).toBeInTheDocument();
+    expect(screen.getByText("Affected Dependencies")).toBeInTheDocument();
+  });
+
+  it("primary side note has correct class", () => {
+    renderStudio("inc_0892", setupReady());
+    const primaryNotes = document.querySelectorAll(".lens-ev-side-note-primary");
+    expect(primaryNotes.length).toBeGreaterThan(0);
+  });
+});
+
+describe("LensEvidenceStudio — empty state", () => {
+  it("shows a status banner when evidenceDensity is empty", () => {
+    const qc = makeClient();
+    qc.setQueryData(
+      curatedQueries.extendedIncident("inc_0892").queryKey,
+      extendedIncidentPending,
+    );
+    qc.setQueryData(
+      curatedQueries.evidence("inc_0892").queryKey,
+      evidencePending,
+    );
+    renderStudio("inc_0892", qc);
+    expect(getStatusBanner()).not.toBeNull();
+    expect(document.querySelectorAll(".lens-ev-empty-panel")).toHaveLength(2);
+  });
+
+  it("keeps proof card boxes in empty state", () => {
+    const qc = makeClient();
+    qc.setQueryData(
+      curatedQueries.extendedIncident("inc_0892").queryKey,
+      extendedIncidentPending,
+    );
+    qc.setQueryData(
+      curatedQueries.evidence("inc_0892").queryKey,
+      evidencePending,
+    );
+    renderStudio("inc_0892", qc);
+    const cards = document.querySelectorAll(".lens-ev-proof-btn");
+    expect(cards).toHaveLength(3);
+  });
+
+  it("renders fixed-shape pending QA contract in empty state", () => {
+    const qc = makeClient();
+    qc.setQueryData(
+      curatedQueries.extendedIncident("inc_0892").queryKey,
+      extendedIncidentPending,
+    );
+    qc.setQueryData(
+      curatedQueries.evidence("inc_0892").queryKey,
+      evidencePending,
+    );
+    renderStudio("inc_0892", qc);
+    expect(screen.getByPlaceholderText("Ask about this incident...")).toBeInTheDocument();
+    expect(document.querySelector(".lens-ev-qa-answer-placeholder")).not.toBeNull();
+    expect(screen.getByText(evidencePending.qa.noAnswerReason!)).toBeInTheDocument();
+  });
+});
+
+// ── Unit tests for sub-components ─────────────────────────────
+
+describe("ContextBar", () => {
+  it("renders incident ID and headline", () => {
+    render(<ContextBar incident={extendedIncidentReady} />);
+    expect(screen.getByText("INC-0892")).toBeInTheDocument();
+    expect(screen.getByText(/Stripe API rate limit cascade/)).toBeInTheDocument();
+  });
+});
+
+describe("LensProofCards", () => {
+  it("renders proof cards from fixture data", () => {
+    render(<LensProofCards cards={evidenceReady.proofCards} />);
+    const cards = document.querySelectorAll(".lens-ev-proof-btn");
+    expect(cards).toHaveLength(3);
+  });
+
+  it("marks active card with active class when proof URL param matches", () => {
+    mockSearch = { ...mockSearch, proof: "trigger" };
+    render(<LensProofCards cards={evidenceReady.proofCards} />);
+    const activeCards = document.querySelectorAll(".lens-ev-proof-btn-active");
+    expect(activeCards).toHaveLength(1);
+  });
+
+  it("calls navigate when card is clicked", () => {
+    render(<LensProofCards cards={evidenceReady.proofCards} />);
+    const firstCard = document.querySelector(".lens-ev-proof-btn");
+    fireEvent.click(firstCard!);
+    expect(mockNavigate).toHaveBeenCalled();
+  });
+
+  it("clicking card keyboard activates navigation on Enter", () => {
+    render(<LensProofCards cards={evidenceReady.proofCards} />);
+    const firstCard = document.querySelector(".lens-ev-proof-btn");
+    fireEvent.keyDown(firstCard!, { key: "Enter" });
+    expect(mockNavigate).toHaveBeenCalled();
+  });
+
+  it("renders pending cards from fixed receiver shape", () => {
+    render(<LensProofCards cards={evidencePending.proofCards} />);
+    expect(document.querySelectorAll(".lens-ev-proof-btn")).toHaveLength(3);
+    expect(screen.getAllByText("Pending").length).toBeGreaterThan(0);
+  });
+});
+
+describe("QAFrame", () => {
+  it("renders placeholder input and prepared answer text", () => {
+    renderQAFrame(evidenceReady.qa);
+    expect(screen.getByPlaceholderText("Ask about this incident...")).toBeInTheDocument();
+    expect(
+      screen.getByText(/Stripe API is returning 429 \(rate limit exceeded\) for all payment requests/),
+    ).toBeInTheDocument();
+  });
+
+  it("renders follow-up chips", () => {
+    renderQAFrame(evidenceReady.qa);
+    const chips = document.querySelectorAll(".lens-ev-qa-chip");
+    expect(chips.length).toBeGreaterThan(0);
+  });
+
+  it("renders fixed fallback QA object from receiver contract", () => {
+    renderQAFrame(evidencePending.qa);
+    expect(screen.getByPlaceholderText("Ask about this incident...")).toBeInTheDocument();
+    expect(document.querySelector(".lens-ev-qa-answer-placeholder")).not.toBeNull();
+    expect(screen.getByText(evidencePending.qa.noAnswerReason!)).toBeInTheDocument();
+  });
+
+  it("shows noAnswerReason when present", () => {
+    const qa = { ...evidenceReady.qa, noAnswerReason: "Insufficient data to answer" };
+    renderQAFrame(qa);
+    expect(screen.getByText("Insufficient data to answer")).toBeInTheDocument();
+  });
+
+  it("renders transcript before the composer", () => {
+    const { container } = renderQAFrame(evidenceReady.qa);
+    const transcript = container.querySelector(".lens-ev-qa-transcript");
+    const form = container.querySelector(".lens-ev-qa-form");
+    expect(transcript).not.toBeNull();
+    expect(form).not.toBeNull();
+    if (!transcript || !form) {
+      throw new Error("expected transcript and composer to be rendered");
+    }
+    expect(
+      transcript.compareDocumentPosition(form) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  it("renders empty transcript guidance before follow-up questions exist", () => {
+    renderQAFrame(evidenceReady.qa);
+    expect(
+      screen.getByText(/Ask a follow-up to pressure-test the diagnosis/),
+    ).toBeInTheDocument();
+  });
+});
+
+describe("QAFrame — interaction", () => {
+  it("typing in input calls onInputChange", async () => {
+    const user = userEvent.setup();
+    const { onInputChange } = renderQAFrame(evidenceReady.qa, { inputValue: "" });
+    const input = screen.getByRole("textbox", { name: /ask a grounded question/i });
+    await user.clear(input);
+    await user.type(input, "new question");
+    expect(onInputChange).toHaveBeenCalled();
+  });
+
+  it("submitting form calls onSubmitQuestion with trimmed value", async () => {
+    const user = userEvent.setup();
+    const onSubmitQuestion = vi.fn();
+    renderQAFrame(evidenceReady.qa, { inputValue: "  my question  ", onSubmitQuestion });
+    const submitBtn = screen.getByRole("button", { name: /ask/i });
+    await user.click(submitBtn);
+    expect(onSubmitQuestion).toHaveBeenCalledWith("my question");
+  });
+
+  it("submit button disabled when input is empty", () => {
+    renderQAFrame(evidenceReady.qa, { inputValue: "" });
+    const submitBtn = screen.getByRole("button", { name: /ask/i });
+    expect(submitBtn).toBeDisabled();
+  });
+
+  it("submit button disabled when isSubmitting=true", () => {
+    renderQAFrame(evidenceReady.qa, { isSubmitting: true });
+    const submitBtn = screen.getByRole("button", { name: /checking/i });
+    expect(submitBtn).toBeDisabled();
+  });
+
+  it("submit button shows 'Checking…' when isSubmitting=true", () => {
+    renderQAFrame(evidenceReady.qa, { isSubmitting: true });
+    expect(screen.getByRole("button", { name: /checking/i })).toBeInTheDocument();
+  });
+
+  it("input disabled when isSubmitting=true", () => {
+    renderQAFrame(evidenceReady.qa, { isSubmitting: true });
+    const input = screen.getByRole("textbox", { name: /ask a grounded question/i });
+    expect(input).toBeDisabled();
+  });
+
+  it("error message rendered when submitError provided (role=alert)", () => {
+    renderQAFrame(evidenceReady.qa, {
+      history: [{ id: "err-1", question: "Why?", status: "failed", error: "Network error" }],
+    });
+    const alert = screen.getByRole("alert");
+    expect(alert).toHaveTextContent("Network error");
+  });
+
+  it("history response renders segment labels and text", () => {
+    renderQAFrame(evidenceReady.qa, {
+      history: [{ id: "ans-1", question: groundedAnswer.question, status: "answered", response: groundedAnswer }],
+    });
+    const answer = screen.getAllByText("Grounded answer")[1]?.closest(".lens-ev-qa-answer");
+    expect(answer).not.toBeNull();
+    expect(answer).toHaveTextContent("Fact");
+    expect(answer).toHaveTextContent("Inference");
+    expect(answer).toHaveTextContent("Unknown");
+  });
+
+  it("pending history item renders checking state", () => {
+    renderQAFrame(evidenceReady.qa, {
+      history: [{ id: "pending-1", question: "What changed?", status: "pending" }],
+    });
+    const status = screen.getByRole("status");
+    expect(status).toHaveTextContent("Checking…");
+    expect(status).toHaveAttribute("aria-live", "polite");
+  });
+
+  it("clarification response renders clarification label and question", () => {
+    renderQAFrame(evidenceReady.qa, {
+      history: [{
+        id: "clarify-1",
+        question: "どうあるべき？",
+        status: "answered",
+        response: {
+          question: "どうあるべき？",
+          status: "clarification",
+          clarificationQuestion: "何を知りたいかを一段具体化して。",
+          segments: [],
+          evidenceSummary: evidenceReady.qa.evidenceSummary,
+          followups: evidenceReady.qa.followups,
+        },
+      }],
+    });
+    expect(screen.getByText("Clarifying question")).toBeInTheDocument();
+    expect(screen.getByText("何を知りたいかを一段具体化して。")).toBeInTheDocument();
+  });
+
+  it("evidence ref click calls navigate with correct tab/targetId (span → traces)", async () => {
+    const user = userEvent.setup();
+    renderQAFrame(evidenceReady.qa);
+    const refBtn = screen.getAllByRole("button", {
+      name: /view evidence: span a3f8c91d:stripe-charge-001/i,
+    })[0]!;
+    await user.click(refBtn);
+    expect(mockNavigate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        search: expect.objectContaining({
+          tab: "traces",
+          targetId: "stripe-charge-001",
+        }),
+      }),
+    );
+  });
+
+  it("evidence ref click for metric_group → metrics tab", async () => {
+    const user = userEvent.setup();
+    renderQAFrame(evidenceReady.qa);
+    const refBtn = screen.getAllByRole("button", {
+      name: /view evidence: metric_group hyp-trigger/i,
+    })[0]!;
+    await user.click(refBtn);
+    expect(mockNavigate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        search: expect.objectContaining({
+          tab: "metrics",
+          targetId: "hyp-trigger",
+        }),
+      }),
+    );
+  });
+
+  it("no-answer state uses placeholder treatment", () => {
+    renderQAFrame(evidencePending.qa);
+    expect(document.querySelector(".lens-ev-qa-answer-placeholder")).not.toBeNull();
+    expect(
+      screen.getByText(evidencePending.qa.noAnswerReason!),
+    ).toBeInTheDocument();
+  });
+
+  it("follow-up no-answer reason is rendered once", () => {
+    const reason = "The current evidence does not support a grounded answer yet.";
+    renderQAFrame(evidenceReady.qa, {
+      history: [{
+        id: "ans-no-answer",
+        question: "こんにちは？",
+        status: "answered",
+        response: {
+          question: "こんにちは？",
+          status: "no_answer",
+          segments: [],
+          noAnswerReason: reason,
+          evidenceSummary: evidenceReady.qa.evidenceSummary,
+          followups: evidenceReady.qa.followups,
+        },
+      }],
+    });
+
+    expect(screen.getAllByText(reason)).toHaveLength(1);
+  });
+
+  it("evidence ref keyboard Enter calls navigate", async () => {
+    const user = userEvent.setup();
+    renderQAFrame(evidenceReady.qa);
+    const refBtn = screen.getAllByRole("button", {
+      name: /view evidence: span a3f8c91d:stripe-charge-001/i,
+    })[0]!;
+    refBtn.focus();
+    await user.keyboard("{Enter}");
+    expect(mockNavigate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        search: expect.objectContaining({
+          tab: "traces",
+          targetId: "stripe-charge-001",
+        }),
+      }),
+    );
+  });
+
+  it("evidence ref keyboard Space calls navigate", async () => {
+    const user = userEvent.setup();
+    renderQAFrame(evidenceReady.qa);
+    const refBtn = screen.getAllByRole("button", {
+      name: /view evidence: span a3f8c91d:stripe-charge-001/i,
+    })[0]!;
+    refBtn.focus();
+    await user.keyboard(" ");
+    expect(mockNavigate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        search: expect.objectContaining({
+          tab: "traces",
+          targetId: "stripe-charge-001",
+        }),
+      }),
+    );
+  });
+
+  it("evidence summary text renders correctly", () => {
+    renderQAFrame(evidenceReady.qa);
+    expect(screen.queryByText(/12 traces, 3 metrics, 28 logs/)).toBeNull();
+  });
+
+  it("evidence ref kind=log_cluster navigates to logs tab", async () => {
+    const user = userEvent.setup();
+    renderQAFrame(evidenceReady.qa, {
+      history: [{
+        id: "ans-log",
+        question: evidenceReady.qa.question,
+        status: "answered",
+        response: {
+          question: evidenceReady.qa.question,
+          status: "answered",
+          segments: [{
+            id: "log-cluster-seg",
+            kind: "fact",
+          text: "A log cluster captures the Stripe 429 burst.",
+          evidenceRefs: [{ kind: "log_cluster", id: "claim-429" }],
+          }],
+          evidenceSummary: evidenceReady.qa.evidenceSummary,
+          followups: evidenceReady.qa.followups,
+        },
+      }],
+    });
+    const refBtn = screen.getByRole("button", {
+      name: /view evidence: log_cluster claim-429/i,
+    });
+    await user.click(refBtn);
+    expect(mockNavigate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        search: expect.objectContaining({
+          tab: "logs",
+          targetId: "claim-429",
+        }),
+      }),
+    );
+  });
+
+  it("span targetId is extracted from traceId:spanId format", async () => {
+    const user = userEvent.setup();
+    renderQAFrame(evidenceReady.qa);
+    const refBtn = screen.getAllByRole("button", {
+      name: /view evidence: span a3f8c91d:stripe-charge-001/i,
+    })[0]!;
+    await user.click(refBtn);
+    const call = mockNavigate.mock.calls[0]?.[0];
+    expect(call.search.targetId).toBe("stripe-charge-001");
+    // Not the full "a3f8c91d:stripe-charge-001"
+    expect(call.search.targetId).not.toContain(":");
+  });
+});
+
+describe("LensProofCards — cross-surface navigation", () => {
+  it("clicking trigger card navigates to traces tab with span targetId 'stripe-charge-001'", () => {
+    render(<LensProofCards cards={evidenceReady.proofCards} />);
+    const triggerCard = screen.getByText("External Trigger").closest("button");
+    fireEvent.click(triggerCard!);
+    expect(mockNavigate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        search: expect.objectContaining({
+          proof: "trigger",
+          tab: "traces",
+          targetId: "stripe-charge-001",
+        }),
+        replace: true,
+      }),
+    );
+  });
+
+  it("clicking design_gap navigates to metrics tab with targetId 'stripe_client_error_rate'", () => {
+    render(<LensProofCards cards={evidenceReady.proofCards} />);
+    const designCard = screen.getByText("Design Gap").closest("button");
+    fireEvent.click(designCard!);
+    expect(mockNavigate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        search: expect.objectContaining({
+          proof: "design_gap",
+          tab: "metrics",
+          targetId: "stripe_client_error_rate",
+        }),
+        replace: true,
+      }),
+    );
+  });
+
+  it("keyboard Enter on trigger card triggers same navigation", () => {
+    render(<LensProofCards cards={evidenceReady.proofCards} />);
+    const triggerCard = screen.getByText("External Trigger").closest("button");
+    fireEvent.keyDown(triggerCard!, { key: "Enter" });
+    expect(mockNavigate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        search: expect.objectContaining({
+          proof: "trigger",
+          tab: "traces",
+          targetId: "stripe-charge-001",
+        }),
+        replace: true,
+      }),
+    );
+  });
+
+  it("clicking recovery card navigates to traces tab with span targetId", () => {
+    render(<LensProofCards cards={evidenceReady.proofCards} />);
+    const recoveryCard = screen.getByText("Recovery Signal").closest("button");
+    fireEvent.click(recoveryCard!);
+    expect(mockNavigate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        search: expect.objectContaining({
+          proof: "recovery",
+          tab: "traces",
+          targetId: "stripe-retry-001",
+        }),
+        replace: true,
+      }),
+    );
+  });
+
+  it("keyboard Space on card triggers navigation", () => {
+    render(<LensProofCards cards={evidenceReady.proofCards} />);
+    const triggerCard = screen.getByText("External Trigger").closest("button");
+    fireEvent.keyDown(triggerCard!, { key: " " });
+    expect(mockNavigate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        search: expect.objectContaining({
+          proof: "trigger",
+          tab: "traces",
+        }),
+        replace: true,
+      }),
+    );
+  });
+
+  it("active card has aria-pressed=true", () => {
+    mockSearch = { ...mockSearch, proof: "trigger" };
+    render(<LensProofCards cards={evidenceReady.proofCards} />);
+    const triggerCard = screen.getByText("External Trigger").closest("button");
+    expect(triggerCard).toHaveAttribute("aria-pressed", "true");
+    const designCard = screen.getByText("Design Gap").closest("button");
+    expect(designCard).toHaveAttribute("aria-pressed", "false");
+  });
+
+  it("pending card with empty evidenceRefs navigates without targetId", () => {
+    render(<LensProofCards cards={evidencePending.proofCards} />);
+    const pendingCard = document.querySelector('[data-proof-id="design_gap"]');
+    fireEvent.click(pendingCard!);
+    expect(mockNavigate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        search: expect.objectContaining({
+          proof: "design_gap",
+          targetId: undefined,
+        }),
+        replace: true,
+      }),
+    );
+  });
+
+  it("evidence query refs for absence navigate to logs", async () => {
+    const user = userEvent.setup();
+    renderQAFrame(evidenceReady.qa, {
+      history: [{ id: "ans-absence", question: groundedAnswer.question, status: "answered", response: groundedAnswer }],
+    });
+    const refBtn = screen.getByRole("button", {
+      name: /view evidence: absence claim-no-retry/i,
+    });
+    await user.click(refBtn);
+    expect(mockNavigate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        search: expect.objectContaining({
+          tab: "logs",
+          targetId: "claim-no-retry",
+        }),
+      }),
+    );
+  });
+});
+
+describe("LensEvidenceStudio — degraded states", () => {
+  it("sparse fixture renders proof cards (3 cards, mix of confirmed/pending)", () => {
+    renderStudio("inc_0892", setupSparse());
+    const cards = document.querySelectorAll(".lens-ev-proof-btn");
+    expect(cards).toHaveLength(3);
+    expect(document.querySelectorAll(".lens-ev-proof-status-confirmed").length).toBeGreaterThan(0);
+    expect(document.querySelectorAll(".lens-ev-proof-status-pending").length).toBeGreaterThan(0);
+  });
+
+  it("sparse fixture data attributes: data-evidence-density='sparse', data-diagnosis-state='ready'", () => {
+    renderStudio("inc_0892", setupSparse());
+    const studio = document.querySelector("[data-evidence-density='sparse']");
+    expect(studio).not.toBeNull();
+    expect(studio).toHaveAttribute("data-diagnosis-state", "ready");
+  });
+
+  it("pending fixture mounts the degraded-status banner", () => {
+    const qc = makeClient();
+    qc.setQueryData(
+      curatedQueries.extendedIncident("inc_0892").queryKey,
+      extendedIncidentPending,
+    );
+    qc.setQueryData(
+      curatedQueries.evidence("inc_0892").queryKey,
+      evidencePending,
+    );
+    renderStudio("inc_0892", qc);
+    expect(getStatusBanner()).not.toBeNull();
+    expect(document.querySelectorAll(".lens-ev-empty-list li")).toHaveLength(6);
+  });
+
+  it("polls evidence while diagnosis is ready but narrative is not attached yet", async () => {
+    vi.useFakeTimers();
+    const qc = makeClient();
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve(evidenceReady),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    qc.setQueryData(
+      curatedQueries.diagnosisSettings().queryKey,
+      automaticSettings,
+    );
+    qc.setQueryData(
+      curatedQueries.extendedIncident("inc_0892").queryKey,
+      extendedIncidentReady,
+    );
+    qc.setQueryData(
+      curatedQueries.evidence("inc_0892").queryKey,
+      {
+        ...evidenceReady,
+        qa: {
+          ...evidenceReady.qa,
+          status: "no_answer" as const,
+          noAnswerReason: "Diagnosis narrative is not attached to this incident yet.",
+        },
+      },
+    );
+
+    renderStudio("inc_0892", qc);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5_100);
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith("/api/incidents/inc_0892/evidence", expect.anything());
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    vi.useRealTimers();
+  });
+
+  it("pending fixture data attributes: data-evidence-density='empty', data-diagnosis-state='pending'", () => {
+    const qc = makeClient();
+    qc.setQueryData(
+      curatedQueries.extendedIncident("inc_0892").queryKey,
+      extendedIncidentPending,
+    );
+    qc.setQueryData(
+      curatedQueries.evidence("inc_0892").queryKey,
+      evidencePending,
+    );
+    renderStudio("inc_0892", qc);
+    const studio = document.querySelector("[data-evidence-density='empty']");
+    expect(studio).not.toBeNull();
+    expect(studio).toHaveAttribute("data-diagnosis-state", "pending");
+  });
+});
+
+describe("LensEvidenceTabs", () => {
+  it("renders 3 tabs", () => {
+    render(<LensEvidenceTabs surfaces={evidenceReady.surfaces} />);
+    const tabs = screen.getAllByRole("tab");
+    expect(tabs).toHaveLength(3);
+  });
+
+  it("tab list has correct role", () => {
+    render(<LensEvidenceTabs surfaces={evidenceReady.surfaces} />);
+    expect(screen.getByRole("tablist")).toBeInTheDocument();
+  });
+
+  it("active tab has aria-selected=true, others false", () => {
+    render(<LensEvidenceTabs surfaces={evidenceReady.surfaces} />);
+    const tracesTab = screen.getByRole("tab", { name: /Traces/ });
+    expect(tracesTab).toHaveAttribute("aria-selected", "true");
+    const metricsTab = screen.getByRole("tab", { name: /Metrics/ });
+    expect(metricsTab).toHaveAttribute("aria-selected", "false");
+    const logsTab = screen.getByRole("tab", { name: /Logs/ });
+    expect(logsTab).toHaveAttribute("aria-selected", "false");
+  });
+
+  it("inactive tabs have tabIndex=-1, active tab has tabIndex=0", () => {
+    render(<LensEvidenceTabs surfaces={evidenceReady.surfaces} />);
+    const tracesTab = screen.getByRole("tab", { name: /Traces/ });
+    expect(tracesTab).toHaveAttribute("tabindex", "0");
+    const metricsTab = screen.getByRole("tab", { name: /Metrics/ });
+    expect(metricsTab).toHaveAttribute("tabindex", "-1");
+  });
+
+  it("clicking a tab calls navigate with correct tab", () => {
+    render(<LensEvidenceTabs surfaces={evidenceReady.surfaces} />);
+    const metricsTab = screen.getByRole("tab", { name: /Metrics/ });
+    fireEvent.click(metricsTab);
+    expect(mockNavigate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        search: expect.objectContaining({ tab: "metrics" }),
+        replace: true,
+      }),
+    );
+  });
+
+  it("ArrowRight key moves focus to next tab", () => {
+    render(<LensEvidenceTabs surfaces={evidenceReady.surfaces} />);
+    const tracesTab = screen.getByRole("tab", { name: /Traces/ });
+    fireEvent.keyDown(tracesTab, { key: "ArrowRight" });
+    expect(mockNavigate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        search: expect.objectContaining({ tab: "metrics" }),
+      }),
+    );
+  });
+
+  it("ArrowLeft key moves focus to previous tab (wraps around)", () => {
+    render(<LensEvidenceTabs surfaces={evidenceReady.surfaces} />);
+    const tracesTab = screen.getByRole("tab", { name: /Traces/ });
+    fireEvent.keyDown(tracesTab, { key: "ArrowLeft" });
+    expect(mockNavigate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        search: expect.objectContaining({ tab: "logs" }),
+      }),
+    );
+  });
+});
+
+describe("LensSideRail", () => {
+  it("renders side notes from fixture data", () => {
+    render(<LensSideRail notes={evidenceReady.sideNotes} />);
+    expect(screen.getByText("Confidence")).toBeInTheDocument();
+    expect(screen.getByText("Uncertainty")).toBeInTheDocument();
+    expect(screen.getByText("Affected Dependencies")).toBeInTheDocument();
+  });
+
+  it("renders primary variant with .lens-ev-side-note-primary class", () => {
+    render(<LensSideRail notes={evidenceReady.sideNotes} />);
+    const primary = document.querySelectorAll(".lens-ev-side-note-primary");
+    expect(primary).toHaveLength(1);
+  });
+
+  it("renders note content text", () => {
+    render(<LensSideRail notes={evidenceReady.sideNotes} />);
+    expect(screen.getByText(/High confidence.*Stripe 429 responses/)).toBeInTheDocument();
+  });
+
+  it("renders placeholder notes when notes array is empty", () => {
+    const { container } = render(<LensSideRail notes={[]} />);
+    expect(container.firstChild).not.toBeNull();
+    expect(screen.getByText("Confidence")).toBeInTheDocument();
+  });
+});
+
+// ── Integration: Q&A mutation ──────────────────────────────────
+
+describe("LensEvidenceStudio — Q&A mutation integration", () => {
+  let fetchSpy: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    fetchSpy = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve(groundedAnswer),
+    });
+    vi.stubGlobal("fetch", fetchSpy);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("Q&A submit calls evidence query mutation via form submit", async () => {
+    const user = userEvent.setup();
+    renderStudio("inc_0892", setupReady());
+    const input = screen.getByLabelText("Ask a grounded question about this incident");
+    await user.clear(input);
+    await user.type(input, "Test question");
+    const submitBtn = screen.getByRole("button", { name: "Ask" });
+    await user.click(submitBtn);
+    expect(fetchSpy).toHaveBeenCalledWith(
+      expect.stringContaining("/api/incidents/inc_0892/evidence/query"),
+      expect.objectContaining({ method: "POST" }),
+    );
+  });
+
+  it("first question is sent as a non-follow-up with empty history", async () => {
+    const user = userEvent.setup();
+    renderStudio("inc_0892", setupReady());
+    const input = screen.getByLabelText("Ask a grounded question about this incident");
+    await user.type(input, "First question");
+    await user.click(screen.getByRole("button", { name: "Ask" }));
+
+    expect(fetchSpy).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        body: JSON.stringify({ question: "First question", isFollowup: false, history: [] }),
+      }),
+    );
+  });
+
+  it("successful submit appends a visible user question and answer", async () => {
+    const user = userEvent.setup();
+    renderStudio("inc_0892", setupReady());
+    const input = screen.getByLabelText("Ask a grounded question about this incident");
+    await user.type(input, "What changed first?");
+    await user.click(screen.getByRole("button", { name: "Ask" }));
+
+    expect(await screen.findByText("What changed first?")).toBeInTheDocument();
+    expect((await screen.findAllByText("Grounded answer")).length).toBeGreaterThan(1);
+  });
+
+  it("second question is sent as a follow-up with transcript history", async () => {
+    const user = userEvent.setup();
+    renderStudio("inc_0892", setupReady());
+    const input = screen.getByLabelText("Ask a grounded question about this incident");
+
+    await user.type(input, "First question");
+    await user.click(screen.getByRole("button", { name: "Ask" }));
+    await screen.findByText("First question");
+
+    await user.type(screen.getByLabelText("Ask a grounded question about this incident"), "Second question");
+    await user.click(screen.getByRole("button", { name: "Ask" }));
+
+    expect(fetchSpy).toHaveBeenLastCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        body: JSON.stringify({
+          question: "Second question",
+          isFollowup: true,
+          history: [
+            { role: "user", content: "First question" },
+            {
+              role: "assistant",
+              content: groundedAnswer.segments.map((segment) => segment.text).join(" "),
+            },
+          ],
+        }),
+      }),
+    );
+  });
+
+  it("clicking a follow-up chip sends it immediately", async () => {
+    const user = userEvent.setup();
+    renderStudio("inc_0892", setupReady());
+
+    await user.click(screen.getByRole("button", { name: /Is there retry logic\?/ }));
+
+    expect(fetchSpy).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        body: JSON.stringify({
+          question: "Is there retry logic?",
+          isFollowup: false,
+          history: [],
+        }),
+      }),
+    );
+  });
+
+  it("routes Q&A through the receiver endpoint in manual mode", async () => {
+    const user = userEvent.setup();
+    const qc = setupReady();
+    qc.setQueryData(curatedQueries.diagnosisSettings().queryKey, {
+      mode: "manual" as const,
+      provider: "codex" as const,
+      bridgeUrl: "http://127.0.0.1:4269",
+    });
+    localStorage.setItem("receiver_auth_token", "browser-token");
+
+    renderStudio("inc_0892", qc);
+
+    await user.type(screen.getByLabelText("Ask a grounded question about this incident"), "Test question");
+    await user.click(screen.getByRole("button", { name: "Ask" }));
+
+    // Manual mode now routes through the receiver endpoint (which internally
+    // forwards to the bridge via WS/DO). The console no longer calls the
+    // bridge HTTP endpoint directly.
+    expect(fetchSpy).toHaveBeenCalledWith(
+      expect.stringContaining("/api/incidents/inc_0892/evidence/query"),
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          question: "Test question",
+          isFollowup: false,
+          history: [],
+        }),
+      }),
+    );
+  });
+});

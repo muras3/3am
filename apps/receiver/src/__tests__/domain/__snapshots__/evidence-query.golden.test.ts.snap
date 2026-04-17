@@ -1,0 +1,82 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`evidence query golden responses > keeps the inc_000006 follow-up answers stable 1`] = `
+[
+  {
+    "evidenceSummary": {
+      "logs": 5,
+      "metrics": 2,
+      "traces": 1,
+    },
+    "followups": [
+      {
+        "question": "障害期間中に欠けているはずの回復シグナルは何？",
+        "targetEvidenceKinds": [
+          "logs",
+        ],
+      },
+    ],
+    "noAnswerReason": "LLMによる回答生成がリトライ後も失敗しました。エビデンスは左側のパネルで確認できますが、今回は根拠のある回答を生成できませんでした。",
+    "question": "原因は？",
+    "segments": [],
+    "status": "no_answer",
+  },
+  {
+    "evidenceSummary": {
+      "logs": 5,
+      "metrics": 2,
+      "traces": 1,
+    },
+    "followups": [
+      {
+        "question": "障害期間中に欠けているはずの回復シグナルは何？",
+        "targetEvidenceKinds": [
+          "logs",
+        ],
+      },
+    ],
+    "noAnswerReason": "LLMによる回答生成がリトライ後も失敗しました。エビデンスは左側のパネルで確認できますが、今回は根拠のある回答を生成できませんでした。",
+    "question": "メトリクスに問題はあるか？",
+    "segments": [],
+    "status": "no_answer",
+  },
+  {
+    "evidenceSummary": {
+      "logs": 5,
+      "metrics": 2,
+      "traces": 1,
+    },
+    "followups": [
+      {
+        "question": "障害期間中に欠けているはずの回復シグナルは何？",
+        "targetEvidenceKinds": [
+          "logs",
+        ],
+      },
+    ],
+    "noAnswerReason": "LLMによる回答生成がリトライ後も失敗しました。エビデンスは左側のパネルで確認できますが、今回は根拠のある回答を生成できませんでした。",
+    "question": "根本原因は？",
+    "segments": [],
+    "status": "no_answer",
+  },
+  {
+    "evidenceSummary": {
+      "logs": 5,
+      "metrics": 2,
+      "traces": 1,
+    },
+    "followups": [
+      {
+        "question": "障害期間中に欠けているはずの回復シグナルは何？",
+        "targetEvidenceKinds": [
+          "logs",
+        ],
+      },
+    ],
+    "noAnswerReason": "LLMによる回答生成がリトライ後も失敗しました。エビデンスは左側のパネルで確認できますが、今回は根拠のある回答を生成できませんでした。",
+    "question": "こんにちは？",
+    "segments": [],
+    "status": "no_answer",
+  },
+]
+`;

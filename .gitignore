@@ -1,0 +1,45 @@
+.mcp.json
+.claude/
+.codex-worktrees/
+.worktrees/
+node_modules/
+dist/
+bundle/
+.turbo/
+*.tsbuildinfo
+test-results/
+playwright-report/
+e2e/.auth/
+.DS_Store
+
+# CodeQL
+codeql_*.db/
+
+# Staging env (contains real auth token — never commit)
+validation/.env
+validation/.env.staging
+validation/.env.vercel
+.vercel
+
+# Staging reports (local screenshots/notes — not for OSS)
+validation/reports/
+
+# Prompt review reports (contain personal data)
+reports/
+
+# Local debug artifacts
+apps/console/.tmp-*
+
+# Local dev SQLite database (persisted across restarts, reset by deleting)
+.3am/
+
+# Misgenerated local outputs in diagnosis src
+packages/diagnosis/src/*.js
+packages/diagnosis/src/*.js.map
+packages/diagnosis/src/*.d.ts
+packages/diagnosis/src/*.d.ts.map
+.env*.local
+.env.production
+.env.development
+apps/**/.env
+.vercelignore

@@ -1,0 +1,37 @@
+import path from "path";
+import { defineConfig } from "vite";
+import react from "@vitejs/plugin-react";
+
+export default defineConfig({
+  plugins: [react()],
+  resolve: {
+    alias: [
+      { find: "@", replacement: path.resolve(__dirname, "./src") },
+      {
+        find: /^3am-core$/,
+        replacement: path.resolve(__dirname, "../../packages/core/src/index.ts"),
+      },
+      {
+        find: /^3am-core\/(.+)$/,
+        replacement: path.resolve(__dirname, "../../packages/core/src/$1.ts"),
+      },
+    ],
+  },
+  server: {
+    proxy: {
+      "/api": {
+        target: process.env["VITE_RECEIVER_BASE_URL"] ?? "http://localhost:3333",
+        changeOrigin: true,
+      },
+    },
+  },
+  test: {
+    environment: "jsdom",
+    setupFiles: ["./src/__tests__/setup.ts"],
+    globals: true,
+    exclude: ["**/node_modules/**", "**/e2e/**", "dist/**"],
+    // Console tests share a singleton i18n instance; file-level parallelism can
+    // interleave locale changes and UI effects, producing false act warnings.
+    fileParallelism: false,
+  },
+});

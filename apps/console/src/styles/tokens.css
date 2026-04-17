@@ -1,0 +1,29 @@
+/* ── Design tokens ─────────────────────────────────────────── */
+:root {
+  --bg: #FAFAF8;
+  --ink: #1A1A1A;
+  --ink-2: #4A4A48;
+  --ink-3: #656560;
+  --panel: #FFFFFF;
+  --panel-2: #F5F5F2;
+  --panel-3: #EEEEE8;
+  --line: rgba(26,26,26,0.14);
+  --line-strong: rgba(26,26,26,0.24);
+  --accent: #E85D3A;
+  --accent-soft: rgba(232,93,58,0.08);
+  --accent-text: #C34425;
+  --teal: #0D7377;
+  --teal-soft: rgba(13,115,119,0.08);
+  --amber: #B8860B;
+  --amber-soft: rgba(184,134,11,0.08);
+  --good: #2E7D52;
+  --good-soft: rgba(46,125,82,0.08);
+  --font: 'DM Sans', 'Hiragino Sans', 'Noto Sans JP', system-ui, sans-serif;
+  --mono: 'JetBrains Mono', ui-monospace, monospace;
+  --radius: 6px;
+  --radius-sm: 4px;
+  --radius-xs: 2px;
+  /* Type scale */
+  --fs-xxs: 10px; --fs-xs: 11px; --fs-sm: 12px; --fs-md: 13px; --fs-lg: 16px; --fs-xl: 20px;
+  --lh-tight: 1.2; --lh-ui: 1.35; --lh-read: 1.5;
+}

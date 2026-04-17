@@ -1,0 +1,52 @@
+name = "3am-receiver"
+main = "src/cf-entry.ts"
+compatibility_date = "2025-03-01"
+compatibility_flags = ["nodejs_compat_v2"]
+
+[observability]
+enabled = true
+
+[observability.logs]
+enabled = true
+invocation_logs = true
+
+[observability.traces]
+enabled = true
+head_sampling_rate = 1.0
+
+[vars]
+ALLOW_INSECURE_DEV_MODE = "false"
+DIAGNOSIS_MAX_WAIT_MS = "30000"
+DIAGNOSIS_GENERATION_THRESHOLD = "15"
+RETENTION_HOURS = "48"
+
+[assets]
+directory = "../console/dist"
+not_found_handling = "single-page-application"
+run_worker_first = ["/api/*", "/v1/*", "/healthz", "/bridge/*"]
+
+[durable_objects]
+bindings = [
+  { name = "BRIDGE_DO", class_name = "BridgeDO" }
+]
+
+[[migrations]]
+tag = "v1"
+new_classes = ["BridgeDO"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "3amoncall-db"
+database_id = "YOUR_D1_DATABASE_ID"
+
+[[queues.producers]]
+binding = "DIAGNOSIS_QUEUE"
+queue = "3am-diagnosis"
+
+[[queues.consumers]]
+queue = "3am-diagnosis"
+max_batch_size = 1
+max_batch_timeout = 1
+max_retries = 6
+dead_letter_queue = "3am-diagnosis-dlq"
+retry_delay = 30

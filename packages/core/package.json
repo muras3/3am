@@ -1,0 +1,65 @@
+{
+  "name": "3am-core",
+  "version": "0.1.0",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/muras3/3am.git",
+    "directory": "packages/core"
+  },
+  "homepage": "https://github.com/muras3/3am#readme",
+  "bugs": {
+    "url": "https://github.com/muras3/3am/issues"
+  },
+  "publishConfig": { "access": "public" },
+  "files": ["dist"],
+  "private": false,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./schemas/curated-evidence": {
+      "source": "./src/schemas/curated-evidence.ts",
+      "types": "./dist/schemas/curated-evidence.d.ts",
+      "import": "./dist/schemas/curated-evidence.js"
+    },
+    "./schemas/runtime-map": {
+      "source": "./src/schemas/runtime-map.ts",
+      "types": "./dist/schemas/runtime-map.d.ts",
+      "import": "./dist/schemas/runtime-map.js"
+    },
+    "./schemas/incident-detail-extension": {
+      "source": "./src/schemas/incident-detail-extension.ts",
+      "types": "./dist/schemas/incident-detail-extension.d.ts",
+      "import": "./dist/schemas/incident-detail-extension.js"
+    },
+    "./schemas/reasoning-structure": {
+      "source": "./src/schemas/reasoning-structure.ts",
+      "types": "./dist/schemas/reasoning-structure.d.ts",
+      "import": "./dist/schemas/reasoning-structure.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.build.json --noEmit",
+    "lint": "eslint src --max-warnings 0"
+  },
+  "dependencies": {
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@3am/config-eslint": "workspace:*",
+    "@3am/config-typescript": "workspace:*",
+    "@eslint/js": "^9.0.0",
+    "eslint": "^9.0.0",
+    "typescript": "6.0.2",
+    "typescript-eslint": "^8.0.0",
+    "vitest": "^4.1.2"
+  }
+}

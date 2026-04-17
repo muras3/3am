@@ -1,0 +1,411 @@
+{
+  "setup": {
+    "title": "3am セットアップ",
+    "tokenGenerated": "auth token が生成されました。今すぐ保存してください。再表示はできません。",
+    "copied": "コピー済み",
+    "copy": "コピー",
+    "saveAndContinue": "このトークンを保存しました — 続行",
+    "recoverFooter": "トークンを紛失した場合は、<code>npx 3am deploy</code> を再実行するか、<code>~/.config/3am/credentials</code> を確認してください。",
+    "enterToken": "Auth Token を入力",
+    "enterTokenBody": "auth token は以前設定済みですが、このブラウザには保存されていません。トークンを入力して続行してください。<code>~/.config/3am/credentials</code> または初回デプロイ時の出力を確認してください。",
+    "tokenPlaceholder": "auth token をここに貼り付け",
+    "saveAndContinueShort": "保存して続行",
+    "claimTitle": "サインインリンクを開いてください",
+    "claimBody": "このコンソールは安全なワンタイムのサインインリンクで保護されています。各リンクは1回限り有効で、使用後に無効になります。",
+    "claimFooter": "<code>npx 3am deploy</code> が表示したサインインリンクを開くか、信頼できるマシンで <code>npx 3am auth-link</code> を実行して新しいリンクを発行してください。",
+    "failed": "セットアップ失敗",
+    "failedBody": "receiver に接続できませんでした。セットアップを完了できません。",
+    "retry": "再試行",
+    "failedFooter": "解決しない場合は receiver が起動中であることを確認し、<code>npx 3am auth-link</code> で新しいサインインリンクを発行してください。",
+    "contentLanguage": {
+      "title": "Content Language",
+      "helper": "UI labels stay in English. This only changes narrative content and prose.",
+      "englishLabel": "English",
+      "englishDetail": "Recommended if you want the diagnosis and evidence copy in English.",
+      "japaneseLabel": "Japanese",
+      "japaneseDetail": "Use Japanese for generated narrative and operator-facing prose."
+    }
+  },
+  "common": {
+    "loading": "読み込み中\u2026",
+    "error": {
+      "somethingWentWrong": "問題が発生しました",
+      "reload": "Reload",
+      "notFound": "見つかりません",
+      "unauthorized": "認証エラー。トークンを確認してください。",
+      "serverError": "サーバーエラー。しばらくしてから再試行してください。",
+      "requestFailed": "リクエスト失敗（{{status}}）。再試行してください。"
+    }
+  },
+  "header": {
+    "logo": "3am",
+    "env": "production",
+    "backToMap": "Back to Map",
+    "backToMapLabel": "\u2190 Map",
+    "backToIncident": "Back to Incident",
+    "backToIncidentLabel": "\u2190 {{id}}",
+    "backToIncidentFallback": "\u2190 Incident",
+    "evidenceStudio": "Evidence Studio",
+    "duration": "経過: {{minutes}}分{{seconds}}秒",
+    "durationHours": "{{hours}}時間{{minutes}}分",
+    "help": "ヘルプとドキュメント"
+  },
+  "preferences": {
+    "button": "Preferences",
+    "title": "Content Language",
+    "copy": "Choose the language for generated narrative and prose. UI labels remain in English.",
+    "englishLabel": "English",
+    "englishDetail": "Best if you want incident summaries and recommendations in English.",
+    "japaneseLabel": "Japanese",
+    "japaneseDetail": "Use Japanese for generated narrative and diagnostic prose."
+  },
+  "nav": {
+    "map": "Map",
+    "incident": "Incident",
+    "evidence": "Evidence",
+    "zoomLabel": "Zoom navigation"
+  },
+  "shell": {
+    "selectIncident": "マップからインシデントを選択してください",
+    "selectIncidentEvidence": "エビデンスを表示するインシデントを選択してください"
+  },
+  "board": {
+    "loading": "読み込み中\u2026",
+    "error": "インシデントデータの読み込みに失敗しました。",
+    "whatHappened": {
+      "fullHeadline": "全文を表示"
+    },
+    "immediateAction": {
+      "title": "Immediate Action",
+      "titleDirectional": "Next Operator Step",
+      "directionalIntro": "現時点のエビデンスに基づく最も安全な次の一手です。確定した修復策ではありません。",
+      "stepsLabel": "Immediate action steps",
+      "supportLabel": "Why",
+      "supportLabelDirectional": "Why this first",
+      "doNotLabel": "Do not",
+      "doNotLabelDirectional": "Avoid assuming",
+      "doNotEmpty": "禁止事項は返されませんでした。",
+      "fullDetails": "対応の詳細",
+      "actionLabel": "Action:",
+      "whyLabel": "Why:",
+      "doNotFullLabel": "Do not:"
+    },
+    "rootCause": {
+      "title": "Root Cause Hypothesis",
+      "titleProvisional": "Working Theory",
+      "statusConfirmed": "Correlated",
+      "statusProvisional": "Unconfirmed",
+      "fullRootCause": "根本原因の全文",
+      "fullWorkingTheory": "作業仮説の全文"
+    },
+    "blastRadius": {
+      "title": "影響範囲",
+      "morePaths_one": "他 {{count}} 件の影響パス",
+      "morePaths_other": "他 {{count}} 件の影響パス"
+    },
+    "confidence": {
+      "title": "Current confidence",
+      "titlePending": "Confidence now",
+      "scoreLabel": "確信度スコア: {{pct}}%",
+      "scoreUnavailable": "確信度を算出できません",
+      "buildingConfidence": "確信度を構築中",
+      "limitedConfidence": "確信度が限定的",
+      "reviewingConfidence": "確信度を精査中",
+      "basedOn": "Based on",
+      "uncertainty": "Uncertainty:",
+      "defaultRisk": "初期の分析は、裏付けとなるエビデンスの追加で変わる可能性があります。",
+      "details": "確信度の詳細",
+      "basisLabel": "Basis:",
+      "riskLabel": "リスク:"
+    },
+    "operatorCheck": {
+      "title": "Operator Check",
+      "showAll": "Show all checks ({{count}})"
+    },
+    "causalChain": {
+      "title": "Causal Chain"
+    },
+    "evidenceEntry": {
+      "title": "Evidence",
+      "priorityReady": "トレース・メトリクス・ログで診断を検証してください。",
+      "priorityPending": "診断完了前に、まずここを確認してください。",
+      "started": "開始 {{time}}",
+      "fullCascade": "全体波及 {{time}}",
+      "diagnosed": "診断完了 {{time}}",
+      "traces": "Traces",
+      "metrics": "Metrics",
+      "logs": "Logs",
+      "tracesCount": "{{count}} 件のトレース",
+      "anomalousMetrics": "{{count}} 件の異常メトリクス",
+      "logsCount": "{{count}} 件のログ",
+      "anomalous": "{{count}} 件の異常",
+      "errors": "（{{count}} 件のエラー）",
+      "openEvidenceReady": "Open Evidence Studio now",
+      "openEvidencePending": "Open Evidence Studio first"
+    },
+    "diagnosisPending": {
+      "statusLabel": "Diagnosis status",
+      "defaultMessage": "診断を実行中",
+      "defaultSubtext": "インシデントは確認可能です。エビデンスの紐付けが完了すると診断結果が表示されます。",
+      "confirmedNow": "Confirmed now",
+      "notConfirmedYet": "Not confirmed yet",
+      "operatorNextStep": "Operator next step",
+      "openEvidenceStudioFirst": "Open Evidence Studio first",
+      "openEvidenceLabel": "Open Evidence Studio from diagnosis status",
+      "rerunDefault": "診断を再実行",
+      "rerunPendingNote": "診断は実行中です。完了するまでエビデンスレーンで確認を続けてください。",
+      "rerunDefaultNote": "現在のインシデントエビデンスから新しい診断を1回リクエストします。"
+    },
+    "rerun": {
+      "requested": "診断の再実行をリクエストしました。ボードは自動で更新されます。",
+      "alreadyRunning": "診断は実行中です。ボードは自動で更新されます。",
+      "failed": "診断の再実行を開始できませんでした。しばらくしてから再試行してください。",
+      "startingLabel": "再実行を開始中\u2026",
+      "label": "Re-run diagnosis",
+      "inProgress": "診断の再実行を実行中",
+      "assembling": "診断を組み立て中",
+      "unavailable": "診断結果を生成できませんでした",
+      "alreadyRunningNote": "診断は実行中です。完了するまでエビデンスレーンで確認を続けてください。",
+      "defaultNote": "現在のインシデントエビデンスから新しい診断を1回リクエストします。"
+    },
+    "close": {
+      "button": "Close incident",
+      "closing": "クローズ中…",
+      "closedLabel": "Closed",
+      "requested": "インシデントをクローズしました。保持期間の経過後に完全削除されます。",
+      "failed": "インシデントをクローズできませんでした。しばらくしてから再試行してください。",
+      "confirmTitle": "インシデントクローズの確認",
+      "confirmMessage": "{{id}} をクローズしますか？解決済みとしてマークされます。",
+      "confirm": "クローズする",
+      "cancel": "キャンセル"
+    },
+    "confirmedNow": {
+      "severity": "{{severity}} の深刻度とインシデントのタイミングが確認済みです。",
+      "blastRadiusVisible_one": "影響範囲に {{count}} 件のサービスパスが表示済みです。",
+      "blastRadiusVisible_other": "影響範囲に {{count}} 件のサービスパスが表示済みです。",
+      "blastRadiusReserved": "影響範囲パネルは予約済みです。影響パスの確認に応じて表示されます。",
+      "evidenceAvailable": "{{traces}} 件のトレース、{{metrics}} 件のメトリクス、{{logs}} 件のログを検査できます。",
+      "evidenceStudioOpen": "Evidence Studio は利用可能です。相関分析のシグナル収集中でも開けます。"
+    },
+    "notYetConfirmed": {
+      "rootCause": "トレース・メトリクス・ログが同一のトリガーに合致するまで、確定的な根本原因は出せません。",
+      "dependency": "最初に見えた依存関係が原因か、隣接する影響に過ぎないかは未確定です。",
+      "confidence": "完全な確信度と下流への波及タイミングは未確定です。"
+    },
+    "nextSteps": {
+      "openEvidence": "Evidence Studio を開き、広範な対応の前にまず最初の失敗トレースを確認してください。",
+      "useNextStep": "次の対応ステップは安全なトリアージとして使い、根本原因の最終確認としないでください。",
+      "reserveRerun": "再試行 API が利用可能になるまで、診断の再実行は控えてください。"
+    }
+  },
+  "boardState": {
+    "diagnosisPending": "深刻度・タイミング・エビデンスレーンは表示済みです。診断結果はまだ組み立て中です。",
+    "diagnosisUnavailable": "診断結果を生成できませんでした。確認済みテレメトリは手動レビュー用に利用可能です。",
+    "evidenceEmpty": "エビデンスレーンは準備済みですが、最初のトレース・メトリクス・ログクラスタはまだ到着中です。",
+    "evidenceSparse": "暫定的な診断が利用可能です。エビデンスが揃うまで予備的な参考として扱ってください。",
+    "baselineInsufficient": "観測された挙動は表示済みです。期待値のベースラインカバレッジはまだ限定的です。",
+    "baselineUnavailable": "観測された挙動は表示済みです。信頼できるベースラインはまだ紐付いていません。",
+    "default": "インシデントの主要コンテキストは表示済みです。補足エビデンスはまだ蓄積中です。",
+    "fallback": {
+      "pending": {
+        "headline": "影響は確認済みです。診断結果はまだ形成中です。",
+        "action": "下のエビデンスレーンから始め、広範な対応の前に最初の失敗リクエストを確認してください。",
+        "rootCause": "トレース・メトリクス・ログが同一の説明に合致すると、根本原因が表示されます。",
+        "blastRadius": "下流パスの障害パターンが確認されると、サービス影響がここに展開されます。",
+        "confidence": "確定的エビデンスから確信度を構築中です。複数のエビデンスが合致するとスコアが明確になります。",
+        "checks": "診断の継続中に、現在のトレース・メトリクス・ログで最初の障害パスを確認してください。",
+        "chain": "トリガー・伝播経路・ユーザー影響が安全に結びつくまで、因果連鎖は予約状態です。",
+        "evidence": "Evidence Studio は今すぐ使えます。テレメトリの相関が進むにつれ件数とマイルストーンが確定します。"
+      },
+      "sparse": {
+        "headline": "部分的な診断が利用可能です。一部の影響は確認済みですが、全体像はまだ形成中です。",
+        "action": "確認済みのシグナルをまず使い、不可逆な対応の前に未検証の部分を確認してください。",
+        "rootCause": "この仮説は方向性の参考です。隣接する依存関係やベースラインとの乖離を引き続き検証してください。",
+        "blastRadius": "確認済みの影響がここに表示されます。テレメトリが揃うと追加の影響パスが表示されます。",
+        "confidence": "複数のエビデンスが合致するまで、確信度は意図的に保守的に保たれます。",
+        "checks": "現在確認されたトリガーの検証と、近傍の誤検出の除外を優先してください。",
+        "chain": "確認済みの因果連鎖のみ表示中です。上流・下流のリンクはまだ未確定です。",
+        "evidence": "Evidence Studio に最も確度の高いシグナルが表示されています。他のレーンは比較用に開かれています。"
+      },
+      "unavailable": {
+        "headline": "このインシデントの診断結果は生成されませんでした。",
+        "action": "確認済みのエビデンスから次の対応ステップを判断してください。",
+        "rootCause": "根本原因の分析結果は利用できません。確認済みテレメトリを直接レビューしてください。",
+        "blastRadius": "追加の影響パスが確認されると、影響範囲がここに展開されます。",
+        "confidence": "確信度はまだ自動集計できません。",
+        "checks": "Evidence Studio で最初の障害パスと依存関係の挙動を確認してください。",
+        "chain": "因果連鎖はステップを安全に接続できるまで意図的に保留されています。",
+        "evidence": "確認済みのトレース・メトリクス・ログのレビューには Evidence Studio が最適です。"
+      }
+    }
+  },
+  "evidence": {
+    "loading": "エビデンスを読み込み中\u2026",
+    "error": "エビデンスデータの読み込みに失敗しました。",
+    "studioLabel": "Evidence Studio",
+    "guide": {
+      "message": "この画面は診断の根拠を表示します。まず上部の Prepared Read を確認し、Traces・Metrics・Logs を探索してください。",
+      "dismiss": "ガイドを閉じる"
+    },
+    "contextBarLabel": "Incident context",
+    "contextBarFallback": "Evidence Studio is waiting for a diagnosis narrative.",
+    "contextBarAction": "Action: {{text}}",
+    "surfacesLabel": "Evidence surfaces",
+    "itemsLabel": "{{count}} 件",
+    "proofCardsLabel": "Proof cards",
+    "statusConfirmed": "Confirmed",
+    "statusPending": "Pending",
+    "statusInferred": "Inferred",
+    "statusLabel": "Status: {{status}}",
+    "designGapFallback": "Dependency failure observed but no retry/backoff pattern detected in logs.",
+    "banner": {
+      "diagnosisPending": "診断の組み立て中も Evidence Studio は利用可能です",
+      "evidenceSparse": "初期分析が完了しました",
+      "diagnosisUnavailable": "診断結果なしでも Evidence Studio は利用可能です",
+      "coverageMaturing": "エビデンスのカバレッジはまだ蓄積中です",
+      "diagnosisPendingBody": "確認済みのトレースとログをまず使ってください。メトリクス・確信度・最終的な分析は相関完了後に確定します。",
+      "evidenceSparseBody": "最も確度の高いシグナルが先に表示されています。欠落しているレーンは正常の証拠ではなく、未解決の問いとして扱ってください。",
+      "diagnosisUnavailableBody": "確認済みテレメトリはここでレビューできます。裏付けのない分析の提示は意図的に控えています。",
+      "coverageMaturingBody": "観測された挙動は表示済みですが、ベースラインや比較用のカバレッジはまだ限定的です。",
+      "availableNow": "Available now",
+      "stillFillingIn": "Still filling in"
+    },
+    "visibleNow": {
+      "proofCards_one": "{{count}} 件のプルーフカードが確認済みエビデンスを指しています。",
+      "proofCards_other": "{{count}} 件のプルーフカードが確認済みエビデンスを指しています。",
+      "qaSummary": "{{traces}} 件のトレース、{{metrics}} 件のメトリクス、{{logs}} 件のログが Q&A フレームで要約されています。",
+      "tracesAvailable": "トレースを開いて最初の障害パスを確認できます。",
+      "tracesReserved": "トレースレーンは予約済みです。最初のキャプチャリクエストが到着すると表示されます。"
+    },
+    "stillPreparing": {
+      "metricsPresent": "メトリクス比較は表示済みです。サンプルの増加に伴い精度が向上します。",
+      "metricsWaiting": "十分なサンプルでドリフトが繰り返されると、メトリクス比較が表示されます。",
+      "logsPresent": "ログクラスタは表示済みです。不在エビデンスが追加される場合があります。",
+      "logsWaiting": "相関完了後に、確認済みのパターンと不在がログクラスタとしてここに固定されます。",
+      "baselineReady": "ベースラインコンテキストは紐付け済みです。比較可能なリクエストの増加に伴い拡張される場合があります。",
+      "baselineOpen": "期待されるベースラインが未確定のため、復旧と比較のガイダンスは暫定的です。"
+    },
+    "qa": {
+      "label": "Question and answer",
+      "placeholder": "Ask about this incident...",
+      "inputLabel": "Ask a grounded question about this incident",
+      "summaryLabel": "Evidence summary",
+      "checking": "Checking\u2026",
+      "ask": "Ask",
+      "noAnswer": "No answer",
+      "clarifyingQuestion": "Clarifying question",
+      "groundedAnswer": "Grounded answer",
+      "preparedRead": "Prepared read",
+      "currentRead": "Current read",
+      "emptyTranscript": "診断の仮説を確かめる、未確定点を絞る、次に見るべきエビデンスへ飛ぶための追質問を入力してください。",
+      "stillPreparing": "Still preparing",
+      "you": "You",
+      "assistant": "Assistant",
+      "followupsLabel": "Follow-up questions",
+      "answerSegmentsLabel": "Answer segments",
+      "preparedSegmentsLabel": "Prepared answer segments",
+      "evidenceRefsLabel": "Evidence references",
+      "viewEvidence": "View evidence: {{kind}} {{id}}",
+      "segmentFact": "Fact",
+      "segmentInference": "Inference",
+      "segmentUnknown": "Unknown",
+      "qaUnavailable": "このインシデントでは根拠付き Q&A を利用できません。下のエビデンスサーフェスは引き続き利用可能です。",
+      "submitFailed": "質問の送信に失敗しました。"
+    },
+    "tabs": {
+      "traces": "Traces",
+      "metrics": "Metrics",
+      "logs": "Logs"
+    },
+    "sideRail": {
+      "label": "Contextual notes",
+      "confidence": "Confidence",
+      "uncertainty": "Uncertainty",
+      "dependencies": "Dependencies in Scope",
+      "confidenceReady": "現在のエビデンスの組み合わせから確信度を精緻化中です。",
+      "confidencePending": "複数のエビデンスが同一の説明に合致すると、確信度がここに表示されます。",
+      "uncertaintyUnavailable": "期待されるベースラインがまだ紐付いていません。観測された遅延や障害は完全な比較ではなく方向性の参考として扱ってください。",
+      "uncertaintyDefault": "確認済みの事実と未解決の可能性が分離されるまで、未解決の問いがここに固定されます。",
+      "dependenciesDefault": "トレースとログの相関により実際に関与しているものが確認されると、依存関係の情報がここに固定されます。"
+    },
+    "traces": {
+      "attributes": "Attributes",
+      "correlatedLogs": "Correlated Logs",
+      "expectedBehavior": "expected behavior",
+      "expected": "期待値: {{duration}}ms",
+      "emptyObserved": "観測トレースレーンは予約済みです。テレメトリが到着すると確定的なトレースエビデンスがここに表示されます。",
+      "limitedTraces": "このインシデントでは限定的なトレースのみ利用可能です。",
+      "baselineUnavailable": "期待トレースは未取得です",
+      "baselineSparse": "期待トレースはまだ不十分です",
+      "hideExpected": "期待トレースを非表示",
+      "showExpected": "期待トレースを表示",
+      "expandGroup": "グループを展開",
+      "collapseGroup": "グループを折りたたむ",
+      "clusterAvg": "平均 {{duration}}ms",
+      "clusterMax": "最大 {{duration}}ms",
+      "noBaseline": "このインシデントウィンドウにはまだベースライントレースが紐付いていません。",
+      "baselineTooSparse": "ベースライン比較はまだ疎すぎるため、期待される挙動を安全に描画できません。"
+    },
+    "metrics": {
+      "expected": "期待値:\u00a0{{value}}",
+      "emptyReserved": "メトリクス比較は予約済みです。十分なサンプルでインシデントが再現されると、期待値と観測値のドリフトがここに表示されます。",
+      "thinSignal": "メトリクスシグナルはまだ限定的です。現在の仮説の確認・否定のためにこのレーンを開いたままにしてください。",
+      "expandGroup": "残り{{count}}件を表示",
+      "collapseGroup": "行を折りたたむ"
+    },
+    "logs": {
+      "entries": "{{count}}\u00a0件",
+      "expectedLabel": "期待値: {{expected}}。観測値: {{observed}}。",
+      "emptyReserved": "ログクラスタは予約済みです。最初の繰り返しパターンまたは注目すべき不在が確認されると、このレーンに固定されます。",
+      "sparseEvidence": "ログエビデンスはまだ疎です。正常の証拠としてではなく、裏付け待ちとして扱ってください。",
+      "expandGroup": "グループを展開",
+      "collapseGroup": "グループを折りたたむ"
+    }
+  },
+  "map": {
+    "loading": "マップを読み込み中\u2026",
+    "error": "ランタイムマップを読み込めませんでした。",
+    "runtimeDependencyMap": "Runtime Dependency Map",
+    "sourceIncidentScope": "\u2014 observed from preserved incident spans ({{window}})",
+    "sourceNoTelemetry": "\u2014 waiting for observed spans ({{window}})",
+    "sourceRecent": "\u2014 observed from recent spans ({{window}})",
+    "activeIncidents": "Active Incidents",
+    "legendDependency": "external dep",
+    "legendErrors": "critical",
+    "legendDegraded": "degraded",
+    "legendHealthy": "healthy",
+    "mapLabel": "Runtime Dependency Map",
+    "stats": {
+      "activeIncidents": "Active Incidents",
+      "degradedServices": "Degraded Services",
+      "reqPerSec": "Req/s (cluster)",
+      "p95Latency": "P95 Latency"
+    },
+    "empty": {
+      "noRecentSpansWithIncidents": "ライブウィンドウに最近のスパンがありません。",
+      "noSpansYet": "この環境ではスパンがまだ観測されていません。",
+      "detailWithIncidents": "下にオープン中のインシデントがあります。ランタイムマップが新しいトラフィックを待つ間、インシデントを選択して保存済みエビデンスを確認できます。",
+      "detailNoIncidents": "マップはスパンから観測されたコールパスのみ描画します。トラフィックが到着すると、エントリポイント・ランタイムユニット・依存関係がここに表示されます。",
+      "noPreservedSpans": "スコープ限定マップを再構築するための保存済みインシデントスパンがありませんでした。",
+      "noIncidentFallback": "インシデントスコープのフォールバックは利用できませんでした。",
+      "noOpenIncidents": "オープン中のインシデントはありません。",
+      "observedFromSpans": "Observed from spans",
+      "noLiveTopology": "{{window}} にライブトポロジーがありません",
+      "openIncidents": "{{count}} 件のオープンインシデント"
+    },
+    "statusBanner": {
+      "liveWindowEmpty": "Live window empty",
+      "showingSpans": "{{window}} でキャプチャされた観測スパンを表示中。",
+      "incidentScopedFallback": "これはインシデントスコープのフォールバックであり、推論されたトポロジーではありません。"
+    },
+    "incident": {
+      "stateLabel": "STATE",
+      "noActive": "No active incidents returned.",
+      "ready": "Ready",
+      "noOpen": "0 open",
+      "openLabel": "Open incident {{id}}: {{label}}",
+      "ago": "{{time}} ago",
+      "err": "{{rate}}% err"
+    }
+  }
+}

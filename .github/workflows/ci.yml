@@ -1,0 +1,148 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - develop
+      - main
+  pull_request:
+    branches:
+      - develop
+      - main
+  merge_group:
+
+jobs:
+  security:
+    name: Security Audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Dependency vulnerability audit (OSV)
+        uses: google/osv-scanner-action/osv-scanner-action@v2.3.5
+        with:
+          scan-args: |-
+            --lockfile=./pnpm-lock.yaml
+
+  test:
+    name: Test, Typecheck & Lint
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: receiver
+          POSTGRES_PASSWORD: receiver
+          POSTGRES_DB: receiver
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U receiver"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install
+
+      # core
+      - name: Build core
+        run: pnpm --filter 3am-core build
+      - name: Test core
+        run: pnpm --filter 3am-core test
+      - name: Typecheck core
+        run: pnpm --filter 3am-core typecheck
+      - name: Lint core
+        run: pnpm --filter 3am-core lint
+
+      # diagnosis (no real API calls — all mocked in tests)
+      - name: Build diagnosis
+        run: pnpm --filter 3am-diagnosis build
+      - name: Test diagnosis
+        run: pnpm --filter 3am-diagnosis test
+      - name: Typecheck diagnosis
+        run: pnpm --filter 3am-diagnosis typecheck
+      - name: Lint diagnosis
+        run: pnpm --filter 3am-diagnosis lint
+
+      # cli (no real API calls — all mocked in tests)
+      - name: Build cli
+        run: pnpm --filter 3am-cli build
+      - name: Test cli
+        run: pnpm --filter 3am-cli test
+      - name: Typecheck cli
+        run: pnpm --filter 3am-cli typecheck
+      - name: Lint cli
+        run: pnpm --filter 3am-cli lint
+
+      # receiver (PostgresAdapter tests run when DATABASE_URL is set)
+      - name: Test receiver (with coverage)
+        run: pnpm --filter @3am/receiver test:coverage
+        env:
+          DATABASE_URL: postgres://receiver:receiver@localhost:5432/receiver
+      - name: Test receiver on Cloudflare Workers runtime
+        run: pnpm --filter @3am/receiver test:workers
+      - name: Typecheck receiver
+        run: pnpm --filter @3am/receiver typecheck
+      - name: Lint receiver
+        run: pnpm --filter @3am/receiver lint
+
+      # console (unit tests only — E2E runs in parallel job)
+      - name: Build console
+        run: pnpm --filter @3am/console build
+      - name: Test console
+        run: pnpm --filter @3am/console test
+      - name: Typecheck console
+        run: pnpm --filter @3am/console typecheck
+      - name: Typecheck console E2E
+        run: pnpm --filter @3am/console typecheck:e2e
+      - name: Lint console
+        run: pnpm --filter @3am/console lint
+      - name: Lint CSS (console)
+        run: pnpm --filter @3am/console lint:css
+
+      # receiver bundle (depends on console build for turbo.json task graph)
+      - name: Bundle receiver
+        run: pnpm --filter @3am/receiver bundle
+
+  e2e:
+    name: E2E Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Build all packages
+        run: pnpm build
+
+      - name: Install Playwright browsers
+        run: pnpm --filter @3am/console exec playwright install chromium --with-deps
+
+      - name: E2E tests (console)
+        run: pnpm --filter @3am/console e2e
+        timeout-minutes: 5
+        env:
+          CI: true
+          RECEIVER_AUTH_TOKEN: e2e-test-token
+          DEBUG: "1"
