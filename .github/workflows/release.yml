@@ -58,5 +58,5 @@ jobs:
           context: .
           push: true
           tags: |
-            ghcr.io/3am/receiver:v${{ steps.version.outputs.version }}
-            ghcr.io/3am/receiver:latest
+            ghcr.io/muras3/3am-receiver:v${{ steps.version.outputs.version }}
+            ghcr.io/muras3/3am-receiver:latest
