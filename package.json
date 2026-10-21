@@ -30,9 +30,14 @@
       "picomatch@4": "4.0.4",
       "path-to-regexp": ">=8.4.0",
       "miniflare>undici": "7.24.4",
-      "protobufjs": "^7.5.5",
-      "brace-expansion@^1.0.0": "^1.1.13",
-      "brace-expansion@^5.0.0": "^5.0.5",
+      "protobufjs": "^7.6.1",
+      "seroval": "^1.6.3",
+      "@opentelemetry/propagator-jaeger": "^2.9.0",
+      "form-data": "^4.0.6",
+      "js-yaml": "^4.3.2",
+      "@grpc/grpc-js": "^1.14.5",
+      "brace-expansion@^1.0.0": "^1.1.20",
+      "brace-expansion@^5.0.0": "^5.0.11",
       "@esbuild-kit/core-utils>esbuild": "^0.25.0"
     }
   }
